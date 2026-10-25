@@ -279,3 +279,12 @@ export function settingsRow(
 ): string {
   return `<div class="settings-row${options.compact ? " compact" : ""}">${options.lead ?? ""}<div class="settings-text"><strong>${escapeHtml(label)}</strong>${description ? `<span>${escapeHtml(description)}</span>` : ""}</div>${control}</div>`;
 }
+
+/** The content of a settings-style page: its title and sections. */
+export function pageContent(title: string, content: string): string {
+  return `<div class="page"><div class="page-content"><h1 class="page-title">${title}</h1>${content}</div></div>`;
+}
+
+export function pageSection(title: string | null, content: string): string {
+  return `<section class="page-section">${title ? `<h2>${escapeHtml(title)}</h2>` : ""}${content}</section>`;
+}

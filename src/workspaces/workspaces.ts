@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
-import type { Auth, User } from "./platform/auth.ts";
-import { HttpError, notFound, required } from "./platform/errors.ts";
+import type { Auth, User } from "../platform/auth.ts";
+import { HttpError, notFound, required } from "../platform/errors.ts";
 
 /** What identifies a thread: its id, and the workspace whose folder holds its session. */
 export interface ThreadRef {
@@ -49,7 +49,7 @@ export class Workspaces {
   }
 
   /** The workspace if `user` is a member; otherwise not found, so other workspaces stay invisible. */
-  get(workspaceId: string, user: User): Workspace {
+  requireMember(workspaceId: string, user: User): Workspace {
     const workspace = this.database
       .query(
         "SELECT o.id, o.name FROM organization o JOIN member m ON m.organizationId = o.id WHERE o.id = ? AND m.userId = ?"
@@ -81,7 +81,7 @@ export class Workspaces {
   }
 
   channels(workspaceId: string, user: User): Channel[] {
-    this.get(workspaceId, user);
+    this.requireMember(workspaceId, user);
     const channels = this.database
       .query(
         "SELECT id, name FROM channel WHERE workspace_id = ? ORDER BY created_at"
@@ -99,7 +99,7 @@ export class Workspaces {
   }
 
   createChannel(workspaceId: string, user: User, name: string): Channel {
-    this.get(workspaceId, user);
+    this.requireMember(workspaceId, user);
     const slug = required(name, "Name")
       .toLowerCase()
       .replace(/^#/, "")
@@ -130,7 +130,7 @@ export class Workspaces {
     channelId: string,
     title: string
   ): ThreadSummary {
-    this.get(workspaceId, user);
+    this.requireMember(workspaceId, user);
     const channel = this.database
       .query("SELECT 1 FROM channel WHERE id = ? AND workspace_id = ?")
       .get(channelId, workspaceId);
@@ -168,7 +168,7 @@ export class Workspaces {
   }
 
   members(workspaceId: string, user: User): Member[] {
-    this.get(workspaceId, user);
+    this.requireMember(workspaceId, user);
     return this.database
       .query(
         "SELECT u.id AS userId, u.name, u.email, m.role FROM member m JOIN user u ON u.id = m.userId WHERE m.organizationId = ? ORDER BY m.createdAt"
@@ -182,7 +182,7 @@ export class Workspaces {
     user: User,
     email: string
   ): Promise<Member> {
-    this.get(workspaceId, user);
+    this.requireMember(workspaceId, user);
     const person = this.database
       .query("SELECT id, name, email FROM user WHERE lower(email) = lower(?)")
       .get(required(email, "Email")) as {

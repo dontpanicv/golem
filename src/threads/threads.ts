@@ -15,7 +15,11 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import type { Llm } from "../llm/llm.ts";
 import type { User } from "../platform/auth.ts";
 import { required } from "../platform/errors.ts";
-import type { ThreadRef, ThreadSummary, Workspaces } from "../workspaces.ts";
+import type {
+  ThreadRef,
+  ThreadSummary,
+  Workspaces,
+} from "../workspaces/workspaces.ts";
 
 export interface Message {
   readonly agent: boolean;
@@ -59,7 +63,7 @@ export interface RecallResult {
 /** The thread registry in `golem.sqlite`, which `Workspaces` keeps. */
 export type ThreadRegistry = Pick<
   Workspaces,
-  "get" | "registerThread" | "thread" | "touchThread"
+  "registerThread" | "requireMember" | "thread" | "touchThread"
 >;
 
 interface Open {
@@ -85,7 +89,7 @@ export class Threads {
     channelId: string,
     text: string
   ): Promise<ThreadSummary> {
-    this.registry.get(workspaceId, user);
+    this.registry.requireMember(workspaceId, user);
     const message = required(text, "Message");
     const firstLine = message.split("\n")[0]!;
     const title =

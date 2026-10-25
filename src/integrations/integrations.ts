@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { User } from "../platform/auth.ts";
 import { notFound, required } from "../platform/errors.ts";
 import type { Secrets } from "../platform/secrets.ts";
-import type { Workspaces } from "../workspaces.ts";
+import type { Workspaces } from "../workspaces/workspaces.ts";
 
 export interface CredentialSummary {
   readonly createdAt: number;
@@ -50,7 +50,7 @@ export class Integrations {
   ) {}
 
   list(workspaceId: string, user: User): Integration[] {
-    this.workspaces.get(workspaceId, user);
+    this.workspaces.requireMember(workspaceId, user);
     const enabled = new Set(
       (
         this.database
@@ -92,7 +92,7 @@ export class Integrations {
     integrationId: string,
     enabled: boolean
   ): Integration {
-    this.workspaces.get(workspaceId, user);
+    this.workspaces.requireMember(workspaceId, user);
     catalogEntry(integrationId);
     this.database
       .query(
@@ -110,7 +110,7 @@ export class Integrations {
     integrationId: string,
     input: { label: string; secret: string; shared: boolean }
   ): CredentialSummary {
-    this.workspaces.get(workspaceId, user);
+    this.workspaces.requireMember(workspaceId, user);
     catalogEntry(integrationId);
     const credential = {
       id: randomUUID(),
@@ -142,7 +142,7 @@ export class Integrations {
     user: User,
     credentialId: string
   ): void {
-    this.workspaces.get(workspaceId, user);
+    this.workspaces.requireMember(workspaceId, user);
     const { changes } = this.database
       .query(
         "DELETE FROM credential WHERE id = ? AND workspace_id = ? AND owner_id = ?"

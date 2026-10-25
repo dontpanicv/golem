@@ -388,7 +388,7 @@ describe("Threads with the Llm", () => {
     const thread = { id: "thread-1", workspaceId: "workspace-1" };
     // Only the registry methods that sending to a thread uses.
     const registry = {
-      get: () => ({ id: thread.workspaceId, name: "Family" }),
+      requireMember: () => ({ id: thread.workspaceId, name: "Family" }),
       registerThread: () => {
         throw new Error("Not used");
       },

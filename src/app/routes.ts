@@ -8,16 +8,20 @@ import { llmWebRoutes } from "../llm/web.ts";
 import { threadApiRoutes } from "../threads/api.ts";
 import { threadWebRoutes } from "../threads/web.ts";
 import { webRoutes } from "../web.ts";
+import { workspaceApiRoutes } from "../workspaces/api.ts";
+import { workspaceWebRoutes } from "../workspaces/web.ts";
 import type { Route } from "./http.ts";
 
 /** Every route of the server: the JSON API for the iOS app and the web app. */
 export const allRoutes: readonly Route[] = [
   ...accountApiRoutes,
+  ...workspaceApiRoutes,
   ...apiRoutes,
   ...llmApiRoutes,
   ...threadApiRoutes,
   ...integrationApiRoutes,
   ...accountWebRoutes,
+  ...workspaceWebRoutes,
   ...webRoutes,
   ...llmWebRoutes,
   ...threadWebRoutes,

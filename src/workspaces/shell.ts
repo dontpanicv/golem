@@ -12,7 +12,7 @@ import {
   textField,
 } from "../platform/ui/components.ts";
 import { icon } from "../platform/ui/icons.ts";
-import type { Channel, Workspace } from "../workspaces.ts";
+import type { Channel, Workspace } from "../workspaces/workspaces.ts";
 
 const escapeHtml = Bun.escapeHTML;
 
@@ -48,7 +48,7 @@ export function shellContext(
   current: ShellContext["current"]
 ): ShellContext {
   const { app, user, params } = input;
-  const workspace = app.workspaces.get(params.workspace!, user);
+  const workspace = app.workspaces.requireMember(params.workspace!, user);
   return {
     user,
     workspaces: app.workspaces.list(user),

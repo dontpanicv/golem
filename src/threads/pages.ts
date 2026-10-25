@@ -1,6 +1,6 @@
 import { composer, message } from "../platform/ui/components.ts";
-import { type ShellContext, shell } from "../ui/shell.ts";
-import type { Channel, ThreadSummary } from "../workspaces.ts";
+import { type ShellContext, shell } from "../workspaces/shell.ts";
+import type { Channel, ThreadSummary } from "../workspaces/workspaces.ts";
 import type { Message, ThreadMessages } from "./threads.ts";
 
 const escapeHtml = Bun.escapeHTML;
