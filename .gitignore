@@ -45,3 +45,6 @@ ios/Config/Local.xcconfig
 
 # Golem keeps everything it needs and stores in these two folders
 config
+
+# the voice models the app bundles (ios/scripts/fetch-fluid-speech.sh, ios/scripts/fetch-phonon.sh)
+ios/Models

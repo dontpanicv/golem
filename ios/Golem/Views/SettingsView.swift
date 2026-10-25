@@ -50,6 +50,18 @@ struct SettingsView: View {
                         ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.settingsRow)
                     }
                 }
+                if Speaker.isBundled {
+                    SettingsCard(title: "Conversation") {
+                        SettingsRow("Voice") {
+                            GolemSelect(
+                                selection: Binding(get: { Speaker.shared.voice }, set: chooseVoice),
+                                options: Speaker.voices.map(\.id),
+                                title: voiceLabel
+                            )
+                            .accessibilityLabel("Voice")
+                        }
+                    }
+                }
                 if let user = session.user {
                     SettingsCard(title: "Account") {
                         SettingsRow(label: user.name, description: user.email) {
@@ -76,6 +88,16 @@ struct SettingsView: View {
                 if let next = try? await session.api.llm() { llm = next }
             }
         }
+    }
+
+    /// Plays a sample of the voice, unless a conversation is on: then it speaks with it from the next sentence.
+    private func chooseVoice(_ voice: String) {
+        guard !VoiceSession.shared.talk.isOn else { return Speaker.shared.voice = voice }
+        Task { await session.run { try await Speaker.shared.sample(voice) } }
+    }
+
+    private func voiceLabel(_ id: String) -> String {
+        Speaker.voices.first { $0.id == id }.map { "\($0.name), \($0.accent)" } ?? id
     }
 
     private func setModel(_ model: String) {

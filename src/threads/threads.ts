@@ -78,6 +78,9 @@ const FILE_NAME =
   /^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/;
 const INSTRUCTIONS =
   "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. People attach files to their messages or upload them to the thread; list_files shows them and read_file reads them. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
+/** Added for the model to a message spoken in a conversation on the phone, whose answer is read aloud. */
+const VOICE =
+  "(Spoken in a conversation: your words are read aloud as you write them, and they may not look at the screen. Before you use tools, say in one short sentence what you are about to do. Write the way you speak: plain sentences, no Markdown, tables, lists, code blocks, or links unless they ask. Keep answers to one to three sentences unless they ask for more. Your final answer continues from what you already said in this turn; never repeat it. Their words come from speech recognition and can have sound-alike mistakes.)";
 
 interface Relay extends JsonObject {
   readonly fromThreadId: string;
@@ -170,19 +173,30 @@ export class Threads {
     return thread;
   }
 
-  /** Sends a family member's message and files to a thread of their workspace; the agent answers in the background. */
+  /**
+   * Sends a family member's message and files to a thread of their workspace; the agent answers in the background. A
+   * `voice` message is spoken in a conversation: the agent's answer is read aloud, and it steers a run at work.
+   */
   async send(
     threadId: string,
     user: User,
     text: string | undefined,
-    files: readonly File[] = []
+    files: readonly File[] = [],
+    voice = false
   ): Promise<void> {
     const thread = this.registry.thread(threadId, user);
     const message = messageText(text, files);
     const attached = await this.save(thread, files);
+    const input = authored(user, message, attached);
     await this.deliver(
       await this.conversation(thread),
-      authored(user, message, attached)
+      voice
+        ? {
+            ...input,
+            content: `${input.content}\n\n${VOICE}`,
+            whenBusy: "steer",
+          }
+        : input
     );
     this.registry.touchThread(thread.id);
   }
@@ -393,6 +407,7 @@ export class Threads {
         readonly data: Relay | Authored;
       };
       readonly requestId?: string;
+      readonly whenBusy?: "steer";
     }
   ): Promise<void> {
     await this.useCurrentModel(conversation);

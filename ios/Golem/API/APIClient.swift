@@ -107,8 +107,10 @@ final class APIClient {
 
     func thread(_ id: String) async throws -> ThreadState { try await get("/api/v1/threads/\(id)") }
 
-    func sendMessage(threadID: String, text: String, files: [URL]) async throws {
-        _ = try await sendForm("/api/v1/threads/\(threadID)/messages", ["text": text], files)
+    /// `voice`: spoken in a conversation, so the answer is written to be read aloud, and it steers a run at work.
+    func sendMessage(threadID: String, text: String, files: [URL], voice: Bool = false) async throws {
+        let fields = voice ? ["text": text, "voice": "true"] : ["text": text]
+        _ = try await sendForm("/api/v1/threads/\(threadID)/messages", fields, files)
     }
 
     func threadFiles(_ threadID: String) async throws -> [ThreadFile] {

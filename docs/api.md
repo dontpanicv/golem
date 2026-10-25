@@ -127,7 +127,7 @@ Workspace paths answer `404` to users who are not members of the workspace.
 | `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message and the title |
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
-| `POST /api/v1/threads/:threadId/messages` | `{ text }` | `204` |
+| `POST /api/v1/threads/:threadId/messages` | `{ text, voice? }` | `204` |
 | `GET /api/v1/threads/:threadId/files` | | `{ files: ThreadFile[] }`, oldest first |
 | `POST /api/v1/threads/:threadId/files` | multipart `files` | `{ files: ThreadFile[] }`: all files of the thread |
 | `DELETE /api/v1/threads/:threadId/files/:fileId` | | `{ files: ThreadFile[] }`: the files left. Messages keep the name of a deleted file. |
@@ -137,6 +137,9 @@ To attach files to a new thread or a message, send the same fields as a `multipa
 part per file instead of JSON. A message then needs text, files, or both; a thread without text takes the name of its
 first file. The thread's agent sees each attached file by name and id, and reads files with its `list_files` and
 `read_file` tools.
+
+`voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud, and
+the message steers a run at work instead of waiting for it to end.
 
 ### Search (`src/search/`)
 

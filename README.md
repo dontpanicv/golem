@@ -68,6 +68,18 @@ The machines connect over a WireGuard mesh VPN.
 
 The iOS app is a thin client with the same functionality; it talks to the JSON API in [docs/api.md](docs/api.md).
 
+On the iPhone you can also talk instead of type, on the device itself:
+
+- **Dictation.** Hold the mic in a composer and talk, then let go to send; slide left to cancel, or slide up or tap
+  to keep it on. The words appear in the field as you speak. It uses
+  [Fluid Speech Mini](https://huggingface.co/FluidVoice-Labs/fluid-speech-mini-coreml) by FluidVoice (CC-BY-4.0),
+  built on NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0) and Moondream's Parakeet Ultra (CC-BY-4.0), run unchanged by
+  [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache-2.0).
+- **Conversation.** The wave button in a thread starts a hands-free conversation: a pause ends your turn, and Golem
+  says its answer aloud as it writes it. Say "stop" or tap the orb to cut in. The voice is
+  [Phonon 31m](https://huggingface.co/gradium/phonon-31m-en) by Gradium (Apache-2.0), in FluidInference's Core ML
+  conversion.
+
 ## Interface
 
 The layout crosses Slack and T3 Code. The sidebar lists channels with their threads nested below them. The thread
@@ -128,6 +140,10 @@ open Golem.xcodeproj
 
 Put machine-specific values in `ios/Config/Local.xcconfig` (gitignored): `DEVELOPMENT_TEAM`, `GOLEM_BUNDLE_ID`, and
 `GOLEM_SERVER_URL`, the server the app opens by default.
+
+`ios/scripts/fetch-fluid-speech.sh` (~240 MB) and `ios/scripts/fetch-phonon.sh` (~150 MB) download the voice models
+into `ios/Models` (gitignored), and the build puts them in the app. Without them, the app has no dictation and no
+conversation.
 
 ## Status
 

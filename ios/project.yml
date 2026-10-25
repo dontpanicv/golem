@@ -7,6 +7,11 @@ options:
 configFiles:
   Debug: Config/Base.xcconfig
   Release: Config/Base.xcconfig
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    # main after 0.17.7: Gradium Phonon 31m on PocketTtsSmallManager (#1053), not in a release yet.
+    revision: c79c4106b954f81205113c3343e5a7e59a1089b5
 settings:
   base:
     SWIFT_VERSION: '6.0'
@@ -23,6 +28,8 @@ targets:
     platform: iOS
     sources:
       - path: Golem
+    dependencies:
+      - package: FluidAudio
     info:
       path: Golem/Info.plist
       properties:
@@ -34,6 +41,9 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Golem listens while you dictate or talk to it.
+        # A conversation goes on with the screen locked.
+        UIBackgroundModes: [audio]
         GolemServerURL: $(GOLEM_SERVER_URL)
         NSAppTransportSecurity:
           # Golem runs on the private NetBird network without TLS; WireGuard encrypts the traffic.
@@ -42,3 +52,54 @@ targets:
             netbird.selfhosted:
               NSIncludesSubdomains: true
               NSExceptionAllowsInsecureHTTPLoads: true
+    postCompileScripts:
+      - name: Bundle Fluid Speech Mini
+        basedOnDependencyAnalysis: false
+        script: |
+          # Copies the dictation model (ios/scripts/fetch-fluid-speech.sh, ~240 MB) into the app. Without it, there is no
+          # dictation.
+          MODEL="${SRCROOT}/Models/fluid-speech-mini"
+          if [ -f "$MODEL/REVISION" ]; then
+            DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FluidSpeech"
+            mkdir -p "$DEST"
+            rsync -a --delete "$MODEL/model/" "$DEST/"
+          else
+            echo "warning: no Fluid Speech Mini in ios/Models (run ios/scripts/fetch-fluid-speech.sh); there will be no dictation"
+          fi
+      - name: Bundle Phonon
+        basedOnDependencyAnalysis: false
+        script: |
+          # Copies the conversation voice (ios/scripts/fetch-phonon.sh, ~150 MB) into the app. Without it, there is no
+          # conversation mode.
+          MODEL="${SRCROOT}/Models/phonon"
+          if [ -f "$MODEL/REVISION" ]; then
+            DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Phonon"
+            mkdir -p "$DEST"
+            rsync -a --delete "$MODEL/model/" "$DEST/"
+          else
+            echo "warning: no Phonon in ios/Models (run ios/scripts/fetch-phonon.sh); there will be no conversation mode"
+          fi
+    settings:
+      base:
+        # The model scripts write into the app bundle.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+  GolemTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [GolemTests]
+    dependencies:
+      - target: Golem
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: $(GOLEM_BUNDLE_ID).tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Golem.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Golem
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  Golem:
+    build:
+      targets:
+        Golem: all
+        GolemTests: [test]
+    test:
+      targets: [GolemTests]

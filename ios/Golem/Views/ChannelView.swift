@@ -29,7 +29,10 @@ struct ChannelView: View {
             if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything", systemImage: "sparkles") }
         }
         .safeAreaInset(edge: .bottom) {
-            Composer(placeholder: "Message \(channel?.name ?? "")", draft: $draft, files: $files, send: send)
+            Composer(
+                owner: channelID, placeholder: "Message \(channel?.name ?? "")", draft: $draft, files: $files,
+                send: send
+            )
                 .padding([.horizontal, .bottom], Tokens.Space.lg)
         }
         .background(Tokens.Colors.surface)

@@ -49,7 +49,8 @@ export const threadApiRoutes: readonly Route[] = [
         params.thread!,
         user,
         body.text as string | undefined,
-        files
+        files,
+        body.voice === true || body.voice === "true"
       );
       return new Response(null, { status: 204 });
     }),

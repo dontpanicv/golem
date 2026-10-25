@@ -75,6 +75,9 @@ function agent(context: Context) {
   if (other) {
     return call("send_to_thread", { thread: other[1]!, message: "Hi" });
   }
+  if (/^Alice: Turn on the lights\n\n\(Spoken in a conversation: /.test(text)) {
+    return fauxAssistantMessage("Done.");
+  }
   return fauxAssistantMessage("Ok.");
 }
 
@@ -284,6 +287,33 @@ test("files attach to a new thread, a message, and the thread; the agent reads t
     )
   ).toEqual(["shopping.txt", "beach.png"]);
   expect((await golem.call(pagePath, { token })).status).toBe(404);
+});
+
+test("a spoken message asks the agent for an answer to read aloud, and the transcript shows only the words", async () => {
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const home = await golem.app.workspaces.create(alice, "Voice");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const thread = await golem.app.threads.create(
+    home.id,
+    alice,
+    general.id,
+    "Hello"
+  );
+  const spoken = new FormData();
+  spoken.set("text", "Turn on the lights");
+  spoken.set("voice", "true");
+  const sent = await postForm(`/api/v1/threads/${thread.id}/messages`, spoken, {
+    authorization: `Bearer ${token}`,
+  });
+  expect(sent.status).toBe(204);
+
+  const answered = await idle(home.id, thread.id);
+  expect(answered.messages.map((message) => message.text)).toEqual([
+    "Hello",
+    "Ok.",
+    "Turn on the lights",
+    "Done.",
+  ]);
 });
 
 test("the web shows each thread link in a message as a link into the workspace, and escapes the rest", () => {

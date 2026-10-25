@@ -11,6 +11,7 @@ struct GolemApp: App {
         let title = UIFont(name: "InterVariable-SemiBold", size: Tokens.FontSize.lg)
         appearance.largeTitleTextAttributes = [.font: largeTitle as Any]
         appearance.titleTextAttributes = [.font: title as Any]
+        Listener.warm()
     }
 
     var body: some Scene {

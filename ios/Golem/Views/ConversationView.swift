@@ -14,6 +14,8 @@ struct ConversationView: View {
     @State private var files: [URL] = []
     @State private var preview: URL?
 
+    private var talk: VoiceChat { VoiceSession.shared.talk }
+
     private var channelName: String {
         session.channels.first { $0.id == state?.thread.channelId }?.name ?? ""
     }
@@ -39,7 +41,14 @@ struct ConversationView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: Tokens.Space.md) {
                 if state?.running == true { Badge(label: "Running", tone: .accent) }
-                Composer(placeholder: "Message \(channelName)", draft: $draft, files: $files, send: send)
+                if talk.isOn, talk.thread == threadID {
+                    TalkDock(talk: talk)
+                } else {
+                    Composer(
+                        owner: threadID, placeholder: "Message \(channelName)", draft: $draft, files: $files,
+                        talk: startTalk, send: send
+                    )
+                }
             }
             .padding([.horizontal, .bottom], Tokens.Space.lg)
         }
@@ -100,6 +109,13 @@ struct ConversationView: View {
                     throw error
                 }
             }
+        }
+    }
+
+    private func startTalk() {
+        Task {
+            await talk.start(thread: threadID, api: session.api)
+            if !talk.isOn, let error = talk.error { session.show(error, .error) }
         }
     }
 
@@ -180,31 +196,71 @@ struct FileChips: View {
     }
 }
 
-/// A message box with the files picked, or dropped on it, to send with it.
+/// A message box with the files picked, or dropped on it, to send with it, and dictation into it (``MicButton``).
+/// `owner` keys the dictation: the thread, or the channel of a new thread. `talk` starts a conversation instead; no
+/// button without it.
 struct Composer: View {
+    let owner: String
     let placeholder: String
     @Binding var draft: String
     @Binding var files: [URL]
+    var talk: (() -> Void)?
     let send: () -> Void
+    @Environment(Session.self) private var session
+    @State private var gesture: MicButton.Gesture?
+    @FocusState private var focused: Bool
+
+    private var listener: Listener { VoiceSession.shared.listener }
+    /// The listener listens for this composer.
+    private var active: Bool {
+        listener.owner == owner && (listener.state == .on || listener.state == .preparing)
+    }
+    /// Feedback from the first touch, before the microphone has started.
+    private var recording: Bool { active || gesture != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.md) {
-            TextField(placeholder, text: $draft, axis: .vertical)
-                .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
-                .lineLimit(1...8)
-                .onSubmit(send)
+            if active {
+                // The words land in the field as they are heard; a tap stops and keeps them to edit.
+                let words = [listener.prefix, listener.text].filter { !$0.isEmpty }.joined(separator: " ")
+                Text(words.isEmpty ? "Listening…" : words)
+                    .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
+                    .foregroundStyle(words.isEmpty ? Tokens.Colors.textQuaternary : Tokens.Colors.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                    .onTapGesture(perform: keep)
+            } else {
+                TextField(placeholder, text: $draft, axis: .vertical)
+                    .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
+                    .lineLimit(1...8)
+                    .focused($focused)
+                    .onSubmit(send)
+            }
             if !files.isEmpty {
                 FileChips(names: files.map(\.lastPathComponent)) { files.remove(at: $0) }
             }
-            HStack {
-                AttachMenu { files += $0 } label: { Label("Attach file", systemImage: "paperclip") }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.ghost)
+            HStack(spacing: Tokens.Space.md) {
+                if recording {
+                    RecordingBar(startedAt: listener.startedAt, holding: gesture == .hold, cancel: cancel)
+                } else {
+                    AttachMenu { files += $0 } label: { Label("Attach file", systemImage: "paperclip") }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.ghost)
+                }
                 Spacer()
-                Button("Send", systemImage: "arrow.up", action: send)
+                if let talk, !recording {
+                    Button("Talk with Golem", systemImage: "waveform", action: talk)
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.ghost)
+                }
+                MicButton(
+                    gesture: $gesture, recording: recording, level: active ? listener.level : 0,
+                    start: startListening, cancel: cancel, keep: keep, submit: submit
+                )
+                Button("Send", systemImage: "arrow.up", action: submit)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.send)
-                    .disabled(draft.isEmpty && files.isEmpty)
+                    .disabled(draft.isEmpty && files.isEmpty && !active)
             }
         }
         .padding(Tokens.Space.lg)
@@ -213,6 +269,52 @@ struct Composer: View {
             files += dropped.map(\.url)
             return true
         }
+        .sensoryFeedback(.impact, trigger: gesture)
+        .onChange(of: active) { _, active in
+            if !active, gesture == .locked { gesture = nil }
+        }
+        .onDisappear {
+            // A conversation keeps the listener when a composer goes away.
+            if listener.owner == owner, !VoiceSession.shared.talk.isOn { listener.shutDown() }
+        }
+    }
+
+    /// Listens after the typed draft; a conversation in progress ends.
+    private func startListening() {
+        VoiceSession.shared.talk.end()
+        Task {
+            await listener.start(owner, prefix: draft.trimmingCharacters(in: .whitespacesAndNewlines))
+            if case .failed(let message) = listener.state {
+                gesture = nil
+                session.show(message, .error)
+            }
+        }
+    }
+
+    /// Stops listening and keeps the words in the field, to edit.
+    private func keep() {
+        Task {
+            let kept = await listener.stop()
+            gesture = nil
+            // Nothing comes back if it never started: the typed draft stays.
+            if !kept.isEmpty { draft = kept }
+            focused = true
+        }
+    }
+
+    /// Sends the draft, or stops listening and sends the words.
+    private func submit() {
+        guard active else { return send() }
+        Task {
+            draft = await listener.stop()
+            gesture = nil
+            send()
+        }
+    }
+
+    private func cancel() {
+        gesture = nil
+        listener.cancel()
     }
 }
 
