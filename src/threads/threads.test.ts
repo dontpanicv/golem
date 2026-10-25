@@ -79,6 +79,17 @@ function agent(context: Context) {
   if (file) {
     return call("read_file", { file: file[1]! });
   }
+  const channelCommand = /(Create|Search|Delete) channels? (.+)$/.exec(text);
+  if (channelCommand) {
+    const [, verb, rest] = channelCommand;
+    if (verb === "Create") {
+      const [name, summary] = rest!.split(": ");
+      return call("create_channel", { name: name!, summary: summary! });
+    }
+    return verb === "Search"
+      ? call("search_channels", { query: rest! })
+      : call("delete_channel", { channel: rest! });
+  }
   if (text.endsWith("Zoom 0")) {
     return fauxAssistantMessage([fauxToolCall("zoom", { id: 0, n: 1 })], {
       stopReason: "toolUse",
@@ -463,5 +474,72 @@ test("the orchestrator compacts into a view of its memory, and its agent zooms i
     expect.stringMatching(
       /^Message 0, \d{4}-\d\d-\d\d \d\d:\d\d UTC:\nuser: Alice: The wifi password is on the fridge$/
     )
+  );
+});
+
+test("an agent creates, searches, and deletes channels, and keeps a channel that has threads or routines", async () => {
+  const home = await golem.app.workspaces.create(alice, "Channels");
+  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const asked = await golem.app.threads.create(
+    home.id,
+    alice,
+    general!.id,
+    "Hello"
+  );
+  await until(
+    () =>
+      golem.app.threads.messages(golem.app.workspaces.thread(asked.id, alice)),
+    (state) => !state.running && state.messages.length === 2
+  );
+  const ask = async (text: string) => {
+    const before = toolResults.length;
+    await golem.app.threads.send(asked.id, alice, text);
+    return (
+      await until(
+        async () => toolResults,
+        () => toolResults.length > before
+      )
+    )
+      .slice(before)
+      .join("\n");
+  };
+  expect(await ask("Create channel Trips: Family trips and holidays")).toBe(
+    "Created #trips."
+  );
+  const trips = golem.app.workspaces
+    .channels(home.id, alice)
+    .find((channel) => channel.name === "trips")!;
+  expect(trips.summary).toBe("Family trips and holidays");
+
+  expect(await ask("Search channels summer holidays")).toBe(
+    "#trips: Family trips and holidays"
+  );
+  expect(await ask("Search channels dentist")).toBe(
+    "No channel matches. list_channels shows them all."
+  );
+  expect(await ask("Create channel trips: Again")).toContain(
+    "#trips already exists"
+  );
+  expect(await ask("Delete channel general")).toContain(
+    "#general stays: The channel has 1 thread; only an empty channel can be deleted."
+  );
+  golem.app.routines.create(home.id, trips.id, {
+    id: crypto.randomUUID(),
+    name: "Flight prices",
+    schedule: "0 8 * * *",
+    instructions: "Check the flight prices",
+    createdBy: "golem",
+  });
+  expect(await ask("Delete channel trips")).toContain(
+    "#trips has the routines Flight prices. Delete them first."
+  );
+  const [routine] = golem.app.routines.inWorkspace(home.id);
+  golem.app.routines.remove(home.id, routine!.id);
+  expect(await ask("Delete channel #trips")).toBe("Deleted #trips.");
+  expect(
+    golem.app.workspaces.channels(home.id, alice).map((channel) => channel.name)
+  ).toEqual(["general"]);
+  expect(await ask("Delete channel trips")).toContain(
+    "There is no channel #trips. list_channels shows the channels."
   );
 });

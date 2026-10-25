@@ -118,6 +118,11 @@ export class Workspaces {
 
   createChannel(workspaceId: string, user: User, name: string): Channel {
     this.requireMember(workspaceId, user);
+    return this.addChannel(workspaceId, name, user.id);
+  }
+
+  /** Adds a channel to a workspace; `createdBy` is a person's id, or `golem` for a channel an agent made. */
+  addChannel(workspaceId: string, name: string, createdBy: string): Channel {
     const slug = required(name, "Name")
       .toLowerCase()
       .replace(/^#/, "")
@@ -142,8 +147,27 @@ export class Workspaces {
       .query(
         "INSERT INTO channel (id, workspace_id, name, created_by, created_at) VALUES (?, ?, ?, ?, ?)"
       )
-      .run(channel.id, workspaceId, slug, user.id, Date.now());
+      .run(channel.id, workspaceId, slug, createdBy, Date.now());
     return channel;
+  }
+
+  /**
+   * Deletes a channel of the workspace, for an agent that acts for it. A channel with threads stays, settled ones
+   * and the orchestrator too, because deleting it would delete them.
+   */
+  deleteChannel(workspaceId: string, channelId: string): void {
+    const threads = this.database
+      .query("SELECT count(*) AS count FROM thread WHERE channel_id = ?")
+      .get(channelId) as { count: number };
+    if (threads.count > 0) {
+      throw new HttpError(
+        409,
+        `The channel has ${threads.count} ${threads.count === 1 ? "thread" : "threads"}; only an empty channel can be deleted`
+      );
+    }
+    this.database
+      .query("DELETE FROM channel WHERE id = ? AND workspace_id = ?")
+      .run(channelId, workspaceId);
   }
 
   /** Replaces the summary of a channel, for an agent that acts for the workspace. */

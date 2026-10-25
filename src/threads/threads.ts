@@ -36,6 +36,7 @@ import type { Llm } from "../llm/llm.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type {
+  Channel,
   ThreadRef,
   ThreadSummary,
   Workspaces,
@@ -85,7 +86,7 @@ const INSTRUCTIONS =
   "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. People attach files to their messages or upload them to the thread; list_files shows them and read_file reads them. When people want a page to share or a small app, such as an invite, a schedule, a poll, or a game, make an artifact. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
 /** Added to `INSTRUCTIONS` for the orchestrator, the one thread of a workspace that never ends. */
 const ORCHESTRATOR =
-  "This thread is the orchestrator of the workspace: one thread that never ends, where the family comes first. Do small tasks yourself. Give larger work to the channel it belongs to: start a thread there with start_thread, or send it to a thread that is already about it with send_to_thread. Their agents answer back here; tell the family what came of it. Your memory of this thread is the summary at its start: zoom it before you use recall. The summaries keep little of what tools gave you, so say in your answer what you learned that will matter later.";
+  "This thread is the orchestrator of the workspace: one thread that never ends, where the family comes first. Do small tasks yourself. Give larger work to the channel it belongs to: start a thread there with start_thread, or send it to a thread that is already about it with send_to_thread. When no channel fits, make one with create_channel. Their agents answer back here; tell the family what came of it. Your memory of this thread is the summary at its start: zoom it before you use recall. The summaries keep little of what tools gave you, so say in your answer what you learned that will matter later.";
 /** Above about this many tokens of context, the orchestrator compacts after its turn, so each turn reads little. */
 const ORCHESTRATOR_TOKENS = 48_000;
 /** A compaction needs this many new messages since the one before, so a long message that stays cannot repeat it. */
@@ -110,6 +111,10 @@ export interface ThreadHooks {
     query: string,
     limit: number
   ) => Promise<{ readonly results: readonly RecallResult[] }>;
+  /** The routines of a workspace; a channel with routines cannot be deleted. */
+  readonly routines: (
+    workspaceId: string
+  ) => readonly { readonly channelId: string; readonly name: string }[];
   /** Tools of the modules after threads, such as routines, for the agents of a workspace. */
   readonly tools: (workspaceId: string) => readonly ToolRegistration[];
   /** The text of a document or PDF for read_file; `null` for a kind of file without text. */
@@ -130,7 +135,9 @@ export interface RecallResult {
 /** The thread registry in `golem.sqlite`, which `Workspaces` keeps. */
 export type ThreadRegistry = Pick<
   Workspaces,
+  | "addChannel"
   | "channelsIn"
+  | "deleteChannel"
   | "orchestratorOf"
   | "registerThread"
   | "requireMember"
@@ -641,6 +648,9 @@ export class Threads {
       tools: [
         this.recallTool(workspaceId),
         this.listChannelsTool(workspaceId),
+        this.searchChannelsTool(workspaceId),
+        this.createChannelTool(workspaceId),
+        this.deleteChannelTool(workspaceId),
         this.readThreadTool(workspaceId),
         this.startThreadTool(workspaceId),
         this.sendToThreadTool(workspaceId),
@@ -748,22 +758,123 @@ export class Threads {
     return defineTool({
       name: "list_channels",
       description:
-        "List the channels of this workspace with their newest threads and thread ids.",
+        "List the channels of this workspace with their summaries, newest threads, and thread ids.",
       parameters: Type.Object({}),
       replay: "safe",
       execute: async () => {
         const text = this.registry
           .channelsIn(workspaceId)
-          .map((channel) => {
-            const threads = channel.threads
-              .slice(0, 5)
-              .map(
-                (thread) => `- ${threadLink(thread)} (${day(thread.updatedAt)})`
-              );
-            return [`#${channel.name}`, ...threads].join("\n");
-          })
+          .map(channelText)
           .join("\n");
         return { output: [{ type: "text", text }] };
+      },
+    });
+  }
+
+  private searchChannelsTool(workspaceId: string) {
+    return defineTool({
+      name: "search_channels",
+      description:
+        "Find the channels of this workspace whose name, summary, or thread titles have the words of a query, best match first.",
+      parameters: Type.Object({
+        query: Type.String({ description: "Words to look for" }),
+      }),
+      replay: "safe",
+      execute: async (args) => {
+        const words = args.query.toLowerCase().split(/\W+/).filter(Boolean);
+        const text =
+          this.registry
+            .channelsIn(workspaceId)
+            .map((channel) => {
+              const haystack = [
+                channel.name,
+                channel.summary ?? "",
+                ...channel.threads.map((thread) => thread.title),
+              ]
+                .join(" ")
+                .toLowerCase();
+              const score = words.filter((word) =>
+                haystack.includes(word)
+              ).length;
+              return { channel, score };
+            })
+            .filter(({ score }) => score > 0)
+            .sort((left, right) => right.score - left.score)
+            .map(({ channel }) => channelText(channel))
+            .join("\n") || "No channel matches. list_channels shows them all.";
+        return { output: [{ type: "text", text }] };
+      },
+    });
+  }
+
+  private createChannelTool(workspaceId: string) {
+    return defineTool({
+      name: "create_channel",
+      description:
+        "Create a channel in this workspace, for a topic that needs its own threads, with a short summary of what it is for.",
+      parameters: Type.Object({
+        name: Type.String({
+          description: "Lowercase words joined by dashes, such as trips",
+        }),
+        summary: Type.Optional(Type.String({ maxLength: 2000 })),
+      }),
+      execute: async (args) => {
+        const channel = this.registry.addChannel(
+          workspaceId,
+          args.name,
+          "golem"
+        );
+        if (args.summary) {
+          this.registry.setChannelSummary(
+            workspaceId,
+            channel.id,
+            args.summary
+          );
+        }
+        this.hooks.changed(workspaceId);
+        return {
+          output: [{ type: "text", text: `Created #${channel.name}.` }],
+        };
+      },
+    });
+  }
+
+  private deleteChannelTool(workspaceId: string) {
+    return defineTool({
+      name: "delete_channel",
+      description:
+        "Delete an empty channel of this workspace: one without threads or routines. Delete only when the family asks for it.",
+      parameters: Type.Object({
+        channel: Type.String({ description: "The channel name" }),
+      }),
+      execute: async (args) => {
+        const name = args.channel.replace(/^#/, "").toLowerCase();
+        const channel = this.registry
+          .channelsIn(workspaceId)
+          .find((candidate) => candidate.name === name);
+        if (!channel) {
+          throw new Error(
+            `There is no channel #${name}. list_channels shows the channels.`
+          );
+        }
+        // A routine would go with its channel.
+        const routines = this.hooks
+          .routines(workspaceId)
+          .filter((routine) => routine.channelId === channel.id);
+        if (routines.length > 0) {
+          throw new Error(
+            `#${name} has the routines ${routines.map((routine) => routine.name).join(", ")}. Delete them first.`
+          );
+        }
+        try {
+          this.registry.deleteChannel(workspaceId, channel.id);
+        } catch (error) {
+          throw new Error(`#${name} stays: ${(error as Error).message}.`, {
+            cause: error,
+          });
+        }
+        this.hooks.changed(workspaceId);
+        return { output: [{ type: "text", text: `Deleted #${name}.` }] };
       },
     });
   }
@@ -1284,6 +1395,15 @@ function connectorTool(tool: WorkspaceTool) {
       };
     },
   });
+}
+
+/** A channel as the channel tools give it: its name and summary, then its five newest threads. */
+function channelText(channel: Channel): string {
+  const threads = channel.threads
+    .slice(0, 5)
+    .map((thread) => `- ${threadLink(thread)} (${day(thread.updatedAt)})`);
+  const summary = channel.summary ? `: ${channel.summary}` : "";
+  return [`#${channel.name}${summary}`, ...threads].join("\n");
 }
 
 /** A thread as the agent writes it, `[title](thread:<id>)`, which the web and iOS show as a link to the thread. */

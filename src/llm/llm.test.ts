@@ -379,6 +379,7 @@ describe("SqliteCredentialStore", () => {
 const hooks = {
   changed: () => undefined,
   recall: async () => ({ results: [] }),
+  routines: () => [],
   read: async () => null,
   picture: async () => null,
   tools: () => [],
@@ -434,6 +435,10 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       })),
     channelsIn: () => [],
     orchestratorOf: () => null,
+    addChannel: () => {
+      throw new Error("No channels here");
+    },
+    deleteChannel: () => undefined,
     setChannelSummary: () => undefined,
     touchThread: () => undefined,
   };
