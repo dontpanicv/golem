@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import { serializeSignedCookie } from "better-call";
 import { HttpRouter } from "effect/http";
 import { apiRoutes } from "../src/api.ts";
 import { type App, closeApp, createApp, routes } from "../src/app.ts";
@@ -19,8 +20,15 @@ let dataDirectory: string;
 beforeAll(async () => {
 	dataDirectory = await mkdtemp(join(tmpdir(), "golem-"));
 	app = await createApp(
-		{ dataDirectory, port: 0, baseUrl: "http://golem.test", allowedEmails: ["bob@example.com", "eve@example.com"] },
-		{ provider: faux.provider, name: "Test model", models: [model.id], defaultModel: model.id },
+		{
+			configDirectory: dataDirectory,
+			dataDirectory,
+			port: 0,
+			baseUrl: "http://golem.test",
+			allowedEmails: ["alice@example.com", "bob@example.com", "eve@example.com"],
+			google: { clientId: "test-client.apps.googleusercontent.com", clientSecret: "test-secret" },
+		},
+		{ provider: faux.provider, name: "Test model", defaultModel: model.id },
 		Secrets.forTests(),
 	);
 	({ handler, dispose } = HttpRouter.toWebHandler(routes(app, [...apiRoutes, ...webRoutes]), { disableLogger: true }));
@@ -45,13 +53,21 @@ function call(path: string, options: { method?: string; token?: string; body?: u
 	);
 }
 
-async function signUp(name: string, email: string): Promise<Response> {
-	return call("/api/auth/sign-up/email", { body: { name, email, password: "correct horse battery" } });
+/** What a Google sign-in does after Google confirms the email: makes the user on first sign-in, then a session. */
+async function signIn(name: string, email: string): Promise<string> {
+	const { internalAdapter } = await app.auth.$context;
+	const user = (await internalAdapter.findUserByEmail(email))?.user ?? (await internalAdapter.createUser({ name, email, emailVerified: true }, { method: "oauth", oauth: { providerId: "google" } }));
+	return (await internalAdapter.createSession(user.id)).token;
 }
 
-async function token(response: Response): Promise<string> {
-	expect(response.status).toBe(200);
-	return response.headers.get("set-auth-token")!;
+function cookies(response: Response): string {
+	return response.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
+}
+
+/** The session cookie value for a token, signed as better-auth signs it. */
+async function signedCookie(token: string): Promise<string> {
+	const { secret } = await app.auth.$context;
+	return (await serializeSignedCookie("", token, secret)).slice(1);
 }
 
 async function until<T>(read: () => Promise<T>, done: (value: T) => boolean): Promise<T> {
@@ -68,11 +84,33 @@ let bob: string;
 let workspaceId: string;
 let threadId: string;
 
-test("the first person signs up; later sign-ups need an allowed email", async () => {
-	alice = await token(await signUp("Alice", "alice@example.com"));
-	expect((await signUp("Mallory", "mallory@example.com")).status).toBe(403);
-	bob = await token(await signUp("Bob", "bob@example.com"));
+test("only allowed emails sign in, and only with Google", async () => {
+	alice = await signIn("Alice", "alice@example.com");
+	bob = await signIn("Bob", "bob@example.com");
+	await expect(signIn("Mallory", "mallory@example.com")).rejects.toThrow("cannot sign in");
+	// Someone whose email left the list keeps no access.
+	app.database.run("INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES ('old', 'Old', 'old@example.com', 1, 0, 0)");
+	await expect(signIn("Old", "old@example.com")).rejects.toThrow("cannot sign in");
+
+	const body = { name: "Mallory", email: "mallory@example.com", password: "correct horse battery" };
+	expect((await call("/api/auth/sign-up/email", { body })).status).not.toBe(200);
+	expect((await call("/api/auth/sign-in/email", { body })).status).not.toBe(200);
 	expect((await call("/api/v1/me")).status).toBe(401);
+	expect((await call("/api/v1/me", { token: alice })).status).toBe(200);
+});
+
+test("the iOS app gets a token only from a Google sign-in it started", async () => {
+	const start = await call("/api/v1/sign-in/google");
+	expect(new URL(start.headers.get("location")!).searchParams.get("prompt")).toBe("select_account");
+	expect(cookies(start)).toContain("golem_app_sign_in=1");
+
+	const session = `better-auth.session_token=${await signedCookie(alice)}`;
+	const started = await call("/api/v1/sign-in/google/done", { headers: { cookie: `${session}; golem_app_sign_in=1` } });
+	expect(new URL(started.headers.get("location")!).searchParams.get("token")).toBe(alice);
+	const notStarted = await call("/api/v1/sign-in/google/done", { headers: { cookie: session } });
+	expect(new URL(notStarted.headers.get("location")!).searchParams.get("token")).toBeNull();
+	const failed = await call("/api/v1/sign-in/google/done?error=EMAIL_NOT_ALLOWED&error_description=No", { headers: { cookie: "golem_app_sign_in=1" } });
+	expect(failed.headers.get("location")).toBe("golem://signed-in?error=No");
 });
 
 test("a new workspace has a general channel", async () => {
@@ -137,21 +175,24 @@ test("credentials are private or shared, and secrets never leave the server", as
 
 test("the LLM provider is shared by everyone", async () => {
 	const llm = await (await call("/api/v1/llm", { token: bob })).json() as any;
-	expect(llm).toMatchObject({ provider: "Test model", model: model.id, login: null });
+	// The faux model has no reasoning, so the default effort moves to the one level it supports.
+	expect(llm).toMatchObject({ provider: "Test model", model: model.id, effort: "off", models: [{ id: model.id, name: model.name, efforts: ["off"] }], login: null });
 	expect((await call("/api/v1/llm/model", { method: "PUT", token: bob, body: { model: "nope" } })).status).toBe(400);
+	expect((await call("/api/v1/llm/effort", { method: "PUT", token: bob, body: { effort: "high" } })).status).toBe(400);
+	expect(await (await call("/api/v1/llm/effort", { method: "PUT", token: bob, body: { effort: "off" } })).json()).toMatchObject({ effort: "off" });
 });
 
-test("the web app signs in with a form and keeps cross-site posts out", async () => {
+test("the web app signs in with Google and keeps cross-site posts out", async () => {
 	expect((await call("/")).headers.get("location")).toBe("/login");
-	const login = await handler(
-		new Request("http://golem.test/login", {
-			method: "POST",
-			body: new URLSearchParams({ email: "alice@example.com", password: "correct horse battery" }),
-		}),
-	);
+	const login = await handler(new Request("http://golem.test/login", { method: "POST" }));
 	expect(login.status).toBe(303);
-	const cookie = login.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
-	expect(cookie).toContain("session_token");
+	const google = new URL(login.headers.get("location")!);
+	expect(google.origin).toBe("https://accounts.google.com");
+	expect(google.searchParams.get("redirect_uri")).toBe("http://golem.test/api/auth/callback/google");
+	expect(cookies(login)).toContain("state");
+	expect(await (await call("/login?error=EMAIL_NOT_ALLOWED&error_description=Not%20you")).text()).toContain("Not you");
+
+	const cookie = `better-auth.session_token=${await signedCookie(alice)}`;
 
 	const home = await call("/", { headers: { cookie } });
 	expect(home.headers.get("location")).toBe(`/w/${workspaceId}`);

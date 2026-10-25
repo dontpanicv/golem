@@ -2,13 +2,13 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { chmod } from "node:fs/promises";
 import { join } from "node:path";
 
-/** Encrypts secrets at rest with a key that never leaves this machine's data directory. */
+/** Encrypts secrets at rest with a key kept in `config/`, apart from the data it protects. */
 export class Secrets {
 	private constructor(private readonly key: Buffer) {}
 
-	/** Reads `secret.key` from the data directory, creating it on first start. */
-	static async load(dataDirectory: string): Promise<Secrets> {
-		const file = Bun.file(join(dataDirectory, "secret.key"));
+	/** Reads `config/secret.key`, creating it on first start. It stays out of the data backup on purpose. */
+	static async load(configDirectory: string): Promise<Secrets> {
+		const file = Bun.file(join(configDirectory, "secret.key"));
 		if (await file.exists()) return new Secrets(Buffer.from(await file.arrayBuffer()));
 		const key = randomBytes(32);
 		await Bun.write(file, key);

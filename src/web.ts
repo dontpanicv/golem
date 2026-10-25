@@ -1,6 +1,6 @@
 import { resolve, sep } from "node:path";
 import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
-import { type AuthedInput, type Handler, type Route, type RouteInput, signedIn } from "./app.ts";
+import { type AuthedInput, type Handler, type Route, type RouteInput, signedIn, withCookies } from "./app.ts";
 import type { User } from "./auth.ts";
 import { designPage } from "./ui/design.ts";
 import {
@@ -13,6 +13,7 @@ import {
 	workspaceSettingsPage,
 } from "./ui/pages.ts";
 import type { Toast } from "./ui/components.ts";
+import { searchPage, searchResults } from "./ui/search.ts";
 import type { ShellContext } from "./ui/shell.ts";
 import { transcript } from "./ui/shell.ts";
 import { HttpError } from "./workspaces.ts";
@@ -24,20 +25,14 @@ export const webRoutes: readonly Route[] = [
 	["GET", "/assets/*", async ({ request }) => asset(request)],
 	["GET", "/design", async () => html(designPage())],
 
-	["GET", "/login", async ({ request }) => html(authPage("login", toastOf(request)))],
-	["GET", "/signup", async ({ request }) => html(authPage("signup", toastOf(request)))],
-	["POST", "/login", form(async ({ app, fields }) => withCookies(await app.auth.api.signInEmail({ body: { email: fields.email!, password: fields.password! }, returnHeaders: true }), "/"), "/login")],
+	["GET", "/login", async ({ request }) => html(authPage(toastOf(request)))],
 	[
 		"POST",
-		"/signup",
-		form(
-			async ({ app, fields }) =>
-				withCookies(
-					await app.auth.api.signUpEmail({ body: { name: fields.name!, email: fields.email!, password: fields.password! }, returnHeaders: true }),
-					"/",
-				),
-			"/signup",
-		),
+		"/login",
+		form(async ({ app }) => {
+			const google = await app.auth.api.signInSocial({ body: { provider: "google", callbackURL: "/" }, returnHeaders: true });
+			return withCookies(google, google.response.url!);
+		}, "/login"),
 	],
 	["POST", "/logout", page(async ({ app, request }) => withCookies(await app.auth.api.signOut({ headers: request.headers, returnHeaders: true }), "/login"))],
 
@@ -126,6 +121,28 @@ export const webRoutes: readonly Route[] = [
 
 	[
 		"GET",
+		"/w/:workspace/search",
+		page(async (input) => {
+			const context = shellContext(input, {});
+			const query = new URL(input.request.url).searchParams.get("q") ?? "";
+			const response = query.trim() ? await input.app.indexer.search(context.workspace!.id, query) : null;
+			return html(searchPage(context, query, response));
+		}),
+	],
+	[
+		"GET",
+		"/w/:workspace/search/results",
+		page(async (input) => {
+			const workspace = input.app.workspaces.get(input.params.workspace!, input.user);
+			const signals = await ServerSentEventGenerator.readSignals(input.request);
+			const query = signals.success && typeof signals.signals.q === "string" ? signals.signals.q : "";
+			const response = query.trim() ? await input.app.indexer.search(workspace.id, query) : null;
+			const results = searchResults(workspace.id, query, response, input.app.workspaces.channels(workspace.id, input.user));
+			return ServerSentEventGenerator.stream((stream) => void stream.patchElements(results));
+		}),
+	],
+	[
+		"GET",
 		"/w/:workspace/settings",
 		page(async (input) => {
 			const { app, user, params } = input;
@@ -201,7 +218,19 @@ export const webRoutes: readonly Route[] = [
 			} catch (error) {
 				throw new HttpError(400, (error as Error).message);
 			}
-			return withNotice("/settings", `New threads and replies use ${fields.model}`);
+			return "/settings";
+		}),
+	],
+	[
+		"POST",
+		"/settings/llm/effort",
+		action("/settings", async ({ app, fields }) => {
+			try {
+				app.llm.setEffort(fields.effort!);
+			} catch (error) {
+				throw new HttpError(400, (error as Error).message);
+			}
+			return "/settings";
 		}),
 	],
 ];
@@ -243,7 +272,7 @@ function action(
 	});
 }
 
-/** A form post before sign-in, such as login: errors from better-auth go back to `back`. */
+/** A form post before sign-in: errors from better-auth go back to `back`. */
 function form(handler: (input: FormInput) => Promise<Response>, back: string): Handler {
 	return async (input) => {
 		rejectCrossOrigin(input.request);
@@ -291,16 +320,10 @@ async function formFields(request: Request): Promise<Record<string, string | und
 	return Object.fromEntries([...data.entries()].map(([key, value]) => [key, typeof value === "string" ? value : undefined]));
 }
 
-function withCookies(result: { headers: Headers }, location: string): Response {
-	const headers = new Headers({ location });
-	for (const cookie of result.headers.getSetCookie()) headers.append("set-cookie", cookie);
-	return new Response(null, { status: 303, headers });
-}
-
-/** The toast a redirect asked for with `?error=` or `?notice=`. */
+/** The toast a redirect asked for with `?error=` or `?notice=`. Failed Google sign-ins also send `error_description`. */
 function toastOf(request: Request): Toast {
 	const params = new URL(request.url).searchParams;
-	const error = params.get("error");
+	const error = params.get("error_description") ?? params.get("error");
 	if (error) return { tone: "error", text: error };
 	const notice = params.get("notice");
 	return notice ? { tone: "success", text: notice } : null;

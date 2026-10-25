@@ -248,10 +248,32 @@ function dismissToast(toast) {
 	setTimeout(() => toast.remove(), 200);
 }
 
+// Buttons with data-copy="text" copy the text and confirm with a toast.
+
+document.addEventListener("click", async (event) => {
+	const button = event.target.closest("[data-copy]");
+	if (!button) return;
+	// The clipboard needs https or localhost, which sign-in needs too.
+	await navigator.clipboard.writeText(button.dataset.copy);
+	document.querySelector(".toasts")?.insertAdjacentHTML("beforeend", '<div class="toast success" role="status" data-toast><span class="dot"></span>Copied</div>');
+	startToasts();
+});
+
 // Switches and checkboxes with data-autosubmit submit their form on change.
 
 document.addEventListener("change", (event) => {
 	if (event.target.matches("input[data-autosubmit]")) event.target.form?.requestSubmit();
+});
+
+// Single-key shortcuts: an element with data-hotkey="/" is clicked when that key is pressed outside a text field.
+
+document.addEventListener("keydown", (event) => {
+	if (event.metaKey || event.ctrlKey || event.altKey || event.target.closest?.("input, textarea, select, [contenteditable]")) return;
+	const target = document.querySelector(`[data-hotkey="${CSS.escape(event.key)}"]`);
+	if (target) {
+		event.preventDefault();
+		target.click();
+	}
 });
 
 function escapeHtml(text) {

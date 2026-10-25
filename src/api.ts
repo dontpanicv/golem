@@ -1,9 +1,40 @@
-import { type AuthedInput, type Handler, json, type Route, signedIn } from "./app.ts";
+import { type AuthedInput, type Handler, json, type Route, signedIn, withCookies } from "./app.ts";
 import { HttpError } from "./workspaces.ts";
 
 /** The JSON API for the iOS app. See docs/api.md. */
 export const apiRoutes: readonly Route[] = [
 	["*", "/api/auth/*", ({ app, request }) => app.auth.handler(request)],
+	// The iOS app opens these in a browser sheet: Google sign-in, then `golem://signed-in` with a token or an error.
+	// Any app can claim `golem://`, so only a sign-in started here hands over a token, and Google always asks.
+	[
+		"GET",
+		"/api/v1/sign-in/google",
+		async ({ app }) => {
+			const done = "/api/v1/sign-in/google/done";
+			const google = await app.auth.api.signInSocial({
+				body: { provider: "google", callbackURL: done, errorCallbackURL: done, additionalParams: { prompt: "select_account" } },
+				returnHeaders: true,
+			});
+			const response = withCookies(google, google.response.url!);
+			response.headers.append("set-cookie", `${APP_SIGN_IN}=1; Path=/api/v1/sign-in/google; Max-Age=600; HttpOnly; SameSite=Lax`);
+			return response;
+		},
+	],
+	[
+		"GET",
+		"/api/v1/sign-in/google/done",
+		async ({ app, request }) => {
+			const started = request.headers.get("cookie")?.split("; ").includes(`${APP_SIGN_IN}=1`);
+			const session = started ? await app.auth.api.getSession({ headers: request.headers }) : null;
+			const params = new URL(request.url).searchParams;
+			const result: Record<string, string> = session
+				? { token: session.session.token }
+				: { error: params.get("error_description") ?? params.get("error") ?? "Sign-in failed" };
+			const headers = new Headers({ location: `golem://signed-in?${new URLSearchParams(result)}` });
+			headers.append("set-cookie", `${APP_SIGN_IN}=; Path=/api/v1/sign-in/google; Max-Age=0`);
+			return new Response(null, { status: 303, headers });
+		},
+	],
 
 	["GET", "/api/v1/me", api(async ({ app, user }) => json({ user, workspaces: app.workspaces.list(user) }))],
 	["POST", "/api/v1/workspaces", api(async ({ app, user, body }) => json(await app.workspaces.create(user, body.name as string)))],
@@ -48,6 +79,17 @@ export const apiRoutes: readonly Route[] = [
 		api(async ({ app, user, params, body }) => {
 			await app.workspaces.send(params.thread!, user, body.text as string);
 			return new Response(null, { status: 204 });
+		}),
+	],
+	[
+		"GET",
+		"/api/v1/workspaces/:workspace/search",
+		api(async ({ app, user, params, request }) => {
+			// Membership first: a workspace's index is only ever searched by its members.
+			const workspace = app.workspaces.get(params.workspace!, user);
+			const url = new URL(request.url);
+			const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 50);
+			return json(await app.indexer.search(workspace.id, url.searchParams.get("q") ?? "", limit));
 		}),
 	],
 	["GET", "/api/v1/workspaces/:workspace/members", api(async ({ app, user, params }) => json(app.workspaces.members(params.workspace!, user)))],
@@ -104,7 +146,21 @@ export const apiRoutes: readonly Route[] = [
 			return json(await app.llm.status());
 		}),
 	],
+	[
+		"PUT",
+		"/api/v1/llm/effort",
+		api(async ({ app, body }) => {
+			try {
+				app.llm.setEffort(body.effort as string);
+			} catch (error) {
+				throw new HttpError(400, (error as Error).message);
+			}
+			return json(await app.llm.status());
+		}),
+	],
 ];
+
+const APP_SIGN_IN = "golem_app_sign_in";
 
 type ApiInput = AuthedInput & { readonly body: Record<string, unknown> };
 

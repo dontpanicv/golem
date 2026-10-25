@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
-import { createModels, type MutableModels, type Provider } from "@earendil-works/pi-ai/models";
+import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, createModels, getSupportedThinkingLevels, type MutableModels, type Provider } from "@earendil-works/pi-ai/models";
 import { setSetting, setting } from "./database.ts";
 import type { Secrets } from "./secrets.ts";
 
@@ -9,18 +10,22 @@ export type LlmProvider = {
 	readonly provider: Provider;
 	/** Shown in settings, e.g. "ChatGPT". */
 	readonly name: string;
-	readonly models: readonly string[];
 	readonly defaultModel: string;
 };
+
+export type LlmModel = { readonly id: string; readonly name: string; readonly efforts: readonly ModelThinkingLevel[] };
 
 export type LlmStatus = {
 	readonly connected: boolean;
 	readonly provider: string;
 	readonly model: string;
-	readonly models: readonly string[];
+	readonly effort: ModelThinkingLevel;
+	readonly models: readonly LlmModel[];
 	readonly login: { readonly userCode: string; readonly verificationUri: string; readonly expiresAt: number } | null;
 	readonly error: string | null;
 };
+
+const DEFAULT_EFFORT: ModelThinkingLevel = "medium";
 
 /** The one LLM provider every workspace's agents use, connected once with ChatGPT device login. */
 export class Llm {
@@ -43,12 +48,25 @@ export class Llm {
 
 	model(): string {
 		const chosen = setting(this.database, "llm.model");
-		return chosen && this.llmProvider.models.includes(chosen) ? chosen : this.llmProvider.defaultModel;
+		return chosen && this.find(chosen) ? chosen : this.llmProvider.defaultModel;
 	}
 
 	setModel(model: string): void {
-		if (!this.llmProvider.models.includes(model)) throw new Error(`Unknown model: ${model}`);
+		if (!this.find(model)) throw new Error(`Unknown model: ${model}`);
 		setSetting(this.database, "llm.model", model);
+	}
+
+	/** The chosen effort, moved to the nearest level the current model supports. */
+	effort(): ModelThinkingLevel {
+		const chosen = (setting(this.database, "llm.effort") ?? DEFAULT_EFFORT) as ModelThinkingLevel;
+		const model = this.find(this.model());
+		return model ? clampThinkingLevel(model, chosen) : chosen;
+	}
+
+	setEffort(effort: string): void {
+		const model = this.find(this.model());
+		if (!model || !getSupportedThinkingLevels(model).includes(effort as ModelThinkingLevel)) throw new Error(`Unknown effort: ${effort}`);
+		setSetting(this.database, "llm.effort", effort);
 	}
 
 	async status(): Promise<LlmStatus> {
@@ -58,7 +76,8 @@ export class Llm {
 			connected,
 			provider: this.llmProvider.name,
 			model: this.model(),
-			models: this.llmProvider.models,
+			effort: this.effort(),
+			models: this.models.getModels(this.providerId).map((model) => ({ id: model.id, name: model.name, efforts: getSupportedThinkingLevels(model) })),
 			login: this.login ? (login as LlmStatus["login"]) : null,
 			error: this.error,
 		};
@@ -106,6 +125,10 @@ export class Llm {
 		this.error = null;
 		await this.models.logout(this.providerId);
 		return this.status();
+	}
+
+	private find(id: string): Model<Api> | undefined {
+		return this.models.getModel(this.providerId, id);
 	}
 
 	private deviceId(): string {

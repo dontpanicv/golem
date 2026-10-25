@@ -41,3 +41,6 @@ ios/Golem.xcodeproj
 ios/Golem/Info.plist
 ios/build
 ios/Config/Local.xcconfig
+
+# Golem keeps everything it needs and stores in these two folders
+config

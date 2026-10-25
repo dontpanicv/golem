@@ -1,6 +1,6 @@
 #!/bin/sh
 # Keeps Golem running on a Mac: a launchd job that runs `bun start` in this checkout and restarts it if it stops.
-# Logs go to data/golem.log.
+# Logs go to data/logs/golem.log.
 #
 #   scripts/install-service.sh            LaunchAgent for the current user. Runs while the user has a session,
 #                                         also without a desktop login (for example over SSH).
@@ -30,7 +30,7 @@ else
 	USER_KEY="<key>LimitLoadToSessionType</key><array><string>Aqua</string><string>Background</string></array>"
 fi
 
-mkdir -p "$ROOT/data" "$(dirname "$PLIST")"
+mkdir -p "$ROOT/data/logs" "$(dirname "$PLIST")"
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -43,8 +43,8 @@ cat > "$PLIST" <<EOF
 	<key>EnvironmentVariables</key><dict><key>PATH</key><string>$(dirname "$BUN"):/usr/bin:/bin</string></dict>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
-	<key>StandardOutPath</key><string>$ROOT/data/golem.log</string>
-	<key>StandardErrorPath</key><string>$ROOT/data/golem.log</string>
+	<key>StandardOutPath</key><string>$ROOT/data/logs/golem.log</string>
+	<key>StandardErrorPath</key><string>$ROOT/data/logs/golem.log</string>
 </dict>
 </plist>
 EOF

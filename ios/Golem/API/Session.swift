@@ -1,5 +1,7 @@
+import AuthenticationServices
 import Foundation
 import Observation
+import SwiftUI
 import Security
 
 /// The signed-in user, their workspaces, and the open workspace with its channels.
@@ -37,12 +39,12 @@ final class Session {
 
     // MARK: Session
 
-    /// Signs in, or signs up when `name` is set. `RootView` then calls `load()`.
-    func signIn(name: String?, email: String, password: String) async throws {
-        let token = if let name {
-            try await api.signUp(name: name, email: email, password: password)
-        } else {
-            try await api.signIn(email: email, password: password)
+    /// Signs in with Google in `browser`, a web authentication session. `RootView` then calls `load()`.
+    func signIn(_ browser: WebAuthenticationSession) async throws {
+        let callback = try await browser.authenticate(using: api.googleSignInURL(), callbackURLScheme: "golem", preferredBrowserSession: .ephemeral)
+        let query = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        guard let token = query.first(where: { $0.name == "token" })?.value else {
+            throw APIError(status: 0, message: query.first(where: { $0.name == "error" })?.value ?? "Sign-in failed")
         }
         Keychain.token = token
         api.token = token

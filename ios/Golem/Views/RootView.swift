@@ -55,6 +55,7 @@ private struct LoadingView: View {
 }
 
 enum Destination: Hashable {
+    case search
     case channel(String)
     case thread(String)
     case workspaceSettings
@@ -77,6 +78,8 @@ private struct MainView: View {
                 .navigationSplitViewColumnWidth(Tokens.Size.sidebar)
         } detail: {
             switch selection {
+            case .search:
+                SearchView(open: open).id(session.workspace?.id)
             case let .channel(id):
                 ChannelView(channelID: id, open: open).id(id)
             case let .thread(id):
@@ -113,6 +116,7 @@ private struct Sidebar: View {
         ScrollView {
             VStack(spacing: 1) {
                 workspaceMenu
+                row("Search", systemImage: "magnifyingglass", destination: .search)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels) { channel in
                     row(channel.name, systemImage: "number", destination: .channel(channel.id))

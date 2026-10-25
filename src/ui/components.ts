@@ -109,7 +109,7 @@ export function badge(label: string, tone?: "success" | "warning" | "danger" | "
 	return `<span class="badge${tone ? ` ${tone}` : ""}"><span class="dot"></span>${escape(label)}</span>`;
 }
 
-export function textField(label: string, input: { name: string; type?: string; placeholder?: string; value?: string; required?: boolean; autocomplete?: string; large?: boolean; autofocus?: boolean; minlength?: number }): string {
+export function textField(label: string, input: { name: string; type?: string; placeholder?: string; value?: string; required?: boolean; autocomplete?: string; large?: boolean; autofocus?: boolean }): string {
 	const attributes = [
 		`class="input${input.large ? " large" : ""}"`,
 		`name="${escape(input.name)}"`,
@@ -117,7 +117,6 @@ export function textField(label: string, input: { name: string; type?: string; p
 		input.placeholder && `placeholder="${escape(input.placeholder)}"`,
 		input.value && `value="${escape(input.value)}"`,
 		input.autocomplete && `autocomplete="${input.autocomplete}"`,
-		input.minlength && `minlength="${input.minlength}"`,
 		input.required && "required",
 		input.autofocus && "autofocus",
 	];

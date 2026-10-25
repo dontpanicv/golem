@@ -75,12 +75,38 @@ struct Llm: Codable, Hashable {
         let expiresAt: Double
     }
 
+    struct Model: Codable, Hashable {
+        let id: String
+        let name: String
+        let efforts: [String]
+    }
+
     let connected: Bool
     let provider: String
     let model: String
-    let models: [String]
+    let effort: String
+    let models: [Model]
     let login: Login?
     let error: String?
+}
+
+struct SearchResult: Codable, Hashable, Identifiable {
+    let uri: String
+    let kind: String
+    let title: String
+    let threadId: String?
+    let channelId: String?
+    let snippet: String
+    let modality: String
+    let loc: Double?
+    let score: Double
+    let updatedAt: Double
+    var id: String { uri }
+}
+
+struct SearchResponse: Codable {
+    let results: [SearchResult]
+    let semantic: Bool
 }
 
 struct Me: Codable {
@@ -91,10 +117,6 @@ struct Me: Codable {
 struct WorkspaceDetail: Codable {
     let workspace: Workspace
     let channels: [Channel]
-}
-
-struct AuthResponse: Codable {
-    let token: String?
 }
 
 extension Date {
@@ -115,12 +137,9 @@ final class APIClient {
 
     // MARK: Auth
 
-    func signIn(email: String, password: String) async throws -> String {
-        try await authenticate("/api/auth/sign-in/email", ["email": email, "password": password])
-    }
-
-    func signUp(name: String, email: String, password: String) async throws -> String {
-        try await authenticate("/api/auth/sign-up/email", ["name": name, "email": email, "password": password])
+    /// Opened in a web authentication session; it ends at `golem://signed-in` with `token` or `error`.
+    func googleSignInURL() throws -> URL {
+        try makeRequest("GET", "/api/v1/sign-in/google").url!
     }
 
     func signOut() async throws {
@@ -141,6 +160,10 @@ final class APIClient {
         try await post("/api/v1/workspaces/\(workspaceID)/threads", ["channelId": channelID, "text": text])
     }
 
+    func search(workspaceID: String, query: String) async throws -> SearchResponse {
+        let escaped = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return try await get("/api/v1/workspaces/\(workspaceID)/search?q=\(escaped)")
+    }
     func members(workspaceID: String) async throws -> [Member] { try await get("/api/v1/workspaces/\(workspaceID)/members") }
 
     func addMember(workspaceID: String, email: String) async throws -> Member {
@@ -198,17 +221,9 @@ final class APIClient {
     func llmLogin() async throws -> Llm { try await post("/api/v1/llm/login") }
     func llmLogout() async throws -> Llm { try await post("/api/v1/llm/logout") }
     func setModel(_ model: String) async throws -> Llm { try decode(try await send("PUT", "/api/v1/llm/model", ["model": model]).data) }
+    func setEffort(_ effort: String) async throws -> Llm { try decode(try await send("PUT", "/api/v1/llm/effort", ["effort": effort]).data) }
 
     // MARK: Transport
-
-    private func authenticate(_ path: String, _ body: [String: Any]) async throws -> String {
-        let (data, response) = try await send("POST", path, body)
-        let auth: AuthResponse = try decode(data)
-        guard let token = response.value(forHTTPHeaderField: "set-auth-token") ?? auth.token else {
-            throw APIError(status: response.statusCode, message: "The server did not return a session token.")
-        }
-        return token
-    }
 
     private func get<Response: Decodable>(_ path: String) async throws -> Response {
         try decode(try await send("GET", path).data)

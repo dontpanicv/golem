@@ -1,54 +1,36 @@
+import AuthenticationServices
 import SwiftUI
 
 struct LoginView: View {
     @Environment(Session.self) private var session
-    @State private var signUp = false
-    @State private var name = ""
-    @State private var email = ""
-    @State private var password = ""
+    @Environment(\.webAuthenticationSession) private var browser
     @State private var busy = false
 
     var body: some View {
         @Bindable var session = session
-        CenteredForm(title: signUp ? "Create your Golem account" : "Sign in to Golem") {
+        CenteredForm(title: "Sign in to Golem") {
             GolemTextField("Server", text: $session.serverURL, large: true)
                 .keyboardType(.URL)
                 .textContentType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            if signUp {
-                GolemTextField("Name", text: $name, large: true).textContentType(.name)
-            }
-            GolemTextField("Email", text: $email, large: true)
-                .keyboardType(.emailAddress)
-                .textContentType(.username)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            GolemTextField("Password", text: $password, secure: true, large: true)
-                .textContentType(signUp ? .newPassword : .password)
                 .onSubmit(submit)
-            Button(signUp ? "Sign up" : "Sign in", action: submit)
+            Button("Continue with Google", action: submit)
                 .buttonStyle(.golem(.primary, .large))
-                .disabled(!canSubmit)
+                .disabled(busy || session.serverURL.isEmpty)
                 .padding(.top, Tokens.Space.xs)
         } footer: {
-            Button(signUp ? "Already have an account? Sign in" : "Don’t have an account? Sign up") {
-                withAnimation(Tokens.Easing.out(Tokens.Duration.fast)) { signUp.toggle() }
-            }
-            .buttonStyle(.link)
+            EmptyView()
         }
     }
 
-    private var canSubmit: Bool {
-        !busy && !email.isEmpty && !password.isEmpty && !(signUp && name.isEmpty)
-    }
-
     private func submit() {
-        guard canSubmit else { return }
+        guard !busy, !session.serverURL.isEmpty else { return }
         busy = true
         Task {
             do {
-                try await session.signIn(name: signUp ? name : nil, email: email, password: password)
+                try await session.signIn(browser)
+            } catch ASWebAuthenticationSessionError.canceledLogin {
             } catch {
                 session.show(error.localizedDescription, .error)
             }

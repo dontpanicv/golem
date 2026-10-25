@@ -11,16 +11,14 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: Tokens.Space.xxxl) {
                 SettingsCard(title: "LLM provider") {
                     if let llm {
-                        SettingsRow(
-                            llm.provider,
-                            description: llm.error ?? (llm.connected ? "The whole server shares this connection" : nil),
-                            descriptionColor: llm.error == nil ? Tokens.Colors.textTertiary : Tokens.Colors.danger
-                        ) {
+                        SettingsRow(llm.provider, description: llm.error, descriptionColor: Tokens.Colors.danger) {
                             HStack(spacing: Tokens.Space.md) {
-                                Badge(label: llm.connected ? "Connected" : "Not connected", tone: llm.connected ? .success : .neutral)
                                 if llm.connected {
-                                    Button("Disconnect") { update { try await session.api.llmLogout() } }.buttonStyle(.danger)
-                                } else if llm.login == nil {
+                                    Badge(label: "Connected", tone: .success)
+                                    Button("Disconnect") { update { try await session.api.llmLogout() } }.buttonStyle(.secondary)
+                                } else if llm.login != nil {
+                                    Badge(label: "Waiting", tone: .warning)
+                                } else {
                                     Button("Connect") { update { try await session.api.llmLogin() } }.buttonStyle(.primary)
                                 }
                             }
@@ -28,10 +26,22 @@ struct SettingsView: View {
                         if !llm.connected, let login = llm.login {
                             DeviceLogin(login: login).padding(Tokens.Space.xl)
                         }
-                        if !llm.models.isEmpty {
+                        if llm.connected {
                             SettingsRow("Model") {
-                                GolemSelect(selection: Binding(get: { llm.model }, set: setModel), options: llm.models)
-                                    .accessibilityLabel("Model")
+                                GolemSelect(
+                                    selection: Binding(get: { llm.model }, set: setModel),
+                                    options: llm.models.map(\.id),
+                                    title: { id in llm.models.first { $0.id == id }?.name ?? id }
+                                )
+                                .accessibilityLabel("Model")
+                            }
+                            SettingsRow("Effort") {
+                                GolemSelect(
+                                    selection: Binding(get: { llm.effort }, set: setEffort),
+                                    options: llm.models.first { $0.id == llm.model }?.efforts ?? [],
+                                    title: effortLabel
+                                )
+                                .accessibilityLabel("Effort")
                             }
                         }
                     } else {
@@ -70,6 +80,14 @@ struct SettingsView: View {
         update { try await session.api.setModel(model) }
     }
 
+    private func setEffort(_ effort: String) {
+        update { try await session.api.setEffort(effort) }
+    }
+
+    private func effortLabel(_ effort: String) -> String {
+        effort == "xhigh" ? "Extra high" : effort.capitalized
+    }
+
     private func update(_ request: @escaping () async throws -> Llm) {
         Task { await session.run { llm = try await request() } }
     }
@@ -81,7 +99,7 @@ private struct DeviceLogin: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.lg) {
-            Text("Enter this code on the provider’s page to connect.")
+            Text("Enter this code at \(host)")
                 .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.book))
                 .foregroundStyle(Tokens.Colors.textTertiary)
             Text(login.userCode)
@@ -89,19 +107,21 @@ private struct DeviceLogin: View {
                 .foregroundStyle(Tokens.Colors.text)
                 .textSelection(.enabled)
             HStack(spacing: Tokens.Space.lg) {
-                Button("Copy code", systemImage: "doc.on.doc") {
+                Button("Copy code") {
                     UIPasteboard.general.string = login.userCode
-                    session.show("Code copied", .success)
+                    session.show("Copied", .success)
                 }
                 .buttonStyle(.secondary)
                 if let url = URL(string: login.verificationUri) {
-                    Link(destination: url) {
-                        Label("Open \(url.host() ?? login.verificationUri)", systemImage: "arrow.up.right.square")
-                    }
+                    Link("Open \(host)", destination: url)
                     .buttonStyle(.primary)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var host: String {
+        URL(string: login.verificationUri)?.host() ?? login.verificationUri
     }
 }

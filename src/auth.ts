@@ -9,31 +9,40 @@ export type AuthOptions = {
 	readonly secret: string;
 	readonly baseUrl: string;
 	readonly allowedEmails: readonly string[];
+	readonly google: { readonly clientId: string; readonly clientSecret: string };
 };
 
 export type User = { readonly id: string; readonly name: string; readonly email: string };
 
 /**
  * Accounts and workspaces. Workspaces are better-auth organizations, so one person can belong to several.
- * Email and password for now; Google sign-in comes later through OIDC.
+ * People sign in only with Google, and only with an allowed email; there is no other way to create an account.
  */
 export function createAuth(options: AuthOptions) {
 	const allowed = new Set(options.allowedEmails);
+	const requireAllowed = (email: string | undefined) => {
+		if (!email || !allowed.has(email.toLowerCase())) {
+			throw new APIError("FORBIDDEN", { code: "EMAIL_NOT_ALLOWED", message: "This Google account cannot sign in to Golem." });
+		}
+	};
 	return betterAuth({
 		database: options.database,
 		secret: options.secret,
 		baseURL: options.baseUrl,
 		trustedOrigins: [options.baseUrl],
-		emailAndPassword: { enabled: true },
+		socialProviders: { google: { clientId: options.google.clientId, clientSecret: options.google.clientSecret } },
+		// Accounts made with a password before Google sign-in have unverified emails; Google verifies the email.
+		account: { accountLinking: { requireLocalEmailVerified: false } },
+		onAPIError: { errorURL: `${options.baseUrl}/login` },
 		plugins: [organization(), bearer()],
 		databaseHooks: {
-			user: {
+			user: { create: { before: async (user) => requireAllowed(user.email) } },
+			// Also on every sign-in, so removing an email from the list locks that person out.
+			session: {
 				create: {
-					before: async (user) => {
-						const { count } = options.database.query("SELECT count(*) AS count FROM user").get() as { count: number };
-						if (count > 0 && !allowed.has(user.email.toLowerCase())) {
-							throw new APIError("FORBIDDEN", { message: "Sign-up is closed. Ask the owner to allow your email." });
-						}
+					before: async (session) => {
+						const user = options.database.query("SELECT email FROM user WHERE id = ?").get(session.userId) as { email: string } | null;
+						requireAllowed(user?.email);
 					},
 				},
 			},

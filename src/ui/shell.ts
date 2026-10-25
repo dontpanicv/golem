@@ -11,7 +11,7 @@ export type ShellContext = {
 	readonly workspaces: readonly Workspace[];
 	readonly workspace?: Workspace;
 	readonly channels?: readonly Channel[];
-	readonly current?: { readonly channelId?: string; readonly threadId?: string; readonly page?: "workspace-settings" | "settings" };
+	readonly current?: { readonly channelId?: string; readonly threadId?: string; readonly page?: "workspace-settings" | "settings" | "search" };
 	readonly toast?: Toast;
 };
 
@@ -81,6 +81,9 @@ function sidebar(context: ShellContext): string {
 		],
 		"start",
 	);
+	const search = workspace
+		? `<nav class="nav">${navItem("Search", { icon: "search", href: `/w/${workspace.id}/search`, current: current?.page === "search" }).replace("<a ", '<a data-hotkey="/" ')}</nav>`
+		: "";
 	const channels = workspace
 		? `<nav class="nav" aria-label="Channels">
 			<div class="nav-section">Channels${button("New channel", { variant: "ghost", icon: "plus", size: "tiny", attributes: 'type="button" data-dialog-open="new-channel"' })}</div>
@@ -89,6 +92,7 @@ function sidebar(context: ShellContext): string {
 		: "";
 	return `<aside class="sidebar" data-class:is-open="$sidebar">
 		<div class="sidebar-header">${switcher}</div>
+		${search}
 		${channels}
 		<nav class="nav sidebar-footer">
 			${workspace ? navItem("Workspace settings", { icon: "members", href: `/w/${workspace.id}/settings`, current: current?.page === "workspace-settings" }) : ""}
