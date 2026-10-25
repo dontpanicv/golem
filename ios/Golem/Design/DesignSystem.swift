@@ -7,8 +7,10 @@ import UIKit
 extension Color {
     /// A color that follows the light or dark appearance. Hex is `#rrggbb` or `#rrggbbaa`.
     init(light: String, dark: String) {
-        self.init(uiColor: UIColor { traits in
-            UIColor(hex: traits.userInterfaceStyle == .dark ? dark : light)
+        let light = UIColor(hex: light), dark = UIColor(hex: dark)
+        // SwiftUI resolves colors on its render thread too, so the provider must not be main-actor isolated.
+        self.init(uiColor: UIColor { @Sendable traits in
+            traits.userInterfaceStyle == .dark ? dark : light
         })
     }
 }
