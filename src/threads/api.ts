@@ -21,6 +21,13 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "GET",
+    "/api/v1/workspaces/:workspace/orchestrator",
+    api(async ({ app, user, params }) =>
+      json(summary(await app.threads.orchestrator(params.workspace!, user)))
+    ),
+  ],
+  [
+    "GET",
     "/api/v1/threads/:thread",
     api(async ({ app, user, params }) => {
       const thread = app.workspaces.thread(params.thread!, user);

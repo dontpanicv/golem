@@ -1,6 +1,13 @@
 import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
 import { type AuthedInput, fileResponse, type Route } from "../app/http.ts";
-import { action, html, page, readForm, rejectCrossOrigin } from "../app/web.ts";
+import {
+  action,
+  html,
+  page,
+  readForm,
+  redirect,
+  rejectCrossOrigin,
+} from "../app/web.ts";
 import { threadArtifacts } from "../artifacts/pages.ts";
 import { HttpError } from "../platform/errors.ts";
 import { rememberOpened, shellContext } from "../workspaces/shell.ts";
@@ -8,6 +15,15 @@ import { threadFiles, threadPage, transcript } from "./pages.ts";
 
 /** A thread: its page, its live transcript and files, and new messages and files. */
 export const threadWebRoutes: readonly Route[] = [
+  [
+    "GET",
+    "/w/:workspace/orchestrator",
+    page(async ({ app, user, params }) =>
+      redirect(
+        `/w/${params.workspace}/t/${(await app.threads.orchestrator(params.workspace!, user)).id}`
+      )
+    ),
+  ],
   [
     "POST",
     "/w/:workspace/c/:channel/threads",

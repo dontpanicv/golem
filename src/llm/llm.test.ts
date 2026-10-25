@@ -433,6 +433,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
         settledAt: null,
       })),
     channelsIn: () => [],
+    orchestratorOf: () => null,
     setChannelSummary: () => undefined,
     touchThread: () => undefined,
   };

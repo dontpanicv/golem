@@ -144,6 +144,10 @@ const migrations = [
 	INSERT INTO artifact_name (id) SELECT id FROM artifact;`,
   // workspaces: keep finished threads available without showing them among active threads.
   "ALTER TABLE thread ADD COLUMN settled_at INTEGER;",
+  // workspaces: the one thread of a workspace that never ends and that nobody settles. It is in the first channel,
+  // which channel lists leave it out of.
+  `ALTER TABLE thread ADD COLUMN orchestrator INTEGER NOT NULL DEFAULT 0;
+	CREATE UNIQUE INDEX thread_orchestrator ON thread (workspace_id) WHERE orchestrator = 1;`,
 ];
 
 export function openDatabase(path: string): Database {

@@ -94,7 +94,7 @@ export const workspaceWebRoutes: readonly Route[] = [
   ],
 ];
 
-/** Where a workspace opens: the channel or thread this browser had open last, if it still exists, else #general. */
+/** Where a workspace opens: the channel or thread this browser had open last, if it still exists, else the orchestrator. */
 function homeOf(
   { app, user, request }: AuthedInput,
   workspaceId: string
@@ -108,15 +108,14 @@ function homeOf(
     if (
       channels.some((channel) =>
         channel.threads.some((thread) => thread.id === last.threadId)
-      )
+      ) ||
+      app.workspaces.orchestratorOf(workspaceId)?.id === last.threadId
     ) {
       return `/w/${workspaceId}/t/${last.threadId}`;
     }
   }
-  const general =
-    channels.find((channel) => channel.name === "general") ?? channels[0];
-  return general
-    ? `/w/${workspaceId}/c/${general.id}`
+  return channels.length > 0
+    ? `/w/${workspaceId}/orchestrator`
     : `/w/${workspaceId}/settings`;
 }
 

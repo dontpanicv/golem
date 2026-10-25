@@ -12,6 +12,8 @@ import {
   createRegistry,
   defineExtension,
   defineTool,
+  type EntryId,
+  type EntryRecord,
   Harness,
   type JsonObject,
   type ToolRegistration,
@@ -38,6 +40,7 @@ import type {
   ThreadSummary,
   Workspaces,
 } from "../workspaces/workspaces.ts";
+import { Memory } from "./memory.ts";
 
 export interface Message {
   readonly agent: boolean;
@@ -80,6 +83,13 @@ const FILE_NAME =
   /^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/;
 const INSTRUCTIONS =
   "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. People attach files to their messages or upload them to the thread; list_files shows them and read_file reads them. When people want a page to share or a small app, such as an invite, a schedule, a poll, or a game, make an artifact. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
+/** Added to `INSTRUCTIONS` for the orchestrator, the one thread of a workspace that never ends. */
+const ORCHESTRATOR =
+  "This thread is the orchestrator of the workspace: one thread that never ends, where the family comes first. Do small tasks yourself. Give larger work to the channel it belongs to: start a thread there with start_thread, or send it to a thread that is already about it with send_to_thread. Their agents answer back here; tell the family what came of it. Your memory of this thread is the summary at its start: zoom it before you use recall. The summaries keep little of what tools gave you, so say in your answer what you learned that will matter later.";
+/** Above about this many tokens of context, the orchestrator compacts after its turn, so each turn reads little. */
+const ORCHESTRATOR_TOKENS = 48_000;
+/** A compaction needs this many new messages since the one before, so a long message that stays cannot repeat it. */
+const COMPACTION_MESSAGES = 8;
 /** Added for the model to a message spoken in a conversation on the phone, whose answer is read aloud. */
 const VOICE =
   "(Spoken in a conversation: your words are read aloud as you write them, and they may not look at the screen. Before you use tools, say in one short sentence what you are about to do. Write the way you speak: plain sentences, no Markdown, tables, lists, code blocks, or links unless they ask. Keep answers to one to three sentences unless they ask for more. Your final answer continues from what you already said in this turn; never repeat it. Their words come from speech recognition and can have sound-alike mistakes.)";
@@ -121,6 +131,7 @@ export interface RecallResult {
 export type ThreadRegistry = Pick<
   Workspaces,
   | "channelsIn"
+  | "orchestratorOf"
   | "registerThread"
   | "requireMember"
   | "setChannelSummary"
@@ -147,6 +158,15 @@ export type ThreadBrowser = Pick<Browser, "tools">;
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
   private readonly open = new Map<string, Promise<Harness>>();
+  /** The memory of each open workspace's orchestrator. */
+  private readonly memories = new Map<string, Memory>();
+  private readonly making = new Map<
+    string,
+    Promise<ThreadSummary & ThreadRef>
+  >();
+  /** The memory size at each orchestrator's last compaction, by workspace. */
+  private readonly compacted = new Map<string, number>();
+  private readonly watches: (() => Promise<void>)[] = [];
   private images: Promise<ImageProcessor> | undefined;
 
   constructor(
@@ -209,6 +229,29 @@ export class Threads {
         : input
     );
     this.registry.touchThread(thread.id);
+  }
+
+  /**
+   * The workspace's thread that never ends and that nobody settles. The first call makes it, in the first channel,
+   * which channel lists leave it out of.
+   */
+  async orchestrator(
+    workspaceId: string,
+    user: User
+  ): Promise<ThreadSummary & ThreadRef> {
+    this.registry.requireMember(workspaceId, user);
+    const existing = this.registry.orchestratorOf(workspaceId);
+    if (existing) {
+      return existing;
+    }
+    let making = this.making.get(workspaceId);
+    if (!making) {
+      making = this.makeOrchestrator(workspaceId).finally(() =>
+        this.making.delete(workspaceId)
+      );
+      this.making.set(workspaceId, making);
+    }
+    return making;
   }
 
   /** Starts a thread that an agent owns, such as the thread of a routine, without a first message. */
@@ -340,7 +383,10 @@ export class Threads {
     const conversation = await this.conversation(thread);
     const watch = await conversation.watch(BACKGROUND_CONTEXT);
     await watch.stop();
-    return threadMessages(watch.value);
+    return threadMessages(
+      watch.value,
+      await earlierEntries(conversation, watch.value)
+    );
   }
 
   /** Calls `listener` with the current messages, then after every change, until the returned stop is called. */
@@ -350,8 +396,17 @@ export class Threads {
   ): Promise<() => Promise<void>> {
     const conversation = await this.conversation(thread);
     const watch = await conversation.watch(BACKGROUND_CONTEXT);
-    listener(threadMessages(watch.value));
-    watch.start(async (view) => listener(threadMessages(view)));
+    // The entries before a compaction change only when the next compaction moves the head.
+    let earlier: { head?: EntryId; entries: EntryRecord[] } = { entries: [] };
+    const show = async (view: ConversationView) => {
+      const head = view.entries[0]?.head;
+      if (head !== earlier.head) {
+        earlier = { head, entries: await earlierEntries(conversation, view) };
+      }
+      listener(threadMessages(view, earlier.entries));
+    };
+    await show(watch.value);
+    watch.start(show);
     return async () => {
       await watch.stop();
     };
@@ -372,6 +427,13 @@ export class Threads {
   async closeAll(): Promise<void> {
     const sessions = await Promise.allSettled(this.open.values());
     this.open.clear();
+    for (const stop of this.watches.splice(0)) {
+      await stop();
+    }
+    for (const memory of this.memories.values()) {
+      memory.close();
+    }
+    this.memories.clear();
     for (const session of sessions) {
       if (session.status === "fulfilled") {
         await session.value.close(BACKGROUND_CONTEXT);
@@ -443,6 +505,99 @@ export class Threads {
     );
   }
 
+  private async makeOrchestrator(
+    workspaceId: string
+  ): Promise<ThreadSummary & ThreadRef> {
+    const [channel] = this.registry.channelsIn(workspaceId);
+    if (!channel) {
+      throw notFound();
+    }
+    const harness = await this.session(workspaceId);
+    const conversation = await harness.createConversation(
+      {
+        ownership: { kind: "ownerless" },
+        agent: {
+          model: this.currentModel(),
+          thinkingLevel: this.llm.effort(),
+          instructions: `${INSTRUCTIONS} ${ORCHESTRATOR}`,
+          extensions: { add: [this.memories.get(workspaceId)!.extension] },
+        },
+      },
+      BACKGROUND_CONTEXT
+    );
+    const thread = {
+      ...this.registry.registerThread(workspaceId, {
+        id: randomUUID(),
+        channelId: channel.id,
+        title: "Golem",
+        conversationId: conversation.id,
+        createdBy: "golem",
+        orchestrator: true,
+      }),
+      workspaceId,
+      conversationId: conversation.id,
+    };
+    await this.remember(workspaceId, harness, thread);
+    return thread;
+  }
+
+  /**
+   * Adds each new message of the orchestrator to its memory, and compacts the orchestrator after a turn that leaves
+   * its context long. The compaction shows the memory's view instead of pi-durable's summary.
+   */
+  private async remember(
+    workspaceId: string,
+    harness: Harness,
+    thread: ThreadRef
+  ): Promise<void> {
+    const memory = this.memories.get(workspaceId)!;
+    const conversation = (await harness.conversation(
+      thread.conversationId as ConversationId,
+      BACKGROUND_CONTEXT
+    ))!;
+    const watch = await conversation.watch(BACKGROUND_CONTEXT);
+    const changed = (view: ConversationView) => {
+      memory.add(view.entries);
+      if (!threadMessages(view).running) {
+        this.compactWhenLong(workspaceId, harness, conversation, memory).catch(
+          (error) => console.error(`Compacting ${thread.id} failed`, error)
+        );
+      }
+    };
+    changed(watch.value);
+    watch.start(async (view) => changed(view));
+    this.watches.push(async () => {
+      await watch.stop();
+    });
+  }
+
+  private async compactWhenLong(
+    workspaceId: string,
+    harness: Harness,
+    conversation: Conversation,
+    memory: Memory
+  ): Promise<void> {
+    const count = memory.count();
+    if (count - (this.compacted.get(workspaceId) ?? 0) < COMPACTION_MESSAGES) {
+      return;
+    }
+    const { messages } = await conversation.context(BACKGROUND_CONTEXT);
+    if (JSON.stringify(messages).length / 4 < ORCHESTRATOR_TOKENS) {
+      return;
+    }
+    this.compacted.set(workspaceId, count);
+    const task = await conversation.compact(undefined, BACKGROUND_CONTEXT);
+    const { outcome } = (await harness.waitForTask(task, BACKGROUND_CONTEXT))
+      .state;
+    if (outcome.status === "completed" && outcome.result.submissionId) {
+      const placed = await harness.submission(
+        outcome.result.submissionId,
+        BACKGROUND_CONTEXT
+      );
+      await placed?.wait(BACKGROUND_CONTEXT);
+    }
+  }
+
   private async conversation(thread: ThreadRef): Promise<Conversation> {
     const harness = await this.session(thread.workspaceId);
     const conversation = await harness.conversation(
@@ -472,39 +627,81 @@ export class Threads {
       workspaceId,
       "session.sqlite"
     );
+    // The storage makes the workspace's folder, which the memory is in.
+    const storage = await openNodeSqliteStorage(path);
+    const memory = new Memory(
+      join(this.dataDirectory, "workspaces", workspaceId, "memory.sqlite"),
+      (entryId) => this.orchestratorEntry(workspaceId, entryId),
+      (systemPrompt, text, signal) =>
+        this.llm.complete(systemPrompt, text, signal)
+    );
+    this.memories.set(workspaceId, memory);
+    const golem = defineExtension({
+      name: "golem",
+      tools: [
+        this.recallTool(workspaceId),
+        this.listChannelsTool(workspaceId),
+        this.readThreadTool(workspaceId),
+        this.startThreadTool(workspaceId),
+        this.sendToThreadTool(workspaceId),
+        this.listFilesTool(workspaceId),
+        this.readFileTool(workspaceId),
+        this.setChannelSummaryTool(workspaceId),
+        ...this.hands.tools(workspaceId),
+        ...this.integrations.tools(workspaceId).map(connectorTool),
+        ...this.artifacts.tools(workspaceId),
+        ...this.browser.tools(workspaceId),
+        ...this.llm.tools(),
+        ...this.hooks.tools(workspaceId),
+      ],
+      sections: [this.hands.section(workspaceId)],
+    });
     const registry = createRegistry();
-    registry.install(
-      defineExtension({
-        name: "golem",
-        tools: [
-          this.recallTool(workspaceId),
-          this.listChannelsTool(workspaceId),
-          this.readThreadTool(workspaceId),
-          this.startThreadTool(workspaceId),
-          this.sendToThreadTool(workspaceId),
-          this.listFilesTool(workspaceId),
-          this.readFileTool(workspaceId),
-          this.setChannelSummaryTool(workspaceId),
-          ...this.hands.tools(workspaceId),
-          ...this.integrations.tools(workspaceId).map(connectorTool),
-          ...this.artifacts.tools(workspaceId),
-          ...this.browser.tools(workspaceId),
-          ...this.llm.tools(),
-          ...this.hooks.tools(workspaceId),
-        ],
-        sections: [this.hands.section(workspaceId)],
-      })
-    );
+    registry.install(golem);
+    registry.install(memory.extension);
+    // Only the orchestrator selects the memory.
     const harness = await Harness.open(
-      await openNodeSqliteStorage(path),
-      { models: this.llm.models, registry },
+      storage,
+      { models: this.llm.models, registry, settings: { extensions: [golem] } },
       BACKGROUND_CONTEXT
-    );
+    ).catch((error) => {
+      memory.close();
+      throw error;
+    });
     const changes = await harness.watchTaskGraph(BACKGROUND_CONTEXT);
     changes.start(async () => this.hooks.changed(workspaceId));
     // Continue runs that a previous process left unfinished.
     harness.resume();
+    const orchestrator = this.registry.orchestratorOf(workspaceId);
+    if (orchestrator) {
+      // Without its memory the orchestrator still answers; the other threads must open anyway.
+      await this.remember(workspaceId, harness, orchestrator).catch((error) =>
+        console.error(
+          `The memory of ${orchestrator.id} does not follow it`,
+          error
+        )
+      );
+    }
     return harness;
+  }
+
+  /** One entry of the orchestrator's conversation, which its memory reads messages from. */
+  private async orchestratorEntry(
+    workspaceId: string,
+    entryId: number
+  ): Promise<EntryRecord | undefined> {
+    const thread = this.registry.orchestratorOf(workspaceId);
+    if (!thread) {
+      return undefined;
+    }
+    const id = entryId as EntryId;
+    const { items } = await (await this.conversation(thread)).entries(
+      { minEntryId: id, maxEntryId: id, order: "ascending" },
+      1,
+      undefined,
+      BACKGROUND_CONTEXT
+    );
+    return items[0];
   }
 
   /** Lets the agent search its own workspace: threads, notes, files, and captures. */
@@ -900,9 +1097,40 @@ export class Threads {
   }
 }
 
-export function threadMessages(view: ConversationView): ThreadMessages {
+/**
+ * The entries before the view's head marker, which a compaction leaves out of the view. The transcript shows them
+ * too, so a thread keeps all its messages.
+ */
+async function earlierEntries(
+  conversation: Conversation,
+  view: ConversationView
+): Promise<EntryRecord[]> {
+  const head = view.entries[0]?.head;
+  const entries: EntryRecord[] = [];
+  if (head === undefined) {
+    return entries;
+  }
+  let cursor: Parameters<Conversation["entries"]>[2];
+  do {
+    const page = await conversation.entries(
+      { maxEntryId: (head - 1) as EntryId, order: "ascending" },
+      500,
+      cursor,
+      BACKGROUND_CONTEXT
+    );
+    entries.push(...page.items);
+    cursor = page.next;
+  } while (cursor);
+  return entries;
+}
+
+/** The messages of a thread: the entries a compaction left out of the view first, then the view's. */
+export function threadMessages(
+  view: ConversationView,
+  earlier: readonly EntryRecord[] = []
+): ThreadMessages {
   const messages: Message[] = [];
-  for (const entry of view.entries) {
+  for (const entry of [...earlier, ...view.entries]) {
     const model = entry.model?.[0];
     if (entry.kind === AUTHORED) {
       const data = entry.data as unknown as Authored;

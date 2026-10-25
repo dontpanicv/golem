@@ -15,7 +15,7 @@ const chatGpt: LlmProvider = {
   provider: openaiCodexProvider(),
   name: "ChatGPT",
   defaultModel: "gpt-6.1-sol",
-  searchModel: "gpt-6-luna",
+  fastModel: "gpt-6-luna",
 };
 
 const config = await readConfig();

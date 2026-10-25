@@ -26,8 +26,11 @@ export interface LlmProvider {
   /** Shown in settings, e.g. "ChatGPT". */
   readonly name: string;
   readonly provider: Provider;
-  /** The fast model that runs ChatGPT's web search; without one, agents have no web_search tool. */
-  readonly searchModel?: string;
+  /**
+   * The fast model that runs ChatGPT's web search and writes the orchestrator's memory; without one, agents have no
+   * web_search tool, and the chosen model writes the memory.
+   */
+  readonly fastModel?: string;
 }
 
 export interface LlmModel {
@@ -196,17 +199,45 @@ export class Llm {
 
   /** The agent tools of every workspace. */
   tools() {
-    return this.llmProvider.searchModel ? llmTools(this) : [];
+    return this.llmProvider.fastModel ? llmTools(this) : [];
   }
 
   /** Searches the web with ChatGPT's own search, over the stored login. */
   async search(query: string): Promise<WebSearchResult> {
-    const model = this.find(this.llmProvider.searchModel ?? "");
+    const model = this.find(this.llmProvider.fastModel ?? "");
     const token = model && (await this.models.getAuth(model))?.auth.apiKey;
     if (!(model && token)) {
       throw new Error("Web search needs ChatGPT: connect it in Settings.");
     }
     return searchWeb({ baseUrl: model.baseUrl, model: model.id, token, query });
+  }
+
+  /** The text answer of the fast model at low effort, for background work such as summaries. Throws on a failed call. */
+  async complete(
+    systemPrompt: string,
+    text: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const model =
+      this.find(this.llmProvider.fastModel ?? "") ?? this.find(this.model());
+    if (!model) {
+      throw new Error(`Unknown model: ${this.model()}`);
+    }
+    const effort = clampThinkingLevel(model, "low");
+    const answer = await this.models.completeSimple(
+      model,
+      {
+        systemPrompt,
+        messages: [{ role: "user", content: text, timestamp: Date.now() }],
+      },
+      { reasoning: effort === "off" ? undefined : effort, signal }
+    );
+    if (answer.stopReason === "error" || answer.stopReason === "aborted") {
+      throw new Error(answer.errorMessage ?? "The model did not answer");
+    }
+    return answer.content
+      .flatMap((block) => (block.type === "text" ? [block.text] : []))
+      .join("");
   }
 
   private find(id: string): Model<Api> | undefined {

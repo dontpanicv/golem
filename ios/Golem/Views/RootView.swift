@@ -108,14 +108,16 @@ private struct MainView: View {
         if let key = destination.key { opened = key }
     }
 
-    /// Opens the channel or thread this device had open last, if it is in the workspace, else #general.
+    /// Opens the channel or thread this device had open last, if it is in the workspace, else the orchestrator.
     private func openHome() {
         let channels = session.channels
-        let destinations = channels.flatMap { channel in
+        let orchestrator = session.orchestrator.map { Destination.thread($0.id) }
+        let destinations = Array([orchestrator].compactMap { $0 }) + channels.flatMap { channel in
             [Destination.channel(channel.id)] + channel.threads.map { .thread($0.id) }
         }
         let general = channels.first { $0.name == "general" } ?? channels.first
-        if let home = destinations.first(where: { $0.key == opened }) ?? general.map({ .channel($0.id) }) {
+        if let home = destinations.first(where: { $0.key == opened }) ?? orchestrator
+            ?? general.map({ .channel($0.id) }) {
             open(home)
         } else {
             selection = nil
@@ -140,6 +142,9 @@ private struct Sidebar: View {
         ScrollView {
             VStack(spacing: 1) {
                 workspaceMenu
+                if let orchestrator = session.orchestrator {
+                    row("Golem", systemImage: "tray", destination: .thread(orchestrator.id))
+                }
                 row("Search", systemImage: "magnifyingglass", destination: .search)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels) { channel in

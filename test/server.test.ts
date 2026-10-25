@@ -253,16 +253,16 @@ test("the web app signs in with Google and keeps cross-site posts out", async ()
 
   const cookie = `better-auth.session_token=${await signedCookie(alice)}`;
 
-  // With nothing opened yet, the app and the workspace open on #general.
-  const general = (await call("/", { headers: { cookie } })).headers.get(
+  // With nothing opened yet, the app and the workspace open on the orchestrator.
+  const home = (await call("/", { headers: { cookie } })).headers.get(
     "location"
   )!;
-  expect(general).toMatch(new RegExp(`^/w/${workspaceId}/c/`));
+  expect(home).toBe(`/w/${workspaceId}/orchestrator`);
   expect(
     (await call(`/w/${workspaceId}`, { headers: { cookie } })).headers.get(
       "location"
     )
-  ).toBe(general);
+  ).toBe(home);
   const thread = await call(`/w/${workspaceId}/t/${threadId}`, {
     headers: { cookie },
   });
@@ -280,7 +280,7 @@ test("the web app signs in with Google and keeps cross-site posts out", async ()
     (
       await call(`/w/${workspaceId}`, { headers: { cookie: gone } })
     ).headers.get("location")
-  ).toBe(general);
+  ).toBe(home);
 
   const crossSite = await handler(
     new Request(`http://golem.test/w/${workspaceId}/channels`, {

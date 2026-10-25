@@ -21,6 +21,8 @@ export interface ShellContext {
   readonly workspaces: readonly Workspace[];
   readonly workspace?: Workspace;
   readonly channels?: readonly Channel[];
+  /** The workspace's thread that never ends, once it has one. */
+  readonly orchestratorId?: string;
   readonly current?: {
     readonly channelId?: string;
     readonly threadId?: string;
@@ -58,6 +60,7 @@ export function shellContext(
     workspaces: app.workspaces.list(user),
     workspace,
     channels: app.workspaces.channels(workspace.id, user),
+    orchestratorId: app.workspaces.orchestratorOf(workspace.id)?.id,
     current,
     toast: toastOf(input.request),
   };
@@ -176,7 +179,7 @@ function sidebar(context: ShellContext): string {
     "start"
   );
   const search = workspace
-    ? `<nav class="nav">${navItem("Search", { icon: "search", href: `/w/${workspace.id}/search`, current: current?.page === "search" }).replace("<a ", '<a data-hotkey="/" ')}</nav>`
+    ? `<nav class="nav">${navItem("Golem", { icon: "inbox", href: `/w/${workspace.id}/orchestrator`, current: current?.threadId !== undefined && current.threadId === context.orchestratorId })}${navItem("Search", { icon: "search", href: `/w/${workspace.id}/search`, current: current?.page === "search" }).replace("<a ", '<a data-hotkey="/" ')}</nav>`
     : "";
   const channels = workspace
     ? `<nav class="nav" aria-label="Channels">

@@ -13,6 +13,8 @@ let alice: User;
 let bob: User;
 /** What each tool returned to the agent, in order. */
 const toolResults: string[] = [];
+/** The memory views that the orchestrator's compactions gave the agent. */
+const memoryViews: string[] = [];
 
 beforeAll(async () => {
   golem = await startTestApp();
@@ -42,6 +44,15 @@ function textOf(message: Message): string {
 function agent(context: Context) {
   const last = context.messages.at(-1)!;
   const text = textOf(last);
+  memoryViews.push(
+    ...context.messages
+      .map(textOf)
+      .filter((message) =>
+        message.startsWith(
+          "The conversation history before this point was compacted"
+        )
+      )
+  );
   if (last.role === "toolResult") {
     toolResults.push(text);
     return fauxAssistantMessage("Done.");
@@ -67,6 +78,11 @@ function agent(context: Context) {
   );
   if (file) {
     return call("read_file", { file: file[1]! });
+  }
+  if (text.endsWith("Zoom 0")) {
+    return fauxAssistantMessage([fauxToolCall("zoom", { id: 0, n: 1 })], {
+      stopReason: "toolUse",
+    });
   }
   if (text.endsWith("List the channels")) {
     return call("list_channels", {});
@@ -377,5 +393,75 @@ test("the web shows each thread link in a message as a link into the workspace, 
   );
   expect(html).toContain(
     'Started <a class="thread-link" href="/w/family/t/abc-1">Dinner &lt;b&gt;plan&lt;/b&gt;</a> and [not a link](thread:&quot;x) &lt;i&gt;'
+  );
+});
+
+test("a workspace has one orchestrator thread, which stays open and out of the channel lists", async () => {
+  const family = await golem.app.workspaces.create(alice, "Orchestrated");
+  const [first, again] = await Promise.all([
+    golem.app.threads.orchestrator(family.id, alice),
+    golem.app.threads.orchestrator(family.id, alice),
+  ]);
+  expect(again.id).toBe(first.id);
+  expect((await golem.app.threads.orchestrator(family.id, alice)).id).toBe(
+    first.id
+  );
+  expect(
+    golem.app.workspaces.channels(family.id, alice).flatMap((c) => c.threads)
+  ).toEqual([]);
+
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const base = `/api/v1/workspaces/${family.id}`;
+  expect(
+    await (await golem.call(`${base}/orchestrator`, { token })).json()
+  ).toEqual({
+    id: first.id,
+    channelId: first.channelId,
+    title: "Golem",
+    updatedAt: first.updatedAt,
+    settledAt: null,
+  });
+  const settle = await golem.call(`${base}/threads/${first.id}/settled`, {
+    token,
+    body: { settled: true },
+  });
+  expect(settle.status).toBe(400);
+  expect(await settle.json()).toEqual({ error: "This thread stays open" });
+  const outsider = await golem.signIn("Bob", "bob@example.com");
+  expect(
+    (await golem.call(`${base}/orchestrator`, { token: outsider })).status
+  ).toBe(404);
+});
+
+test("the orchestrator compacts into a view of its memory, and its agent zooms into a message", async () => {
+  golem.faux.appendResponses(Array.from({ length: 40 }, () => agent));
+  const home = await golem.app.workspaces.create(alice, "Remembering");
+  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  const said = async (text: string, messages: number) => {
+    await golem.app.threads.send(orchestrator.id, alice, text);
+    return until(
+      () => golem.app.threads.messages(orchestrator),
+      (state) => !state.running && state.messages.length === messages
+    );
+  };
+  await said("The wifi password is on the fridge", 2);
+  await said("Bring the tent", 4);
+  await said("Call grandma on Sunday", 6);
+  // About 62k tokens: the thread compacts after this turn, and the next request reads the memory.
+  await said(`Here is the manual: ${"word ".repeat(50_000)}`, 8);
+  const zoomed = await said("Zoom 0", 10);
+  const view = memoryViews;
+  expect(view[0]).toContain(
+    "0+1|user: Alice: The wifi password is on the fridge\n1+1|golem: Ok.\n2+1|user: Alice: Bring the tent"
+  );
+  expect(view[0]).toContain("5+1|golem: Ok.");
+  expect(view[0]).not.toContain("Here is the manual");
+  // The transcript keeps the messages that the compaction took out of the model's context.
+  expect(zoomed.messages[0]!.text).toBe("The wifi password is on the fridge");
+  expect(zoomed.messages.at(-1)!.text).toBe("Done.");
+  expect(toolResults).toContainEqual(
+    expect.stringMatching(
+      /^Message 0, \d{4}-\d\d-\d\d \d\d:\d\d UTC:\nuser: Alice: The wifi password is on the fridge$/
+    )
   );
 });

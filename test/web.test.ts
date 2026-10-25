@@ -92,7 +92,7 @@ describe("the web app", () => {
     }
   });
 
-  test("a person without a workspace creates one, and it opens on #general", async () => {
+  test("a person without a workspace creates one, and it opens on its orchestrator thread", async () => {
     expect(location(await alice.get("/"))).toBe("/workspaces/new");
     const page = await (await alice.get("/workspaces/new")).text();
     expect(page).toContain("Create a workspace");
@@ -110,10 +110,22 @@ describe("the web app", () => {
     expect(created.status).toBe(303);
     workspaceId = location(created)!.replace("/w/", "");
     const opened = location(await alice.get("/"))!;
-    expect(opened).toStartWith(`/w/${workspaceId}/c/`);
+    expect(opened).toBe(`/w/${workspaceId}/orchestrator`);
     expect(location(await alice.get(`/w/${workspaceId}`))).toBe(opened);
-    generalId = opened.split("/").at(-1)!;
-    const channel = await (await alice.get(opened)).text();
+    const orchestratorPath = location(await alice.get(opened))!;
+    expect(orchestratorPath).toStartWith(`/w/${workspaceId}/t/`);
+    expect(location(await alice.get(opened))).toBe(orchestratorPath);
+    const orchestrator = await (await alice.get(orchestratorPath)).text();
+    expect(orchestrator).toContain("<title>Golem · Golem</title>");
+    expect(orchestrator).toContain("Message Golem");
+    expect(orchestrator).not.toContain("Settle thread");
+    expect(orchestrator).toContain(
+      `href="/w/${workspaceId}/orchestrator" aria-current="page"`
+    );
+    generalId = /href="\/w\/[^/]+\/c\/([^"]+)"/.exec(orchestrator)![1]!;
+    const channel = await (
+      await alice.get(`/w/${workspaceId}/c/${generalId}`)
+    ).text();
     expect(channel).toContain("<title>#general · Golem</title>");
     expect(channel).toContain("No threads yet");
     expect(channel).toContain(

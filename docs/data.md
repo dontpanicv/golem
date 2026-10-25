@@ -19,6 +19,8 @@ data/
 │   └── <workspace-id>/              One folder per workspace, and nothing of a workspace outside it.
 │       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per thread
 │       │                            (transcript, runs, tasks).
+│       ├── memory.sqlite            The memory of the orchestrator thread: a line for each message, merged
+│       │                            in pairs into a tree of summaries.
 │       ├── threads/
 │       │   └── <thread-id>/
 │       │       └── files/           Attachments and artifacts of this thread.
@@ -45,8 +47,9 @@ data/
   threads, notes, files, and captures. Each workspace has its own `index.sqlite`; there is no shared index.
 - **Folders are named by id, not by name.** Renaming a workspace, channel, or thread changes a row, never a path.
   Channels have no folder; a thread's channel is a column in `golem.sqlite`, so moving a thread moves nothing.
-- **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `notes/`, `files/`, `raw/`, and
-  `tables/` are the record. `index.sqlite`, `models/`, and `logs/` can be deleted; Golem rebuilds or
+- **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `memory.sqlite`, `notes/`, `files/`,
+  `raw/`, and `tables/` are the record; `memory.sqlite` comes from `session.sqlite`, but only model calls can write it
+  again. `index.sqlite`, `models/`, and `logs/` can be deleted; Golem rebuilds or
   downloads them.
 - **Immutable things get time-ordered names.** Captures, thread files, and Parquet parts are named with UUIDv7,
   so names never collide, sort by time, and merge as a set union when copies sync between machines.
@@ -61,6 +64,7 @@ data/
 | Channels, threads, credentials, routines and their runs | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
+| The orchestrator's memory: summaries of its messages, which the fast model wrote | `memory.sqlite` | SQLite |
 | Files attached to a thread's messages or uploaded to the thread, and what its agent made | `threads/<id>/files/` | the file as uploaded or made |
 | Knowledge: people, places, decisions, how-tos | `notes/` | markdown + YAML frontmatter (`type`, `title`, dates, links) |
 | Uploaded documents | `files/` | the file as uploaded |

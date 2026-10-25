@@ -31,6 +31,11 @@ final class APIClient {
     }
     func workspace(_ id: String) async throws -> WorkspaceDetail { try await get("/api/v1/workspaces/\(id)") }
 
+    /// The workspace's thread that never ends; the first call makes it.
+    func orchestrator(workspaceID: String) async throws -> ThreadSummary {
+        try await get("/api/v1/workspaces/\(workspaceID)/orchestrator")
+    }
+
     func createChannel(workspaceID: String, name: String) async throws -> Channel {
         try await post("/api/v1/workspaces/\(workspaceID)/channels", ["name": name])
     }

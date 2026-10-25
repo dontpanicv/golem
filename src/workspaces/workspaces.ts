@@ -107,7 +107,7 @@ export class Workspaces {
       .all(workspaceId) as Omit<Channel, "threads">[];
     const threads = this.database
       .query(
-        "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt FROM thread WHERE workspace_id = ? ORDER BY updated_at DESC"
+        "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt FROM thread WHERE workspace_id = ? AND orchestrator = 0 ORDER BY updated_at DESC"
       )
       .all(workspaceId) as ThreadSummary[];
     return channels.map((channel) => ({
@@ -159,7 +159,8 @@ export class Workspaces {
 
   /**
    * Adds a thread to a channel of the workspace. `Threads` checks who asks, names the thread, and creates its
-   * conversation; `createdBy` is a person's id, or `golem` for a thread an agent started.
+   * conversation; `createdBy` is a person's id, or `golem` for a thread an agent started. A workspace has at most one
+   * `orchestrator` thread.
    */
   registerThread(
     workspaceId: string,
@@ -168,6 +169,7 @@ export class Workspaces {
       readonly conversationId: number;
       readonly createdBy: string;
       readonly id: string;
+      readonly orchestrator?: boolean;
       readonly title: string;
     }
   ): ThreadSummary {
@@ -181,7 +183,7 @@ export class Workspaces {
     const now = Date.now();
     this.database
       .query(
-        "INSERT INTO thread (id, workspace_id, channel_id, title, conversation_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO thread (id, workspace_id, channel_id, title, conversation_id, created_by, created_at, updated_at, orchestrator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         thread.id,
@@ -191,7 +193,8 @@ export class Workspaces {
         conversationId,
         thread.createdBy,
         now,
-        now
+        now,
+        thread.orchestrator ? 1 : 0
       );
     return { id: thread.id, channelId, title, updatedAt: now, settledAt: null };
   }
@@ -218,6 +221,15 @@ export class Workspaces {
       .all(workspaceId) as (ThreadSummary & ThreadRef)[];
   }
 
+  /** The thread of the workspace that never ends, if it has one yet; `Threads.orchestrator` makes it. */
+  orchestratorOf(workspaceId: string): (ThreadSummary & ThreadRef) | null {
+    return this.database
+      .query(
+        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt FROM thread WHERE workspace_id = ? AND orchestrator = 1"
+      )
+      .get(workspaceId) as (ThreadSummary & ThreadRef) | null;
+  }
+
   /** Moves the thread up in its channel, after a new message. */
   touchThread(threadId: string): void {
     this.database
@@ -236,6 +248,9 @@ export class Workspaces {
     const thread = this.thread(threadId, user);
     if (thread.workspaceId !== workspaceId) {
       throw notFound();
+    }
+    if (this.orchestratorOf(workspaceId)?.id === threadId) {
+      throw new HttpError(400, "This thread stays open");
     }
     if ((thread.settledAt !== null) === settled) {
       return thread;

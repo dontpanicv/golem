@@ -20,6 +20,9 @@ struct ConversationView: View {
         session.channels.first { $0.id == state?.thread.channelId }?.name ?? ""
     }
 
+    /// The workspace's thread that never ends belongs to no channel and stays open.
+    private var isOrchestrator: Bool { threadID == session.orchestrator?.id }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Tokens.Space.xxl) {
@@ -45,8 +48,8 @@ struct ConversationView: View {
                     TalkDock(talk: talk)
                 } else {
                     Composer(
-                        owner: threadID, placeholder: "Message \(channelName)", draft: $draft, files: $files,
-                        talk: startTalk, send: send
+                        owner: threadID, placeholder: isOrchestrator ? "Message Golem" : "Message \(channelName)",
+                        draft: $draft, files: $files, talk: startTalk, send: send
                     )
                 }
             }
@@ -56,14 +59,16 @@ struct ConversationView: View {
         .navigationTitle(state?.thread.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(state?.thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
-                       systemImage: state?.thread.settledAt == nil ? "checkmark" : "tray") {
-                    guard let thread = state?.thread else { return }
-                    Task {
-                        await session.run {
-                            try await session.setThreadSettled(threadID: threadID, settled: thread.settledAt == nil)
-                            open(.channel(thread.channelId))
+            if !isOrchestrator {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(state?.thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
+                           systemImage: state?.thread.settledAt == nil ? "checkmark" : "tray") {
+                        guard let thread = state?.thread else { return }
+                        Task {
+                            await session.run {
+                                try await session.setThreadSettled(threadID: threadID, settled: thread.settledAt == nil)
+                                open(.channel(thread.channelId))
+                            }
                         }
                     }
                 }

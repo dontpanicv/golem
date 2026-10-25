@@ -142,9 +142,10 @@ Workspace paths answer `404` to users who are not members of the workspace.
 
 | Request | Body | Response |
 | --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/orchestrator` | | `ThreadSummary` of the workspace's orchestrator; the first call makes it |
 | `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message and the title |
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
-| `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel |
+| `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice? }` | `204` |
 | `GET /api/v1/threads/:threadId/files` | | `{ files: ThreadFile[] }`, oldest first |
@@ -156,6 +157,10 @@ To attach files to a new thread or a message, send the same fields as a `multipa
 part per file instead of JSON. A message then needs text, files, or both; a thread without text takes the name of its
 first file. The thread's agent sees each attached file by name and id, and reads files with its `list_files` and
 `read_file` tools.
+
+The orchestrator is the one thread of a workspace that never ends: the workspace opens on it, and its agent gives
+work to the threads of the channels. It is in the first channel, but no `Channel.threads` list shows it, and it cannot
+be settled. Its agent remembers all of the thread: see `src/threads/memory.ts`.
 
 `voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud, and
 the message steers a run at work instead of waiting for it to end.

@@ -19,6 +19,8 @@ final class Session {
     private(set) var workspaces: [Workspace] = []
     private(set) var workspace: Workspace?
     private(set) var channels: [Channel] = []
+    /// The open workspace's thread that never ends, which channel lists leave out.
+    private(set) var orchestrator: ThreadSummary?
     /// The last failure of `load()`, shown with a retry button while no user is loaded.
     private(set) var loadError: String?
     /// The toast at the top of the screen: the last failure of an action, or a confirmation.
@@ -79,8 +81,10 @@ final class Session {
 
     func open(_ workspace: Workspace) async throws {
         let detail = try await api.workspace(workspace.id)
+        let orchestrator = try await api.orchestrator(workspaceID: workspace.id)
         self.workspace = detail.workspace
         channels = detail.channels
+        self.orchestrator = orchestrator
         UserDefaults.standard.set(workspace.id, forKey: Keys.workspaceID)
     }
 
@@ -135,6 +139,7 @@ final class Session {
         workspaces = []
         workspace = nil
         channels = []
+        orchestrator = nil
         loadError = nil
     }
 
