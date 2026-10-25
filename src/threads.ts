@@ -12,8 +12,8 @@ import {
   Harness,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import type { User } from "./auth.ts";
 import type { Llm } from "./llm.ts";
+import type { User } from "./platform/auth.ts";
 import type { SearchResponse } from "./search/indexer.ts";
 
 export interface ThreadRef {

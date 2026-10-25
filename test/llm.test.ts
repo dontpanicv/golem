@@ -12,11 +12,16 @@ import {
   fauxAssistantMessage,
   fauxProvider,
 } from "@earendil-works/pi-ai/providers/faux";
-import { migrate, openDatabase, setSetting, setting } from "../src/database.ts";
 import { Llm, SqliteCredentialStore } from "../src/llm.ts";
-import { Secrets } from "../src/secrets.ts";
+import {
+  migrate,
+  openDatabase,
+  setSetting,
+  setting,
+} from "../src/platform/database.ts";
+import { HttpError } from "../src/platform/errors.ts";
+import { Secrets } from "../src/platform/secrets.ts";
 import { Threads } from "../src/threads.ts";
-import { HttpError } from "../src/workspaces.ts";
 import { until } from "./harness.ts";
 
 function database() {

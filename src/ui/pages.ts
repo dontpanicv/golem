@@ -1,10 +1,4 @@
 import type { LlmStatus } from "../llm.ts";
-import type {
-  Channel,
-  Integration,
-  Member,
-  ThreadSummary,
-} from "../workspaces.ts";
 import {
   avatar,
   badge,
@@ -20,8 +14,14 @@ import {
   switchForm,
   type Toast,
   textField,
-} from "./components.ts";
-import { icon } from "./icons.ts";
+} from "../platform/ui/components.ts";
+import { icon } from "../platform/ui/icons.ts";
+import type {
+  Channel,
+  Integration,
+  Member,
+  ThreadSummary,
+} from "../workspaces.ts";
 import { type ShellContext, shell } from "./shell.ts";
 
 const escapeHtml = Bun.escapeHTML;

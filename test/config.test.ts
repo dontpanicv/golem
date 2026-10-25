@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readConfig } from "../src/config.ts";
+import { readConfig } from "../src/platform/config.ts";
 
 test("first start creates config/golem.toml and data/; later starts read it", async () => {
   const root = await mkdtemp(join(tmpdir(), "golem-config-"));

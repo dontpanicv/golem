@@ -1,6 +1,4 @@
-import type { User } from "../auth.ts";
-import type { Message, ThreadMessages } from "../threads.ts";
-import type { Channel, Workspace } from "../workspaces.ts";
+import type { User } from "../platform/auth.ts";
 import {
   avatar,
   button,
@@ -11,8 +9,10 @@ import {
   navItem,
   type Toast,
   textField,
-} from "./components.ts";
-import { icon } from "./icons.ts";
+} from "../platform/ui/components.ts";
+import { icon } from "../platform/ui/icons.ts";
+import type { Message, ThreadMessages } from "../threads.ts";
+import type { Channel, Workspace } from "../workspaces.ts";
 
 const escapeHtml = Bun.escapeHTML;
 

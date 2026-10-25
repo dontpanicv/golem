@@ -8,9 +8,11 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { HttpRouter } from "effect/http";
-import { apiRoutes } from "../src/api.ts";
-import { type App, closeApp, createApp, routes } from "../src/app.ts";
-import type { User } from "../src/auth.ts";
+import { type App, closeApp, createApp } from "../src/app/app.ts";
+import { routes } from "../src/app/http.ts";
+import { allRoutes } from "../src/app/routes.ts";
+import type { User } from "../src/platform/auth.ts";
+import { Secrets } from "../src/platform/secrets.ts";
 import type { Embedder } from "../src/search/embedder.ts";
 import {
   chunk,
@@ -18,8 +20,6 @@ import {
   type Segment,
   WorkspaceIndex,
 } from "../src/search/workspace-index.ts";
-import { Secrets } from "../src/secrets.ts";
-import { webRoutes } from "../src/web.ts";
 
 /** Stands in for EmbeddingGemma: a hashed bag of words, so shared words mean similar vectors. */
 function bagOfWords(input: string): Float32Array {
@@ -68,10 +68,9 @@ beforeAll(async () => {
     Secrets.forTests(),
     embedder
   );
-  ({ handler, dispose } = HttpRouter.toWebHandler(
-    routes(app, [...apiRoutes, ...webRoutes]),
-    { disableLogger: true }
-  ));
+  ({ handler, dispose } = HttpRouter.toWebHandler(routes(app, allRoutes), {
+    disableLogger: true,
+  }));
 });
 
 afterAll(async () => {

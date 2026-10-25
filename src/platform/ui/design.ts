@@ -1,4 +1,4 @@
-import tokens from "../../design/tokens.json" with { type: "json" };
+import tokens from "../../../design/tokens.json" with { type: "json" };
 import {
   avatar,
   badge,

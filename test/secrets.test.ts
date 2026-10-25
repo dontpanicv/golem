@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Secrets } from "../src/secrets.ts";
+import { Secrets } from "../src/platform/secrets.ts";
 
 test("first start creates a private key file; later starts read the same key", async () => {
   const config = await mkdtemp(join(tmpdir(), "golem-secrets-"));

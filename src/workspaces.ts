@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
-import type { Auth, User } from "./auth.ts";
-import type { Secrets } from "./secrets.ts";
+import type { Auth, User } from "./platform/auth.ts";
+import { HttpError, notFound, required } from "./platform/errors.ts";
+import type { Secrets } from "./platform/secrets.ts";
 import type { ThreadRef, Threads } from "./threads.ts";
 
 export interface Workspace {
@@ -57,17 +58,6 @@ export const integrationCatalog = [
     secretLabel: "Long-lived access token",
   },
 ] as const;
-
-export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string
-  ) {
-    super(message);
-  }
-}
-
-const notFound = () => new HttpError(404, "Not found");
 
 /**
  * Workspaces are isolated: every read and write goes through a membership check, and nothing crosses
@@ -392,12 +382,4 @@ function catalogEntry(integrationId: string) {
     throw notFound();
   }
   return entry;
-}
-
-function required(value: unknown, field: string): string {
-  const text = typeof value === "string" ? value.trim() : "";
-  if (!text) {
-    throw new HttpError(400, `${field} is required`);
-  }
-  return text;
 }

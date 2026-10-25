@@ -1,8 +1,8 @@
+import { empty } from "../platform/ui/components.ts";
+import { type IconName, icon } from "../platform/ui/icons.ts";
 import type { SearchResponse } from "../search/indexer.ts";
 import type { Modality, SearchKind } from "../search/workspace-index.ts";
 import type { Channel } from "../workspaces.ts";
-import { empty } from "./components.ts";
-import { type IconName, icon } from "./icons.ts";
 import { type ShellContext, shell } from "./shell.ts";
 
 const escapeHtml = Bun.escapeHTML;

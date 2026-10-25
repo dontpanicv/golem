@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { serializeSignedCookie } from "better-call";
 import { HttpRouter } from "effect/http";
-import { apiRoutes } from "../src/api.ts";
-import { type App, closeApp, createApp, routes } from "../src/app.ts";
-import { Secrets } from "../src/secrets.ts";
-import { webRoutes } from "../src/web.ts";
+import { type App, closeApp, createApp } from "../src/app/app.ts";
+import { routes } from "../src/app/http.ts";
+import { allRoutes } from "../src/app/routes.ts";
+import { Secrets } from "../src/platform/secrets.ts";
 
 export interface CallOptions {
   method?: string;
@@ -50,10 +50,9 @@ export async function startTestApp() {
     { provider: faux.provider, name: "Test model", defaultModel: model.id },
     Secrets.forTests()
   );
-  const { handler, dispose } = HttpRouter.toWebHandler(
-    routes(app, [...apiRoutes, ...webRoutes]),
-    { disableLogger: true }
-  );
+  const { handler, dispose } = HttpRouter.toWebHandler(routes(app, allRoutes), {
+    disableLogger: true,
+  });
 
   function call(path: string, options: CallOptions = {}): Promise<Response> {
     const headers = new Headers(options.headers);

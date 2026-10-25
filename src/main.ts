@@ -2,12 +2,12 @@ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-code
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
 import { HttpRouter } from "effect/http";
-import { apiRoutes } from "./api.ts";
-import { closeApp, createApp, routes } from "./app.ts";
-import { readConfig } from "./config.ts";
+import { closeApp, createApp } from "./app/app.ts";
+import { routes } from "./app/http.ts";
+import { allRoutes } from "./app/routes.ts";
 import type { LlmProvider } from "./llm.ts";
+import { readConfig } from "./platform/config.ts";
 import { LlamaEmbedder } from "./search/embedder.ts";
-import { webRoutes } from "./web.ts";
 
 /** ChatGPT through the Codex device login: one subscription for every workspace's agents. */
 const chatGpt: LlmProvider = {
@@ -33,7 +33,7 @@ const server = Layer.unwrap(
         embedder.stop();
         await closeApp(app);
       })
-  ).pipe(Effect.map((app) => routes(app, [...apiRoutes, ...webRoutes])))
+  ).pipe(Effect.map((app) => routes(app, allRoutes)))
 );
 
 HttpRouter.serve(server).pipe(

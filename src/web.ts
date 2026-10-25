@@ -1,15 +1,22 @@
-import { resolve, sep } from "node:path";
 import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
 import {
   type AuthedInput,
-  type Handler,
   type Route,
   type RouteInput,
-  signedIn,
   withCookies,
-} from "./app.ts";
-import type { Toast } from "./ui/components.ts";
-import { designPage } from "./ui/design.ts";
+} from "./app/http.ts";
+import {
+  action,
+  asset,
+  form,
+  html,
+  page,
+  redirect,
+  toastOf,
+  withNotice,
+} from "./app/web.ts";
+import { HttpError } from "./platform/errors.ts";
+import { designPage } from "./platform/ui/design.ts";
 import {
   authPage,
   channelPage,
@@ -22,9 +29,6 @@ import {
 import { searchPage, searchResults } from "./ui/search.ts";
 import type { ShellContext } from "./ui/shell.ts";
 import { transcript } from "./ui/shell.ts";
-import { HttpError } from "./workspaces.ts";
-
-const publicDirectory = resolve(import.meta.dir, "../public");
 
 /** The web app: HTML from the server, live parts over Datastar. */
 export const webRoutes: readonly Route[] = [
@@ -356,73 +360,6 @@ export const webRoutes: readonly Route[] = [
   ],
 ];
 
-type FormInput = RouteInput & {
-  readonly fields: Record<string, string | undefined>;
-};
-type AuthedFormInput = AuthedInput & {
-  readonly fields: Record<string, string | undefined>;
-};
-
-/** A page for signed-in people; others go to the login page. Not found errors render as 404. */
-function page(handler: (input: AuthedInput) => Promise<Response>): Handler {
-  return signedIn(
-    async (input) => {
-      try {
-        return await handler(input);
-      } catch (error) {
-        if (error instanceof HttpError && error.status === 404) {
-          return new Response("Not found", { status: 404 });
-        }
-        throw error;
-      }
-    },
-    () => redirect("/login")
-  );
-}
-
-/** A form post by a signed-in person: redirects to the returned path, or back to `back` with the error. */
-function action(
-  back: string | ((input: { params: RouteInput["params"] }) => string),
-  handler: (input: AuthedFormInput) => Promise<string>
-): Handler {
-  return page(async (input) => {
-    rejectCrossOrigin(input);
-    const fields = await formFields(input.request);
-    try {
-      return redirect(await handler({ ...input, fields }));
-    } catch (error) {
-      if (error instanceof HttpError && error.status !== 404) {
-        return redirect(
-          withError(
-            typeof back === "string" ? back : back(input),
-            error.message
-          )
-        );
-      }
-      throw error;
-    }
-  });
-}
-
-/** A form post before sign-in: errors from better-auth go back to `back`. */
-function form(
-  handler: (input: FormInput) => Promise<Response>,
-  back: string
-): Handler {
-  return async (input) => {
-    rejectCrossOrigin(input);
-    const fields = await formFields(input.request);
-    try {
-      return await handler({ ...input, fields });
-    } catch (error) {
-      const message =
-        (error as { body?: { message?: string } }).body?.message ??
-        (error as Error).message;
-      return redirect(withError(back, message));
-    }
-  };
-}
-
 function shellContext(
   input: AuthedInput,
   current: ShellContext["current"]
@@ -449,69 +386,4 @@ function threadIn(input: AuthedInput) {
 
 function settingsOf({ params }: { params: RouteInput["params"] }): string {
   return `/w/${params.workspace}/settings`;
-}
-
-/**
- * Form posts must come from this site: browsers send `Origin` on cross-site posts. Compare with `base_url`, not the
- * request URL: behind a TLS proxy the request arrives as `http` while the browser sends an `https` origin.
- */
-function rejectCrossOrigin({ app, request }: RouteInput): void {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(app.config.baseUrl).origin) {
-    throw new HttpError(403, "Cross-site request");
-  }
-}
-
-async function formFields(
-  request: Request
-): Promise<Record<string, string | undefined>> {
-  const data = await request.formData().catch(() => new FormData());
-  return Object.fromEntries(
-    [...data.entries()].map(([key, value]) => [
-      key,
-      typeof value === "string" ? value : undefined,
-    ])
-  );
-}
-
-/** The toast a redirect asked for with `?error=` or `?notice=`. Failed Google sign-ins also send `error_description`. */
-function toastOf(request: Request): Toast {
-  const params = new URL(request.url).searchParams;
-  const error = params.get("error_description") ?? params.get("error");
-  if (error) {
-    return { tone: "error", text: error };
-  }
-  const notice = params.get("notice");
-  return notice ? { tone: "success", text: notice } : null;
-}
-
-function withNotice(path: string, message: string): string {
-  return `${path}?notice=${encodeURIComponent(message)}`;
-}
-
-function withError(path: string, message: string): string {
-  return `${path}?error=${encodeURIComponent(message)}`;
-}
-
-function redirect(location: string): Response {
-  return new Response(null, { status: 303, headers: { location } });
-}
-
-function html(body: string): Response {
-  return new Response(body, {
-    headers: { "content-type": "text/html; charset=utf-8" },
-  });
-}
-
-/** Serves a file from `public/`; paths that leave it are not found. */
-async function asset(request: Request): Promise<Response> {
-  const path = resolve(
-    publicDirectory,
-    decodeURIComponent(new URL(request.url).pathname.slice("/assets/".length))
-  );
-  const file = Bun.file(path);
-  if (!(path.startsWith(publicDirectory + sep) && (await file.exists()))) {
-    return new Response("Not found", { status: 404 });
-  }
-  return new Response(file);
 }
