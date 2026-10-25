@@ -122,10 +122,14 @@ const FILE_NAME =
 /** The search uri of a saved file: in a channel's `files/`, or in the workspace's own. */
 const FILE_URI = /^(?:channels\/[^/]+\/)?files\/([0-9a-f-]{36})-/;
 const INSTRUCTIONS =
-  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. When people want a page to share or a small app, such as an invite, a schedule, a poll, a recipe, or a game, make an artifact; when one for it exists, change it instead. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
+  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. When people want a page to share or a small app, such as an invite, a schedule, a poll, a recipe, or a game, make an artifact; when one for it exists, change it instead. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. Your answers show as Markdown: use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. Show a picture with ![what it shows](file:<id>) for a file of this channel, or with its https address for a picture on the web. To show a screenshot or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it.";
 /** Added to `INSTRUCTIONS` for the orchestrator, the one thread of a workspace that never ends. */
 const ORCHESTRATOR =
   "This thread is the orchestrator of the workspace: one thread that never ends, where the family comes first. Do small tasks yourself. Give larger work to the channel it belongs to: start a thread there with start_thread, or send it to a thread that is already about it with send_to_thread. When no channel fits, make one with create_channel. Their agents answer back here; tell the family what came of it. Your memory of this thread is the summary at its start: zoom it before you use recall. The summaries keep little of what tools gave you, so say in your answer what you learned that will matter later.";
+/** The largest file that save_file copies from a machine, below the largest message hands sends. */
+const MAX_SAVED_FILE = 15 * 1024 * 1024;
+/** How long save_file waits for a file from the web. */
+const DOWNLOAD_TIMEOUT = 60_000;
 /** Above about this many tokens of context, the orchestrator compacts after its turn, so each turn reads little. */
 const ORCHESTRATOR_TOKENS = 48_000;
 /** A compaction needs this many new messages since the one before, so a long message that stays cannot repeat it. */
@@ -194,7 +198,7 @@ export interface FilePlace {
 }
 
 /** The machines of a workspace, which its agents use through the hands tools. */
-export type ThreadHands = Pick<Hands, "section" | "tools">;
+export type ThreadHands = Pick<Hands, "file" | "section" | "tools">;
 
 /** The connectors of a workspace, which its agents use through their tools. */
 export type ThreadIntegrations = Pick<Integrations, "tools">;
@@ -203,7 +207,7 @@ export type ThreadIntegrations = Pick<Integrations, "tools">;
 export type ThreadArtifacts = Pick<Artifacts, "tools">;
 
 /** The browser that agents visit websites with. */
-export type ThreadBrowser = Pick<Browser, "tools">;
+export type ThreadBrowser = Pick<Browser, "screenshot" | "tools">;
 
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
@@ -332,7 +336,7 @@ export class Threads {
     requestId: string
   ): Promise<string | null> {
     const conversation = await this.conversation(thread);
-    await this.useCurrentModel(conversation);
+    await this.useCurrentAgent(conversation);
     const submission = await conversation.submit(
       {
         type: "input",
@@ -694,7 +698,7 @@ export class Threads {
       readonly whenBusy?: "steer";
     }
   ): Promise<void> {
-    await this.useCurrentModel(conversation);
+    await this.useCurrentAgent(conversation);
     await conversation.submit({ type: "input", ...input }, BACKGROUND_CONTEXT);
   }
 
@@ -861,6 +865,7 @@ export class Threads {
         this.sendToThreadTool(workspaceId),
         this.listFilesTool(workspaceId),
         this.readFileTool(workspaceId),
+        this.saveFileTool(workspaceId),
         this.setChannelSummaryTool(workspaceId),
         ...this.hands.tools(workspaceId),
         ...this.integrations.tools(workspaceId).map(connectorTool),
@@ -1286,6 +1291,68 @@ export class Threads {
     });
   }
 
+  /** Lets the agent show people a picture or file it made, such as a screenshot of a machine or of its browser. */
+  private saveFileTool(workspaceId: string) {
+    return defineTool({
+      name: "save_file",
+      description:
+        "Save a file to this thread's channel, so people can open it and you can show it in your answer: a file of a machine (machine and path, such as a screenshot you took there with hands_exec), a screenshot of this thread's browser (browser_screenshot), or a file from the web (url). Returns the file id. Show a picture with ![what it shows](file:<id>); link another file with [name](file:<id>).",
+      parameters: Type.Object({
+        machine: Type.Optional(Type.String({ description: "Machine name" })),
+        path: Type.Optional(
+          Type.String({ description: "File path on the machine" })
+        ),
+        browser_screenshot: Type.Optional(
+          Type.Boolean({ description: "Save the page the browser shows" })
+        ),
+        url: Type.Optional(
+          Type.String({ description: "An http or https address to download" })
+        ),
+        name: Type.Optional(
+          Type.String({ description: "The file name people see" })
+        ),
+      }),
+      execute: async (args, api, context) => {
+        let data: Uint8Array | null;
+        let name: string;
+        if (args.browser_screenshot) {
+          data = await this.browser.screenshot(workspaceId, api.conversationId);
+          name = "screenshot.png";
+        } else if (args.machine && args.path) {
+          data = await this.hands.file(
+            workspaceId,
+            args.machine,
+            args.path,
+            MAX_SAVED_FILE
+          );
+          name = basename(args.path);
+        } else if (args.url) {
+          ({ data, name } = await download(args.url, context.abortSignal));
+        } else {
+          throw new Error("Give machine and path, browser_screenshot, or url.");
+        }
+        if (!data) {
+          throw new Error("The browser could not take a screenshot.");
+        }
+        const place = this.placeOf(
+          this.threadOf(workspaceId, api.conversationId)
+        );
+        const [saved] = await this.save(place, [
+          new File([data], args.name || name),
+        ]);
+        this.hooks.changed(workspaceId);
+        return {
+          output: [
+            {
+              type: "text",
+              text: `Saved ${saved!.name} as file ${saved!.id}.`,
+            },
+          ],
+        };
+      },
+    });
+  }
+
   private setChannelSummaryTool(workspaceId: string) {
     return defineTool({
       name: "set_channel_summary",
@@ -1381,20 +1448,27 @@ export class Threads {
     return thread;
   }
 
-  /** Threads follow the model and effort chosen in settings, also after they change. */
-  private async useCurrentModel(conversation: Conversation): Promise<void> {
+  /**
+   * Threads follow the model and effort chosen in settings, also after they change, and the instructions of this
+   * version of Golem.
+   */
+  private async useCurrentAgent(conversation: Conversation): Promise<void> {
     const model = this.currentModel();
     const thinkingLevel = this.llm.effort();
     const view = await conversation.watch(BACKGROUND_CONTEXT);
     await view.stop();
     const stored = view.value.docs["pi.agent"] as AgentState | undefined;
+    const instructions = stored?.instructions?.endsWith(ORCHESTRATOR)
+      ? `${INSTRUCTIONS} ${ORCHESTRATOR}`
+      : INSTRUCTIONS;
     if (
       stored?.model?.provider !== model.provider ||
       stored.model.modelId !== model.modelId ||
-      stored.thinkingLevel !== thinkingLevel
+      stored.thinkingLevel !== thinkingLevel ||
+      stored.instructions !== instructions
     ) {
       await conversation.configure(
-        { model, thinkingLevel },
+        { model, thinkingLevel, instructions },
         BACKGROUND_CONTEXT
       );
     }
@@ -1702,6 +1776,74 @@ function messageText(text: string | undefined, files: readonly File[]): string {
 }
 
 /** A name that stays one file in the thread's folder: no folders, control characters, or leading dots. */
+/** A file from the web and its name; it fails over `MAX_SAVED_FILE` bytes before more of it is read. */
+async function download(
+  address: string,
+  signal: AbortSignal | undefined
+): Promise<{ data: Uint8Array; name: string }> {
+  const url = URL.parse(address);
+  if (url?.protocol !== "http:" && url?.protocol !== "https:") {
+    throw new Error(
+      `save_file gets only http and https addresses, not ${address}.`
+    );
+  }
+  const response = await fetch(url, {
+    signal: AbortSignal.any([
+      AbortSignal.timeout(DOWNLOAD_TIMEOUT),
+      ...(signal ? [signal] : []),
+    ]),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(
+      `${url} answered ${response.status} ${response.statusText}`
+    );
+  }
+  const tooLarge = new Error(
+    `${url} is over ${MAX_SAVED_FILE / 1024 / 1024} MB`
+  );
+  if (Number(response.headers.get("content-length")) > MAX_SAVED_FILE) {
+    await response.body?.cancel();
+    throw tooLarge;
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  // Leaving the loop cancels the rest of the body.
+  for await (const chunk of response.body ?? []) {
+    size += chunk.length;
+    if (size > MAX_SAVED_FILE) {
+      throw tooLarge;
+    }
+    chunks.push(chunk);
+  }
+  return {
+    data: new Uint8Array(Bun.concatArrayBuffers(chunks)),
+    name:
+      dispositionName(response.headers.get("content-disposition")) ||
+      decodeName(url.pathname.split("/").at(-1)!) ||
+      "download",
+  };
+}
+
+/** The file name of a Content-Disposition header, in its `filename*` or `filename` form. */
+function dispositionName(header: string | null): string {
+  const encoded = /filename\*\s*=\s*[\w-]*'[^']*'([^;]+)/i.exec(
+    header ?? ""
+  )?.[1];
+  if (encoded) {
+    return decodeName(encoded.trim());
+  }
+  return /filename\s*=\s*"?([^";]+)"?/i.exec(header ?? "")?.[1]?.trim() ?? "";
+}
+
+function decodeName(name: string): string {
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
+}
+
 function fileName(name: string): string {
   const clean = name
     .split(/[/\\]/)

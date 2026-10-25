@@ -1131,6 +1131,107 @@ a {
 .message.failed .message-text {
   color: var(--color-danger);
 }
+.prose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  white-space: normal;
+}
+.prose :is(p, ul, ol, pre, blockquote, table, figure, h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+}
+.prose :is(h1, h2, h3, h4, h5, h6) {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+.prose h1 {
+  font-size: var(--font-size-xl);
+}
+.prose :is(strong, b) {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+.prose :is(ul, ol) {
+  padding-left: var(--space-xl);
+}
+.prose li:has(> input) {
+  list-style: none;
+}
+.prose li > input {
+  margin: 0 var(--space-sm) 0 0;
+}
+.prose a:not(.thread-link) {
+  color: var(--color-accent);
+  text-underline-offset: 2px;
+}
+.prose :is(code, kbd) {
+  padding: 0 var(--space-xxs);
+  border-radius: var(--radius-xs);
+  background: var(--color-fill-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.prose pre {
+  padding: var(--space-md) var(--space-lg);
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  background: var(--color-fill-subtle);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
+}
+.prose pre code {
+  padding: 0;
+  background: none;
+}
+.prose blockquote {
+  padding-left: var(--space-lg);
+  border-left: 2px solid var(--color-border-strong);
+  color: var(--color-text-tertiary);
+}
+.prose hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: var(--font-size-md);
+}
+.prose :is(th, td) {
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--color-border);
+}
+.prose :is(th, td):not([align]) {
+  text-align: left;
+}
+.prose th {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+.prose img {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: var(--radius-md);
+}
+.prose summary {
+  cursor: pointer;
+}
+.message-artifact {
+  display: block;
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.message.streaming .prose::after {
+  margin-top: calc(-1 * var(--space-md));
+}
 .message.streaming .message-text::after {
   content: "▍";
   color: var(--color-accent);

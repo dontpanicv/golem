@@ -619,33 +619,45 @@ function duration(milliseconds) {
 
 // Work in progress
 //
-// The steps of an agent at work keep the newest one in view, until the person scrolls up; scrolling back to the end
-// follows again.
+// A thread's transcript and the steps of an agent at work keep the newest one in view, until the person scrolls up;
+// scrolling back to the end follows again. A thread opens at its end.
 
 const unpinned = new WeakSet();
 
 document.addEventListener(
   "scroll",
   (event) => {
-    const steps = event.target;
-    if (!(steps instanceof Element && steps.matches(".work-steps"))) {
+    const element = event.target;
+    if (
+      !(
+        element instanceof Element &&
+        element.matches(".work-steps, #transcript")
+      )
+    ) {
       return;
     }
-    if (steps.scrollHeight - steps.scrollTop - steps.clientHeight < 4) {
-      unpinned.delete(steps);
+    if (element.scrollHeight - element.scrollTop - element.clientHeight < 4) {
+      unpinned.delete(element);
     } else {
-      unpinned.add(steps);
+      unpinned.add(element);
     }
   },
   true
 );
 
-new MutationObserver(() => {
-  for (const steps of document.querySelectorAll(
-    ".work.working > .work-steps"
+function follow() {
+  for (const element of document.querySelectorAll(
+    "#transcript, .work.working > .work-steps"
   )) {
-    if (!unpinned.has(steps)) {
-      steps.scrollTop = steps.scrollHeight;
+    if (!unpinned.has(element)) {
+      element.scrollTop = element.scrollHeight;
     }
   }
-}).observe(document.body, { childList: true, subtree: true });
+}
+
+new MutationObserver(follow).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
+// Pictures and artifacts get their height when they load.
+document.addEventListener("load", follow, true);

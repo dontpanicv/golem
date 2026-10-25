@@ -11,7 +11,7 @@
     ]
   },
   "javascript": {
-    "globals": ["Bun", "Float16Array"]
+    "globals": ["Bun", "Float16Array", "HTMLRewriter"]
   },
   "linter": {
     "rules": {

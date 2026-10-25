@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { type IconName, icon } from "./icons.ts";
+import { markdown } from "./markdown.ts";
 
 // Server-rendered components. Looks are in public/styles.css, behaviors in public/ui.js,
 // and the spec for each is in design/components.md.
@@ -189,10 +190,28 @@ export function message(
 	<div class="message-body">
 		<div class="message-meta"><span class="message-author">${escapeHtml(m.author)}</span><time class="message-time">${time}</time></div>
 		${m.work ? workLog(m.id, m.work, linked) : ""}
-		${m.text ? `<p class="message-text">${linked(m.text)}</p>` : ""}
+		${m.text ? messageText(m, linked, threadHref, fileHref) : ""}
 		${m.files?.length ? `<div class="file-chips">${m.files.map((file) => fileChip(file.name, { href: fileHref(file.id) })).join("")}</div>` : ""}
 	</div>
 </article>`;
+}
+
+/** An agent's answer in Markdown; a person's message and an error as they are written. */
+function messageText(
+  m: Message,
+  linked: (text: string) => string,
+  threadHref: (threadId: string) => string,
+  fileHref: (fileId: string) => string
+): string {
+  if (!m.agent || m.failed) {
+    return `<p class="message-text">${linked(m.text)}</p>`;
+  }
+  const html = markdown(m.text, {
+    thread: threadHref,
+    file: fileHref,
+    afterThread: workingSpinner,
+  });
+  return `<div class="message-text prose">${html}</div>`;
 }
 
 /**

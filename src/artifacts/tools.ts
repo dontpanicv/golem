@@ -90,7 +90,9 @@ export function artifactTools(
           ...args,
           requestKey: `${workspaceId}:${api.taskId}`,
         });
-        return text(`Made the artifact.\n${describe(artifact)}`);
+        return text(
+          `Made the artifact.\n${describe(artifact)}\nShow it in your answer with ![${artifact.title}](artifact:${artifact.id}).`
+        );
       },
     }),
 

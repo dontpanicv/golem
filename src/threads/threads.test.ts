@@ -475,7 +475,7 @@ test("a spoken message asks the agent for an answer to read aloud, and the trans
   ]);
 });
 
-test("the web shows each thread link in a message as a link into the workspace, and escapes the rest", () => {
+test("the web shows each thread link in an answer as a link into the workspace, and its Markdown and HTML", () => {
   const html = transcript(
     {
       running: false,
@@ -485,7 +485,7 @@ test("the web shows each thread link in a message as a link into the workspace, 
           authorId: null,
           author: "Golem",
           agent: true,
-          text: 'Started [Dinner <b>plan</b>](thread:abc-1) and [not a link](thread:"x) <i>',
+          text: 'Started [Dinner <b>plan</b>](thread:abc-1) and [not a link](thread:"x) <i>*soon*',
           time: 0,
           failed: false,
           files: [],
@@ -497,7 +497,7 @@ test("the web shows each thread link in a message as a link into the workspace, 
     { id: "dinner", workspaceId: "family" }
   );
   expect(html).toContain(
-    'Started <a class="thread-link" href="/w/family/t/abc-1">Dinner &lt;b&gt;plan&lt;/b&gt;</a><span class="working-spinner" data-show="$working.tabc1" style="display: none" role="img" aria-label="Working"></span> and [not a link](thread:&quot;x) &lt;i&gt;'
+    '<p>Started <a href="/w/family/t/abc-1" class="thread-link">Dinner <b>plan</b></a><span class="working-spinner" data-show="$working.tabc1" style="display: none" role="img" aria-label="Working"></span> and <a>not a link</a> <i><em>soon</em></i></p>'
   );
 });
 

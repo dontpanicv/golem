@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Requirement } from "../platform/requirements.ts";
-import { browserTools } from "./tools.ts";
+import { browserSession, browserTools } from "./tools.ts";
 
 /** agent-browser's launcher, which starts the native binary of this machine; it runs on Bun, as Golem does. */
 const CLI = [
@@ -40,6 +40,19 @@ export class Browser {
   /** The agent tools of a workspace. */
   tools(workspaceId: string) {
     return browserTools(this, workspaceId);
+  }
+
+  /** A picture of the page in a thread's browser, or null when it cannot take one. */
+  async screenshot(
+    workspaceId: string,
+    conversationId: number
+  ): Promise<Uint8Array | null> {
+    const { screenshot } = await this.browse(
+      browserSession(workspaceId, conversationId),
+      [],
+      true
+    );
+    return screenshot;
   }
 
   /** Runs commands in order in one session's browser; page text in the output is between content boundaries. */

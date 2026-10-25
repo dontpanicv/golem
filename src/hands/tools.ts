@@ -445,8 +445,32 @@ async function follow(
   };
 }
 
-/** A text file's first `MAX_TEXT` bytes; `text` is null when they are not UTF-8, `truncated` when the file is longer. */
-async function readText(connection: HandsConnection, path: string) {
+/** A file of a machine as it is, for a thread to keep; it fails for a file over `limit` bytes. */
+export async function machineFile(
+  hands: Hands,
+  workspaceId: string,
+  machineName: string,
+  path: string,
+  limit: number
+): Promise<Uint8Array> {
+  const machine = machineNamed(hands, workspaceId, machineName);
+  const file = await hands.with(workspaceId, machine, (connection) =>
+    readText(connection, absolute(path, connection), limit)
+  );
+  if (file.truncated) {
+    throw new Error(
+      `${path} on ${machine.name} is over ${limit / 1024 / 1024} MB`
+    );
+  }
+  return file.data;
+}
+
+/** A text file's first `limit` bytes; `text` is null when they are not UTF-8, `truncated` when the file is longer. */
+async function readText(
+  connection: HandsConnection,
+  path: string,
+  limit = MAX_TEXT
+) {
   const { json } = await connection.request("open", { path });
   const { handle } = json;
   if (typeof handle !== "number") {
@@ -461,10 +485,10 @@ async function readText(connection: HandsConnection, path: string) {
     const { payload } = await connection.request("pread", {
       handle,
       offset: 0,
-      length: MAX_TEXT + 1,
+      length: limit + 1,
     });
-    const truncated = payload.length > MAX_TEXT;
-    const data = payload.subarray(0, MAX_TEXT);
+    const truncated = payload.length > limit;
+    const data = payload.subarray(0, limit);
     let decoded: string | null = null;
     if (!truncated) {
       try {

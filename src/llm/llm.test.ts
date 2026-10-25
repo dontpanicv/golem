@@ -393,12 +393,13 @@ const hooks = {
   tools: () => [],
 };
 const noMachines = {
+  file: () => Promise.reject(new Error("No machines are paired.")),
   tools: () => [],
   section: () => ({ key: "machines", render: () => undefined }),
 };
 const noIntegrations = { tools: () => [] };
 const noArtifacts = { tools: () => [] };
-const noBrowser = { tools: () => [] };
+const noBrowser = { screenshot: async () => null, tools: () => [] };
 
 /** Threads over a registry in memory, with the registry methods that creating and sending use. */
 function threadsOver(dataDirectory: string, llm: Llm) {
