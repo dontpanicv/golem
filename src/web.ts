@@ -1,14 +1,8 @@
 import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
-import {
-  type AuthedInput,
-  type Route,
-  type RouteInput,
-  withCookies,
-} from "./app/http.ts";
+import type { AuthedInput, Route, RouteInput } from "./app/http.ts";
 import {
   action,
   asset,
-  form,
   html,
   page,
   redirect,
@@ -18,7 +12,6 @@ import {
 import { HttpError } from "./platform/errors.ts";
 import { designPage } from "./platform/ui/design.ts";
 import {
-  authPage,
   channelPage,
   llmCard,
   newWorkspacePage,
@@ -34,32 +27,6 @@ import { transcript } from "./ui/shell.ts";
 export const webRoutes: readonly Route[] = [
   ["GET", "/assets/*", async ({ request }) => asset(request)],
   ["GET", "/design", async () => html(designPage())],
-
-  ["GET", "/login", async ({ request }) => html(authPage(toastOf(request)))],
-  [
-    "POST",
-    "/login",
-    form(async ({ app }) => {
-      const google = await app.auth.api.signInSocial({
-        body: { provider: "google", callbackURL: "/" },
-        returnHeaders: true,
-      });
-      return withCookies(google, google.response.url!);
-    }, "/login"),
-  ],
-  [
-    "POST",
-    "/logout",
-    page(async ({ app, request }) =>
-      withCookies(
-        await app.auth.api.signOut({
-          headers: request.headers,
-          returnHeaders: true,
-        }),
-        "/login"
-      )
-    ),
-  ],
 
   [
     "GET",
