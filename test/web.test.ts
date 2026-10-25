@@ -267,6 +267,33 @@ describe("the web app", () => {
     expect((await alice.get(link)).status).toBe(200);
   });
 
+  test("a client that tries many artifact links that do not exist waits", async () => {
+    const from = (address: string) => ({ "x-forwarded-for": address });
+    for (let miss = 0; miss < 20; miss += 1) {
+      const response = await golem.call(`/a/amber-guess${miss}`, {
+        headers: from("203.0.113.7"),
+      });
+      expect(response.status).toBe(404);
+    }
+    const [artifact] = golem.app.artifacts.inThread(threadId, aliceUser());
+    const refused = await golem.call(`/a/${artifact!.id}/content`, {
+      headers: from("203.0.113.7"),
+    });
+    expect(refused.status).toBe(429);
+    expect(
+      (
+        await golem.call(`/a/${artifact!.id}/rpc`, {
+          body: { op: "me", args: {} },
+          headers: from("203.0.113.7"),
+        })
+      ).status
+    ).toBe(429);
+    expect(
+      (await golem.call("/a/amber-guess", { headers: from("203.0.113.8") }))
+        .status
+    ).toBe(404);
+  });
+
   test("the thread's Artifacts and Preview tabs open an artifact, show its data, and change and delete it", async () => {
     const [artifact] = golem.app.artifacts.inThread(threadId, aliceUser());
     const base = `/w/${workspaceId}/t/${threadId}/artifacts/${artifact!.id}`;

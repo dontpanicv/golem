@@ -20,6 +20,10 @@ const MAX_CALL = 200_000;
  */
 const SANDBOX =
   "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads";
+/** Artifact names are two words, so they can be guessed: a client that misses this many links in a window waits. */
+const MAX_MISSES = 20;
+const MISS_WINDOW = 10 * 60_000;
+const misses = new Map<string, { count: number; until: number }>();
 
 /**
  * The link of an artifact, which anyone may open when it is public, and the runtime its page calls. Its thread's
@@ -30,11 +34,9 @@ export const artifactWebRoutes: readonly Route[] = [
     "GET",
     "/a/:artifact",
     async (input) => {
-      const viewer = await viewerOf(input);
       try {
-        const response = html(
-          artifactPage(input.app.artifacts.open(input.params.artifact!, viewer))
-        );
+        const { viewer, artifact } = await openFor(input);
+        const response = html(artifactPage(artifact));
         return viewer.user || viewer.token
           ? response
           : withVisitorCookie(input, response);
@@ -48,10 +50,7 @@ export const artifactWebRoutes: readonly Route[] = [
     "/a/:artifact/content",
     async (input) => {
       try {
-        const artifact = input.app.artifacts.open(
-          input.params.artifact!,
-          await viewerOf(input)
-        );
+        const { artifact } = await openFor(input);
         return new Response(input.app.artifacts.content(artifact.id), {
           headers: {
             "content-type": "text/html; charset=utf-8",
@@ -71,13 +70,9 @@ export const artifactWebRoutes: readonly Route[] = [
     async (input) => {
       rejectCrossOrigin(input);
       const { op, args } = await readCall(input.request);
+      const { viewer, artifact } = await openFor(input);
       return json({
-        result: input.app.artifacts.call(
-          input.params.artifact!,
-          await viewerOf(input),
-          op,
-          args
-        ),
+        result: input.app.artifacts.call(artifact.id, viewer, op, args),
       });
     },
   ],
@@ -150,6 +145,43 @@ export const artifactWebRoutes: readonly Route[] = [
   ],
 ];
 
+/** The artifact in the path, for the request's viewer. Counts the client's misses, and refuses it after too many. */
+async function openFor(input: RouteInput) {
+  // shortcut: the client is the address the proxy (Caddy) adds; a client that reaches Golem directly shares one
+  // count with every other direct client. Use the socket address if Golem ever listens without a proxy.
+  const client =
+    input.request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ??
+    "direct";
+  const now = Date.now();
+  const missed = misses.get(client);
+  const current =
+    missed && missed.until > now
+      ? missed
+      : { count: 0, until: now + MISS_WINDOW };
+  if (current.count >= MAX_MISSES) {
+    throw new HttpError(
+      429,
+      "Too many links that do not exist; try again later"
+    );
+  }
+  const viewer = await viewerOf(input);
+  try {
+    return {
+      viewer,
+      artifact: input.app.artifacts.open(input.params.artifact!, viewer),
+    };
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      current.count += 1;
+      if (misses.size > 10_000) {
+        misses.clear();
+      }
+      misses.set(client, current);
+    }
+    throw error;
+  }
+}
+
 /** A signed-in person, or a public visitor with the token of their browser. */
 async function viewerOf({ app, request }: RouteInput): Promise<Viewer> {
   const user = await currentUser(app.auth, request);
@@ -186,6 +218,9 @@ function pageError(error: unknown, signIn: string | null): Response {
   }
   if (error instanceof HttpError && [401, 404].includes(error.status)) {
     return new Response("Not found", { status: 404 });
+  }
+  if (error instanceof HttpError && error.status === 429) {
+    return new Response(error.message, { status: 429 });
   }
   throw error;
 }

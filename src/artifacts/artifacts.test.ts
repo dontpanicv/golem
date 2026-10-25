@@ -103,7 +103,7 @@ test("an agent makes an artifact in its thread, changes it, and reads and writes
     visitors: 0,
     url: `http://golem.test/a/${artifact.id}`,
   });
-  expect(artifact.id).toMatch(/^[\w-]{22}$/);
+  expect(artifact.id).toMatch(/^[a-z]+-[a-z]+$/);
   expect(toolResults.at(-1)).toContain(artifact.url);
 
   expect(
@@ -269,6 +269,12 @@ test("a members artifact is only for members, and people delete its records, its
   expect(onlyArtifact().visitors).toBe(0);
   artifacts.delete(id, alice);
   expect(artifacts.inThread(thread.id, alice)).toEqual([]);
+  // The name stays taken, so that an old link never opens a new artifact.
+  expect(
+    golem.app.database
+      .query("SELECT id FROM artifact_name WHERE id = ?")
+      .get(id)
+  ).toEqual({ id });
 });
 
 test("the runtime goes at the top of the head, and after the doctype of a page without one", () => {

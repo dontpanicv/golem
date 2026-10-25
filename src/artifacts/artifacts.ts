@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type { ThreadRef, Workspaces } from "../workspaces/workspaces.ts";
@@ -64,6 +64,11 @@ const MAX_NAME = 100;
 const MAX_KEYS_PER_VISITOR = 1000;
 const MAX_RECORDS = 20_000;
 const SHARED = "shared";
+/** Artifact names are two of these words, such as `amber-fox`, so that people know a link when they see it again. */
+const WORDS =
+  "acorn amber apple autumn beach berry birch bloom blue breeze brook cedar cherry cloud coral creek dawn daisy deer dove dream dusk eagle earth elm fern field finch flame flower forest fox frolic frost garden gold grape green grove harbor hazel hill honey island ivy jade jasmine lake leaf lemon light lily lime maple meadow mint moon moss mountain oak ocean olive orange orchard otter owl peach pearl pine plum pond poppy rabbit rain raven reed river robin rock rose ruby sage sand sea seed shadow shell shore sky snow sparrow spring star stone storm summer sun swan sweet thyme tiger tulip turtle valley violet water wave willow wind winter wolf wood wren yellow".split(
+    " "
+  );
 const VISIBILITIES: readonly Visibility[] = ["public", "members"];
 
 /** The `golem` object that Golem adds to every artifact. Web and iOS both answer its messages. */
@@ -144,12 +149,18 @@ export class Artifacts {
     const title = checkedTitle(input.title);
     const html = checkedHtml(input.html);
     const now = Date.now();
+    const made = this.database
+      .query(`SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE request_key = ?`)
+      .get(input.requestKey) as ArtifactRow | null;
+    if (made) {
+      return this.artifact(made);
+    }
     this.database
       .query(
-        "INSERT INTO artifact (id, workspace_id, thread_id, title, html, visibility, request_key, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'golem', ?, ?) ON CONFLICT (request_key) DO NOTHING"
+        "INSERT INTO artifact (id, workspace_id, thread_id, title, html, visibility, request_key, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'golem', ?, ?)"
       )
       .run(
-        randomBytes(16).toString("base64url"),
+        this.newName(),
         thread.workspaceId,
         thread.id,
         title,
@@ -466,6 +477,24 @@ export class Artifacts {
       )
       .get(id, me.id, me.name, Date.now()) as { name: string | null };
     return { ...me, name: visitor.name };
+  }
+
+  /** Two different words that no artifact had before, so that an old link never opens another artifact. */
+  private newName(): string {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const first = WORDS[randomInt(WORDS.length)]!;
+      const second = WORDS[randomInt(WORDS.length)]!;
+      const name = `${first}-${second}`;
+      if (
+        first !== second &&
+        this.database
+          .query("INSERT OR IGNORE INTO artifact_name (id) VALUES (?)")
+          .run(name).changes === 1
+      ) {
+        return name;
+      }
+    }
+    throw new HttpError(503, "Golem has no free artifact names");
   }
 
   private row(id: string): ArtifactRow | null {

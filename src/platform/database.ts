@@ -9,8 +9,8 @@ import { dirname } from "node:path";
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
  * `organization` and `member`), `integrations` owns `credential` and `integration_setting` (no longer read), `llm` owns
  * `provider_credential` and its keys in `setting`, `hands` owns `machine`, `artifacts` owns `artifact`,
- * `artifact_visitor`, and `artifact_record`, and `routines` owns `routine` and `routine_run`. Start a new migration
- * with a comment that names its owner.
+ * `artifact_name`, `artifact_visitor`, and `artifact_record`, and `routines` owns `routine` and `routine_run`. Start
+ * a new migration with a comment that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (
@@ -138,6 +138,10 @@ const migrations = [
 		updated_at INTEGER NOT NULL,
 		PRIMARY KEY (artifact_id, scope, key)
 	);`,
+  // artifacts: every name an artifact had, such as `amber-fox`; names stay after their artifact goes, so they are
+  // never given out again.
+  `CREATE TABLE artifact_name (id TEXT PRIMARY KEY);
+	INSERT INTO artifact_name (id) SELECT id FROM artifact;`,
 ];
 
 export function openDatabase(path: string): Database {

@@ -81,7 +81,7 @@ type Routine = {
 	lastRun: RoutineRun | null;
 };
 type Artifact = {
-	id: string;
+	id: string; // two words, such as "amber-fox"; a name is never given out again
 	threadId: string;
 	title: string;
 	visibility: "public" | "members"; // public: anyone with the link; members: signed-in members only
@@ -262,7 +262,8 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 - Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
 - A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
-  keep. Its id is random, so only people who have the link find it.
+  keep. Its name is two words that people can remember, so it can be guessed: a client that opens 20 artifact links
+  that do not exist in 10 minutes gets `429` until the 10 minutes end. Keep private things in members artifacts.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The
   machine trusts the workspace's own key, so pairing it with one workspace does not open it to another.
