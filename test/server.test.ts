@@ -184,7 +184,8 @@ test("the LLM provider is shared by everyone", async () => {
 
 test("the web app signs in with Google and keeps cross-site posts out", async () => {
 	expect((await call("/")).headers.get("location")).toBe("/login");
-	const login = await handler(new Request("http://golem.test/login", { method: "POST" }));
+	// Behind a TLS proxy the request arrives at the internal address, with the browser's origin.
+	const login = await handler(new Request("http://127.0.0.1:3000/login", { method: "POST", headers: { origin: "http://golem.test" } }));
 	expect(login.status).toBe(303);
 	const google = new URL(login.headers.get("location")!);
 	expect(google.origin).toBe("https://accounts.google.com");

@@ -259,7 +259,7 @@ function action(
 	handler: (input: AuthedFormInput) => Promise<string>,
 ): Handler {
 	return page(async (input) => {
-		rejectCrossOrigin(input.request);
+		rejectCrossOrigin(input);
 		const fields = await formFields(input.request);
 		try {
 			return redirect(await handler({ ...input, fields }));
@@ -275,7 +275,7 @@ function action(
 /** A form post before sign-in: errors from better-auth go back to `back`. */
 function form(handler: (input: FormInput) => Promise<Response>, back: string): Handler {
 	return async (input) => {
-		rejectCrossOrigin(input.request);
+		rejectCrossOrigin(input);
 		const fields = await formFields(input.request);
 		try {
 			return await handler({ ...input, fields });
@@ -309,10 +309,13 @@ function settingsOf({ params }: { params: RouteInput["params"] }): string {
 	return `/w/${params.workspace}/settings`;
 }
 
-/** Form posts must come from this site: browsers send `Origin` on cross-site posts. */
-function rejectCrossOrigin(request: Request): void {
+/**
+ * Form posts must come from this site: browsers send `Origin` on cross-site posts. Compare with `base_url`, not the
+ * request URL: behind a TLS proxy the request arrives as `http` while the browser sends an `https` origin.
+ */
+function rejectCrossOrigin({ app, request }: RouteInput): void {
 	const origin = request.headers.get("origin");
-	if (origin && origin !== new URL(request.url).origin) throw new HttpError(403, "Cross-site request");
+	if (origin && origin !== new URL(app.config.baseUrl).origin) throw new HttpError(403, "Cross-site request");
 }
 
 async function formFields(request: Request): Promise<Record<string, string | undefined>> {
