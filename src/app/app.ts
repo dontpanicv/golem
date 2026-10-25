@@ -71,7 +71,7 @@ export async function createApp(
 }
 
 export async function closeApp(app: App): Promise<void> {
-  app.indexer.close();
+  await app.indexer.close();
   await app.threads.closeAll();
   app.database.close();
 }

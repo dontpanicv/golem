@@ -45,6 +45,7 @@ export class Indexer {
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private readonly watchers: FSWatcher[] = [];
+  private closed = false;
 
   constructor(
     private readonly dataDirectory: string,
@@ -73,6 +74,9 @@ export class Indexer {
 
   /** Schedules a scan soon, after something changed in the workspace. */
   touch(workspaceId: string): void {
+    if (this.closed) {
+      return;
+    }
     clearTimeout(this.pending.get(workspaceId));
     this.pending.set(
       workspaceId,
@@ -87,6 +91,9 @@ export class Indexer {
 
   /** One scan at a time per workspace; a scan asked for during another waits for it. */
   scan(workspaceId: string): Promise<void> {
+    if (this.closed) {
+      return Promise.resolve();
+    }
     const running = this.scans.get(workspaceId);
     const next = (running ?? Promise.resolve()).then(() =>
       this.scanNow(workspaceId)
@@ -125,7 +132,9 @@ export class Indexer {
     };
   }
 
-  close(): void {
+  /** Stops scanning, waits for the scans that run, then closes the index files. */
+  async close(): Promise<void> {
+    this.closed = true;
     clearInterval(this.timer);
     for (const watcher of this.watchers) {
       watcher.close();
@@ -133,6 +142,7 @@ export class Indexer {
     for (const timeout of this.pending.values()) {
       clearTimeout(timeout);
     }
+    await Promise.all(this.scans.values());
     for (const index of this.indexes.values()) {
       index.close();
     }
