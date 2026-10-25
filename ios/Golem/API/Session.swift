@@ -105,6 +105,13 @@ final class Session {
         return channel
     }
 
+    /// Deletes a channel with its threads and routines; the server keeps them, hidden.
+    func deleteChannel(channelID: String) async throws {
+        guard let workspace else { return }
+        try await api.deleteChannel(workspaceID: workspace.id, channelID: channelID)
+        try await reloadWorkspace()
+    }
+
     func createThread(channelID: String, text: String, files: [URL]) async throws -> ThreadSummary? {
         guard let workspace else { return nil }
         let thread = try await api.createThread(

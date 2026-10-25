@@ -220,9 +220,15 @@ describe("Llm device login", () => {
     });
 
     expect(await llm.logout()).toMatchObject({ connected: false, login: null });
+    // The login stays, encrypted and marked deleted; nothing reads it again.
     expect(
-      db.query("SELECT COUNT(*) AS count FROM provider_credential").get()
-    ).toEqual({ count: 0 });
+      db
+        .query(
+          "SELECT COUNT(*) AS count FROM provider_credential WHERE deleted_at IS NOT NULL"
+        )
+        .get()
+    ).toEqual({ count: 1 });
+    expect((await llm.status()).connected).toBe(false);
   });
 
   test("uses the expiry the provider gives for the device code", async () => {
@@ -348,6 +354,9 @@ describe("SqliteCredentialStore", () => {
     expect(await store.list()).toEqual([
       { providerId: "codex", type: "oauth" },
     ]);
+    // A new login replaces the deleted one.
+    await store.modify("openai", async () => apiKey("sk-2"));
+    expect(await store.read("openai")).toEqual(apiKey("sk-2"));
   });
 
   test("writes to one provider run one at a time, and a failed write does not stop the next", async () => {
@@ -379,7 +388,6 @@ describe("SqliteCredentialStore", () => {
 const hooks = {
   changed: () => undefined,
   recall: async () => ({ results: [] }),
-  routines: () => [],
   read: async () => null,
   picture: async () => null,
   tools: () => [],
@@ -438,7 +446,9 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     addChannel: () => {
       throw new Error("No channels here");
     },
-    deleteChannel: () => undefined,
+    removeChannel: () => {
+      throw new Error("No channels here");
+    },
     setChannelSummary: () => undefined,
     touchThread: () => undefined,
   };

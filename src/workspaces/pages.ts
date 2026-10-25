@@ -3,6 +3,7 @@ import {
   badge,
   button,
   composer,
+  dialog,
   empty,
   pageContent,
   pageSection,
@@ -47,9 +48,10 @@ export function channelPage(context: ShellContext, channel: Channel): string {
   return shell(context, {
     title: `#${channel.name}`,
     header: `<span class="breadcrumb"># </span>${escapeHtml(channel.name)}`,
-    headerActions: `<a class="button ghost icon-only" href="/w/${workspaceId}/c/${channel.id}/details" aria-label="Channel details" data-tooltip="Channel details">${icon("info")}</a>`,
+    headerActions: `<a class="button ghost icon-only" href="/w/${workspaceId}/c/${channel.id}/details" aria-label="Channel details" data-tooltip="Channel details">${icon("info")}</a>${button("Delete channel", { variant: "ghost", icon: "trash", size: "icon", attributes: 'type="button" data-dialog-open="delete-channel"' })}`,
     main: `<div class="transcript">${threads}</div>
-			${composer(`Start a thread in #${channel.name}`, { post: `/w/${workspaceId}/c/${channel.id}/threads` })}`,
+			${composer(`Start a thread in #${channel.name}`, { post: `/w/${workspaceId}/c/${channel.id}/threads` })}
+			${dialog("delete-channel", { title: `Delete #${channel.name}?`, action: `/w/${workspaceId}/c/${channel.id}/delete`, submit: "Delete channel", body: "<p>Its threads and routines go with it.</p>" })}`,
   });
 }
 

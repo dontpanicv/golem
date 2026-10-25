@@ -86,7 +86,7 @@ export class Integrations {
     this.workspaces.requireMember(workspaceId, user);
     const credentials = this.database
       .query(
-        "SELECT c.id, c.integration, c.label, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE c.workspace_id = ? ORDER BY c.created_at"
+        "SELECT c.id, c.integration, c.label, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE c.workspace_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at"
       )
       .all(workspaceId) as (CredentialSummary & { integration: string })[];
     return this.catalog.map(({ id, name, secretLabel }) => ({
@@ -136,9 +136,12 @@ export class Integrations {
     credentialId: string
   ): void {
     this.workspaces.requireMember(workspaceId, user);
+    // Nothing is removed: the credential stays encrypted, and no tool reads it again.
     const { changes } = this.database
-      .query("DELETE FROM credential WHERE id = ? AND workspace_id = ?")
-      .run(credentialId, workspaceId);
+      .query(
+        "UPDATE credential SET deleted_at = ? WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL"
+      )
+      .run(Date.now(), credentialId, workspaceId);
     if (changes === 0) {
       throw notFound();
     }
@@ -165,7 +168,7 @@ export class Integrations {
   private secret(workspaceId: string, connector: Connector): string {
     const row = this.database
       .query(
-        "SELECT secret FROM credential WHERE workspace_id = ? AND integration = ? ORDER BY created_at DESC LIMIT 1"
+        "SELECT secret FROM credential WHERE workspace_id = ? AND integration = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
       )
       .get(workspaceId, connector.id) as { secret: Uint8Array } | null;
     if (!row) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, rename, stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
@@ -111,10 +111,6 @@ export interface ThreadHooks {
     query: string,
     limit: number
   ) => Promise<{ readonly results: readonly RecallResult[] }>;
-  /** The routines of a workspace; a channel with routines cannot be deleted. */
-  readonly routines: (
-    workspaceId: string
-  ) => readonly { readonly channelId: string; readonly name: string }[];
   /** Tools of the modules after threads, such as routines, for the agents of a workspace. */
   readonly tools: (workspaceId: string) => readonly ToolRegistration[];
   /** The text of a document or PDF for read_file; `null` for a kind of file without text. */
@@ -137,7 +133,7 @@ export type ThreadRegistry = Pick<
   Workspaces,
   | "addChannel"
   | "channelsIn"
-  | "deleteChannel"
+  | "removeChannel"
   | "orchestratorOf"
   | "registerThread"
   | "requireMember"
@@ -364,7 +360,11 @@ export class Threads {
     fileId: string
   ): Promise<ThreadFile[]> {
     const thread = this.registry.thread(threadId, user);
-    await rm((await this.file(thread, fileId)).path);
+    const { path } = await this.file(thread, fileId);
+    // Nothing is removed: the file moves next to `files/`, where no listing or search looks.
+    const deleted = join(dirname(dirname(path)), "deleted");
+    await mkdir(deleted, { recursive: true });
+    await rename(path, join(deleted, basename(path)));
     this.hooks.changed(thread.workspaceId);
     return this.files(thread);
   }
@@ -843,7 +843,7 @@ export class Threads {
     return defineTool({
       name: "delete_channel",
       description:
-        "Delete an empty channel of this workspace: one without threads or routines. Delete only when the family asks for it.",
+        "Delete a channel of this workspace, with its threads and routines. Delete only when the family asks for it.",
       parameters: Type.Object({
         channel: Type.String({ description: "The channel name" }),
       }),
@@ -857,17 +857,8 @@ export class Threads {
             `There is no channel #${name}. list_channels shows the channels.`
           );
         }
-        // A routine would go with its channel.
-        const routines = this.hooks
-          .routines(workspaceId)
-          .filter((routine) => routine.channelId === channel.id);
-        if (routines.length > 0) {
-          throw new Error(
-            `#${name} has the routines ${routines.map((routine) => routine.name).join(", ")}. Delete them first.`
-          );
-        }
         try {
-          this.registry.deleteChannel(workspaceId, channel.id);
+          this.registry.removeChannel(workspaceId, channel.id);
         } catch (error) {
           throw new Error(`#${name} stays: ${(error as Error).message}.`, {
             cause: error,

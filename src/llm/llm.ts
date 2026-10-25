@@ -266,7 +266,9 @@ export class SqliteCredentialStore implements CredentialStore {
 
   async read(providerId: string): Promise<Credential | undefined> {
     const row = this.database
-      .query("SELECT secret FROM provider_credential WHERE provider_id = ?")
+      .query(
+        "SELECT secret FROM provider_credential WHERE provider_id = ? AND deleted_at IS NULL"
+      )
       .get(providerId) as { secret: Uint8Array } | null;
     return row
       ? (JSON.parse(this.secrets.decrypt(row.secret)) as Credential)
@@ -275,7 +277,9 @@ export class SqliteCredentialStore implements CredentialStore {
 
   async list(): Promise<readonly CredentialInfo[]> {
     const rows = this.database
-      .query("SELECT provider_id, secret FROM provider_credential")
+      .query(
+        "SELECT provider_id, secret FROM provider_credential WHERE deleted_at IS NULL"
+      )
       .all() as {
       provider_id: string;
       secret: Uint8Array;
@@ -298,7 +302,7 @@ export class SqliteCredentialStore implements CredentialStore {
       }
       this.database
         .query(
-          "INSERT INTO provider_credential (provider_id, secret, updated_at) VALUES (?, ?, ?) ON CONFLICT (provider_id) DO UPDATE SET secret = excluded.secret, updated_at = excluded.updated_at"
+          "INSERT INTO provider_credential (provider_id, secret, updated_at) VALUES (?, ?, ?) ON CONFLICT (provider_id) DO UPDATE SET secret = excluded.secret, updated_at = excluded.updated_at, deleted_at = NULL"
         )
         .run(
           providerId,
@@ -311,9 +315,12 @@ export class SqliteCredentialStore implements CredentialStore {
 
   delete(providerId: string): Promise<void> {
     return this.serialize(providerId, async () => {
+      // Nothing is removed: the login stays encrypted until the next login replaces it, and nothing reads it.
       this.database
-        .query("DELETE FROM provider_credential WHERE provider_id = ?")
-        .run(providerId);
+        .query(
+          "UPDATE provider_credential SET deleted_at = ? WHERE provider_id = ?"
+        )
+        .run(Date.now(), providerId);
     });
   }
 

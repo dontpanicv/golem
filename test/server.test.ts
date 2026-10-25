@@ -188,6 +188,14 @@ test("credentials belong to the workspace, and secrets never leave the server", 
       })
     ).status
   ).toBe(404);
+  // The credential stays encrypted, marked deleted, and no tool reads it.
+  expect(
+    golem.app.database
+      .query(
+        "SELECT deleted_at IS NOT NULL AS deleted FROM credential WHERE id = ?"
+      )
+      .get(credential.id)
+  ).toEqual({ deleted: 1 });
 });
 
 test("the LLM provider is shared by everyone", async () => {

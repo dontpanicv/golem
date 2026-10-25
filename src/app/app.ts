@@ -88,7 +88,6 @@ export async function createApp(
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),
       changed: (workspaceId) => indexer.touch(workspaceId),
-      routines: (workspaceId) => routines.inWorkspace(workspaceId),
       tools: (workspaceId) => routines.tools(workspaceId),
       read: readText,
       picture: jpeg,

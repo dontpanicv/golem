@@ -148,6 +148,21 @@ const migrations = [
   // which channel lists leave it out of.
   `ALTER TABLE thread ADD COLUMN orchestrator INTEGER NOT NULL DEFAULT 0;
 	CREATE UNIQUE INDEX thread_orchestrator ON thread (workspace_id) WHERE orchestrator = 1;`,
+  // Deletes are soft: a deleted row keeps everything and gets `deleted_at`, and reads leave it out.
+  // workspaces: a deleted channel hides its threads; its name gets `~<id>`, so a new channel can take the name.
+  "ALTER TABLE channel ADD COLUMN deleted_at INTEGER;",
+  // artifacts: deleted artifacts, records, and visitors.
+  `ALTER TABLE artifact ADD COLUMN deleted_at INTEGER;
+	ALTER TABLE artifact_record ADD COLUMN deleted_at INTEGER;
+	ALTER TABLE artifact_visitor ADD COLUMN deleted_at INTEGER;`,
+  // routines: deleted routines, which never run again.
+  "ALTER TABLE routine ADD COLUMN deleted_at INTEGER;",
+  // hands: removed machines; their name and certificate get `~<id>`, so the machine can pair again.
+  "ALTER TABLE machine ADD COLUMN deleted_at INTEGER;",
+  // integrations: deleted credentials, which no tool uses again.
+  "ALTER TABLE credential ADD COLUMN deleted_at INTEGER;",
+  // llm: the login of a provider after a logout, which nothing reads again.
+  "ALTER TABLE provider_credential ADD COLUMN deleted_at INTEGER;",
 ];
 
 export function openDatabase(path: string): Database {

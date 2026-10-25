@@ -40,6 +40,10 @@ final class APIClient {
         try await post("/api/v1/workspaces/\(workspaceID)/channels", ["name": name])
     }
 
+    func deleteChannel(workspaceID: String, channelID: String) async throws {
+        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/channels/\(channelID)")
+    }
+
     func createThread(
         workspaceID: String, channelID: String, text: String, files: [URL]
     ) async throws -> ThreadSummary {

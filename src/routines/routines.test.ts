@@ -172,6 +172,18 @@ test("a script that finds nothing ends the run quietly, without the agent or a t
     routine.nextRunAt!
   );
   routines.delete(routine.id, alice);
+  // A deleted routine stays, hidden, and never runs again.
+  expect(() => routines.get(routine.id, alice)).toThrow("Not found");
+  expect(
+    routines.inWorkspace(workspaceId).some(({ id }) => id === routine.id)
+  ).toBe(false);
+  expect(
+    golem.app.database
+      .query(
+        "SELECT deleted_at IS NOT NULL AS deleted FROM routine WHERE id = ?"
+      )
+      .get(routine.id)
+  ).toEqual({ deleted: 1 });
 });
 
 test("the agent judges what the script found: quiet answers stay out of the thread", async () => {

@@ -127,6 +127,8 @@ type Llm = {
 
 Workspace paths answer `404` to users who are not members of the workspace.
 
+Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, tool, or search shows it again.
+
 ### Workspaces (`src/workspaces/`)
 
 | Request | Body | Response |
@@ -135,6 +137,7 @@ Workspace paths answer `404` to users who are not members of the workspace.
 | `POST /api/v1/workspaces` | `{ name }` | `Workspace`; the creator becomes owner, and the workspace gets a `general` channel |
 | `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }` |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
+| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, their artifacts, and its routines go with it, and the orchestrator moves to the next channel; `409` for the last channel |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
 | `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once |
 
@@ -172,7 +175,7 @@ the message steers a run at work instead of waiting for it to end.
 | `GET /api/v1/threads/:threadId/artifacts` | | `{ artifacts: Artifact[] }`, newest first |
 | `GET /api/v1/artifacts/:artifactId` | | `{ artifact: Artifact, records: ArtifactRecord[], content: string }` |
 | `PUT /api/v1/artifacts/:artifactId` | `{ visibility }` | `Artifact` |
-| `DELETE /api/v1/artifacts/:artifactId` | | `204`; its data goes too |
+| `DELETE /api/v1/artifacts/:artifactId` | | `204`; its data goes with it |
 | `POST /api/v1/artifacts/:artifactId/rpc` | `{ op, args }` | `{ result }`: a call of the artifact's `golem` runtime, as the signed-in user |
 | `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes |
 | `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |

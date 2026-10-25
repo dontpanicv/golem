@@ -131,10 +131,10 @@ export class Routines {
   tick(now = Date.now()): Promise<RoutineRun>[] {
     const due = this.database
       .query(
-        `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE enabled = 1 AND next_run_at <= ?`
+        `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE enabled = 1 AND next_run_at <= ? AND deleted_at IS NULL`
       )
       .all(now) as RoutineRow[];
-    return due
+    return this.live(due)
       .filter((routine) => !this.running.has(routine.id))
       .map((routine) => this.run(routine, now));
   }
@@ -155,12 +155,12 @@ export class Routines {
     }
     const rows = this.database
       .query(
-        `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE channel_id = ? ORDER BY created_at`
+        `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE channel_id = ? AND deleted_at IS NULL ORDER BY created_at`
       )
       .all(channelId) as RoutineRow[];
     const runs = this.database
       .query(
-        `SELECT ${RUN_COLUMNS} FROM routine_run r JOIN routine t ON t.id = r.routine_id WHERE t.channel_id = ? ORDER BY r.started_at DESC LIMIT ${RECENT_RUNS}`
+        `SELECT ${RUN_COLUMNS} FROM routine_run r JOIN routine t ON t.id = r.routine_id WHERE t.channel_id = ? AND t.deleted_at IS NULL ORDER BY r.started_at DESC LIMIT ${RECENT_RUNS}`
       )
       .all(channelId) as RoutineRun[];
     return { routines: rows.map((row) => this.routineOf(row)), runs };
@@ -180,8 +180,7 @@ export class Routines {
   }
 
   delete(routineId: string, user: User): void {
-    const row = this.rowFor(routineId, user);
-    this.database.query("DELETE FROM routine WHERE id = ?").run(row.id);
+    this.softDelete(this.rowFor(routineId, user).id);
   }
 
   /** Runs a routine now, in the background; its run shows on the channel's details page. */
@@ -200,10 +199,12 @@ export class Routines {
     return (
       this.database
         .query(
-          `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE workspace_id = ? ORDER BY created_at`
+          `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY created_at`
         )
         .all(workspaceId) as RoutineRow[]
-    ).map((row) => this.routineOf(row));
+    )
+      .filter((row) => this.live([row]).length > 0)
+      .map((row) => this.routineOf(row));
   }
 
   /** Adds a routine to a channel for an agent of the workspace. Creating it again with the same id changes nothing. */
@@ -267,7 +268,7 @@ export class Routines {
   /** Deletes a routine for an agent of the workspace; its thread stays. */
   remove(workspaceId: string, routineId: string): Routine {
     const routine = this.routineIn(workspaceId, routineId);
-    this.database.query("DELETE FROM routine WHERE id = ?").run(routineId);
+    this.softDelete(routineId);
     return routine;
   }
 
@@ -530,12 +531,38 @@ export class Routines {
     return this.routineOf(this.row(workspaceId, routineId));
   }
 
+  /** Nothing is removed: a deleted routine stays, hidden, and never runs again. */
+  private softDelete(routineId: string): void {
+    this.database
+      .query("UPDATE routine SET deleted_at = ? WHERE id = ?")
+      .run(Date.now(), routineId);
+  }
+
+  /** The routines among `rows` whose channel is not deleted; a deleted channel's routines rest with it. */
+  private live(rows: RoutineRow[]): RoutineRow[] {
+    const channels = new Map<string, Set<string>>();
+    return rows.filter((row) => {
+      let ids = channels.get(row.workspaceId);
+      if (!ids) {
+        ids = new Set(
+          this.workspaces
+            .channelsIn(row.workspaceId)
+            .map((channel) => channel.id)
+        );
+        channels.set(row.workspaceId, ids);
+      }
+      return ids.has(row.channelId);
+    });
+  }
+
   private row(workspaceId: string, routineId: string): RoutineRow {
-    const row = this.database
-      .query(
-        `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE id = ? AND workspace_id = ?`
-      )
-      .get(routineId, workspaceId) as RoutineRow | null;
+    const [row] = this.live(
+      this.database
+        .query(
+          `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+        )
+        .all(routineId, workspaceId) as RoutineRow[]
+    );
     if (!row) {
       throw new Error(
         `There is no routine ${routineId}. list_routines shows the routines.`
@@ -545,9 +572,13 @@ export class Routines {
   }
 
   private rowFor(routineId: string, user: User): RoutineRow {
-    const row = this.database
-      .query(`SELECT ${ROUTINE_COLUMNS} FROM routine WHERE id = ?`)
-      .get(routineId) as RoutineRow | null;
+    const [row] = this.live(
+      this.database
+        .query(
+          `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE id = ? AND deleted_at IS NULL`
+        )
+        .all(routineId) as RoutineRow[]
+    );
     if (!row) {
       throw notFound();
     }

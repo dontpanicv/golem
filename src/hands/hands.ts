@@ -40,6 +40,12 @@ export interface HandsOptions {
   readonly serverPin?: (baseUrl: string) => Promise<string>;
 }
 
+/**
+ * Removes machines without removing anything: a removed machine stays, hidden, and its name and certificate get
+ * `~<id>`, which no name or SHA-256 has, so the machine can pair again and another machine can take the name.
+ */
+const RETIRE =
+  "UPDATE machine SET deleted_at = ?, name = name || '~' || id, cert_sha256 = cert_sha256 || '~' || id";
 /** The install script template, in the hands source that Golem builds (`hands/`). */
 const INSTALL_SCRIPT = join(
   import.meta.dir,
@@ -114,7 +120,7 @@ export class Hands {
   machinesIn(workspaceId: string): Machine[] {
     const rows = this.database
       .query(
-        "SELECT id, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt FROM machine WHERE workspace_id = ? ORDER BY name"
+        "SELECT id, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt FROM machine WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name"
       )
       .all(workspaceId) as (Omit<Machine, "addresses"> & {
       addresses: string;
@@ -164,8 +170,10 @@ export class Hands {
   removeMachine(workspaceId: string, user: User, machineId: string): void {
     this.workspaces.requireMember(workspaceId, user);
     const { changes } = this.database
-      .query("DELETE FROM machine WHERE id = ? AND workspace_id = ?")
-      .run(machineId, workspaceId);
+      .query(
+        `${RETIRE} WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+      )
+      .run(Date.now(), machineId, workspaceId);
     if (changes === 0) {
       throw notFound();
     }
@@ -209,8 +217,10 @@ export class Hands {
     this.database.transaction(() => {
       // The same machine paired again replaces itself.
       this.database
-        .query("DELETE FROM machine WHERE workspace_id = ? AND cert_sha256 = ?")
-        .run(pairing.workspaceId, machine.certSha256);
+        .query(
+          `${RETIRE} WHERE workspace_id = ? AND cert_sha256 = ? AND deleted_at IS NULL`
+        )
+        .run(Date.now(), pairing.workspaceId, machine.certSha256);
       this.database
         .query(
           "INSERT INTO machine (id, workspace_id, name, hostname, addresses, port, cert_sha256, os, arch, version, paired_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"

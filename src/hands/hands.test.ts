@@ -140,6 +140,20 @@ describe("pairing", () => {
 
     hands.removeMachine(family, alice, machines[1]!.id);
     expect(hands.machines(family, alice)).toHaveLength(1);
+    // The removed machine stays, hidden; it pairs again under its name.
+    expect(
+      golem.app.database
+        .query(
+          "SELECT name, deleted_at IS NOT NULL AS deleted FROM machine WHERE id = ?"
+        )
+        .get(machines[1]!.id)
+    ).toEqual({ name: `mac-mini-2~${machines[1]!.id}`, deleted: 1 });
+    code = codeOf((await hands.startPairing(family, alice)).command);
+    hands.pair(code, pairingRequest({ certSha256: "b".repeat(64) }));
+    expect(
+      hands.machines(family, alice).map((machine) => machine.name)
+    ).toEqual(["mac-mini", "mac-mini-2"]);
+    hands.removeMachine(family, alice, hands.machines(family, alice)[1]!.id);
     expect(() => hands.removeMachine(work, alice, machines[0]!.id)).toThrow(
       "Not found"
     );

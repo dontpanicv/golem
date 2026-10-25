@@ -67,6 +67,8 @@ addresses, or code and data from employers or clients.
 - Order functions top-down by call hierarchy, with entry points before their helpers.
 - Use JSDoc for exported user-facing code examples.
 - Every backend HTTP route declares `auth: 'required' | 'optional' | 'none'`.
+- Deletes are soft; nothing is ever removed. Set `deleted_at` and leave such rows out of every read; move a deleted
+  file aside. A unique name gets `~<id>` when deleted, so the name is free again. `docs/data.md` has the rules.
 
 ## Verification
 

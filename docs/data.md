@@ -23,8 +23,9 @@ data/
 │       │                            in pairs into a tree of summaries.
 │       ├── threads/
 │       │   └── <thread-id>/
-│       │       └── files/           Attachments and artifacts of this thread.
-│       │           └── <uuidv7>-<name>.<ext>
+│       │       ├── files/           Attachments and artifacts of this thread.
+│       │       │   └── <uuidv7>-<name>.<ext>
+│       │       └── deleted/         Files deleted from the thread, kept as they were.
 │       ├── notes/                   Knowledge as markdown with YAML frontmatter; an Obsidian vault.
 │       ├── files/                   Documents people upload to the workspace.
 │       ├── raw/                     Captures from integrations, exactly as received, never edited.
@@ -40,6 +41,10 @@ data/
 
 ## Rules
 
+- **Nothing is ever removed.** A delete marks the row with `deleted_at`, and reads leave it out; a deleted thread file
+  moves to `threads/<id>/deleted/`. A deleted channel hides its threads, their artifacts, and its routines. Deleted
+  channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
+  Artifact records that were deleted still count toward the artifact's limits.
 - **Workspaces are separate on disk.** Every byte of a workspace is under `data/workspaces/<workspace-id>/`:
   its threads, files, notes, captures, tables, and its own search index. Deleting a workspace is deleting its
   folder plus its rows in `golem.sqlite`. Nothing reads one workspace's folder on behalf of another.

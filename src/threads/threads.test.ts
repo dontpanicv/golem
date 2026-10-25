@@ -314,6 +314,14 @@ test("files attach to a new thread, a message, and the thread; the agent reads t
     )
   ).toEqual(["shopping.txt", "beach.png"]);
   expect((await golem.call(pagePath, { token })).status).toBe(404);
+  // The file moved next to `files/`, where no listing or search looks.
+  expect(
+    await Array.fromAsync(
+      new Bun.Glob(`${files[1]!.id}-*`).scan(
+        `${golem.app.config.dataDirectory}/workspaces/${thread.workspaceId}/threads/${id}/deleted`
+      )
+    )
+  ).toHaveLength(1);
 });
 
 test("a composer with no file chosen starts a thread and sends a message", async () => {
@@ -477,7 +485,7 @@ test("the orchestrator compacts into a view of its memory, and its agent zooms i
   );
 });
 
-test("an agent creates, searches, and deletes channels, and keeps a channel that has threads or routines", async () => {
+test("an agent creates, searches, and deletes channels, and a deleted channel keeps everything, hidden", async () => {
   const home = await golem.app.workspaces.create(alice, "Channels");
   const [general] = golem.app.workspaces.channels(home.id, alice);
   const asked = await golem.app.threads.create(
@@ -486,11 +494,15 @@ test("an agent creates, searches, and deletes channels, and keeps a channel that
     general!.id,
     "Hello"
   );
-  await until(
-    () =>
-      golem.app.threads.messages(golem.app.workspaces.thread(asked.id, alice)),
-    (state) => !state.running && state.messages.length === 2
-  );
+  const answered = (threadId: string) =>
+    until(
+      () =>
+        golem.app.threads.messages(
+          golem.app.workspaces.thread(threadId, alice)
+        ),
+      (state) => !state.running && state.messages.length === 2
+    );
+  await answered(asked.id);
   const ask = async (text: string) => {
     const before = toolResults.length;
     await golem.app.threads.send(asked.id, alice, text);
@@ -510,7 +522,6 @@ test("an agent creates, searches, and deletes channels, and keeps a channel that
     .channels(home.id, alice)
     .find((channel) => channel.name === "trips")!;
   expect(trips.summary).toBe("Family trips and holidays");
-
   expect(await ask("Search channels summer holidays")).toBe(
     "#trips: Family trips and holidays"
   );
@@ -520,9 +531,14 @@ test("an agent creates, searches, and deletes channels, and keeps a channel that
   expect(await ask("Create channel trips: Again")).toContain(
     "#trips already exists"
   );
-  expect(await ask("Delete channel general")).toContain(
-    "#general stays: The channel has 1 thread; only an empty channel can be deleted."
+
+  const packing = await golem.app.threads.create(
+    home.id,
+    alice,
+    trips.id,
+    "Pack the tent"
   );
+  await answered(packing.id);
   golem.app.routines.create(home.id, trips.id, {
     id: crypto.randomUUID(),
     name: "Flight prices",
@@ -530,16 +546,72 @@ test("an agent creates, searches, and deletes channels, and keeps a channel that
     instructions: "Check the flight prices",
     createdBy: "golem",
   });
-  expect(await ask("Delete channel trips")).toContain(
-    "#trips has the routines Flight prices. Delete them first."
-  );
-  const [routine] = golem.app.routines.inWorkspace(home.id);
-  golem.app.routines.remove(home.id, routine!.id);
   expect(await ask("Delete channel #trips")).toBe("Deleted #trips.");
   expect(
     golem.app.workspaces.channels(home.id, alice).map((channel) => channel.name)
   ).toEqual(["general"]);
+  // The channel, its thread, and its routine are hidden, and the routine does not run.
+  expect(() => golem.app.workspaces.thread(packing.id, alice)).toThrow(
+    "Not found"
+  );
+  expect(
+    golem.app.workspaces.threadsIn(home.id).map((thread) => thread.id)
+  ).toEqual([asked.id]);
+  expect(golem.app.routines.inWorkspace(home.id)).toEqual([]);
+  expect(golem.app.routines.tick(Date.now() + 3 * 86_400_000)).toEqual([]);
+  // Nothing is removed.
+  expect(
+    golem.app.database
+      .query(
+        "SELECT name, deleted_at IS NOT NULL AS deleted FROM channel WHERE id = ?"
+      )
+      .get(trips.id)
+  ).toEqual({ name: `trips~${trips.id}`, deleted: 1 });
+  expect(
+    golem.app.database
+      .query("SELECT count(*) AS count FROM thread WHERE id = ?")
+      .get(packing.id)
+  ).toEqual({ count: 1 });
+  expect(
+    golem.app.database
+      .query("SELECT count(*) AS count FROM routine WHERE channel_id = ?")
+      .get(trips.id)
+  ).toEqual({ count: 1 });
+
+  expect(await ask("Create channel trips: New trips")).toBe("Created #trips.");
+  expect(await ask("Delete channel trips")).toBe("Deleted #trips.");
+  expect(await ask("Delete channel general")).toContain(
+    "#general stays: A workspace keeps one channel at least."
+  );
   expect(await ask("Delete channel trips")).toContain(
     "There is no channel #trips. list_channels shows the channels."
   );
+});
+
+test("people delete a channel; the orchestrator moves to the next channel", async () => {
+  const family = await golem.app.workspaces.create(alice, "Moving");
+  const [general] = golem.app.workspaces.channels(family.id, alice);
+  const food = golem.app.workspaces.createChannel(family.id, alice, "food");
+  const orchestrator = await golem.app.threads.orchestrator(family.id, alice);
+  expect(orchestrator.channelId).toBe(general!.id);
+
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const outsider = await golem.signIn("Bob", "bob@example.com");
+  const path = (channelId: string) =>
+    `/api/v1/workspaces/${family.id}/channels/${channelId}`;
+  expect(
+    (await golem.call(path(general!.id), { method: "DELETE", token: outsider }))
+      .status
+  ).toBe(404);
+  expect(
+    (await golem.call(path(general!.id), { method: "DELETE", token })).status
+  ).toBe(204);
+  const moved = golem.app.workspaces.orchestratorOf(family.id)!;
+  expect(moved.channelId).toBe(food.id);
+  expect(golem.app.workspaces.thread(moved.id, alice).id).toBe(orchestrator.id);
+  const last = await golem.call(path(food.id), { method: "DELETE", token });
+  expect(last.status).toBe(409);
+  expect(await last.json()).toEqual({
+    error: "A workspace keeps one channel at least",
+  });
 });

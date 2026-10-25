@@ -79,6 +79,25 @@ export const workspaceWebRoutes: readonly Route[] = [
   ],
   [
     "POST",
+    "/w/:workspace/c/:channel/delete",
+    action(
+      ({ params }) => `/w/${params.workspace}/c/${params.channel}`,
+      async ({ app, user, params }) => {
+        const deleted = app.workspaces.deleteChannel(
+          params.workspace!,
+          user,
+          params.channel!
+        );
+        const [first] = app.workspaces.channels(params.workspace!, user);
+        return withNotice(
+          `/w/${params.workspace}/c/${first!.id}`,
+          `Deleted #${deleted.name}`
+        );
+      }
+    ),
+  ],
+  [
+    "POST",
     "/w/:workspace/members",
     action(settingsOf, async ({ app, user, params, fields }) => {
       const member = await app.workspaces.addMember(

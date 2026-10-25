@@ -152,6 +152,24 @@ describe("the web app", () => {
     );
   });
 
+  test("a channel is deleted from its page, and its name is free again", async () => {
+    const junk = location(
+      await alice.post(`/w/${workspaceId}/channels`, { name: "Junk" })
+    )!;
+    const page = await (await alice.get(junk)).text();
+    expect(page).toContain(`action="${junk}/delete"`);
+    expect(page).toContain("Delete #junk?");
+
+    const deleted = await alice.post(`${junk}/delete`);
+    expect(location(deleted)).toBe(
+      `/w/${workspaceId}/c/${generalId}?notice=${encodeURIComponent("Deleted #junk")}`
+    );
+    expect((await alice.get(junk)).status).toBe(404);
+    expect(
+      location(await alice.post(`/w/${workspaceId}/channels`, { name: "junk" }))
+    ).not.toBe(junk);
+  });
+
   test("a thread starts from the channel composer and its transcript streams over Datastar", async () => {
     const blank = await alice.post(`/w/${workspaceId}/c/${generalId}/threads`);
     expect(location(blank)).toBe(

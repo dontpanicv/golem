@@ -269,6 +269,21 @@ test("a members artifact is only for members, and people delete its records, its
   expect(onlyArtifact().visitors).toBe(0);
   artifacts.delete(id, alice);
   expect(artifacts.inThread(thread.id, alice)).toEqual([]);
+  expect(() => artifacts.open(id, { user: alice })).toThrow("Not found");
+  // Nothing is removed: the artifact, its records, and its visitors stay, marked deleted.
+  const kept = (table: string, column: string) =>
+    golem.app.database
+      .query(
+        `SELECT count(*) AS count, count(deleted_at) AS deleted FROM ${table} WHERE ${column} = ?`
+      )
+      .get(id) as { count: number; deleted: number };
+  expect(kept("artifact", "id")).toEqual({ count: 1, deleted: 1 });
+  const records = kept("artifact_record", "artifact_id");
+  expect(records.count).toBeGreaterThan(0);
+  expect(records.deleted).toBe(records.count);
+  const visitors = kept("artifact_visitor", "artifact_id");
+  expect(visitors.count).toBeGreaterThan(0);
+  expect(visitors.deleted).toBe(visitors.count);
   // The name stays taken, so that an old link never opens a new artifact.
   expect(
     golem.app.database

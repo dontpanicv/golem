@@ -9,6 +9,7 @@ struct ChannelView: View {
     @State private var files: [URL] = []
     @State private var sending = false
     @State private var showSettled = false
+    @State private var confirmDelete = false
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
     private var activeThreads: [ThreadSummary] { channel?.threads.filter { $0.settledAt == nil } ?? [] }
@@ -50,6 +51,15 @@ struct ChannelView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button("Channel details", systemImage: "info.circle") { open(.channelDetails(channelID)) }
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Delete channel", systemImage: "trash") { confirmDelete = true }
+            }
+        }
+        .sheet(isPresented: $confirmDelete) {
+            DeleteChannelDialog(name: channel?.name ?? "") {
+                try await session.deleteChannel(channelID: channelID)
+                if let orchestrator = session.orchestrator { open(.thread(orchestrator.id)) }
+            }
         }
         .task { await session.run { try await session.reloadWorkspace() } }
     }
@@ -88,6 +98,37 @@ struct ChannelView: View {
                 }
             }
             sending = false
+        }
+    }
+}
+
+/// Asks before a channel goes with its threads and routines. It stays open when deleting fails.
+private struct DeleteChannelDialog: View {
+    let name: String
+    let delete: () async throws -> Void
+    @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var busy = false
+
+    var body: some View {
+        Dialog(title: "Delete #\(name)?") {
+            Text("Its threads and routines go with it.")
+                .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.regular))
+                .foregroundStyle(Tokens.Colors.textSecondary)
+        } actions: {
+            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
+            Button("Delete channel") {
+                busy = true
+                Task {
+                    await session.run {
+                        try await delete()
+                        dismiss()
+                    }
+                    busy = false
+                }
+            }
+            .buttonStyle(.golem(.danger, .large))
+            .disabled(busy)
         }
     }
 }

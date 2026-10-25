@@ -102,7 +102,7 @@ export class Workspaces {
   channelsIn(workspaceId: string): Channel[] {
     const channels = this.database
       .query(
-        "SELECT id, name, summary FROM channel WHERE workspace_id = ? ORDER BY created_at"
+        "SELECT id, name, summary FROM channel WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid"
       )
       .all(workspaceId) as Omit<Channel, "threads">[];
     const threads = this.database
@@ -151,23 +151,40 @@ export class Workspaces {
     return channel;
   }
 
+  /** Deletes a channel of the person's workspace; see `removeChannel`. */
+  deleteChannel(workspaceId: string, user: User, channelId: string): Channel {
+    this.requireMember(workspaceId, user);
+    return this.removeChannel(workspaceId, channelId);
+  }
+
   /**
-   * Deletes a channel of the workspace, for an agent that acts for it. A channel with threads stays, settled ones
-   * and the orchestrator too, because deleting it would delete them.
+   * Deletes a channel of the workspace, for an agent that acts for it. Nothing is removed: the channel and its threads
+   * stay in the database, hidden. Its name gets `~<id>`, which no channel name has, so a new channel can take the
+   * name. The orchestrator moves to the first other channel, so a workspace keeps one channel at least.
    */
-  deleteChannel(workspaceId: string, channelId: string): void {
-    const threads = this.database
-      .query("SELECT count(*) AS count FROM thread WHERE channel_id = ?")
-      .get(channelId) as { count: number };
-    if (threads.count > 0) {
-      throw new HttpError(
-        409,
-        `The channel has ${threads.count} ${threads.count === 1 ? "thread" : "threads"}; only an empty channel can be deleted`
-      );
+  removeChannel(workspaceId: string, channelId: string): Channel {
+    const channels = this.channelsIn(workspaceId);
+    const channel = channels.find((candidate) => candidate.id === channelId);
+    if (!channel) {
+      throw notFound();
     }
-    this.database
-      .query("DELETE FROM channel WHERE id = ? AND workspace_id = ?")
-      .run(channelId, workspaceId);
+    const next = channels.find((candidate) => candidate.id !== channelId);
+    if (!next) {
+      throw new HttpError(409, "A workspace keeps one channel at least");
+    }
+    this.database.transaction(() => {
+      this.database
+        .query(
+          "UPDATE thread SET channel_id = ? WHERE channel_id = ? AND orchestrator = 1"
+        )
+        .run(next.id, channelId);
+      this.database
+        .query(
+          "UPDATE channel SET deleted_at = ?, name = name || '~' || id WHERE id = ?"
+        )
+        .run(Date.now(), channelId);
+    })();
+    return channel;
   }
 
   /** Replaces the summary of a channel, for an agent that acts for the workspace. */
@@ -177,7 +194,9 @@ export class Workspaces {
     summary: string
   ): void {
     this.database
-      .query("UPDATE channel SET summary = ? WHERE id = ? AND workspace_id = ?")
+      .query(
+        "UPDATE channel SET summary = ? WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL"
+      )
       .run(summary.trim() || null, channelId, workspaceId);
   }
 
@@ -199,7 +218,9 @@ export class Workspaces {
   ): ThreadSummary {
     const { channelId, conversationId, title } = thread;
     const channel = this.database
-      .query("SELECT 1 FROM channel WHERE id = ? AND workspace_id = ?")
+      .query(
+        "SELECT 1 FROM channel WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL"
+      )
       .get(channelId, workspaceId);
     if (!channel) {
       throw notFound();
@@ -227,7 +248,7 @@ export class Workspaces {
   thread(threadId: string, user: User): ThreadSummary & ThreadRef {
     const thread = this.database
       .query(
-        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id WHERE t.id = ? AND m.userId = ?"
+        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.id = ? AND m.userId = ?"
       )
       .get(threadId, user.id) as (ThreadSummary & ThreadRef) | null;
     if (!thread) {
@@ -236,11 +257,11 @@ export class Workspaces {
     return thread;
   }
 
-  /** The threads of a workspace, for background work such as indexing that acts for no person. */
+  /** The threads of a workspace, but those of deleted channels, for background work that acts for no person. */
   threadsIn(workspaceId: string): (ThreadSummary & ThreadRef)[] {
     return this.database
       .query(
-        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt FROM thread WHERE workspace_id = ?"
+        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ?"
       )
       .all(workspaceId) as (ThreadSummary & ThreadRef)[];
   }

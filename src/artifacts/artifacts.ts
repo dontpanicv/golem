@@ -124,7 +124,7 @@ interface ArtifactRow {
 }
 
 const ARTIFACT_COLUMNS =
-  "id, workspace_id AS workspaceId, thread_id AS threadId, title, visibility, created_at AS createdAt, updated_at AS updatedAt, (SELECT count(*) FROM artifact_visitor v WHERE v.artifact_id = artifact.id) AS visitors";
+  "id, workspace_id AS workspaceId, thread_id AS threadId, title, visibility, created_at AS createdAt, updated_at AS updatedAt, (SELECT count(*) FROM artifact_visitor v WHERE v.artifact_id = artifact.id AND v.deleted_at IS NULL) AS visitors";
 
 /**
  * The artifacts of every thread, and the runtime their pages call. A visitor writes only their own records; members
@@ -205,13 +205,16 @@ export class Artifacts {
 
   /** The artifacts of a workspace, newest first. */
   inWorkspace(workspaceId: string): Artifact[] {
+    const threads = this.liveThreads(workspaceId);
     return (
       this.database
         .query(
-          `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE workspace_id = ? ORDER BY created_at DESC`
+          `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`
         )
         .all(workspaceId) as ArtifactRow[]
-    ).map((row) => this.artifact(row));
+    )
+      .filter((row) => threads.has(row.threadId))
+      .map((row) => this.artifact(row));
   }
 
   /** The artifacts of a thread of the person's workspace, newest first. */
@@ -220,7 +223,7 @@ export class Artifacts {
     return (
       this.database
         .query(
-          `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE thread_id = ? ORDER BY created_at DESC`
+          `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE thread_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`
         )
         .all(thread.id) as ArtifactRow[]
     ).map((row) => this.artifact(row));
@@ -252,9 +255,12 @@ export class Artifacts {
     });
   }
 
+  /** Nothing is removed: a deleted artifact stays, hidden, with its data, and its name is never given out again. */
   delete(id: string, user: User): void {
     this.get(id, user);
-    this.database.query("DELETE FROM artifact WHERE id = ?").run(id);
+    this.database
+      .query("UPDATE artifact SET deleted_at = ? WHERE id = ?")
+      .run(Date.now(), id);
   }
 
   /**
@@ -353,7 +359,7 @@ export class Artifacts {
       .query(
         `SELECT r.scope, v.name, r.key, r.value, r.updated_at AS updatedAt FROM artifact_record r
 				LEFT JOIN artifact_visitor v ON v.artifact_id = r.artifact_id AND v.visitor = r.scope
-				WHERE r.artifact_id = ? AND substr(r.key, 1, length(?)) = ? AND (? IS NULL OR r.scope = ?)
+				WHERE r.artifact_id = ? AND r.deleted_at IS NULL AND substr(r.key, 1, length(?)) = ? AND (? IS NULL OR r.scope = ?)
 				ORDER BY r.updated_at, r.key`
       )
       .all(id, start, start, owner ?? null, owner ?? null) as {
@@ -404,18 +410,21 @@ export class Artifacts {
     }
     this.database
       .query(
-        "INSERT INTO artifact_record (artifact_id, scope, key, value, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (artifact_id, scope, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+        "INSERT INTO artifact_record (artifact_id, scope, key, value, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (artifact_id, scope, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, deleted_at = NULL"
       )
       .run(id, owner, key, json, Date.now());
   }
 
-  /** Deletes one record; `owner` is a visitor, or `shared`. */
+  /**
+   * Deletes one record; `owner` is a visitor, or `shared`. Nothing is removed: the record stays, hidden, and still
+   * counts toward the limits, so that writing and deleting cannot fill the disk. Writing its key again reuses it.
+   */
   deleteRecord(id: string, owner: string, key: string): void {
     this.database
       .query(
-        "DELETE FROM artifact_record WHERE artifact_id = ? AND scope = ? AND key = ?"
+        "UPDATE artifact_record SET deleted_at = ? WHERE artifact_id = ? AND scope = ? AND key = ? AND deleted_at IS NULL"
       )
-      .run(id, owner, key);
+      .run(Date.now(), id, owner, key);
   }
 
   /** Deletes a record, by its `ArtifactRecord.id`, of an artifact of the person's workspace. */
@@ -430,13 +439,18 @@ export class Artifacts {
   /** Deletes every record and visitor of an artifact of the person's workspace. */
   clearData(id: string, user: User): void {
     this.get(id, user);
+    const now = Date.now();
     this.database.transaction(() => {
       this.database
-        .query("DELETE FROM artifact_record WHERE artifact_id = ?")
-        .run(id);
+        .query(
+          "UPDATE artifact_record SET deleted_at = ? WHERE artifact_id = ? AND deleted_at IS NULL"
+        )
+        .run(now, id);
       this.database
-        .query("DELETE FROM artifact_visitor WHERE artifact_id = ?")
-        .run(id);
+        .query(
+          "UPDATE artifact_visitor SET deleted_at = ? WHERE artifact_id = ? AND deleted_at IS NULL"
+        )
+        .run(now, id);
     })();
   }
 
@@ -474,7 +488,7 @@ export class Artifacts {
     }
     const visitor = this.database
       .query(
-        "INSERT INTO artifact_visitor (artifact_id, visitor, name, seen_at) VALUES (?, ?, ?, ?) ON CONFLICT (artifact_id, visitor) DO UPDATE SET seen_at = excluded.seen_at RETURNING name"
+        "INSERT INTO artifact_visitor (artifact_id, visitor, name, seen_at) VALUES (?, ?, ?, ?) ON CONFLICT (artifact_id, visitor) DO UPDATE SET seen_at = excluded.seen_at, deleted_at = NULL RETURNING name"
       )
       .get(id, me.id, me.name, Date.now()) as { name: string | null };
     return { ...me, name: visitor.name };
@@ -498,10 +512,22 @@ export class Artifacts {
     throw new HttpError(503, "Golem has no free artifact names");
   }
 
+  /** A live artifact: not deleted, and not in a thread of a deleted channel. */
   private row(id: string): ArtifactRow | null {
-    return this.database
-      .query(`SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE id = ?`)
+    const row = this.database
+      .query(
+        `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE id = ? AND deleted_at IS NULL`
+      )
       .get(id) as ArtifactRow | null;
+    return row && this.liveThreads(row.workspaceId).has(row.threadId)
+      ? row
+      : null;
+  }
+
+  private liveThreads(workspaceId: string): Set<string> {
+    return new Set(
+      this.workspaces.threadsIn(workspaceId).map((thread) => thread.id)
+    );
   }
 
   private artifact(row: ArtifactRow): Artifact {
