@@ -1,14 +1,10 @@
-import type { Route } from "./app/http.ts";
-import { asset, html, page, toastOf } from "./app/web.ts";
-import { designPage } from "./platform/ui/design.ts";
-import { settingsPage, workspaceSettingsPage } from "./ui/pages.ts";
-import { shellContext } from "./workspaces/shell.ts";
+import type { Route } from "../app/http.ts";
+import { html, page, toastOf } from "../app/web.ts";
+import { shellContext } from "../workspaces/shell.ts";
+import { settingsPage, workspaceSettingsPage } from "./pages.ts";
 
-/** The web app: HTML from the server, live parts over Datastar. */
-export const webRoutes: readonly Route[] = [
-  ["GET", "/assets/*", async ({ request }) => asset(request)],
-  ["GET", "/design", async () => html(designPage())],
-
+/** The settings pages, which show sections of several modules. */
+export const settingsWebRoutes: readonly Route[] = [
   [
     "GET",
     "/w/:workspace/settings",

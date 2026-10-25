@@ -5,6 +5,8 @@ const APP_SIGN_IN = "golem_app_sign_in";
 /** better-auth itself, and Google sign-in for the iOS app. */
 export const accountApiRoutes: readonly Route[] = [
   ["*", "/api/auth/*", ({ app, request }) => app.auth.handler(request)],
+  // The iOS app opens these in a browser sheet: Google sign-in, then `golem://signed-in` with a token or an error.
+  // Any app can claim `golem://`, so only a sign-in started here hands over a token, and Google always asks.
   [
     "GET",
     "/api/v1/sign-in/google",
