@@ -1,6 +1,8 @@
 import { accountApiRoutes } from "../accounts/api.ts";
 import { accountWebRoutes } from "../accounts/web.ts";
 import { apiRoutes } from "../api.ts";
+import { llmApiRoutes } from "../llm/api.ts";
+import { llmWebRoutes } from "../llm/web.ts";
 import { webRoutes } from "../web.ts";
 import type { Route } from "./http.ts";
 
@@ -8,6 +10,8 @@ import type { Route } from "./http.ts";
 export const allRoutes: readonly Route[] = [
   ...accountApiRoutes,
   ...apiRoutes,
+  ...llmApiRoutes,
   ...accountWebRoutes,
   ...webRoutes,
+  ...llmWebRoutes,
 ];

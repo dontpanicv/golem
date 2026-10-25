@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { Llm, type LlmProvider } from "../llm.ts";
+import { Llm, type LlmProvider } from "../llm/llm.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";

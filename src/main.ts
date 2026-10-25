@@ -5,7 +5,7 @@ import { HttpRouter } from "effect/http";
 import { closeApp, createApp } from "./app/app.ts";
 import { routes } from "./app/http.ts";
 import { allRoutes } from "./app/routes.ts";
-import type { LlmProvider } from "./llm.ts";
+import type { LlmProvider } from "./llm/llm.ts";
 import { readConfig } from "./platform/config.ts";
 import { LlamaEmbedder } from "./search/embedder.ts";
 

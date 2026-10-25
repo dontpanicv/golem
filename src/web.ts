@@ -13,7 +13,6 @@ import { HttpError } from "./platform/errors.ts";
 import { designPage } from "./platform/ui/design.ts";
 import {
   channelPage,
-  llmCard,
   newWorkspacePage,
   settingsPage,
   threadPage,
@@ -281,48 +280,6 @@ export const webRoutes: readonly Route[] = [
           await app.llm.status()
         )
       );
-    }),
-  ],
-  [
-    "GET",
-    "/settings/llm",
-    page(async ({ app }) => {
-      const card = llmCard(await app.llm.status());
-      return ServerSentEventGenerator.stream((stream) => {
-        stream.patchElements(card);
-      });
-    }),
-  ],
-  [
-    "POST",
-    "/settings/llm/login",
-    action("/settings", async ({ app }) => {
-      await app.llm.startLogin();
-      return "/settings";
-    }),
-  ],
-  [
-    "POST",
-    "/settings/llm/logout",
-    action("/settings", async ({ app }) => {
-      await app.llm.logout();
-      return "/settings";
-    }),
-  ],
-  [
-    "POST",
-    "/settings/llm/model",
-    action("/settings", async ({ app, fields }) => {
-      app.llm.setModel(fields.model!);
-      return "/settings";
-    }),
-  ],
-  [
-    "POST",
-    "/settings/llm/effort",
-    action("/settings", async ({ app, fields }) => {
-      app.llm.setEffort(fields.effort!);
-      return "/settings";
     }),
   ],
 ];

@@ -15,9 +15,9 @@ import {
   type MutableModels,
   type Provider,
 } from "@earendil-works/pi-ai/models";
-import { setSetting, setting } from "./platform/database.ts";
-import { HttpError } from "./platform/errors.ts";
-import type { Secrets } from "./platform/secrets.ts";
+import { setSetting, setting } from "../platform/database.ts";
+import { HttpError } from "../platform/errors.ts";
+import type { Secrets } from "../platform/secrets.ts";
 
 export interface LlmProvider {
   readonly defaultModel: string;

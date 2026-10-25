@@ -12,7 +12,7 @@ import {
   fauxAssistantMessage,
   fauxProvider,
 } from "@earendil-works/pi-ai/providers/faux";
-import { Llm, SqliteCredentialStore } from "../src/llm.ts";
+import { Llm, SqliteCredentialStore } from "../src/llm/llm.ts";
 import {
   migrate,
   openDatabase,
