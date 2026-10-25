@@ -1,4 +1,4 @@
-import type { Route, RouteInput } from "../app/http.ts";
+import type { AuthedInput, Route, RouteInput } from "../app/http.ts";
 import {
   action,
   html,
@@ -9,16 +9,22 @@ import {
 } from "../app/web.ts";
 import { HttpError } from "../platform/errors.ts";
 import { channelPage, newWorkspacePage } from "./pages.ts";
-import { shellContext } from "./shell.ts";
+import { lastOpened, rememberOpened, shellContext } from "./shell.ts";
 
 /** Workspaces, their channels, and their members in the web app. */
 export const workspaceWebRoutes: readonly Route[] = [
   [
     "GET",
     "/",
-    page(async ({ app, user }) => {
-      const [first] = app.workspaces.list(user);
-      return redirect(first ? `/w/${first.id}` : "/workspaces/new");
+    page(async (input) => {
+      const workspaces = input.app.workspaces.list(input.user);
+      const last = lastOpened(input.request);
+      const workspace =
+        workspaces.find((candidate) => candidate.id === last?.workspaceId) ??
+        workspaces[0];
+      return redirect(
+        workspace ? homeOf(input, workspace.id) : "/workspaces/new"
+      );
     }),
   ],
   [
@@ -46,14 +52,7 @@ export const workspaceWebRoutes: readonly Route[] = [
   [
     "GET",
     "/w/:workspace",
-    page(async ({ app, user, params }) => {
-      const [first] = app.workspaces.channels(params.workspace!, user);
-      return redirect(
-        first
-          ? `/w/${params.workspace}/c/${first.id}`
-          : `/w/${params.workspace}/settings`
-      );
-    }),
+    page(async (input) => redirect(homeOf(input, input.params.workspace!))),
   ],
   [
     "POST",
@@ -75,7 +74,7 @@ export const workspaceWebRoutes: readonly Route[] = [
       if (!channel) {
         throw new HttpError(404, "Not found");
       }
-      return html(channelPage(context, channel));
+      return rememberOpened(input.request, html(channelPage(context, channel)));
     }),
   ],
   [
@@ -94,6 +93,32 @@ export const workspaceWebRoutes: readonly Route[] = [
     }),
   ],
 ];
+
+/** Where a workspace opens: the channel or thread this browser had open last, if it still exists, else #general. */
+function homeOf(
+  { app, user, request }: AuthedInput,
+  workspaceId: string
+): string {
+  const channels = app.workspaces.channels(workspaceId, user);
+  const last = lastOpened(request);
+  if (last?.workspaceId === workspaceId) {
+    if (channels.some((channel) => channel.id === last.channelId)) {
+      return `/w/${workspaceId}/c/${last.channelId}`;
+    }
+    if (
+      channels.some((channel) =>
+        channel.threads.some((thread) => thread.id === last.threadId)
+      )
+    ) {
+      return `/w/${workspaceId}/t/${last.threadId}`;
+    }
+  }
+  const general =
+    channels.find((channel) => channel.name === "general") ?? channels[0];
+  return general
+    ? `/w/${workspaceId}/c/${general.id}`
+    : `/w/${workspaceId}/settings`;
+}
 
 function settingsOf({ params }: { params: RouteInput["params"] }): string {
   return `/w/${params.workspace}/settings`;

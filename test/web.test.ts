@@ -109,10 +109,9 @@ describe("the web app", () => {
     const created = await alice.post("/workspaces", { name: "Family" });
     expect(created.status).toBe(303);
     workspaceId = location(created)!.replace("/w/", "");
-    expect(location(await alice.get("/"))).toBe(`/w/${workspaceId}`);
-
-    const opened = location(await alice.get(`/w/${workspaceId}`))!;
+    const opened = location(await alice.get("/"))!;
     expect(opened).toStartWith(`/w/${workspaceId}/c/`);
+    expect(location(await alice.get(`/w/${workspaceId}`))).toBe(opened);
     generalId = opened.split("/").at(-1)!;
     const channel = await (await alice.get(opened)).text();
     expect(channel).toContain("<title>#general · Golem</title>");

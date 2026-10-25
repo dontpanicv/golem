@@ -18,13 +18,13 @@ src/
 ├── main.ts                  The process: config, embedder, server
 ├── app/                     Composition and route helpers
 │   ├── app.ts               createApp: makes each service and connects the ports
-│   ├── routes.ts            Every route table, plus /assets and /design
+│   ├── routes.ts            Every route table, plus /assets
 │   ├── http.ts              Route, routes(), signedIn, json, withCookies, error responses
 │   ├── web.ts               page, action, form, html, redirect, toasts, the cross-origin check, assets
 │   └── api.ts               api, readBody, eventStream
 ├── platform/                Shared code that knows no domain
 │   ├── config.ts, secrets.ts, database.ts, auth.ts, errors.ts
-│   └── ui/                  The design system: components, icons, the /design page
+│   └── ui/                  The design system: components and icons
 ├── accounts/                Sign-in and sign-out (better-auth is in platform/auth.ts)
 ├── workspaces/              Workspaces, members, channels, the thread registry, and the app shell
 ├── llm/                     The shared LLM provider and its stored login

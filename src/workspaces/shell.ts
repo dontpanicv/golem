@@ -59,6 +59,37 @@ export function shellContext(
   };
 }
 
+const OPENED_COOKIE = "golem-opened";
+
+/** Remembers the channel or thread page of `request`, so the app opens on it next time. */
+export function rememberOpened(request: Request, response: Response): Response {
+  const cookie = new Bun.Cookie(OPENED_COOKIE, new URL(request.url).pathname, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  response.headers.append("set-cookie", cookie.serialize());
+  return response;
+}
+
+/** The workspace and the channel or thread id of the last page `rememberOpened` saw. */
+export function lastOpened(
+  request: Request
+): { workspaceId: string; channelId?: string; threadId?: string } | undefined {
+  const path = new Bun.CookieMap(request.headers.get("cookie") ?? "").get(
+    OPENED_COOKIE
+  );
+  const [, workspaceId, kind, id] =
+    path?.match(/^\/w\/([^/]+)\/(c|t)\/([^/]+)$/) ?? [];
+  if (!workspaceId) {
+    return undefined;
+  }
+  return kind === "c"
+    ? { workspaceId, channelId: id }
+    : { workspaceId, threadId: id };
+}
+
 /** The app: workspace and channels with their threads on the left, the page in the inset panel. */
 export function shell(context: ShellContext, page: ShellPage): string {
   const signals = `{sidebar: false, artifacts: matchMedia('(min-width: 1001px)').matches, tab: 'artifacts', message: ''${page.signals ? `, ${page.signals}` : ""}}`;

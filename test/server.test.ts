@@ -276,12 +276,34 @@ test("the web app signs in with Google and keeps cross-site posts out", async ()
 
   const cookie = `better-auth.session_token=${await signedCookie(alice)}`;
 
-  const home = await call("/", { headers: { cookie } });
-  expect(home.headers.get("location")).toBe(`/w/${workspaceId}`);
+  // With nothing opened yet, the app and the workspace open on #general.
+  const general = (await call("/", { headers: { cookie } })).headers.get(
+    "location"
+  )!;
+  expect(general).toMatch(new RegExp(`^/w/${workspaceId}/c/`));
+  expect(
+    (await call(`/w/${workspaceId}`, { headers: { cookie } })).headers.get(
+      "location"
+    )
+  ).toBe(general);
   const thread = await call(`/w/${workspaceId}/t/${threadId}`, {
     headers: { cookie },
   });
   expect(await thread.text()).toContain("Plan the cabin trip");
+  const opened = `${cookie}; ${cookies(thread)}`;
+  for (const path of ["/", `/w/${workspaceId}`]) {
+    expect(
+      (await call(path, { headers: { cookie: opened } })).headers.get(
+        "location"
+      )
+    ).toBe(`/w/${workspaceId}/t/${threadId}`);
+  }
+  const gone = `${cookie}; golem-opened=${encodeURIComponent(`/w/${workspaceId}/t/gone`)}`;
+  expect(
+    (
+      await call(`/w/${workspaceId}`, { headers: { cookie: gone } })
+    ).headers.get("location")
+  ).toBe(general);
 
   const crossSite = await handler(
     new Request(`http://golem.test/w/${workspaceId}/channels`, {
@@ -292,5 +314,4 @@ test("the web app signs in with Google and keeps cross-site posts out", async ()
   );
   expect(crossSite.status).toBe(403);
   expect((await call("/assets/..%2Fpackage.json")).status).toBe(404);
-  expect((await call("/design")).status).toBe(200);
 });

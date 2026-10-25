@@ -6,7 +6,6 @@ import { integrationApiRoutes } from "../integrations/api.ts";
 import { integrationWebRoutes } from "../integrations/web.ts";
 import { llmApiRoutes } from "../llm/api.ts";
 import { llmWebRoutes } from "../llm/web.ts";
-import { designPage } from "../platform/ui/design.ts";
 import { searchApiRoutes } from "../search/api.ts";
 import { searchWebRoutes } from "../search/web.ts";
 import { settingsWebRoutes } from "../settings/web.ts";
@@ -15,7 +14,7 @@ import { threadWebRoutes } from "../threads/web.ts";
 import { workspaceApiRoutes } from "../workspaces/api.ts";
 import { workspaceWebRoutes } from "../workspaces/web.ts";
 import type { Route } from "./http.ts";
-import { asset, html } from "./web.ts";
+import { asset } from "./web.ts";
 
 /**
  * Every route of the server. Each module has its JSON routes for the iOS app (see docs/api.md) and its web routes:
@@ -23,7 +22,6 @@ import { asset, html } from "./web.ts";
  */
 export const allRoutes: readonly Route[] = [
   ["GET", "/assets/*", async ({ request }) => asset(request)],
-  ["GET", "/design", async () => html(designPage())],
   ...accountApiRoutes,
   ...accountWebRoutes,
   ...workspaceApiRoutes,

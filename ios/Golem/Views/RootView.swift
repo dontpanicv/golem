@@ -6,9 +6,7 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if Self.showsCatalog {
-                NavigationStack { DesignCatalogView() }
-            } else if !session.signedIn {
+            if !session.signedIn {
                 LoginView()
             } else if session.user == nil {
                 LoadingView()
@@ -24,15 +22,6 @@ struct RootView: View {
         .task(id: session.signedIn) {
             if session.signedIn { await session.load() }
         }
-    }
-
-    /// `-designCatalog` opens the design system without a server, for screenshots.
-    private static var showsCatalog: Bool {
-        #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("-designCatalog")
-        #else
-        false
-        #endif
     }
 }
 
@@ -61,7 +50,15 @@ enum Destination: Hashable {
     case thread(String)
     case workspaceSettings
     case settings
-    case design
+
+    /// What `MainView` remembers, so the app opens on the last channel or thread.
+    var key: String? {
+        switch self {
+        case let .channel(id): "channel:\(id)"
+        case let .thread(id): "thread:\(id)"
+        default: nil
+        }
+    }
 }
 
 /// Channels with their threads on the left, the open screen in the detail column, artifacts in the inspector.
@@ -71,6 +68,7 @@ private struct MainView: View {
     @State private var selection: Destination?
     @State private var column = NavigationSplitViewColumn.sidebar
     @State private var showArtifacts = false
+    @AppStorage("openedDestination") private var opened = ""
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
@@ -89,20 +87,36 @@ private struct MainView: View {
                 WorkspaceSettingsView().id(session.workspace?.id)
             case .settings:
                 SettingsView()
-            case .design:
-                DesignCatalogView()
             case nil:
                 EmptyState(title: "Choose a thread", systemImage: "bubble.left.and.bubble.right")
             }
         }
         // Artifacts start open where there is room for them, as on the web.
-        .onAppear { showArtifacts = sizeClass == .regular }
-        .onChange(of: session.workspace?.id) { selection = nil }
+        .onAppear {
+            showArtifacts = sizeClass == .regular
+            openHome()
+        }
+        .onChange(of: session.workspace?.id) { openHome() }
     }
 
     private func open(_ destination: Destination) {
         selection = destination
         column = .detail
+        if let key = destination.key { opened = key }
+    }
+
+    /// Opens the channel or thread this device had open last, if it is in the workspace, else #general.
+    private func openHome() {
+        let channels = session.channels
+        let destinations = channels.flatMap { channel in
+            [Destination.channel(channel.id)] + channel.threads.map { .thread($0.id) }
+        }
+        let general = channels.first { $0.name == "general" } ?? channels.first
+        if let home = destinations.first(where: { $0.key == opened }) ?? general.map({ .channel($0.id) }) {
+            open(home)
+        } else {
+            selection = nil
+        }
     }
 }
 
@@ -138,7 +152,6 @@ private struct Sidebar: View {
                 SectionHeader(title: "Golem")
                 row("Workspace settings", systemImage: "person.2", destination: .workspaceSettings)
                 row("Settings", systemImage: "gearshape", destination: .settings)
-                row("Design system", systemImage: "paintpalette", destination: .design)
             }
             .padding(.horizontal, Tokens.Space.lg)
         }

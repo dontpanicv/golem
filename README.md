@@ -63,7 +63,8 @@ The iOS app is a thin client with the same functionality; it talks to the JSON A
 ## Interface
 
 The layout crosses Slack and T3 Code. The sidebar lists channels with their threads nested below them. The thread
-fills the main panel, and a side panel shows the thread's artifacts, files, and previews.
+fills the main panel, and a side panel shows the thread's artifacts, files, and previews. The app opens on the last
+channel or thread you had open on that device, or on #general.
 
 The web app and the iOS app share one design system, modeled on Linear's clean style:
 
@@ -74,7 +75,6 @@ The web app and the iOS app share one design system, modeled on Linear's clean s
 - Web components are in `public/styles.css`, `public/ui.js`, and `src/platform/ui/`; iOS components are in
   `ios/Golem/Design/`.
 - `design/icon.svg` is the app icon and the web favicon, rendered to PNG with Inter.
-- `/design` on the web and **Design system** in the iOS sidebar show every token and component.
 - Both use [Inter](https://rsms.me/inter/) (SIL Open Font License) and follow the system light or dark appearance.
 
 ## Development

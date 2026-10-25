@@ -2,7 +2,7 @@ import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
 import type { AuthedInput, Route } from "../app/http.ts";
 import { action, html, page } from "../app/web.ts";
 import { HttpError } from "../platform/errors.ts";
-import { shellContext } from "../workspaces/shell.ts";
+import { rememberOpened, shellContext } from "../workspaces/shell.ts";
 import { threadPage, transcript } from "./pages.ts";
 
 /** A thread: its page, its live transcript, and new messages. */
@@ -28,7 +28,10 @@ export const threadWebRoutes: readonly Route[] = [
       const channel = context.channels!.find(
         (candidate) => candidate.id === thread.channelId
       )!;
-      return html(threadPage(context, channel, thread));
+      return rememberOpened(
+        input.request,
+        html(threadPage(context, channel, thread))
+      );
     }),
   ],
   [
