@@ -9,7 +9,7 @@ import {
   isIgnored,
   kindOf,
   tools,
-} from "../src/search/extract.ts";
+} from "./extract.ts";
 
 let directory: string;
 beforeAll(async () => {

@@ -12,7 +12,7 @@ import {
   textField,
 } from "../platform/ui/components.ts";
 import { icon } from "../platform/ui/icons.ts";
-import type { Channel, Workspace } from "../workspaces/workspaces.ts";
+import type { Channel, Workspace } from "./workspaces.ts";
 
 const escapeHtml = Bun.escapeHTML;
 

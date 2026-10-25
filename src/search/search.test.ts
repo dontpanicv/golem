@@ -8,18 +8,18 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { HttpRouter } from "effect/http";
-import { type App, closeApp, createApp } from "../src/app/app.ts";
-import { routes } from "../src/app/http.ts";
-import { allRoutes } from "../src/app/routes.ts";
-import type { User } from "../src/platform/auth.ts";
-import { Secrets } from "../src/platform/secrets.ts";
-import type { Embedder } from "../src/search/embedder.ts";
+import { type App, closeApp, createApp } from "../app/app.ts";
+import { routes } from "../app/http.ts";
+import { allRoutes } from "../app/routes.ts";
+import type { User } from "../platform/auth.ts";
+import { Secrets } from "../platform/secrets.ts";
+import type { Embedder } from "./embedder.ts";
 import {
   chunk,
   isProse,
   type Segment,
   WorkspaceIndex,
-} from "../src/search/workspace-index.ts";
+} from "./workspace-index.ts";
 
 /** Stands in for EmbeddingGemma: a hashed bag of words, so shared words mean similar vectors. */
 function bagOfWords(input: string): Float32Array {

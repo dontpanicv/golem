@@ -12,17 +12,17 @@ import {
   fauxAssistantMessage,
   fauxProvider,
 } from "@earendil-works/pi-ai/providers/faux";
-import { Llm, SqliteCredentialStore } from "../src/llm/llm.ts";
+import { until } from "../../test/harness.ts";
 import {
   migrate,
   openDatabase,
   setSetting,
   setting,
-} from "../src/platform/database.ts";
-import { HttpError } from "../src/platform/errors.ts";
-import { Secrets } from "../src/platform/secrets.ts";
-import { Threads } from "../src/threads/threads.ts";
-import { until } from "./harness.ts";
+} from "../platform/database.ts";
+import { HttpError } from "../platform/errors.ts";
+import { Secrets } from "../platform/secrets.ts";
+import { Threads } from "../threads/threads.ts";
+import { Llm, SqliteCredentialStore } from "./llm.ts";
 
 function database() {
   const opened = openDatabase(":memory:");

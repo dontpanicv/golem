@@ -3,15 +3,15 @@ import { statSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Embedder, EmbedInput } from "../src/search/embedder.ts";
-import { tools } from "../src/search/extract.ts";
+import type { Message } from "../threads/threads.ts";
+import type { ThreadSummary } from "../workspaces/workspaces.ts";
+import type { Embedder, EmbedInput } from "./embedder.ts";
+import { tools } from "./extract.ts";
 import {
   Indexer,
   type ThreadReader,
   type WorkspaceDirectory,
-} from "../src/search/indexer.ts";
-import type { Message } from "../src/threads/threads.ts";
-import type { ThreadSummary } from "../src/workspaces/workspaces.ts";
+} from "./indexer.ts";
 
 let dataDirectory: string;
 beforeAll(async () => {
@@ -132,7 +132,7 @@ test("start creates each workspace's folders and indexes a new file soon after i
       uri: "notes/shopping.md",
     });
   } finally {
-    indexer.close();
+    await indexer.close();
   }
 });
 
@@ -198,7 +198,7 @@ test("a scan indexes finished thread messages and thread files, and skips what i
     ).toEqual(["files/broken report.docx"]);
     expect(() => indexer.status("../other")).toThrow("Invalid workspace id");
   } finally {
-    indexer.close();
+    await indexer.close();
   }
 });
 
@@ -246,6 +246,6 @@ test("pictures read while the model is down are read again, and text waits for t
     expect(lake.results.map((result) => result.title)).toEqual(["trip"]);
   } finally {
     tools.ffmpeg = real;
-    indexer.close();
+    await indexer.close();
   }
 });
