@@ -25,6 +25,7 @@ const searched = {
         },
         { url: "https://en.wikipedia.org/wiki/Golem", title: "Golem" },
         { url: "javascript:alert(1)", title: "Not a page" },
+        { url: "https://example.org/untitled" },
       ],
     },
   },
@@ -82,6 +83,7 @@ describe("searchWeb", () => {
           url: "https://en.wikipedia.org/wiki/Golem",
         },
         { title: "Prague", url: "https://www.prague.eu/golem" },
+        { title: null, url: "https://example.org/untitled" },
       ],
     });
     const [sent] = fake.requests;

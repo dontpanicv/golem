@@ -8,7 +8,8 @@ export interface WebSearchResult {
 }
 
 export interface WebSource {
-  readonly title: string;
+  /** `null` when the search gave none. */
+  readonly title: string | null;
   readonly url: string;
 }
 
@@ -151,7 +152,7 @@ function sourcesOf(items: readonly OutputItem[]): WebSource[] {
     }
     const clean = parsed.toString();
     if (!sources.has(clean)) {
-      sources.set(clean, { title: title?.trim() || clean, url: clean });
+      sources.set(clean, { title: title?.trim() || null, url: clean });
     }
   }
   return [...sources.values()];
