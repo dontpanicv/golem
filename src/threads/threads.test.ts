@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   Context,
   Message,
@@ -11,7 +14,7 @@ import {
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import { transcript } from "./pages.ts";
-import { threadMessages } from "./threads.ts";
+import { Threads, threadMessages } from "./threads.ts";
 
 let golem: TestApp;
 let alice: User;
@@ -139,6 +142,13 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   const other = /Tell thread ([\w-]+) hi$/.exec(text);
   if (other) {
     return call("send_to_thread", { thread: other[1]!, message: "Hi" });
+  }
+  const save = /Save (\{.*\})$/.exec(text);
+  if (save) {
+    return fauxAssistantMessage(
+      [fauxToolCall("save_file", JSON.parse(save[1]!))],
+      { stopReason: "toolUse" }
+    );
   }
   if (/^Alice: Turn on the lights\n\n\(Spoken in a conversation: /.test(text)) {
     return fauxAssistantMessage("Done.");
@@ -982,3 +992,199 @@ test("people delete a channel; the orchestrator moves to the next channel", asyn
     error: "A workspace keeps one channel at least",
   });
 });
+
+test("save_file keeps a machine's file, the browser's screenshot, and a file from the web in the channel", async () => {
+  const home = await golem.app.workspaces.create(alice, "Saves");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const asked: unknown[] = [];
+  const web = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/report") {
+        return new Response("PDF", {
+          headers: {
+            "content-disposition":
+              "attachment; filename*=UTF-8''r%C3%A9sum%C3%A9.pdf",
+          },
+        });
+      }
+      return new Response("photo");
+    },
+  });
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-save-"));
+  const threads = savingThreads(
+    dataDirectory,
+    async (...args) => {
+      asked.push(args);
+      return new TextEncoder().encode("machine screen");
+    },
+    async () => new TextEncoder().encode("browser screen")
+  );
+  try {
+    const save = async (source: object) => {
+      const { id } = await threads.create(
+        home.id,
+        alice,
+        general.id,
+        `Save ${JSON.stringify(source)}`
+      );
+      await answeredIn(threads, home.id, id);
+    };
+    await save({ machine: "glados", path: "~/Desktop/screen.png" });
+    await save({ browser_screenshot: true });
+    await save({ url: `${web.url}photos/beach%20day.jpg` });
+    await save({ url: `${web.url}report` });
+    await save({ url: `${web.url}`, name: "front page.html" });
+
+    expect(asked).toEqual([
+      [home.id, "glados", "~/Desktop/screen.png", 15 * 1024 * 1024],
+    ]);
+    const files = await threads.files({
+      workspaceId: home.id,
+      channelId: general.id,
+    });
+    const saved = await Promise.all(
+      files.map(async (file) => {
+        const { path } = await threads.file(home.id, alice, file.id);
+        return [file.name, await Bun.file(path).text()];
+      })
+    );
+    expect(saved).toEqual([
+      ["screen.png", "machine screen"],
+      ["screenshot.png", "browser screen"],
+      ["beach day.jpg", "photo"],
+      ["résumé.pdf", "PDF"],
+      ["front page.html", "photo"],
+    ]);
+    expect(toolResults.at(-1)).toBe(
+      `Saved front page.html as file ${files.at(-1)!.id}.`
+    );
+  } finally {
+    web.stop(true);
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("save_file refuses what is not an http file under 15 MB, and stops reading a body at the limit", async () => {
+  const home = await golem.app.workspaces.create(alice, "Refusals");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  let endlessChunks = 0;
+  const web = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/large") {
+        return new Response(new Uint8Array(15 * 1024 * 1024 + 1));
+      }
+      if (pathname === "/endless") {
+        return new Response(
+          new ReadableStream({
+            pull: (controller) => {
+              endlessChunks += 1;
+              controller.enqueue(new Uint8Array(1024 * 1024));
+            },
+          })
+        );
+      }
+      return new Response("Gone", { status: 404 });
+    },
+  });
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-save-"));
+  const threads = savingThreads(
+    dataDirectory,
+    () => Promise.reject(new Error("No machine named nas. Paired: glados")),
+    async () => null
+  );
+  try {
+    const refusal = async (source: object) => {
+      const { id } = await threads.create(
+        home.id,
+        alice,
+        general.id,
+        `Save ${JSON.stringify(source)}`
+      );
+      await answeredIn(threads, home.id, id);
+      return toolResults.at(-1);
+    };
+    expect(await refusal({ url: "file:///etc/hosts" })).toContain(
+      "save_file gets only http and https addresses, not file:///etc/hosts."
+    );
+    expect(await refusal({ url: `${web.url}missing` })).toContain(
+      `${web.url}missing answered 404 Not Found`
+    );
+    expect(await refusal({ url: `${web.url}large` })).toContain(
+      `${web.url}large is over 15 MB`
+    );
+    expect(await refusal({ url: `${web.url}endless` })).toContain(
+      `${web.url}endless is over 15 MB`
+    );
+    // The server reads a little ahead, and stops once save_file leaves the body.
+    const pulled = endlessChunks;
+    await Bun.sleep(100);
+    expect(endlessChunks).toBe(pulled);
+    expect(pulled).toBeLessThan(32);
+    expect(await refusal({ machine: "nas", path: "a.png" })).toContain(
+      "No machine named nas. Paired: glados"
+    );
+    expect(await refusal({ browser_screenshot: true })).toContain(
+      "The browser could not take a screenshot."
+    );
+    expect(await refusal({ name: "nothing" })).toContain(
+      "Give machine and path, browser_screenshot, or url."
+    );
+    expect(
+      await threads.files({ workspaceId: home.id, channelId: general.id })
+    ).toEqual([]);
+  } finally {
+    web.stop(true);
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+/** Threads over the test app's workspaces and model, with a machine and a browser that the test gives. */
+function savingThreads(
+  dataDirectory: string,
+  file: (
+    workspaceId: string,
+    machine: string,
+    path: string,
+    limit: number
+  ) => Promise<Uint8Array>,
+  screenshot: () => Promise<Uint8Array | null>
+) {
+  // Each save is a tool call and an answer after it.
+  golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
+  return new Threads(
+    dataDirectory,
+    golem.app.llm,
+    golem.app.workspaces,
+    {
+      file,
+      tools: () => [],
+      section: () => ({ key: "machines", render: () => undefined }),
+    },
+    golem.app.integrations,
+    golem.app.artifacts,
+    { screenshot, tools: () => [] },
+    {
+      changed: () => undefined,
+      recall: async () => ({ results: [] }),
+      read: async () => null,
+      picture: async () => null,
+      tools: () => [],
+    }
+  );
+}
+
+function answeredIn(threads: Threads, workspaceId: string, threadId: string) {
+  const thread = golem.app.workspaces
+    .threadsIn(workspaceId)
+    .find((candidate) => candidate.id === threadId)!;
+  return until(
+    () => threads.messages(thread),
+    (state) => !state.running && state.messages.at(-1)?.text === "Done."
+  );
+}
