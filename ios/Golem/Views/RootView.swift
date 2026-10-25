@@ -84,7 +84,7 @@ private struct MainView: View {
             case let .channel(id):
                 ChannelView(channelID: id, open: open).id(id)
             case let .thread(id):
-                ConversationView(threadID: id, showArtifacts: $showArtifacts).id(id)
+                ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
             case .workspaceSettings:
                 WorkspaceSettingsView().id(session.workspace?.id)
             case .settings:

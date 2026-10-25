@@ -4,6 +4,7 @@ import SwiftUI
 struct ConversationView: View {
     let threadID: String
     @Binding var showArtifacts: Bool
+    let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var state: ThreadState?
     @State private var failure: String?
@@ -51,6 +52,12 @@ struct ConversationView: View {
                 .inspectorColumnWidth(Tokens.Size.artifacts)
         }
         .task { await follow() }
+        // Thread links in messages open the thread here instead of leaving the app.
+        .environment(\.openURL, OpenURLAction { url in
+            guard url.scheme == "thread" else { return .systemAction }
+            open(.thread(String(url.absoluteString.dropFirst("thread:".count))))
+            return .handled
+        })
     }
 
     /// Reloads the thread and reads its events again after each error, with a backoff of 1 to 16 seconds.
@@ -104,13 +111,28 @@ struct MessageRow: View {
                         .font(.golem(Tokens.FontSize.sm))
                         .foregroundStyle(Tokens.Colors.textQuaternary)
                 }
-                Text(message.text)
+                Text(Self.linked(message.text))
                     .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
                     .foregroundStyle(message.failed ? Tokens.Colors.danger : Tokens.Colors.textSecondary)
                     .textSelection(.enabled)
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// The text with each thread link the agent wrote, `[title](thread:<id>)`, as a link to `thread:<id>`.
+    static func linked(_ text: String) -> AttributedString {
+        var result = AttributedString()
+        var rest = text[...]
+        while let match = rest.firstMatch(of: /\[([^\]\n]+)\]\(thread:([\w-]+)\)/) {
+            result += AttributedString(rest[..<match.range.lowerBound])
+            var link = AttributedString(match.1)
+            link.link = URL(string: "thread:\(match.2)")
+            link.foregroundColor = Tokens.Colors.accent
+            result += link
+            rest = rest[match.range.upperBound...]
+        }
+        return result + AttributedString(rest)
     }
 }
 

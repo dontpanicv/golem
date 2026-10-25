@@ -32,7 +32,7 @@ type Message = {
 	authorId: string | null; // null for the agent
 	author: string; // display name, "Golem" for the agent
 	agent: boolean;
-	text: string;
+	text: string; // may hold thread links, [title](thread:<threadId>): show each as a link that opens the thread
 	time: number;
 	failed: boolean; // the agent's answer failed; text is the error
 	streaming: boolean; // the agent is still writing this message

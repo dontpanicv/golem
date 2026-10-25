@@ -894,6 +894,15 @@ img.avatar {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.thread-link {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color var(--duration-fast) ease-out;
+}
+.thread-link:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
 .message.failed .message-text {
   color: var(--color-danger);
 }

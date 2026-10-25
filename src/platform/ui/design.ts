@@ -19,6 +19,8 @@ import {
 import { type IconName, icon } from "./icons.ts";
 
 const sampleTime = Date.UTC(2026, 9, 25, 9, 41);
+/** Thread links in the sample conversation lead nowhere. */
+const sampleThread = () => "#";
 
 /** Every token and component on one page, in light or dark. Open `/design`. */
 export function designPage(): string {
@@ -220,9 +222,9 @@ export function designPage(): string {
     "Conversation",
     `<div class="card" style="padding: 0; background: var(--color-surface)">
 			<div class="transcript">
-				${message({ author: "Anna", agent: false, text: "Can you find a free Saturday for the cabin trip?", time: sampleTime })}
-				${message({ author: "Golem", agent: true, text: "Saturday 8 November is free for everyone. I drafted a calendar event and a packing list.", time: sampleTime + 60_000 })}
-				${message({ author: "Golem", agent: true, text: "Calendar access expired. Reconnect Google to continue.", time: sampleTime + 120_000, failed: true })}
+				${message({ author: "Anna", agent: false, text: "Can you find a free Saturday for the cabin trip?", time: sampleTime }, sampleThread)}
+				${message({ author: "Golem", agent: true, text: "Saturday 8 November is free for everyone. I drafted a calendar event and started [Cabin packing list](thread:packing) in #trips.", time: sampleTime + 60_000 }, sampleThread)}
+				${message({ author: "Golem", agent: true, text: "Calendar access expired. Reconnect Google to continue.", time: sampleTime + 120_000, failed: true }, sampleThread)}
 			</div>
 			${composer("Message family", "")}
 		</div>`

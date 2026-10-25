@@ -37,7 +37,8 @@ struct DesignCatalogView: View {
         ),
         Message(
             id: "2", authorId: nil, author: "Golem", agent: true,
-            text: "Saturday 8 November is free for everyone. I drafted a calendar event and a packing list.",
+            text: "Saturday 8 November is free for everyone. I drafted a calendar event and started "
+                + "[Cabin packing list](thread:packing) in #trips.",
             time: 1_792_928_520_000, failed: false, streaming: false
         ),
         Message(

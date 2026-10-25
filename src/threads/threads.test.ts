@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
+import { transcript } from "./pages.ts";
 
 let golem: TestApp;
 let alice: User;
@@ -47,7 +48,7 @@ function agent(context: Context) {
   }
   const call = (name: string, args: Record<string, string>) =>
     fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: "toolUse" });
-  const relay = /\(thread ([\w-]+)\): (.*)$/s.exec(text);
+  const relay = /\]\(thread:([\w-]+)\): (.*)$/s.exec(text);
   if (text.endsWith("Ask #food what's for dinner")) {
     return call("start_thread", {
       channel: "food",
@@ -106,24 +107,27 @@ test("an agent starts a thread in another channel, gets the answer back, and can
   expect(
     answered.messages.map((message) => [message.author, message.text])
   ).toEqual([
-    ["Golem · Ask #food what's for dinner", "What's for dinner?"],
+    [
+      "Golem",
+      `From [Ask #food what's for dinner](thread:${asked.id}): What's for dinner?`,
+    ],
     ["Golem", "Done."],
   ]);
-  const back = await until(
+  const pasta = `From [What's for dinner?](thread:${dinner.id}): Pasta`;
+  await until(
     () => idle(family.id, asked.id),
-    (state) => state.messages.some((message) => message.text === "Pasta")
+    (state) => state.messages.some((message) => message.text === pasta)
   );
-  expect(
-    back.messages.find((message) => message.text === "Pasta")?.author
-  ).toBe("Golem · What's for dinner?");
   await until(
     async () => toolResults,
     (results) => results.some((result) => result.includes("already passed"))
   );
   expect(toolResults).toContainEqual(
-    `Started "What's for dinner?" in #food (thread ${dinner.id}).`
+    `Started [What's for dinner?](thread:${dinner.id}) in #food.`
   );
-  expect(toolResults).toContainEqual(`Sent to "Ask #food what's for dinner".`);
+  expect(toolResults).toContainEqual(
+    `Sent to [Ask #food what's for dinner](thread:${asked.id}).`
+  );
 });
 
 test("an agent lists the channels of its workspace and cannot reach a thread of another workspace", async () => {
@@ -146,7 +150,7 @@ test("an agent lists the channels of its workspace and cannot reach a thread of 
   await idle(home.id, listing.id);
   expect(toolResults).toContainEqual(
     expect.stringContaining(
-      `#general\n- List the channels (thread ${listing.id}`
+      `#general\n- [List the channels](thread:${listing.id}) (`
     )
   );
 
@@ -168,4 +172,28 @@ test("an agent lists the channels of its workspace and cannot reach a thread of 
       (message) => message.text
     )
   ).toEqual(["Payroll", "Ok."]);
+});
+
+test("the web shows each thread link in a message as a link into the workspace, and escapes the rest", () => {
+  const html = transcript(
+    {
+      running: false,
+      messages: [
+        {
+          id: "1",
+          authorId: null,
+          author: "Golem",
+          agent: true,
+          text: 'Started [Dinner <b>plan</b>](thread:abc-1) and [not a link](thread:"x) <i>',
+          time: 0,
+          failed: false,
+          streaming: false,
+        },
+      ],
+    },
+    "family"
+  );
+  expect(html).toContain(
+    'Started <a class="thread-link" href="/w/family/t/abc-1">Dinner &lt;b&gt;plan&lt;/b&gt;</a> and [not a link](thread:&quot;x) &lt;i&gt;'
+  );
 });

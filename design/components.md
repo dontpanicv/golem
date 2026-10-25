@@ -99,6 +99,11 @@ Used by selects, the workspace switcher, and action menus.
   `fontSize.sm` `book` `textTertiary`, control at the right. Rows are separated by 0.5 px `borderSubtle`.
 - Section title above the card: `fontSize.lg` `medium` `text`, 12 px gap. Page title: `fontSize.xxl` `medium`.
 
+## Thread link
+
+- Agents write a thread as `[title](thread:<id>)` in a message. It shows as the title in `accent`, no underline;
+  hover (web) turns it `accentHover` and underlined. Clicking or tapping opens the thread in the app.
+
 ## Badge and keycap
 
 - Badge: 20 high, `radius.full`, 0.5 px `border`, `fontSize.xs` `medium`, a 6 px dot in the tone color.

@@ -40,7 +40,7 @@ export const threadWebRoutes: readonly Route[] = [
       return ServerSentEventGenerator.stream(
         async (stream) => {
           stop = await input.app.threads.watch(thread, (state) => {
-            stream.patchElements(transcript(state));
+            stream.patchElements(transcript(state, thread.workspaceId));
           });
         },
         {

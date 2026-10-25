@@ -97,7 +97,14 @@ export function avatar(
   return `<span class="${classes}" aria-hidden="true">${escapeHtml(name.slice(0, 1).toUpperCase())}</span>`;
 }
 
-export function message(m: Message): string {
+/** A link to a thread as agents write it in messages: `[title](thread:<id>)`. */
+const THREAD_LINK = /\[([^\]\n]+)\]\(thread:([\w-]+)\)/g;
+
+/** A message; each thread link in its text opens `threadHref(threadId)`. */
+export function message(
+  m: Message,
+  threadHref: (threadId: string) => string
+): string {
   const time = new Date(m.time).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -109,7 +116,7 @@ export function message(m: Message): string {
 	${avatar(m.author, { agent: m.agent })}
 	<div class="message-body">
 		<div class="message-meta"><span class="message-author">${escapeHtml(m.author)}</span><time class="message-time">${time}</time></div>
-		<p class="message-text">${escapeHtml(m.text)}</p>
+		<p class="message-text">${escapeHtml(m.text).replace(THREAD_LINK, (_, title: string, threadId: string) => `<a class="thread-link" href="${escapeHtml(threadHref(threadId))}">${title}</a>`)}</p>
 	</div>
 </article>`;
 }

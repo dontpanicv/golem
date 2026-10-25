@@ -47,7 +47,7 @@ const RELAYED = "golem.relay";
 /** How often one person's message may pass between threads: a question to another thread, and its answer back. */
 const MAX_HOPS = 2;
 const INSTRUCTIONS =
-  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread.";
+  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
 
 interface Relay extends JsonObject {
   readonly fromThreadId: string;
@@ -283,12 +283,14 @@ export class Threads {
           args.query,
           args.limit ?? 8
         );
+        const threads = this.registry.threadsIn(workspaceId);
         const text = results.length
           ? results
               .map((result, number) => {
-                const where = result.threadId
-                  ? `, thread ${result.threadId}`
-                  : "";
+                const thread = threads.find(
+                  (candidate) => candidate.id === result.threadId
+                );
+                const where = thread ? `, in ${threadLink(thread)}` : "";
                 return `${number + 1}. [${result.kind}] ${result.title} (${day(result.updatedAt)}${where}): ${result.snippet}`;
               })
               .join("\n")
@@ -312,8 +314,7 @@ export class Threads {
             const threads = channel.threads
               .slice(0, 5)
               .map(
-                (thread) =>
-                  `- ${thread.title} (thread ${thread.id}, ${day(thread.updatedAt)})`
+                (thread) => `- ${threadLink(thread)} (${day(thread.updatedAt)})`
               );
             return [`#${channel.name}`, ...threads].join("\n");
           })
@@ -412,7 +413,7 @@ export class Threads {
           output: [
             {
               type: "text",
-              text: `Started "${thread.title}" in #${channel.name} (thread ${thread.id}).`,
+              text: `Started ${threadLink(thread)} in #${channel.name}.`,
             },
           ],
         };
@@ -446,7 +447,7 @@ export class Threads {
         );
         this.registry.touchThread(target.id);
         return {
-          output: [{ type: "text", text: `Sent to "${target.title}".` }],
+          output: [{ type: "text", text: `Sent to ${threadLink(target)}.` }],
         };
       },
     });
@@ -557,9 +558,9 @@ export function threadMessages(view: ConversationView): ThreadMessages {
       messages.push({
         id: String(entry.id),
         authorId: null,
-        author: `Golem · ${data.fromTitle}`,
+        author: "Golem",
         agent: true,
-        text: data.text,
+        text: `From ${threadLink({ id: data.fromThreadId, title: data.fromTitle })}: ${data.text}`,
         time: (model as UserMessage | undefined)?.timestamp ?? 0,
         failed: false,
         streaming: false,
@@ -633,10 +634,18 @@ function relayed(
     text,
   };
   return {
-    content: `Golem from the thread "${from.title}" (thread ${from.id}): ${text}`,
+    content: `Golem from ${threadLink(from)}: ${text}`,
     entry: { kind: RELAYED, data },
     requestId,
   };
+}
+
+/** A thread as the agent writes it, `[title](thread:<id>)`, which the web and iOS show as a link to the thread. */
+function threadLink(thread: {
+  readonly id: string;
+  readonly title: string;
+}): string {
+  return `[${thread.title.replace(/[[\]\n]/g, " ")}](thread:${thread.id})`;
 }
 
 function titleOf(text: string): string {

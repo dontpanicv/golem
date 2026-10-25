@@ -22,8 +22,12 @@ export function threadPage(
 }
 
 /** The transcript element that the thread's event stream patches after every change. */
-export function transcript(state: ThreadMessages): string {
-  const items = state.messages.map((m: Message) => message(m)).join("");
+export function transcript(state: ThreadMessages, workspaceId: string): string {
+  const items = state.messages
+    .map((m: Message) =>
+      message(m, (threadId) => `/w/${workspaceId}/t/${threadId}`)
+    )
+    .join("");
   const working =
     state.running && !state.messages.some((m) => m.streaming)
       ? '<p class="working">Golem is working…</p>'
