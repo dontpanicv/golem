@@ -2,8 +2,12 @@ import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import type { Auth, User } from "./platform/auth.ts";
 import { HttpError, notFound, required } from "./platform/errors.ts";
-import type { ThreadRef, Threads } from "./threads.ts";
 
+/** What identifies a thread: its id, and the workspace whose folder holds its session. */
+export interface ThreadRef {
+  readonly id: string;
+  readonly workspaceId: string;
+}
 export interface Workspace {
   readonly id: string;
   readonly name: string;
@@ -33,8 +37,7 @@ export interface Member {
 export class Workspaces {
   constructor(
     private readonly database: Database,
-    private readonly auth: Auth,
-    private readonly threads: Threads
+    private readonly auth: Auth
   ) {}
 
   list(user: User): Workspace[] {
@@ -120,35 +123,27 @@ export class Workspaces {
     return channel;
   }
 
-  /** Starts a thread in a channel with its first message, which also names it. */
-  async createThread(
+  /** Adds a thread to a channel of the workspace. `Threads` names it and starts its session. */
+  registerThread(
     workspaceId: string,
     user: User,
     channelId: string,
-    text: string
-  ): Promise<ThreadSummary> {
+    title: string
+  ): ThreadSummary {
     this.get(workspaceId, user);
-    const message = required(text, "Message");
     const channel = this.database
       .query("SELECT 1 FROM channel WHERE id = ? AND workspace_id = ?")
       .get(channelId, workspaceId);
     if (!channel) {
       throw notFound();
     }
-    const firstLine = message.split("\n")[0]!;
     const now = Date.now();
-    const thread = {
-      id: randomUUID(),
-      channelId,
-      title: firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine,
-      updatedAt: now,
-    };
+    const thread = { id: randomUUID(), channelId, title, updatedAt: now };
     this.database
       .query(
         "INSERT INTO thread (id, workspace_id, channel_id, title, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(thread.id, workspaceId, channelId, thread.title, user.id, now, now);
-    await this.threads.send({ id: thread.id, workspaceId }, user, message);
+      .run(thread.id, workspaceId, channelId, title, user.id, now, now);
     return thread;
   }
 
@@ -165,12 +160,11 @@ export class Workspaces {
     return thread;
   }
 
-  async send(threadId: string, user: User, text: string): Promise<void> {
-    const thread = this.thread(threadId, user);
-    await this.threads.send(thread, user, required(text, "Message"));
+  /** Moves the thread up in its channel, after a new message. */
+  touchThread(threadId: string): void {
     this.database
       .query("UPDATE thread SET updated_at = ? WHERE id = ?")
-      .run(Date.now(), thread.id);
+      .run(Date.now(), threadId);
   }
 
   members(workspaceId: string, user: User): Member[] {

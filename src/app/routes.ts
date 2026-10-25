@@ -5,6 +5,8 @@ import { integrationApiRoutes } from "../integrations/api.ts";
 import { integrationWebRoutes } from "../integrations/web.ts";
 import { llmApiRoutes } from "../llm/api.ts";
 import { llmWebRoutes } from "../llm/web.ts";
+import { threadApiRoutes } from "../threads/api.ts";
+import { threadWebRoutes } from "../threads/web.ts";
 import { webRoutes } from "../web.ts";
 import type { Route } from "./http.ts";
 
@@ -13,9 +15,11 @@ export const allRoutes: readonly Route[] = [
   ...accountApiRoutes,
   ...apiRoutes,
   ...llmApiRoutes,
+  ...threadApiRoutes,
   ...integrationApiRoutes,
   ...accountWebRoutes,
   ...webRoutes,
   ...llmWebRoutes,
+  ...threadWebRoutes,
   ...integrationWebRoutes,
 ];

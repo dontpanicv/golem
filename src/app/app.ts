@@ -9,7 +9,7 @@ import { migrate, openDatabase } from "../platform/database.ts";
 import { Secrets } from "../platform/secrets.ts";
 import type { Embedder } from "../search/embedder.ts";
 import { Indexer } from "../search/indexer.ts";
-import { Threads } from "../threads.ts";
+import { Threads } from "../threads/threads.ts";
 import { Workspaces } from "../workspaces.ts";
 
 export interface App {
@@ -44,7 +44,10 @@ export async function createApp(
   await migrateAuth(auth);
   migrate(database);
   const llm = new Llm(database, resolvedSecrets, llmProvider);
-  const threads: Threads = new Threads(config.dataDirectory, llm, {
+  const workspaces = new Workspaces(database, auth);
+  const integrations = new Integrations(database, resolvedSecrets, workspaces);
+  // The recall port and the change hook point at the indexer, which reads the threads.
+  const threads: Threads = new Threads(config.dataDirectory, llm, workspaces, {
     recall: (workspaceId, query, limit) =>
       indexer.search(workspaceId, query, limit),
     changed: (workspaceId) => indexer.touch(workspaceId),
@@ -55,8 +58,6 @@ export async function createApp(
     threads,
     embedder
   );
-  const workspaces = new Workspaces(database, auth, threads);
-  const integrations = new Integrations(database, resolvedSecrets, workspaces);
   return {
     config,
     database,

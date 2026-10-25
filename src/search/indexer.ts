@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { type FSWatcher, mkdirSync, statSync, watch } from "node:fs";
 import { basename, join } from "node:path";
-import type { Threads } from "../threads.ts";
+import type { Threads } from "../threads/threads.ts";
 import { documentPrompt, type Embedder, queryPrompt } from "./embedder.ts";
 import {
   type ExtractedSegment,

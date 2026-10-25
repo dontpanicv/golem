@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { Embedder, EmbedInput } from "../src/search/embedder.ts";
 import { tools } from "../src/search/extract.ts";
 import { Indexer } from "../src/search/indexer.ts";
-import type { Message, Threads } from "../src/threads.ts";
+import type { Message, Threads } from "../src/threads/threads.ts";
 
 let dataDirectory: string;
 beforeAll(async () => {

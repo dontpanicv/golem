@@ -12,14 +12,10 @@ import {
   Harness,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import type { Llm } from "./llm/llm.ts";
-import type { User } from "./platform/auth.ts";
-import type { SearchResponse } from "./search/indexer.ts";
-
-export interface ThreadRef {
-  readonly id: string;
-  readonly workspaceId: string;
-}
+import type { Llm } from "../llm/llm.ts";
+import type { User } from "../platform/auth.ts";
+import { required } from "../platform/errors.ts";
+import type { ThreadRef, ThreadSummary, Workspaces } from "../workspaces.ts";
 
 export interface Message {
   readonly agent: boolean;
@@ -49,8 +45,22 @@ export interface ThreadHooks {
     workspaceId: string,
     query: string,
     limit: number
-  ) => Promise<SearchResponse>;
+  ) => Promise<{ readonly results: readonly RecallResult[] }>;
 }
+
+/** What the recall tool tells the agent about each search result. */
+export interface RecallResult {
+  readonly kind: string;
+  readonly snippet: string;
+  readonly title: string;
+  readonly updatedAt: number;
+}
+
+/** The thread registry in `golem.sqlite`, which `Workspaces` keeps. */
+export type ThreadRegistry = Pick<
+  Workspaces,
+  "get" | "registerThread" | "thread" | "touchThread"
+>;
 
 interface Open {
   readonly conversation: Conversation;
@@ -64,24 +74,37 @@ export class Threads {
   constructor(
     private readonly dataDirectory: string,
     private readonly llm: Llm,
+    private readonly registry: ThreadRegistry,
     private readonly hooks: ThreadHooks
   ) {}
 
-  /** Sends a family member's message; the agent answers in the background. */
-  async send(thread: ThreadRef, user: User, text: string): Promise<void> {
-    const { conversation } = await this.session(thread);
-    await this.useCurrentModel(conversation);
-    await conversation.submit(
-      {
-        type: "input",
-        content: `${user.name}: ${text}`,
-        entry: {
-          kind: AUTHORED,
-          data: { authorId: user.id, author: user.name, text },
-        },
-      },
-      BACKGROUND_CONTEXT
+  /** Starts a thread in a channel with its first message, which also names it. */
+  async create(
+    workspaceId: string,
+    user: User,
+    channelId: string,
+    text: string
+  ): Promise<ThreadSummary> {
+    this.registry.get(workspaceId, user);
+    const message = required(text, "Message");
+    const firstLine = message.split("\n")[0]!;
+    const title =
+      firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine;
+    const thread = this.registry.registerThread(
+      workspaceId,
+      user,
+      channelId,
+      title
     );
+    await this.deliver({ id: thread.id, workspaceId }, user, message);
+    return thread;
+  }
+
+  /** Sends a family member's message to a thread of their workspace; the agent answers in the background. */
+  async send(threadId: string, user: User, text: string): Promise<void> {
+    const thread = this.registry.thread(threadId, user);
+    await this.deliver(thread, user, required(text, "Message"));
+    this.registry.touchThread(thread.id);
   }
 
   async messages(thread: ThreadRef): Promise<ThreadMessages> {
@@ -113,6 +136,26 @@ export class Threads {
         await session.value.harness.close(BACKGROUND_CONTEXT);
       }
     }
+  }
+
+  private async deliver(
+    thread: ThreadRef,
+    user: User,
+    text: string
+  ): Promise<void> {
+    const { conversation } = await this.session(thread);
+    await this.useCurrentModel(conversation);
+    await conversation.submit(
+      {
+        type: "input",
+        content: `${user.name}: ${text}`,
+        entry: {
+          kind: AUTHORED,
+          data: { authorId: user.id, author: user.name, text },
+        },
+      },
+      BACKGROUND_CONTEXT
+    );
   }
 
   private session(thread: ThreadRef): Promise<Open> {

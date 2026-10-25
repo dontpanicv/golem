@@ -1,3 +1,5 @@
+import type { AuthedInput } from "../app/http.ts";
+import { toastOf } from "../app/web.ts";
 import type { User } from "../platform/auth.ts";
 import {
   avatar,
@@ -5,13 +7,11 @@ import {
   dialog,
   htmlDocument,
   menu,
-  message,
   navItem,
   type Toast,
   textField,
 } from "../platform/ui/components.ts";
 import { icon } from "../platform/ui/icons.ts";
-import type { Message, ThreadMessages } from "../threads.ts";
 import type { Channel, Workspace } from "../workspaces.ts";
 
 const escapeHtml = Bun.escapeHTML;
@@ -40,6 +40,23 @@ export interface ShellPage {
   /** Extra `data-signals` entries and a `data-init` expression for the page body. */
   readonly signals?: string;
   readonly init?: string;
+}
+
+/** The shell of a workspace page: the person, their workspaces, and the channels of the workspace in the path. */
+export function shellContext(
+  input: AuthedInput,
+  current: ShellContext["current"]
+): ShellContext {
+  const { app, user, params } = input;
+  const workspace = app.workspaces.get(params.workspace!, user);
+  return {
+    user,
+    workspaces: app.workspaces.list(user),
+    workspace,
+    channels: app.workspaces.channels(workspace.id, user),
+    current,
+    toast: toastOf(input.request),
+  };
 }
 
 /** The app: workspace and channels with their threads on the left, the page in the inset panel. */
@@ -201,18 +218,4 @@ function artifactsPanel(): string {
 
 function tab(id: string, label: string): string {
   return `<button type="button" role="tab" class="tab" data-attr:aria-selected="$tab === '${id}' ? 'true' : 'false'" data-on:click="$tab = '${id}'">${label}</button>`;
-}
-
-/** The transcript element that the thread's event stream patches after every change. */
-export function transcript(state: ThreadMessages): string {
-  const items = state.messages.map((m: Message) => message(m)).join("");
-  const working =
-    state.running && !state.messages.some((m) => m.streaming)
-      ? '<p class="working">Golem is working…</p>'
-      : "";
-  const empty =
-    items === "" && !working
-      ? '<div class="empty"><strong>Ask Golem anything</strong></div>'
-      : "";
-  return `<section id="transcript" class="transcript" aria-live="polite">${items}${working}${empty}</section>`;
 }

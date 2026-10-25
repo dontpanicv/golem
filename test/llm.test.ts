@@ -21,7 +21,7 @@ import {
 } from "../src/platform/database.ts";
 import { HttpError } from "../src/platform/errors.ts";
 import { Secrets } from "../src/platform/secrets.ts";
-import { Threads } from "../src/threads.ts";
+import { Threads } from "../src/threads/threads.ts";
 import { until } from "./harness.ts";
 
 function database() {
@@ -385,9 +385,24 @@ describe("Threads with the Llm", () => {
       name: "Test",
       defaultModel: "fast",
     });
-    const threads = new Threads(dataDirectory, llm, {
+    const thread = { id: "thread-1", workspaceId: "workspace-1" };
+    // Only the registry methods that sending to a thread uses.
+    const registry = {
+      get: () => ({ id: thread.workspaceId, name: "Family" }),
+      registerThread: () => {
+        throw new Error("Not used");
+      },
+      thread: () => ({
+        ...thread,
+        channelId: "general",
+        title: "",
+        updatedAt: 0,
+      }),
+      touchThread: () => undefined,
+    };
+    const threads = new Threads(dataDirectory, llm, registry, {
       changed: () => undefined,
-      recall: async () => ({ results: [] }) as never,
+      recall: async () => ({ results: [] }),
     });
     const used: string[] = [];
     const answer =
@@ -402,7 +417,6 @@ describe("Threads with the Llm", () => {
         return fauxAssistantMessage(text);
       };
     faux.setResponses([answer("First"), answer("Second")]);
-    const thread = { id: "thread-1", workspaceId: "workspace-1" };
     const user = { id: "user-1", name: "Alice", email: "alice@example.com" };
     const answered = (count: number) =>
       until(
@@ -410,10 +424,10 @@ describe("Threads with the Llm", () => {
         (state) => state.messages.length === count && !state.running
       );
     try {
-      await threads.send(thread, user as never, "Hello");
+      await threads.send(thread.id, user, "Hello");
       await answered(2);
       llm.setModel("deep");
-      await threads.send(thread, user as never, "Think harder");
+      await threads.send(thread.id, user, "Think harder");
       const state = await answered(4);
       expect(used).toEqual(["fast", "deep"]);
       expect(state.messages.map((message) => message.text)).toEqual([

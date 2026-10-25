@@ -1,5 +1,5 @@
 import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
-import type { AuthedInput, Route, RouteInput } from "./app/http.ts";
+import type { Route, RouteInput } from "./app/http.ts";
 import {
   action,
   asset,
@@ -15,12 +15,10 @@ import {
   channelPage,
   newWorkspacePage,
   settingsPage,
-  threadPage,
   workspaceSettingsPage,
 } from "./ui/pages.ts";
 import { searchPage, searchResults } from "./ui/search.ts";
-import type { ShellContext } from "./ui/shell.ts";
-import { transcript } from "./ui/shell.ts";
+import { shellContext } from "./ui/shell.ts";
 
 /** The web app: HTML from the server, live parts over Datastar. */
 export const webRoutes: readonly Route[] = [
@@ -93,68 +91,6 @@ export const webRoutes: readonly Route[] = [
       return html(channelPage(context, channel));
     }),
   ],
-  [
-    "POST",
-    "/w/:workspace/c/:channel/threads",
-    action(
-      ({ params }) => `/w/${params.workspace}/c/${params.channel}`,
-      async ({ app, user, params, fields }) =>
-        `/w/${params.workspace}/t/${(await app.workspaces.createThread(params.workspace!, user, params.channel!, fields.text!)).id}`
-    ),
-  ],
-  [
-    "GET",
-    "/w/:workspace/t/:thread",
-    page(async (input) => {
-      const thread = threadIn(input);
-      const context = shellContext(input, {
-        channelId: thread.channelId,
-        threadId: thread.id,
-      });
-      const channel = context.channels!.find(
-        (candidate) => candidate.id === thread.channelId
-      )!;
-      return html(threadPage(context, channel, thread));
-    }),
-  ],
-  [
-    "GET",
-    "/w/:workspace/t/:thread/events",
-    page(async (input) => {
-      const thread = threadIn(input);
-      let stop: (() => Promise<void>) | undefined;
-      return ServerSentEventGenerator.stream(
-        async (stream) => {
-          stop = await input.app.threads.watch(thread, (state) => {
-            stream.patchElements(transcript(state));
-          });
-        },
-        {
-          keepalive: true,
-          onAbort: () => {
-            stop?.();
-          },
-        }
-      );
-    }),
-  ],
-  [
-    "POST",
-    "/w/:workspace/t/:thread/messages",
-    page(async (input) => {
-      const thread = threadIn(input);
-      const signals = await ServerSentEventGenerator.readSignals(input.request);
-      const text = signals.success ? signals.signals.message : undefined;
-      if (typeof text !== "string" || !text.trim()) {
-        return new Response(null, { status: 400 });
-      }
-      await input.app.workspaces.send(thread.id, input.user, text);
-      return ServerSentEventGenerator.stream((stream) => {
-        stream.patchSignals(JSON.stringify({ message: "" }));
-      });
-    }),
-  ],
-
   [
     "GET",
     "/w/:workspace/search",
@@ -240,30 +176,6 @@ export const webRoutes: readonly Route[] = [
     }),
   ],
 ];
-
-function shellContext(
-  input: AuthedInput,
-  current: ShellContext["current"]
-): ShellContext {
-  const { app, user, params } = input;
-  const workspace = app.workspaces.get(params.workspace!, user);
-  return {
-    user,
-    workspaces: app.workspaces.list(user),
-    workspace,
-    channels: app.workspaces.channels(workspace.id, user),
-    current,
-    toast: toastOf(input.request),
-  };
-}
-
-function threadIn(input: AuthedInput) {
-  const thread = input.app.workspaces.thread(input.params.thread!, input.user);
-  if (thread.workspaceId !== input.params.workspace) {
-    throw new HttpError(404, "Not found");
-  }
-  return thread;
-}
 
 function settingsOf({ params }: { params: RouteInput["params"] }): string {
   return `/w/${params.workspace}/settings`;

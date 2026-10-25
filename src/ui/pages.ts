@@ -59,22 +59,6 @@ function threadRow(workspaceId: string, thread: ThreadSummary): string {
   return `<a class="list-row" href="/w/${workspaceId}/t/${thread.id}">${icon("compose")}${escapeHtml(thread.title)}<span class="meta">${time}</span></a>`;
 }
 
-export function threadPage(
-  context: ShellContext,
-  channel: Channel,
-  thread: ThreadSummary
-): string {
-  const base = `/w/${context.workspace!.id}/t/${thread.id}`;
-  return shell(context, {
-    title: thread.title,
-    header: `<span class="breadcrumb">${escapeHtml(channel.name)} › </span>${escapeHtml(thread.title)}`,
-    main: `<section id="transcript" class="transcript" aria-live="polite"></section>
-			${composer(`Message #${channel.name}`, `@post('${base}/messages')`)}`,
-    artifacts: true,
-    init: `@get('${base}/events')`,
-  });
-}
-
 export function workspaceSettingsPage(
   context: ShellContext,
   members: readonly Member[],

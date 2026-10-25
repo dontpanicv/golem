@@ -188,7 +188,7 @@ test("search covers one workspace and never another, also through the agent's re
   await app.indexer.scan(family.id);
   await app.indexer.scan(work.id);
   const channel = app.workspaces.channels(family.id, anna.user)[0]!;
-  await app.workspaces.createThread(
+  await app.threads.create(
     family.id,
     anna.user,
     channel.id,
