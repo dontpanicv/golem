@@ -379,6 +379,8 @@ describe("SqliteCredentialStore", () => {
 const hooks = {
   changed: () => undefined,
   recall: async () => ({ results: [] }),
+  read: async () => null,
+  picture: async () => null,
 };
 const noMachines = {
   tools: () => [],

@@ -61,7 +61,7 @@ export function searchResults(
         : when;
       const symbol = MEDIA_ICONS[result.modality] ?? KIND_ICONS[result.kind];
       const body = `${icon(symbol)}<span class="search-text"><strong>${escapeHtml(result.title)}</strong><span>${escapeHtml(result.snippet)}</span></span><span class="meta">${escapeHtml(place)}</span>`;
-      return result.threadId && result.kind === "thread"
+      return result.threadId
         ? `<a class="list-row search-row" href="/w/${workspaceId}/t/${result.threadId}">${body}</a>`
         : `<div class="list-row search-row">${body}</div>`;
     })

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
@@ -14,12 +15,17 @@ import {
   Harness,
   type JsonObject,
 } from "@earendil-works/pi-durable";
+import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import {
+  DEFAULT_IMAGE_LIMITS,
+  type ImageProcessor,
+} from "@earendil-works/pi-durable/tools";
 import { randomUUIDv5 } from "bun";
 import type { Hands } from "../hands/hands.ts";
 import type { Llm } from "../llm/llm.ts";
 import type { User } from "../platform/auth.ts";
-import { notFound, required } from "../platform/errors.ts";
+import { HttpError, notFound, required } from "../platform/errors.ts";
 import type {
   ThreadRef,
   ThreadSummary,
@@ -31,11 +37,23 @@ export interface Message {
   readonly author: string;
   readonly authorId: string | null;
   readonly failed: boolean;
+  readonly files: readonly FileRef[];
   readonly id: string;
   readonly streaming: boolean;
   readonly text: string;
   readonly time: number;
 }
+
+/** A file of a thread, saved as `threads/<thread>/files/<id>-<name>`: attached to a message, or uploaded to the thread. */
+export interface ThreadFile {
+  /** A UUIDv7, so files sort by time. */
+  readonly id: string;
+  readonly name: string;
+  readonly size: number;
+  readonly time: number;
+}
+
+export type FileRef = Pick<ThreadFile, "id" | "name">;
 
 export interface ThreadMessages {
   readonly messages: readonly Message[];
@@ -47,8 +65,12 @@ const AUTHORED = "golem.message";
 const RELAYED = "golem.relay";
 /** How often one person's message may pass between threads: a question to another thread, and its answer back. */
 const MAX_HOPS = 2;
+/** How much of a file's text read_file gives the agent at once. */
+const MAX_READ_CHARACTERS = 100_000;
+const FILE_NAME =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/;
 const INSTRUCTIONS =
-  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
+  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. People attach files to their messages or upload them to the thread; list_files shows them and read_file reads them. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
 
 interface Relay extends JsonObject {
   readonly fromThreadId: string;
@@ -66,6 +88,10 @@ export interface ThreadHooks {
     query: string,
     limit: number
   ) => Promise<{ readonly results: readonly RecallResult[] }>;
+  /** The text of a document or PDF for read_file; `null` for a kind of file without text. */
+  readonly read: (path: string) => Promise<string | null>;
+  /** A JPEG of a picture that read_file cannot open as it is, such as HEIC; `null` when it cannot convert it. */
+  readonly picture: (path: string) => Promise<Uint8Array | null>;
 }
 
 /** What the recall tool tells the agent about each search result. */
@@ -88,12 +114,16 @@ export type ThreadRegistry = Pick<
   | "touchThread"
 >;
 
+/** Where a thread's folder is: `workspaces/<workspace>/threads/<thread>/`. */
+export type ThreadLocation = Pick<ThreadRef, "id" | "workspaceId">;
+
 /** The machines of a workspace, which its agents use through the hands tools. */
 export type ThreadHands = Pick<Hands, "section" | "tools">;
 
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
   private readonly open = new Map<string, Promise<Harness>>();
+  private images: Promise<ImageProcessor> | undefined;
 
   constructor(
     private readonly dataDirectory: string,
@@ -103,35 +133,111 @@ export class Threads {
     private readonly hooks: ThreadHooks
   ) {}
 
-  /** Starts a thread in a channel with its first message, which also names it. */
+  /** Starts a thread in a channel with its first message and files; the message, or else the first file, names it. */
   async create(
     workspaceId: string,
     user: User,
     channelId: string,
-    text: string
+    text: string | undefined,
+    files: readonly File[] = []
   ): Promise<ThreadSummary> {
     this.registry.requireMember(workspaceId, user);
-    const message = required(text, "Message");
+    const message = messageText(text, files);
     const conversation = await this.newConversation(workspaceId);
     const thread = this.registry.registerThread(workspaceId, {
       id: randomUUID(),
       channelId,
-      title: titleOf(message),
+      title: titleOf(message || files[0]!.name),
       conversationId: conversation.id,
       createdBy: user.id,
     });
-    await this.deliver(conversation, authored(user, message));
+    const attached = await this.save({ workspaceId, id: thread.id }, files);
+    await this.deliver(conversation, authored(user, message, attached));
     return thread;
   }
 
-  /** Sends a family member's message to a thread of their workspace; the agent answers in the background. */
-  async send(threadId: string, user: User, text: string): Promise<void> {
+  /** Sends a family member's message and files to a thread of their workspace; the agent answers in the background. */
+  async send(
+    threadId: string,
+    user: User,
+    text: string | undefined,
+    files: readonly File[] = []
+  ): Promise<void> {
     const thread = this.registry.thread(threadId, user);
+    const message = messageText(text, files);
+    const attached = await this.save(thread, files);
     await this.deliver(
       await this.conversation(thread),
-      authored(user, required(text, "Message"))
+      authored(user, message, attached)
     );
     this.registry.touchThread(thread.id);
+  }
+
+  /** Adds files to a thread without a message; its agent finds them with list_files. Returns all files of the thread. */
+  async upload(
+    threadId: string,
+    user: User,
+    files: readonly File[]
+  ): Promise<ThreadFile[]> {
+    const thread = this.registry.thread(threadId, user);
+    if (files.length === 0) {
+      throw new HttpError(400, "Choose a file");
+    }
+    await this.save(thread, files);
+    this.hooks.changed(thread.workspaceId);
+    return this.files(thread);
+  }
+
+  /** The files of a thread, oldest first. */
+  async files(thread: ThreadLocation): Promise<ThreadFile[]> {
+    const directory = this.filesDirectory(thread);
+    const entries = await readdir(directory).catch(() => []);
+    const files: ThreadFile[] = [];
+    for (const entry of entries.sort()) {
+      const match = FILE_NAME.exec(entry);
+      // A file deleted while listing is left out.
+      const stats = match
+        ? await stat(join(directory, entry)).catch(() => null)
+        : null;
+      if (match && stats) {
+        files.push({
+          id: match[1]!,
+          name: match[2]!,
+          size: stats.size,
+          time: Math.round(stats.mtimeMs),
+        });
+      }
+    }
+    return files;
+  }
+
+  /** Deletes a file of a thread; messages keep its name. Returns the files left. */
+  async deleteFile(
+    threadId: string,
+    user: User,
+    fileId: string
+  ): Promise<ThreadFile[]> {
+    const thread = this.registry.thread(threadId, user);
+    await rm((await this.file(thread, fileId)).path);
+    this.hooks.changed(thread.workspaceId);
+    return this.files(thread);
+  }
+
+  /** The path and name of a file of a thread; not found for an id of another thread. */
+  async file(
+    thread: ThreadLocation,
+    fileId: string
+  ): Promise<{ readonly path: string; readonly name: string }> {
+    const file = (await this.files(thread)).find(
+      (candidate) => candidate.id === fileId
+    );
+    if (!file) {
+      throw notFound();
+    }
+    return {
+      path: join(this.filesDirectory(thread), `${file.id}-${file.name}`),
+      name: file.name,
+    };
   }
 
   async messages(thread: ThreadRef): Promise<ThreadMessages> {
@@ -175,6 +281,35 @@ export class Threads {
         await session.value.close(BACKGROUND_CONTEXT);
       }
     }
+  }
+
+  private async save(
+    thread: ThreadLocation,
+    files: readonly File[]
+  ): Promise<FileRef[]> {
+    if (files.length === 0) {
+      return [];
+    }
+    const directory = this.filesDirectory(thread);
+    await mkdir(directory, { recursive: true });
+    const saved: FileRef[] = [];
+    for (const file of files) {
+      const ref = { id: Bun.randomUUIDv7(), name: fileName(file.name) };
+      await Bun.write(join(directory, `${ref.id}-${ref.name}`), file);
+      saved.push(ref);
+    }
+    return saved;
+  }
+
+  private filesDirectory(thread: ThreadLocation): string {
+    return join(
+      this.dataDirectory,
+      "workspaces",
+      thread.workspaceId,
+      "threads",
+      thread.id,
+      "files"
+    );
   }
 
   private async deliver(
@@ -250,6 +385,8 @@ export class Threads {
           this.readThreadTool(workspaceId),
           this.startThreadTool(workspaceId),
           this.sendToThreadTool(workspaceId),
+          this.listFilesTool(workspaceId),
+          this.readFileTool(workspaceId),
           ...this.hands.tools(workspaceId),
         ],
         sections: [this.hands.section(workspaceId)],
@@ -460,6 +597,87 @@ export class Threads {
     });
   }
 
+  private listFilesTool(workspaceId: string) {
+    return defineTool({
+      name: "list_files",
+      description:
+        "List the files of this thread: attached to messages or uploaded to the thread.",
+      parameters: Type.Object({}),
+      replay: "safe",
+      execute: async (_args, api) => {
+        const files = await this.files(
+          this.threadOf(workspaceId, api.conversationId)
+        );
+        const text =
+          files
+            .map(
+              (file) =>
+                `- ${file.name} (file ${file.id}, ${Math.ceil(file.size / 1024)} KB, ${day(file.time)})`
+            )
+            .join("\n") || "This thread has no files.";
+        return { output: [{ type: "text", text }] };
+      },
+    });
+  }
+
+  private readFileTool(workspaceId: string) {
+    return defineTool({
+      name: "read_file",
+      description:
+        "Read a file of this thread: the text of a document, sheet, slides, or PDF, or a picture.",
+      parameters: Type.Object({
+        file: Type.String({ description: "The file id" }),
+      }),
+      replay: "safe",
+      execute: async (args, api) => {
+        const thread = this.threadOf(workspaceId, api.conversationId);
+        const { path, name } = await this.file(thread, args.file).catch(() => {
+          throw new Error(
+            `There is no file ${args.file} in this thread. list_files shows the files.`
+          );
+        });
+        const type = Bun.file(path).type.split(";")[0]!;
+        if (type.startsWith("image/")) {
+          this.images ??= createNodePhotonImages();
+          const images = await this.images;
+          let image = await images.prepare(
+            await Bun.file(path).bytes(),
+            type,
+            DEFAULT_IMAGE_LIMITS
+          );
+          if (!image) {
+            // Photon cannot decode HEIC, the iPhone's format.
+            const jpeg = await this.hooks.picture(path);
+            image = jpeg
+              ? await images.prepare(jpeg, "image/jpeg", DEFAULT_IMAGE_LIMITS)
+              : undefined;
+          }
+          if (!image) {
+            throw new Error(`Golem cannot open the picture ${name}.`);
+          }
+          return {
+            output: [
+              { type: "image", data: image.data, mimeType: image.mimeType },
+            ],
+          };
+        }
+        const text = await this.hooks.read(path);
+        if (text === null) {
+          throw new Error(
+            `Golem cannot read ${name}: it is not a document, PDF, or picture.`
+          );
+        }
+        const cut =
+          text.length > MAX_READ_CHARACTERS
+            ? `${text.slice(0, MAX_READ_CHARACTERS)}\n[The rest of the ${text.length} characters is cut.]`
+            : text;
+        return {
+          output: [{ type: "text", text: cut || "The file is empty." }],
+        };
+      },
+    });
+  }
+
   /**
    * The thread a tool runs in, and how many times the message it answers already passed between threads. Refuses at
    * `MAX_HOPS`, so that agents cannot keep sending each other messages.
@@ -468,12 +686,7 @@ export class Threads {
     workspaceId: string,
     conversationId: ConversationId
   ): Promise<{ from: ThreadSummary & ThreadRef; hops: number }> {
-    const from = this.registry
-      .threadsIn(workspaceId)
-      .find((thread) => thread.conversationId === conversationId);
-    if (!from) {
-      throw new Error("Only a thread can send to other threads.");
-    }
+    const from = this.threadOf(workspaceId, conversationId);
     const conversation = await this.conversation(from);
     let cursor: Parameters<Conversation["entries"]>[2];
     do {
@@ -499,6 +712,20 @@ export class Threads {
       cursor = page.next;
     } while (cursor);
     return { from, hops: 0 };
+  }
+
+  /** The thread of the conversation a tool runs in. */
+  private threadOf(
+    workspaceId: string,
+    conversationId: ConversationId
+  ): ThreadSummary & ThreadRef {
+    const thread = this.registry
+      .threadsIn(workspaceId)
+      .find((candidate) => candidate.conversationId === conversationId);
+    if (!thread) {
+      throw new Error("This tool works only in a thread.");
+    }
+    return thread;
   }
 
   /** A thread of this workspace, by the id an agent gave. */
@@ -544,11 +771,7 @@ export function threadMessages(view: ConversationView): ThreadMessages {
   for (const entry of view.entries) {
     const model = entry.model?.[0];
     if (entry.kind === AUTHORED) {
-      const data = entry.data as {
-        authorId: string;
-        author: string;
-        text: string;
-      };
+      const data = entry.data as unknown as Authored;
       const time = (model as UserMessage | undefined)?.timestamp ?? 0;
       messages.push({
         id: String(entry.id),
@@ -556,6 +779,8 @@ export function threadMessages(view: ConversationView): ThreadMessages {
         author: data.author,
         agent: false,
         text: data.text,
+        // Messages from before files have none.
+        files: data.files ?? [],
         time,
         failed: false,
         streaming: false,
@@ -568,6 +793,7 @@ export function threadMessages(view: ConversationView): ThreadMessages {
         author: "Golem",
         agent: true,
         text: `From ${threadLink({ id: data.fromThreadId, title: data.fromTitle })}: ${data.text}`,
+        files: [],
         time: (model as UserMessage | undefined)?.timestamp ?? 0,
         failed: false,
         streaming: false,
@@ -588,7 +814,8 @@ export function threadMessages(view: ConversationView): ThreadMessages {
   // A tool-only turn has no text to show.
   return {
     messages: messages.filter(
-      (message) => message.text !== "" || message.streaming
+      (message) =>
+        message.text !== "" || message.files.length > 0 || message.streaming
     ),
     running,
   };
@@ -610,6 +837,7 @@ function agentMessage(
     author: "Golem",
     agent: true,
     text: failed ? message.errorMessage! : text,
+    files: [],
     time: message.timestamp,
     failed,
     streaming,
@@ -620,11 +848,41 @@ interface Authored extends JsonObject {
   readonly author: string;
   readonly authorId: string;
   readonly text: string;
+  readonly files: FileRef[];
 }
 
-function authored(user: User, text: string) {
-  const data: Authored = { authorId: user.id, author: user.name, text };
-  return { content: `${user.name}: ${text}`, entry: { kind: AUTHORED, data } };
+/** The agent sees the attached files by name and id, which read_file takes. */
+function authored(user: User, text: string, files: readonly FileRef[]) {
+  const data: Authored = {
+    authorId: user.id,
+    author: user.name,
+    text,
+    files: [...files],
+  };
+  const attached = files.length
+    ? `\nAttached: ${files.map((file) => `${file.name} (file ${file.id})`).join(", ")}`
+    : "";
+  return {
+    content: `${user.name}: ${text}${attached}`,
+    entry: { kind: AUTHORED, data },
+  };
+}
+
+/** A message needs text, files, or both. */
+function messageText(text: string | undefined, files: readonly File[]): string {
+  return files.length > 0 ? (text ?? "").trim() : required(text, "Message");
+}
+
+/** A name that stays one file in the thread's folder: no folders, control characters, or leading dots. */
+function fileName(name: string): string {
+  const clean = name
+    .split(/[/\\]/)
+    .at(-1)!
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it removes
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/^\.+/, "")
+    .trim();
+  return clean.slice(-200) || "file";
 }
 
 /** A message from the agent of `from` to another thread; `hops` counts the passes before this one. */

@@ -1,16 +1,26 @@
 import { HttpError } from "../platform/errors.ts";
 import { type AuthedInput, type Handler, json, signedIn } from "./http.ts";
+import { readForm } from "./web.ts";
 
-export type ApiInput = AuthedInput & { readonly body: Record<string, unknown> };
+export type ApiInput = AuthedInput & {
+  readonly body: Record<string, unknown>;
+  /** The files of a `multipart/form-data` request, whose text fields are `body`. */
+  readonly files: readonly File[];
+};
 
 export function api(handler: (input: ApiInput) => Promise<Response>): Handler {
   return signedIn(
     async (input) => {
+      const { method, headers } = input.request;
+      if (headers.get("content-type")?.startsWith("multipart/form-data")) {
+        const { fields, files } = await readForm(input.request);
+        return handler({ ...input, body: fields, files });
+      }
       const body =
-        input.request.method === "GET" || input.request.method === "DELETE"
+        method === "GET" || method === "DELETE"
           ? {}
           : await readBody(input.request);
-      return handler({ ...input, body });
+      return handler({ ...input, body, files: [] });
     },
     () => json({ error: "Sign in first" }, 401)
   );

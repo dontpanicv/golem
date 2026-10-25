@@ -9,6 +9,7 @@ import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
 import { Secrets } from "../platform/secrets.ts";
 import type { Embedder } from "../search/embedder.ts";
+import { jpeg, readText } from "../search/extract.ts";
 import { Indexer } from "../search/search.ts";
 import { Threads } from "../threads/threads.ts";
 import { Workspaces } from "../workspaces/workspaces.ts";
@@ -52,7 +53,7 @@ export async function createApp(
     baseUrl: config.baseUrl,
     binaryDirectory: resolve(import.meta.dir, "../../hands/dist"),
   });
-  // The recall port and the change hook point at the indexer, which reads the threads.
+  // The recall port and the change hook point at the indexer, which reads the threads; files read as search reads them.
   const threads: Threads = new Threads(
     config.dataDirectory,
     llm,
@@ -62,6 +63,8 @@ export async function createApp(
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),
       changed: (workspaceId) => indexer.touch(workspaceId),
+      read: readText,
+      picture: jpeg,
     }
   );
   const indexer = new Indexer(

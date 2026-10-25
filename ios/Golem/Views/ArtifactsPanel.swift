@@ -14,7 +14,13 @@ struct ArtifactsPanel: View {
         }
     }
 
+    let threadID: String
+    /// Changes when the thread does, so the files load again: files come with messages.
+    let changes: Int
+    let openFile: (FileRef) -> Void
+    @Environment(Session.self) private var session
     @State private var tab = Tab.artifacts
+    @State private var files: [ThreadFile] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,8 +42,58 @@ struct ArtifactsPanel: View {
             .padding(.horizontal, Tokens.Space.lg)
             .frame(height: Tokens.Size.header)
             Divider().overlay(Tokens.Colors.border)
-            EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+            if tab == .files {
+                filesTab
+            } else {
+                EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+            }
         }
         .background(Tokens.Colors.surface)
+        .task(id: changes) { await session.run { files = try await session.api.threadFiles(threadID) } }
+    }
+
+    /// The thread's files, newest first, under an upload button. Files dropped on the tab upload.
+    private var filesTab: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.md) {
+            AttachMenu(add: upload) { Label("Upload files", systemImage: "plus") }
+                .buttonStyle(.secondary)
+            if files.isEmpty {
+                EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+            } else {
+                ScrollView {
+                    VStack(spacing: 1) {
+                        ForEach(files.reversed()) { file in
+                            HStack(spacing: Tokens.Space.xs) {
+                                Button { openFile(file.ref) } label: {
+                                    NavRow(title: file.name, systemImage: "doc")
+                                }
+                                .buttonStyle(.plain)
+                                GolemMenu {
+                                    MenuItem("Delete file", systemImage: "trash", role: .destructive) { delete(file) }
+                                } label: {
+                                    Label("File actions", systemImage: "ellipsis")
+                                }
+                                .buttonStyle(.golem(.ghost, .icon))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(Tokens.Space.lg)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .dropDestination(for: PickedFile.self) { dropped, _ in
+            upload(dropped.map(\.url))
+            return true
+        }
+    }
+
+    private func upload(_ picked: [URL]) {
+        guard !picked.isEmpty else { return }
+        Task { await session.run { files = try await session.api.uploadFiles(threadID: threadID, files: picked) } }
+    }
+
+    private func delete(_ file: ThreadFile) {
+        Task { await session.run { files = try await session.api.deleteFile(threadID: threadID, fileID: file.id) } }
     }
 }

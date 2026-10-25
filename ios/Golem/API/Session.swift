@@ -101,9 +101,11 @@ final class Session {
         return channel
     }
 
-    func createThread(channelID: String, text: String) async throws -> ThreadSummary? {
+    func createThread(channelID: String, text: String, files: [URL]) async throws -> ThreadSummary? {
         guard let workspace else { return nil }
-        let thread = try await api.createThread(workspaceID: workspace.id, channelID: channelID, text: text)
+        let thread = try await api.createThread(
+            workspaceID: workspace.id, channelID: channelID, text: text, files: files
+        )
         try await reloadWorkspace()
         return thread
     }

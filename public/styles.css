@@ -951,6 +951,65 @@ img.avatar {
   field-sizing: content;
 }
 
+.file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+.file-chips[hidden] {
+  display: none;
+}
+.message-text + .file-chips {
+  margin-top: var(--space-sm);
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  max-width: 240px;
+  height: var(--size-control-small);
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--color-fill-subtle);
+  box-shadow: var(--ring);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: var(--transition-colors);
+}
+.file-chip span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.file-chip .icon {
+  flex: none;
+  color: var(--color-text-tertiary);
+}
+a.file-chip:hover {
+  background: var(--color-fill-hover);
+  color: var(--color-text);
+}
+.file-chip-remove {
+  display: inline-flex;
+  margin-right: calc(-1 * var(--space-xs));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.file-chip-remove:hover {
+  color: var(--color-text);
+}
+
+/* A file is dragged over an area that takes it. */
+[data-dropping] {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
 .composer-actions {
   display: flex;
   align-items: center;
@@ -1022,6 +1081,28 @@ a.list-row:hover {
   margin-left: auto;
   font-size: var(--font-size-sm);
   color: var(--color-text-quaternary);
+}
+
+.thread-files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-height: 0;
+  padding: var(--space-lg);
+}
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+.file-row .list-row {
+  flex: 1;
+  min-width: 0;
+}
+.thread-files .list-row .name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .empty {

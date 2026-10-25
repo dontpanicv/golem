@@ -39,6 +39,7 @@ function message(
     authorId: null,
     agent: false,
     failed: false,
+    files: [],
     streaming: false,
     time: 0,
     ...state,

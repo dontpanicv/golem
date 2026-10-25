@@ -15,6 +15,8 @@ export type FormInput = RouteInput & {
 };
 export type AuthedFormInput = AuthedInput & {
   readonly fields: Record<string, string | undefined>;
+  /** The files of a `multipart/form-data` form. */
+  readonly files: readonly File[];
 };
 
 /** A page for signed-in people; others go to the login page. Not found errors render as 404. */
@@ -43,9 +45,9 @@ export function action(
 ): Handler {
   return page(async (input) => {
     rejectCrossOrigin(input);
-    const fields = await formFields(input.request);
+    const { fields, files } = await readForm(input.request);
     try {
-      return redirect(await handler({ ...input, fields }));
+      return redirect(await handler({ ...input, fields, files }));
     } catch (error) {
       if (error instanceof HttpError && error.status !== 404) {
         return redirect(
@@ -67,7 +69,7 @@ export function form(
 ): Handler {
   return async (input) => {
     rejectCrossOrigin(input);
-    const fields = await formFields(input.request);
+    const { fields } = await readForm(input.request);
     try {
       return await handler({ ...input, fields });
     } catch (error) {
@@ -90,16 +92,24 @@ export function rejectCrossOrigin({ app, request }: RouteInput): void {
   }
 }
 
-export async function formFields(
-  request: Request
-): Promise<Record<string, string | undefined>> {
+/** The text fields of a form, and its files; a file field with nothing chosen sends no file. */
+export async function readForm(request: Request): Promise<{
+  fields: Record<string, string | undefined>;
+  files: File[];
+}> {
   const data = await request.formData().catch(() => new FormData());
-  return Object.fromEntries(
-    [...data.entries()].map(([key, value]) => [
-      key,
-      typeof value === "string" ? value : undefined,
-    ])
-  );
+  const entries = [...data.entries()];
+  return {
+    fields: Object.fromEntries(
+      entries.map(([key, value]) => [
+        key,
+        typeof value === "string" ? value : undefined,
+      ])
+    ),
+    files: entries.flatMap(([, value]) =>
+      typeof value !== "string" && value.name !== "" ? [value] : []
+    ),
+  };
 }
 
 /** The toast a redirect asked for with `?error=` or `?notice=`. Failed Google sign-ins also send `error_description`. */

@@ -15,19 +15,13 @@ function browser(golem: TestApp, cookie: string) {
           body: new URLSearchParams(fields),
         })
       ),
-    /** A Datastar request: signals go in the `datastar` query parameter for GET, and in a JSON body for POST. */
-    datastar: (path: string, signals: unknown, method = "GET") =>
+    /** A Datastar request: signals go in the `datastar` query parameter. Datastar posts forms as `post` does. */
+    datastar: (path: string, signals: unknown) =>
       golem.handler(
-        method === "GET"
-          ? new Request(
-              `http://golem.test${path}?datastar=${encodeURIComponent(JSON.stringify(signals))}`,
-              { headers: { cookie } }
-            )
-          : new Request(`http://golem.test${path}`, {
-              method,
-              headers: { cookie, "content-type": "application/json" },
-              body: JSON.stringify(signals),
-            })
+        new Request(
+          `http://golem.test${path}?datastar=${encodeURIComponent(JSON.stringify(signals))}`,
+          { headers: { cookie } }
+        )
       ),
   };
 }
@@ -184,19 +178,13 @@ describe("the web app", () => {
 
   test("a message posts over Datastar, clears the composer, and joins the thread", async () => {
     const path = `/w/${workspaceId}/t/${threadId}/messages`;
-    expect((await alice.datastar(path, { message: "  " }, "POST")).status).toBe(
-      400
-    );
-    expect((await alice.datastar(path, {}, "POST")).status).toBe(400);
+    expect((await alice.post(path, { text: "  " })).status).toBe(400);
+    expect((await alice.post(path)).status).toBe(400);
 
     golem.faux.setResponses([fauxAssistantMessage("Bring boots.")]);
-    const sent = await alice.datastar(
-      path,
-      { message: "What to pack?" },
-      "POST"
-    );
+    const sent = await alice.post(path, { text: "What to pack?" });
     expect(await sent.text()).toContain(
-      'event: datastar-patch-signals\ndata: signals {"message":""}'
+      "document.getElementById('composer').reset()"
     );
     const state = await until(
       () => golem.app.threads.messages(threadRef()),

@@ -12,6 +12,7 @@ export interface Message {
   readonly time: number;
   readonly failed?: boolean;
   readonly streaming?: boolean;
+  readonly files?: readonly { readonly id: string; readonly name: string }[];
 }
 
 export type Toast = {
@@ -100,10 +101,11 @@ export function avatar(
 /** A link to a thread as agents write it in messages: `[title](thread:<id>)`. */
 const THREAD_LINK = /\[([^\]\n]+)\]\(thread:([\w-]+)\)/g;
 
-/** A message; each thread link in its text opens `threadHref(threadId)`. */
+/** A message; each thread link in its text opens `threadHref(threadId)`, each attached file `fileHref(fileId)`. */
 export function message(
   m: Message,
-  threadHref: (threadId: string) => string
+  threadHref: (threadId: string) => string,
+  fileHref: (fileId: string) => string
 ): string {
   const time = new Date(m.time).toLocaleTimeString("en-GB", {
     hour: "2-digit",
@@ -116,27 +118,47 @@ export function message(
 	${avatar(m.author, { agent: m.agent })}
 	<div class="message-body">
 		<div class="message-meta"><span class="message-author">${escapeHtml(m.author)}</span><time class="message-time">${time}</time></div>
-		<p class="message-text">${escapeHtml(m.text).replace(THREAD_LINK, (_, title: string, threadId: string) => `<a class="thread-link" href="${escapeHtml(threadHref(threadId))}">${title}</a>`)}</p>
+		${m.text ? `<p class="message-text">${escapeHtml(m.text).replace(THREAD_LINK, (_, title: string, threadId: string) => `<a class="thread-link" href="${escapeHtml(threadHref(threadId))}">${title}</a>`)}</p>` : ""}
+		${m.files?.length ? `<div class="file-chips">${m.files.map((file) => fileChip(file.name, { href: fileHref(file.id) })).join("")}</div>` : ""}
 	</div>
 </article>`;
 }
 
-/** A message box. `action` is a Datastar expression, or `{ post }` for a plain form that posts `text`. */
+/** An attached file: with `href`, a link that opens it; with `remove`, a picked file with a remove button. */
+export function fileChip(
+  name: string,
+  options: { href?: string; remove?: boolean } = {}
+): string {
+  const content = `${icon("attach")}<span>${escapeHtml(name)}</span>`;
+  if (options.href) {
+    return `<a class="file-chip" href="${escapeHtml(options.href)}" target="_blank">${content}</a>`;
+  }
+  const remove = options.remove
+    ? `<button type="button" class="file-chip-remove" aria-label="Remove ${escapeHtml(name)}" data-file-remove>${icon("close")}</button>`
+    : "";
+  return `<span class="file-chip">${content}${remove}</span>`;
+}
+
+/**
+ * A message box that posts `text` and the attached `files` as a multipart form. Files are picked, dropped on it, or
+ * pasted into it. `action` is a Datastar expression, or `{ post }` for a plain form post.
+ */
 export function composer(
   placeholder: string,
   action: string | { post: string }
 ): string {
   const form =
     typeof action === "string"
-      ? `<form class="composer" data-on:submit__prevent="${action}">`
-      : `<form class="composer" method="post" action="${escapeHtml(action.post)}">`;
-  const binding =
-    typeof action === "string" ? "data-bind:message" : 'name="text" required';
+      ? `<form id="composer" class="composer" data-file-drop enctype="multipart/form-data" data-on:submit__prevent="${action}">`
+      : `<form id="composer" class="composer" data-file-drop method="post" enctype="multipart/form-data" action="${escapeHtml(action.post)}">`;
   // Enter sends; Shift+Enter adds a line.
   return `${form}
-	<textarea ${binding} rows="1" placeholder="${escapeHtml(placeholder)}" aria-label="Message" data-on:keydown="evt.key === 'Enter' &amp;&amp; !evt.shiftKey &amp;&amp; (evt.preventDefault(), el.form.requestSubmit())"></textarea>
+	<textarea name="text" rows="1" placeholder="${escapeHtml(placeholder)}" aria-label="Message" data-on:keydown="evt.key === 'Enter' &amp;&amp; !evt.shiftKey &amp;&amp; (evt.preventDefault(), el.form.requestSubmit())"></textarea>
+	<div class="file-chips" data-file-list hidden></div>
+	<template data-file-chip>${fileChip("", { remove: true })}</template>
 	<div class="composer-actions">
-		${button("Attach file", { variant: "ghost", icon: "attach", size: "icon" })}
+		${button("Attach file", { variant: "ghost", icon: "attach", size: "icon", attributes: 'type="button" data-file-pick' })}
+		<input type="file" name="files" multiple hidden>
 		<span class="spacer"></span>
 		${button("Send", { variant: "primary", icon: "send", size: "tiny", round: true, shortcut: "↵", attributes: 'type="submit"' })}
 	</div>

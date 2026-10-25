@@ -6,6 +6,7 @@ struct ChannelView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var draft = ""
+    @State private var files: [URL] = []
     @State private var sending = false
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
@@ -28,7 +29,7 @@ struct ChannelView: View {
             if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything", systemImage: "sparkles") }
         }
         .safeAreaInset(edge: .bottom) {
-            Composer(placeholder: "Message \(channel?.name ?? "")", draft: $draft, send: send)
+            Composer(placeholder: "Message \(channel?.name ?? "")", draft: $draft, files: $files, send: send)
                 .padding([.horizontal, .bottom], Tokens.Space.lg)
         }
         .background(Tokens.Colors.surface)
@@ -39,12 +40,13 @@ struct ChannelView: View {
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !sending else { return }
+        guard !text.isEmpty || !files.isEmpty, !sending else { return }
         sending = true
         Task {
             await session.run {
-                if let thread = try await session.createThread(channelID: channelID, text: text) {
+                if let thread = try await session.createThread(channelID: channelID, text: text, files: files) {
                     draft = ""
+                    files = []
                     open(.thread(thread.id))
                 }
             }

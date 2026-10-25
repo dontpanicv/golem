@@ -243,7 +243,13 @@ export class Indexer {
       const uri = `${folder}/${relative}`;
       const version = `${stats.mtimeMs}:${stats.size}`;
       seen.add(uri);
-      const title = basename(relative).replace(/\.[^.]+$/, "");
+      // Thread files start with their UUIDv7, which is no part of their name.
+      const title = basename(relative)
+        .replace(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}-/,
+          ""
+        )
+        .replace(/\.[^.]+$/, "");
       await index.sync(
         {
           uri,

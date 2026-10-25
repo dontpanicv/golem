@@ -62,6 +62,12 @@ function agent(context: Context) {
     // A third pass would let two agents talk forever.
     return call("send_to_thread", { thread: relay[1]!, message: "Thanks" });
   }
+  const file = /^Alice: Read the file\nAttached: .* \(file ([\w-]+)\)$/.exec(
+    text
+  );
+  if (file) {
+    return call("read_file", { file: file[1]! });
+  }
   if (text.endsWith("List the channels")) {
     return call("list_channels", {});
   }
@@ -174,6 +180,112 @@ test("an agent lists the channels of its workspace and cannot reach a thread of 
   ).toEqual(["Payroll", "Ok."]);
 });
 
+/** Posts a multipart form, as the iOS app with a bearer token or the web with a session cookie. */
+function postForm(
+  path: string,
+  form: FormData,
+  headers: Record<string, string>
+) {
+  return golem.handler(
+    new Request(`http://golem.test${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+    })
+  );
+}
+
+test("files attach to a new thread, a message, and the thread; the agent reads them; others cannot reach them", async () => {
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const outsider = await golem.signIn("Bob", "bob@example.com");
+  const home = await golem.app.workspaces.create(alice, "Files");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+
+  const start = new FormData();
+  start.set("channelId", general.id);
+  start.set("text", "Read the file");
+  start.append("files", new File(["Milk, eggs, bread"], "../shopping.txt"));
+  const created = await postForm(
+    `/api/v1/workspaces/${home.id}/threads`,
+    start,
+    { authorization: `Bearer ${token}` }
+  );
+  expect(created.status).toBe(200);
+  const { id } = (await created.json()) as { id: string };
+  await idle(home.id, id);
+  expect(toolResults).toContain("Milk, eggs, bread");
+
+  const page = new FormData();
+  page.append("files", new File(["<script>alert(1)</script>"], "page.html"));
+  const uploaded = await postForm(`/api/v1/threads/${id}/files`, page, {
+    authorization: `Bearer ${token}`,
+  });
+  const message = new FormData();
+  message.set("text", "");
+  message.append("files", new File(["a photo"], "beach.png"));
+  const sent = await postForm(`/w/${home.id}/t/${id}/messages`, message, {
+    cookie: await golem.sessionCookie(token),
+    origin: "http://golem.test",
+  });
+  expect(sent.status).toBe(200);
+
+  const { files } = (await uploaded.json()) as {
+    files: { id: string; name: string }[];
+  };
+  expect(files.map((file) => file.name)).toEqual(["shopping.txt", "page.html"]);
+  const listed = await golem.call(`/api/v1/threads/${id}/files`, { token });
+  expect(
+    ((await listed.json()) as { files: { name: string }[] }).files.map(
+      (file) => file.name
+    )
+  ).toEqual(["shopping.txt", "page.html", "beach.png"]);
+  const thread = golem.app.workspaces.thread(id, alice);
+  const { messages } = await golem.app.threads.messages(thread);
+  // The agent may answer the last message meanwhile.
+  expect(
+    messages.slice(0, 3).map((m) => [m.text, m.files.map((f) => f.name)])
+  ).toEqual([
+    ["Read the file", ["shopping.txt"]],
+    ["Done.", []],
+    ["", ["beach.png"]],
+  ]);
+
+  const shopping = await golem.call(
+    `/api/v1/threads/${id}/files/${files[0]!.id}`,
+    { token }
+  );
+  expect(await shopping.text()).toBe("Milk, eggs, bread");
+  expect(shopping.headers.get("content-disposition")).toBe(
+    "inline; filename*=UTF-8''shopping.txt"
+  );
+  const html = await golem.call(`/api/v1/threads/${id}/files/${files[1]!.id}`, {
+    token,
+  });
+  expect(html.headers.get("content-type")).toBe("application/octet-stream");
+  expect(html.headers.get("content-disposition")).toStartWith("attachment");
+
+  for (const path of [
+    `/api/v1/threads/${id}/files`,
+    `/api/v1/threads/${id}/files/${files[0]!.id}`,
+  ]) {
+    expect((await golem.call(path, { token: outsider })).status).toBe(404);
+  }
+
+  const pagePath = `/api/v1/threads/${id}/files/${files[1]!.id}`;
+  const refused = await golem.call(pagePath, {
+    token: outsider,
+    method: "DELETE",
+  });
+  expect(refused.status).toBe(404);
+  const deleted = await golem.call(pagePath, { token, method: "DELETE" });
+  expect(
+    ((await deleted.json()) as { files: { name: string }[] }).files.map(
+      (file) => file.name
+    )
+  ).toEqual(["shopping.txt", "beach.png"]);
+  expect((await golem.call(pagePath, { token })).status).toBe(404);
+});
+
 test("the web shows each thread link in a message as a link into the workspace, and escapes the rest", () => {
   const html = transcript(
     {
@@ -187,11 +299,12 @@ test("the web shows each thread link in a message as a link into the workspace, 
           text: 'Started [Dinner <b>plan</b>](thread:abc-1) and [not a link](thread:"x) <i>',
           time: 0,
           failed: false,
+          files: [],
           streaming: false,
         },
       ],
     },
-    "family"
+    { id: "dinner", workspaceId: "family" }
   );
   expect(html).toContain(
     'Started <a class="thread-link" href="/w/family/t/abc-1">Dinner &lt;b&gt;plan&lt;/b&gt;</a> and [not a link](thread:&quot;x) &lt;i&gt;'

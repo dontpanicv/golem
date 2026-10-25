@@ -71,6 +71,23 @@ export function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
 
+/** Pictures, PDFs, plain text, audio, and video open in the browser. */
+const INLINE_TYPES =
+  /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|text\/plain|audio\/|video\/)/;
+
+/** A stored file. Other kinds download, so that an uploaded web page or SVG never runs on this site. */
+export function fileResponse(path: string, name: string): Response {
+  const file = Bun.file(path);
+  const inline = INLINE_TYPES.test(file.type);
+  return new Response(file, {
+    headers: {
+      "content-type": inline ? file.type : "application/octet-stream",
+      "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`,
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 function errorResponse(error: unknown): Response {
   if (error instanceof HttpError) {
     return json({ error: error.message }, error.status);

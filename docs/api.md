@@ -36,7 +36,10 @@ type Message = {
 	time: number;
 	failed: boolean; // the agent's answer failed; text is the error
 	streaming: boolean; // the agent is still writing this message
+	files: FileRef[]; // attached to the message; text may be empty when files are attached
 };
+type FileRef = { id: string; name: string };
+type ThreadFile = { id: string; name: string; size: number; time: number }; // size in bytes; ids are UUIDv7
 type ThreadState = { thread: ThreadSummary; messages: Message[]; running: boolean };
 type SearchResult = {
 	uri: string; // thread:<id>, or a path under the workspace folder
@@ -99,6 +102,15 @@ Workspace paths answer `404` to users who are not members of the workspace.
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text }` | `204` |
+| `GET /api/v1/threads/:threadId/files` | | `{ files: ThreadFile[] }`, oldest first |
+| `POST /api/v1/threads/:threadId/files` | multipart `files` | `{ files: ThreadFile[] }`: all files of the thread |
+| `DELETE /api/v1/threads/:threadId/files/:fileId` | | `{ files: ThreadFile[] }`: the files left. Messages keep the name of a deleted file. |
+| `GET /api/v1/threads/:threadId/files/:fileId` | | The file. Pictures, PDFs, plain text, audio, and video are `inline`; other kinds are `attachment` and `application/octet-stream`. |
+
+To attach files to a new thread or a message, send the same fields as a `multipart/form-data` form with one `files`
+part per file instead of JSON. A message then needs text, files, or both; a thread without text takes the name of its
+first file. The thread's agent sees each attached file by name and id, and reads files with its `list_files` and
+`read_file` tools.
 
 ### Search (`src/search/`)
 

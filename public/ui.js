@@ -1,4 +1,4 @@
-// Golem interface behaviors: menus, selects, tooltips, dialogs, toasts, and controls that submit on change.
+// Golem interface behaviors: menus, selects, tooltips, dialogs, toasts, file pickers, and controls that submit on change.
 // Everything uses event delegation on the document, so it keeps working when Datastar patches the page.
 // Looks and timings follow design/components.md.
 
@@ -396,3 +396,105 @@ function escapeHtml(text) {
 }
 
 startToasts();
+
+// File pickers: <button data-file-pick> opens the <input type="file"> of its form. Files dropped on a
+// [data-file-drop] area, or pasted into it, join its input. A [data-file-list] shows the picked files as chips from
+// its form's <template data-file-chip>; each chip's [data-file-remove] button takes its file out.
+
+document.addEventListener("click", (event) => {
+  const picker = event.target.closest("[data-file-pick]");
+  if (picker) {
+    picker.form.querySelector("input[type=file]").click();
+    return;
+  }
+  const remove = event.target.closest("[data-file-remove]");
+  if (remove) {
+    const form = remove.closest("form");
+    const input = form.querySelector("input[type=file]");
+    const index = [
+      ...form.querySelectorAll("[data-file-list] .file-chip"),
+    ].indexOf(remove.closest(".file-chip"));
+    setFiles(
+      input,
+      [...input.files].filter((_, other) => other !== index)
+    );
+  }
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.matches?.("input[type=file]")) {
+    showPicked(event.target.form);
+  }
+});
+
+document.addEventListener("reset", (event) => {
+  // The fields clear after the reset event.
+  setTimeout(() => showPicked(event.target));
+});
+
+document.addEventListener("dragover", (event) => {
+  const area = event.target.closest?.("[data-file-drop]");
+  if (area && event.dataTransfer.types.includes("Files")) {
+    event.preventDefault();
+    area.toggleAttribute("data-dropping", true);
+  }
+});
+
+document.addEventListener("dragleave", (event) => {
+  const area = event.target.closest?.("[data-file-drop]");
+  if (area && !area.contains(event.relatedTarget)) {
+    area.removeAttribute("data-dropping");
+  }
+});
+
+document.addEventListener("drop", (event) => {
+  const area = event.target.closest?.("[data-file-drop]");
+  if (area && event.dataTransfer.files.length > 0) {
+    event.preventDefault();
+    area.removeAttribute("data-dropping");
+    addFiles(area, event.dataTransfer.files);
+  }
+});
+
+document.addEventListener("paste", (event) => {
+  const area = event.target.closest?.("[data-file-drop]");
+  if (area && event.clipboardData.files.length > 0) {
+    event.preventDefault();
+    addFiles(area, event.clipboardData.files);
+  }
+});
+
+function addFiles(area, files) {
+  const input = area.querySelector("input[type=file]");
+  setFiles(input, [...input.files, ...files]);
+}
+
+/** Sets the files of an input and sends `change`, as picking them does: forms that upload on change upload them. */
+function setFiles(input, files) {
+  const transfer = new DataTransfer();
+  for (const file of files) {
+    transfer.items.add(file);
+  }
+  input.files = transfer.files;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function showPicked(form) {
+  const list = form?.querySelector("[data-file-list]");
+  if (!list) {
+    return;
+  }
+  const files = [...form.querySelector("input[type=file]").files];
+  const template = form.querySelector("template[data-file-chip]");
+  list.hidden = files.length === 0;
+  list.replaceChildren(
+    ...files.map((file) => {
+      const chip = template.content.firstElementChild.cloneNode(true);
+      chip.querySelector("span").textContent = file.name;
+      chip
+        .querySelector("[data-file-remove]")
+        .setAttribute("aria-label", `Remove ${file.name}`);
+      return chip;
+    })
+  );
+}

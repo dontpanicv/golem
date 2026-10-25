@@ -104,6 +104,17 @@ Used by selects, the workspace switcher, and action menus.
 - Agents write a thread as `[title](thread:<id>)` in a message. It shows as the title in `accent`, no underline;
   hover (web) turns it `accentHover` and underlined. Clicking or tapping opens the thread in the app.
 
+## File chip
+
+- A file attached to a message, or picked in the composer: `size.controlSmall` (28) high (44 pt touch target on
+  iOS), padding 0 12, `radius.md`, `fillSubtle`, ring 0.5 px `borderStrong`, paperclip icon in `textTertiary`, name in
+  `fontSize.sm` `textSecondary`, cut with an ellipsis at 240 wide. Chips wrap with a 4 px gap.
+- In a message the chip opens the file; hover (web) turns it `fillHover` and the name `text`. Picked files show
+  above the composer's buttons until the message is sent, each with a close icon in `textTertiary` (hover `text`)
+  that takes the file out.
+- The composer and the Files tab take dropped files, and the composer takes pasted files. While a file is dragged
+  over them they show a 1 px `accent` outline.
+
 ## Badge and keycap
 
 - Badge: 20 high, `radius.full`, 0.5 px `border`, `fontSize.xs` `medium`, a 6 px dot in the tone color.

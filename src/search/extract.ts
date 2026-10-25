@@ -133,6 +133,25 @@ export async function extract(path: string): Promise<Extraction> {
   }
 }
 
+/** The whole text of a document or PDF, for an agent to read; `null` for pictures, audio, video, and other files. */
+export async function readText(path: string): Promise<string | null> {
+  switch (kindOf(path)) {
+    case "document":
+      return documentText(path);
+    case "pdf": {
+      const document = await getDocumentProxy(
+        new Uint8Array(await Bun.file(path).arrayBuffer())
+      );
+      const { text } = await extractText(document, { mergePages: false });
+      return text
+        .map((page, index) => `[Page ${index + 1}]\n${page.trim()}`)
+        .join("\n\n");
+    }
+    default:
+      return null;
+  }
+}
+
 // Documents
 
 async function documentSegments(path: string): Promise<Extraction> {
@@ -531,7 +550,8 @@ async function imageSegments(path: string): Promise<Extraction> {
   return { segments };
 }
 
-async function jpeg(path: string): Promise<Uint8Array | null> {
+/** The picture as a JPEG at most 1024 pixels long, with ffmpeg or sips; `null` without either. */
+export async function jpeg(path: string): Promise<Uint8Array | null> {
   const fit =
     "scale='if(gt(iw,ih),min(1024,iw),-2)':'if(gt(iw,ih),-2,min(1024,ih))'";
   if (tools.ffmpeg) {

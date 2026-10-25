@@ -35,8 +35,8 @@ export interface ShellPage {
   readonly header?: string;
   readonly main: string;
   readonly headerActions?: string;
-  /** Adds the artifacts panel of a thread. */
-  readonly artifacts?: boolean;
+  /** Adds the artifacts panel of a thread, with the content of its Files tab. */
+  readonly artifacts?: { readonly files: string };
   /** Extra `data-signals` entries and a `data-init` expression for the page body. */
   readonly signals?: string;
   readonly init?: string;
@@ -92,7 +92,7 @@ export function lastOpened(
 
 /** The app: workspace and channels with their threads on the left, the page in the inset panel. */
 export function shell(context: ShellContext, page: ShellPage): string {
-  const signals = `{sidebar: false, artifacts: matchMedia('(min-width: 1001px)').matches, tab: 'artifacts', message: ''${page.signals ? `, ${page.signals}` : ""}}`;
+  const signals = `{sidebar: false, artifacts: matchMedia('(min-width: 1001px)').matches, tab: 'artifacts'${page.signals ? `, ${page.signals}` : ""}}`;
   const menuButton = button("Menu", {
     variant: "ghost",
     icon: "sidebar",
@@ -115,7 +115,7 @@ export function shell(context: ShellContext, page: ShellPage): string {
 			${header}
 			${page.main}
 		</section>
-		${page.artifacts ? artifactsPanel() : ""}
+		${page.artifacts ? artifactsPanel(page.artifacts.files) : ""}
 	</main>
 </div>
 ${dialogs(context)}`;
@@ -235,14 +235,14 @@ function channelNav(
   return `${navItem(channel.name, { icon: "hash", href: `/w/${workspace.id}/c/${channel.id}`, current: isCurrent })}<div class="nav-threads">${threads}</div>`;
 }
 
-function artifactsPanel(): string {
+function artifactsPanel(files: string): string {
   return `<aside class="artifacts" data-show="$artifacts" aria-label="Artifacts">
 		<header class="panel-header">
 			<div class="tabs" role="tablist">${tab("artifacts", "Artifacts")}${tab("files", "Files")}${tab("preview", "Preview")}</div>
 			${button("Close artifacts", { variant: "ghost", icon: "close", size: "icon", attributes: 'type="button" data-on:click="$artifacts = false"' })}
 		</header>
 		<div class="empty" data-show="$tab === 'artifacts'">${icon("artifact")}<strong>No artifacts yet</strong></div>
-		<div class="empty" data-show="$tab === 'files'" style="display: none">${icon("file")}<strong>No files yet</strong></div>
+		${files}
 		<div class="empty" data-show="$tab === 'preview'" style="display: none">${icon("preview")}<strong>Nothing to preview</strong></div>
 	</aside>`;
 }

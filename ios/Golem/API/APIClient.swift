@@ -35,7 +35,23 @@ struct Message: Codable, Hashable, Identifiable {
     let time: Double
     let failed: Bool
     let streaming: Bool
+    let files: [FileRef]
 }
+
+struct FileRef: Codable, Hashable, Identifiable {
+    let id: String
+    let name: String
+}
+
+struct ThreadFile: Codable, Hashable, Identifiable {
+    let id: String
+    let name: String
+    let size: Double
+    let time: Double
+    var ref: FileRef { FileRef(id: id, name: name) }
+}
+
+struct ThreadFiles: Codable { let files: [ThreadFile] }
 
 struct ThreadState: Codable, Hashable {
     let thread: ThreadSummary
@@ -187,8 +203,11 @@ final class APIClient {
         try await post("/api/v1/workspaces/\(workspaceID)/channels", ["name": name])
     }
 
-    func createThread(workspaceID: String, channelID: String, text: String) async throws -> ThreadSummary {
-        try await post("/api/v1/workspaces/\(workspaceID)/threads", ["channelId": channelID, "text": text])
+    func createThread(
+        workspaceID: String, channelID: String, text: String, files: [URL]
+    ) async throws -> ThreadSummary {
+        let fields = ["channelId": channelID, "text": text]
+        return try decode(try await sendForm("/api/v1/workspaces/\(workspaceID)/threads", fields, files).data)
     }
 
     func search(workspaceID: String, query: String) async throws -> SearchResponse {
@@ -243,8 +262,33 @@ final class APIClient {
 
     func thread(_ id: String) async throws -> ThreadState { try await get("/api/v1/threads/\(id)") }
 
-    func sendMessage(threadID: String, text: String) async throws {
-        _ = try await send("POST", "/api/v1/threads/\(threadID)/messages", ["text": text])
+    func sendMessage(threadID: String, text: String, files: [URL]) async throws {
+        _ = try await sendForm("/api/v1/threads/\(threadID)/messages", ["text": text], files)
+    }
+
+    func threadFiles(_ threadID: String) async throws -> [ThreadFile] {
+        (try await get("/api/v1/threads/\(threadID)/files") as ThreadFiles).files
+    }
+
+    func uploadFiles(threadID: String, files: [URL]) async throws -> [ThreadFile] {
+        (try decode(try await sendForm("/api/v1/threads/\(threadID)/files", [:], files).data) as ThreadFiles).files
+    }
+
+    func deleteFile(threadID: String, fileID: String) async throws -> [ThreadFile] {
+        (try decode(try await send("DELETE", "/api/v1/threads/\(threadID)/files/\(fileID)").data) as ThreadFiles).files
+    }
+
+    /// Downloads a file of a thread to a temporary folder under its own name, for Quick Look.
+    func download(threadID: String, file: FileRef) async throws -> URL {
+        let request = try makeRequest("GET", "/api/v1/threads/\(threadID)/files/\(file.id)")
+        let (location, response) = try await URLSession.shared.download(for: request)
+        try check(response, data: Data())
+        let folder = FileManager.default.temporaryDirectory.appending(path: file.id)
+        try? FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: file.name)
+        try FileManager.default.moveItem(at: location, to: url)
+        return url
     }
 
     /// Reads the server-sent events of a thread until the stream ends, the task is cancelled, or an error occurs.
@@ -296,6 +340,33 @@ final class APIClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         let (data, response) = try await URLSession.shared.data(for: request)
+        return (data, try check(response, data: data))
+    }
+
+    /// A `multipart/form-data` post: the text fields, then one `files` part per file.
+    private func sendForm(
+        _ path: String, _ fields: [String: String], _ files: [URL]
+    ) async throws -> (data: Data, response: HTTPURLResponse) {
+        var request = try makeRequest("POST", path)
+        let boundary = "golem-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        func part(_ headers: String, _ content: Data) {
+            body.append(Data("--\(boundary)\r\n\(headers)\r\n\r\n".utf8))
+            body.append(content)
+            body.append(Data("\r\n".utf8))
+        }
+        for (name, value) in fields {
+            part("Content-Disposition: form-data; name=\"\(name)\"", Data(value.utf8))
+        }
+        for file in files {
+            // A quote would end the name; browsers send it as %22 too.
+            let name = file.lastPathComponent.replacingOccurrences(of: "\"", with: "%22")
+            let disposition = "Content-Disposition: form-data; name=\"files\"; filename=\"\(name)\""
+            part("\(disposition)\r\nContent-Type: application/octet-stream", try Data(contentsOf: file))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
+        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
         return (data, try check(response, data: data))
     }
 

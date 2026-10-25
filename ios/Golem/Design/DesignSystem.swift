@@ -120,6 +120,38 @@ struct Badge: View {
     }
 }
 
+/// A file attached to a message, or picked in the composer; picked files have a button that takes them out.
+struct FileChip: View {
+    let name: String
+    var remove: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: Tokens.Space.xs) {
+            Image(systemName: "paperclip").foregroundStyle(Tokens.Colors.textTertiary)
+            Text(name).lineLimit(1).truncationMode(.middle)
+            if let remove {
+                Button("Remove \(name)", systemImage: "xmark", action: remove)
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(Tokens.Colors.textTertiary)
+                    .frame(minWidth: Tokens.Size.listRow, minHeight: Tokens.Size.listRow)
+                    .padding(.horizontal, -Tokens.Space.lg)
+            }
+        }
+        .font(.golem(Tokens.FontSize.sm))
+        .foregroundStyle(Tokens.Colors.textSecondary)
+        .padding(.horizontal, Tokens.Space.lg)
+        .frame(maxWidth: 240, minHeight: Tokens.Size.controlSmall)
+        .background(Tokens.Colors.fillSubtle, in: .rect(cornerRadius: Tokens.Radius.md))
+        .overlay(
+            RoundedRectangle(cornerRadius: Tokens.Radius.md)
+                .strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5)
+        )
+        // Touch target: 44 pt where the web chip is 28 px.
+        .frame(minHeight: Tokens.Size.listRow)
+        .contentShape(.rect)
+    }
+}
+
 /// A keyboard shortcut.
 struct Keycap: View {
     let key: String
