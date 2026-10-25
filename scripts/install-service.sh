@@ -18,6 +18,7 @@ if [ "${1:-}" = "--daemon" ]; then
 	PLIST="/Library/LaunchDaemons/$LABEL.plist"
 	DOMAIN="system"
 	USER_KEY="<key>UserName</key><string>$RUN_AS</string>"
+	DAEMON=1
 	# A daemon must not compete with a per-user copy for the port.
 	launchctl bootout "gui/$(id -u "$RUN_AS")/$LABEL" 2>/dev/null || true
 	launchctl bootout "user/$(id -u "$RUN_AS")/$LABEL" 2>/dev/null || true
@@ -25,7 +26,8 @@ else
 	PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 	DOMAIN="gui/$(id -u)"
 	launchctl print "$DOMAIN" >/dev/null 2>&1 || DOMAIN="user/$(id -u)"
-	USER_KEY=""
+	# Background lets the agent load into a user's session without a desktop login.
+	USER_KEY="<key>LimitLoadToSessionType</key><array><string>Aqua</string><string>Background</string></array>"
 fi
 
 mkdir -p "$ROOT/data" "$(dirname "$PLIST")"
@@ -46,7 +48,7 @@ cat > "$PLIST" <<EOF
 </dict>
 </plist>
 EOF
-[ -n "$USER_KEY" ] && chown "$RUN_AS" "$ROOT/data"
+[ -n "${DAEMON:-}" ] && chown "$RUN_AS" "$ROOT/data"
 
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
 launchctl bootstrap "$DOMAIN" "$PLIST"
