@@ -61,7 +61,10 @@ The web app and the iOS app share one design system, modeled on Linear's clean s
 
 - `design/tokens.json` holds every color (light and dark), type size, space, radius, size, and shadow.
 - `bun run tokens` generates `public/tokens.css` and `ios/Golem/Design/Tokens.swift` from it.
-- Web components are in `public/styles.css` and `src/ui/`; iOS components are in `ios/Golem/Design/`.
+- `design/components.md` specifies every component: buttons, fields, selects, menus, switches, checkboxes, tooltips,
+  dialogs, toasts, and settings cards, with their motion.
+- Web components are in `public/styles.css`, `public/ui.js`, and `src/ui/`; iOS components are in `ios/Golem/Design/`.
+- `design/icon.svg` is the app icon and the web favicon, rendered to PNG with Inter.
 - `/design` on the web and **Design system** in the iOS sidebar show every token and component.
 - Both use [Inter](https://rsms.me/inter/) (SIL Open Font License) and follow the system light or dark appearance.
 

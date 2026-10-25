@@ -19,8 +19,10 @@ final class Session {
     private(set) var channels: [Channel] = []
     /// The last failure of `load()`, shown with a retry button while no user is loaded.
     private(set) var loadError: String?
-    /// The last failure of an action, shown in an alert.
-    var error: String?
+    /// The toast at the top of the screen: the last failure of an action, or a confirmation.
+    var toast: Toast?
+    /// Open dialogs, which show the toast above their dimmed backdrop.
+    var dialogs = 0
 
     init() {
         let serverURL = UserDefaults.standard.string(forKey: Keys.serverURL)
@@ -65,7 +67,7 @@ final class Session {
             }
         } catch {
             guard signedIn else { return }
-            if user == nil { loadError = error.localizedDescription } else { self.error = error.localizedDescription }
+            if user == nil { loadError = error.localizedDescription } else { show(error.localizedDescription, .error) }
         }
     }
 
@@ -102,11 +104,15 @@ final class Session {
         return thread
     }
 
-    /// Runs an action and shows its error in the app-level alert.
+    /// Runs an action and shows its error in a toast.
     func run(_ action: () async throws -> Void) async {
         do { try await action() } catch is CancellationError {} catch {
-            if (error as? APIError)?.status != 401 { self.error = error.localizedDescription }
+            if (error as? APIError)?.status != 401 { show(error.localizedDescription, .error) }
         }
+    }
+
+    func show(_ message: String, _ tone: Toast.Tone = .neutral) {
+        toast = Toast(message: message, tone: tone)
     }
 
     private func clear() {

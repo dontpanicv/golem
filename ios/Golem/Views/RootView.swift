@@ -6,7 +6,9 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if !session.signedIn {
+            if Self.showsCatalog {
+                NavigationStack { DesignCatalogView() }
+            } else if !session.signedIn {
                 LoginView()
             } else if session.user == nil {
                 LoadingView()
@@ -16,16 +18,21 @@ struct RootView: View {
                 MainView()
             }
         }
+        .toasts(hidden: session.dialogs > 0)
         .environment(session)
         .tint(Tokens.Colors.accent)
         .task(id: session.signedIn) {
             if session.signedIn { await session.load() }
         }
-        .alert("Error", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) {
-            Button("OK") {}
-        } message: {
-            Text(session.error ?? "")
-        }
+    }
+
+    /// `-designCatalog` opens the design system without a server, for screenshots.
+    private static var showsCatalog: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-designCatalog")
+        #else
+        false
+        #endif
     }
 }
 
@@ -101,7 +108,6 @@ private struct Sidebar: View {
     @Environment(Session.self) private var session
     @State private var newChannel = false
     @State private var newWorkspace = false
-    @State private var name = ""
 
     var body: some View {
         ScrollView {
@@ -119,7 +125,6 @@ private struct Sidebar: View {
                     .padding(.leading, Tokens.Space.xl)
                 }
                 Button {
-                    name = ""
                     newChannel = true
                 } label: {
                     NavRow(title: "New channel", systemImage: "plus")
@@ -135,46 +140,27 @@ private struct Sidebar: View {
         .refreshable { await session.run { try await session.reloadWorkspace() } }
         .background(Tokens.Colors.canvas)
         .navigationTitle("Golem")
-        .alert("New channel", isPresented: $newChannel) {
-            TextField("Name", text: $name).textInputAutocapitalization(.never)
-            Button("Create") {
-                let name = name
-                Task {
-                    await session.run {
-                        if let channel = try await session.createChannel(name: name) { open(.channel(channel.id)) }
-                    }
-                }
+        .sheet(isPresented: $newChannel) {
+            NameDialog(title: "New channel") { name in
+                if let channel = try await session.createChannel(name: name) { open(.channel(channel.id)) }
             }
-            Button("Cancel", role: .cancel) {}
+            .textInputAutocapitalization(.never)
         }
-        .alert("New workspace", isPresented: $newWorkspace) {
-            TextField("Name", text: $name)
-            Button("Create") {
-                let name = name
-                Task { await session.run { try await session.createWorkspace(name: name) } }
-            }
-            Button("Cancel", role: .cancel) {}
+        .sheet(isPresented: $newWorkspace) {
+            NameDialog(title: "New workspace") { name in try await session.createWorkspace(name: name) }
         }
     }
 
     private var workspaceMenu: some View {
-        Menu {
+        GolemMenu {
+            MenuSectionLabel("Workspaces")
             ForEach(session.workspaces) { workspace in
-                Button {
+                MenuItem(workspace.name, checked: workspace.id == session.workspace?.id) {
                     Task { await session.run { try await session.open(workspace) } }
-                } label: {
-                    if workspace.id == session.workspace?.id {
-                        Label(workspace.name, systemImage: "checkmark")
-                    } else {
-                        Text(workspace.name)
-                    }
                 }
             }
-            Divider()
-            Button("New workspace", systemImage: "plus") {
-                name = ""
-                newWorkspace = true
-            }
+            MenuSeparator()
+            MenuItem("New workspace", systemImage: "plus") { newWorkspace = true }
         } label: {
             HStack(spacing: Tokens.Space.md) {
                 Avatar(name: session.workspace?.name ?? "G", agent: true)
@@ -191,6 +177,7 @@ private struct Sidebar: View {
             .frame(minHeight: Tokens.Size.listRow)
             .contentShape(.rect)
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("Workspace")
         .accessibilityValue(session.workspace?.name ?? "")
     }
@@ -202,5 +189,40 @@ private struct Sidebar: View {
             NavRow(title: title, systemImage: systemImage, selected: selection == destination)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// A dialog that asks for a name: new channel and new workspace. It stays open when creating fails.
+private struct NameDialog: View {
+    let title: String
+    let create: (String) async throws -> Void
+    @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var busy = false
+
+    var body: some View {
+        Dialog(title: title) {
+            GolemTextField("Name", text: $name, autofocus: true)
+                .onSubmit(submit)
+        } actions: {
+            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
+            Button("Create", action: submit)
+                .buttonStyle(.golem(.primary, .large))
+                .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    private func submit() {
+        let name = name
+        guard !busy, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        busy = true
+        Task {
+            await session.run {
+                try await create(name)
+                dismiss()
+            }
+            busy = false
+        }
     }
 }

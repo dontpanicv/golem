@@ -1,17 +1,35 @@
 import tokens from "../../design/tokens.json";
-import { badge, button, composer, empty, htmlDocument, message, navItem } from "./components.ts";
-import { icon, type IconName } from "./icons.ts";
+import {
+	avatar,
+	badge,
+	button,
+	checkbox,
+	composer,
+	dialog,
+	empty,
+	htmlDocument,
+	menu,
+	message,
+	navItem,
+	select,
+	settingsCard,
+	settingsRow,
+	textField,
+} from "./components.ts";
+import { type IconName, icon } from "./icons.ts";
 
 const sampleTime = Date.UTC(2026, 9, 25, 9, 41);
 
 /** Every token and component on one page, in light or dark. Open `/design`. */
 export function designPage(): string {
+	const theme = (label: string, expression: string) =>
+		button(label, { size: "small", attributes: `type="button" data-on:click="${expression}"` });
 	const body = `<main class="design">
 	<header class="row">
 		<h1 style="flex: 1">Golem design system</h1>
-		${button("Light", { small: true, attributes: `type="button" data-on:click="document.documentElement.dataset.theme = 'light'"` })}
-		${button("Dark", { small: true, attributes: `type="button" data-on:click="document.documentElement.dataset.theme = 'dark'"` })}
-		${button("System", { small: true, attributes: `type="button" data-on:click="delete document.documentElement.dataset.theme"` })}
+		${theme("Light", "document.documentElement.dataset.theme = 'light'")}
+		${theme("Dark", "document.documentElement.dataset.theme = 'dark'")}
+		${theme("System", "delete document.documentElement.dataset.theme")}
 	</header>
 
 	${section("Color", `<div class="grid">${Object.entries(tokens.color).map(([name, value]) => swatch(name, value)).join("")}</div>`)}
@@ -27,42 +45,90 @@ export function designPage(): string {
 	)}
 
 	${section(
-		"Space and radius",
-		`<div class="row">${Object.entries(tokens.space)
-			.map(([name, size]) => `<div class="swatch"><div style="width: ${size}px; height: 24px; background: var(--color-accent); border-radius: 2px"></div><code>${name} · ${size}</code></div>`)
-			.join("")}</div>
-		<div class="row" style="margin-top: var(--space-xl)">${Object.entries(tokens.radius)
-			.map(([name, radius]) => `<div class="swatch"><div class="swatch-color" style="width: 64px; border-radius: ${Math.min(radius, 32)}px; background: var(--color-surface-raised)"></div><code>${name} · ${radius}</code></div>`)
-			.join("")}</div>`,
-	)}
-
-	${section(
 		"Buttons",
 		`<div class="row">
 			${button("Primary", { variant: "primary" })}
 			${button("Secondary")}
 			${button("Ghost", { variant: "ghost" })}
+			${button("Danger", { variant: "danger" })}
 			${button("With icon", { icon: "plus" })}
 			${button("Disabled", { attributes: 'type="button" disabled' })}
-			${button("Small", { small: true })}
-			${button("New thread", { icon: "compose", iconOnly: true, round: true, small: true })}
-			${button("Send", { variant: "primary", icon: "send", iconOnly: true, round: true, small: true })}
+		</div>
+		<div class="row" style="margin-top: var(--space-lg)">
+			${button("Small", { size: "small" })}
+			${button("Small primary", { variant: "primary", size: "small" })}
+			${button("Search", { variant: "ghost", icon: "search", size: "icon", shortcut: "/" })}
+			${button("New thread", { icon: "compose", size: "icon" })}
+			${button("Send", { variant: "primary", icon: "send", size: "tiny", round: true })}
+			<div style="width: 320px">${button("Large", { variant: "primary", size: "large" })}</div>
 		</div>`,
 	)}
 
 	${section(
-		"Inputs and badges",
+		"Fields and selects",
+		`<div class="row" style="align-items: end">
+			<div style="width: 240px">${textField("Name", { name: "name", placeholder: "Family" })}</div>
+			${select({ name: "model", label: "Model", value: "gpt-6.1-sol", options: ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-terra"].map((value) => ({ value, label: value })) })}
+			${menu(
+				button("Open menu", { icon: "more", attributes: 'type="button" data-popover-trigger aria-haspopup="menu" aria-expanded="false"' }),
+				[
+					{ kind: "label", label: "Thread" },
+					{ kind: "action", label: "Rename", icon: "compose", attributes: 'type="button"' },
+					{ kind: "action", label: "Copy link", icon: "attach", attributes: 'type="button"' },
+					{ kind: "separator" },
+					{ kind: "action", label: "Delete", icon: "trash", attributes: 'type="button"' },
+				],
+			)}
+		</div>`,
+	)}
+
+	${section(
+		"Switches and checkboxes",
 		`<div class="row">
-			<input class="input" placeholder="Search threads" aria-label="Search threads">
+			<input class="switch" type="checkbox" role="switch" aria-label="Off">
+			<input class="switch" type="checkbox" role="switch" aria-label="On" checked>
+			<input class="switch" type="checkbox" role="switch" aria-label="Disabled" disabled>
+			${checkbox("Share with all agents in this workspace", { name: "shared" })}
+			${checkbox("Checked", { name: "checked", checked: true })}
+		</div>`,
+	)}
+
+	${section(
+		"Badges, keys, and avatars",
+		`<div class="row">
 			${badge("Running", "accent")} ${badge("Done", "success")} ${badge("Waiting", "warning")} ${badge("Failed", "danger")} ${badge("Draft")}
 			<span class="kbd">⌘</span><span class="kbd">K</span>
+			${avatar("Anna")} ${avatar("Golem", { agent: true })} ${avatar("Golem", { agent: true, size: "large" })}
 		</div>`,
+	)}
+
+	${section(
+		"Dialogs and toasts",
+		`<div class="row">
+			${button("Open dialog", { attributes: 'type="button" data-dialog-open="design-dialog"' })}
+			${button("Show toast", { attributes: `type="button" data-on:click="document.querySelector('.toasts').insertAdjacentHTML('beforeend', '<div class=&quot;toast success&quot; data-toast data-state=&quot;open&quot;><span class=&quot;dot&quot;></span>Credential added</div>')"` })}
+		</div>
+		${dialog("design-dialog", {
+			title: "Add a GitHub credential",
+			action: "#",
+			submit: "Add credential",
+			body: `${textField("Label", { name: "label", placeholder: "Family account" })}${textField("Personal access token", { name: "secret", type: "password" })}${checkbox("Share with all agents in this workspace", { name: "shared" })}`,
+		})}`,
+	)}
+
+	${section(
+		"Settings",
+		settingsCard([
+			settingsRow("ChatGPT", "Connected. Every workspace's agents use it.", `${badge("Connected", "success")}${button("Disconnect")}`),
+			settingsRow("Model", "Used by every thread.", select({ name: "model", label: "Model", value: "gpt-6.1-sol", options: [{ value: "gpt-6.1-sol", label: "gpt-6.1-sol" }, { value: "gpt-6-sol", label: "gpt-6-sol" }] })),
+			settingsRow("GitHub", "1 credential · Personal access token", '<input class="switch" type="checkbox" role="switch" aria-label="Use GitHub" checked>'),
+		]),
 	)}
 
 	${section(
 		"Icons",
-		`<div class="row" style="color: var(--color-text-secondary)">${(["hash", "plus", "search", "compose", "sidebar", "panel", "send", "attach", "file", "artifact", "preview", "chevron", "inbox", "more"] as IconName[])
-			.map((name) => `<span title="${name}">${icon(name)}</span>`)
+		`<div class="row" style="color: var(--color-text-secondary)">${(["hash", "plus", "search", "compose", "sidebar", "panel", "send", "attach", "file", "artifact", "preview", "chevron", "inbox", "settings", "members", "check", "close", "trash", "key", "logout", "more"] as IconName[])
+			.map((name) => `<span data-tooltip="${name}">${icon(name)}</span>`)
 			.join("")}</div>`,
 	)}
 
@@ -89,19 +155,7 @@ export function designPage(): string {
 		</div>`,
 	)}
 
-	${section(
-		"Lists and panels",
-		`<div class="row" style="align-items: stretch">
-			<div class="card" style="flex: 1; padding: var(--space-md)">
-				<div class="group-header">${icon("artifact")}Artifacts</div>
-				<div class="list">
-					<div class="list-row">${icon("file")}Packing list.md<span class="meta">2 min</span></div>
-					<div class="list-row">${icon("preview")}Cabin booking page<span class="meta">5 min</span></div>
-				</div>
-			</div>
-			<div class="card" style="flex: 1; display: flex">${empty("artifact", "No artifacts yet")}</div>
-		</div>`,
-	)}
+	${section("Empty state", `<div class="card">${empty("artifact", "No artifacts yet")}</div>`)}
 </main>`;
 	return htmlDocument("Design system · Golem", body);
 }

@@ -47,51 +47,26 @@ extension View {
         }
     }
 
-    /// A raised card: composer, popover, or showcase tile.
+    /// A raised card: composer, settings card, or showcase tile.
     func raisedCard(radius: CGFloat = Tokens.Radius.lg) -> some View {
         background(Tokens.Colors.surfaceRaised, in: .rect(cornerRadius: radius))
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.Colors.border, lineWidth: 0.5))
             .shadow(Tokens.Shadows.low)
+            .environment(\.onRaisedSurface, true)
+    }
+
+    /// A floating card: menu, toast, or dialog. A 0.5 pt `borderStrong` ring and the `menu` shadow.
+    func floatingCard(radius: CGFloat = Tokens.Radius.xl) -> some View {
+        background(Tokens.Colors.surfaceRaised, in: .rect(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5))
+            .shadow(Tokens.Shadows.menu)
+            .environment(\.onRaisedSurface, true)
     }
 }
 
-// MARK: - Buttons
-
-struct GolemButtonStyle: ButtonStyle {
-    enum Variant { case primary, secondary, ghost }
-
-    var variant: Variant = .secondary
-    var round = false
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: round ? Tokens.Radius.full : Tokens.Radius.md)
-        configuration.label
-            .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
-            .foregroundStyle(variant == .primary ? Tokens.Colors.onAccent : Tokens.Colors.textSecondary)
-            .padding(.horizontal, round ? 0 : Tokens.Space.lg)
-            .frame(minWidth: Tokens.Size.control, minHeight: Tokens.Size.control)
-            .background(background(pressed: configuration.isPressed), in: shape)
-            .overlay(shape.strokeBorder(variant == .secondary ? Tokens.Colors.borderStrong : .clear, lineWidth: 0.5))
-            .contentShape(shape)
-            .opacity(isEnabled ? 1 : 0.5)
-            .animation(.easeOut(duration: Tokens.Duration.fast), value: configuration.isPressed)
-    }
-
-    private func background(pressed: Bool) -> Color {
-        switch variant {
-        case .primary: pressed ? Tokens.Colors.accentHover : Tokens.Colors.accent
-        case .secondary: pressed ? Tokens.Colors.fillHover : Tokens.Colors.surfaceRaised
-        case .ghost: pressed ? Tokens.Colors.fillHover : .clear
-        }
-    }
-}
-
-extension ButtonStyle where Self == GolemButtonStyle {
-    static var primary: GolemButtonStyle { GolemButtonStyle(variant: .primary) }
-    static var secondary: GolemButtonStyle { GolemButtonStyle(variant: .secondary) }
-    static var ghost: GolemButtonStyle { GolemButtonStyle(variant: .ghost) }
-    static var send: GolemButtonStyle { GolemButtonStyle(variant: .primary, round: true) }
+extension EnvironmentValues {
+    /// Set inside cards, menus, and dialogs: ghost buttons press to `surfaceHover` instead of `fillHover`.
+    @Entry var onRaisedSurface = false
 }
 
 // MARK: - Small components
@@ -140,6 +115,20 @@ struct Badge: View {
         case .warning: Tokens.Colors.warning
         case .danger: Tokens.Colors.danger
         }
+    }
+}
+
+/// A keyboard shortcut.
+struct Keycap: View {
+    let key: String
+
+    var body: some View {
+        Text(key)
+            .font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.medium))
+            .foregroundStyle(Tokens.Colors.textTertiary)
+            .padding(.horizontal, Tokens.Space.xs)
+            .frame(minWidth: 18, minHeight: 18)
+            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.xs).strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5))
     }
 }
 

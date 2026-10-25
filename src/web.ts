@@ -12,6 +12,7 @@ import {
 	threadPage,
 	workspaceSettingsPage,
 } from "./ui/pages.ts";
+import type { Toast } from "./ui/components.ts";
 import type { ShellContext } from "./ui/shell.ts";
 import { transcript } from "./ui/shell.ts";
 import { HttpError } from "./workspaces.ts";
@@ -23,8 +24,8 @@ export const webRoutes: readonly Route[] = [
 	["GET", "/assets/*", async ({ request }) => asset(request)],
 	["GET", "/design", async () => html(designPage())],
 
-	["GET", "/login", async ({ request }) => html(authPage("login", errorOf(request)))],
-	["GET", "/signup", async ({ request }) => html(authPage("signup", errorOf(request)))],
+	["GET", "/login", async ({ request }) => html(authPage("login", toastOf(request)))],
+	["GET", "/signup", async ({ request }) => html(authPage("signup", toastOf(request)))],
 	["POST", "/login", form(async ({ app, fields }) => withCookies(await app.auth.api.signInEmail({ body: { email: fields.email!, password: fields.password! }, returnHeaders: true }), "/"), "/login")],
 	[
 		"POST",
@@ -48,7 +49,7 @@ export const webRoutes: readonly Route[] = [
 			return redirect(first ? `/w/${first.id}` : "/workspaces/new");
 		}),
 	],
-	["GET", "/workspaces/new", page(async ({ app, user, request }) => html(newWorkspacePage({ user, workspaces: app.workspaces.list(user) }, errorOf(request))))],
+	["GET", "/workspaces/new", page(async ({ app, user, request }) => html(newWorkspacePage({ user, workspaces: app.workspaces.list(user), toast: toastOf(request) })))],
 	["POST", "/workspaces", action("/workspaces/new", async ({ app, user, fields }) => `/w/${(await app.workspaces.create(user, fields.name!)).id}`)],
 
 	[
@@ -74,7 +75,7 @@ export const webRoutes: readonly Route[] = [
 			const context = shellContext(input, { channelId: input.params.channel });
 			const channel = context.channels!.find((candidate) => candidate.id === input.params.channel);
 			if (!channel) throw new HttpError(404, "Not found");
-			return html(channelPage(context, channel, errorOf(input.request)));
+			return html(channelPage(context, channel));
 		}),
 	],
 	[
@@ -130,15 +131,15 @@ export const webRoutes: readonly Route[] = [
 			const { app, user, params } = input;
 			const members = app.workspaces.members(params.workspace!, user);
 			const integrations = app.workspaces.integrations(params.workspace!, user);
-			return html(workspaceSettingsPage(shellContext(input, {}), members, integrations, errorOf(input.request)));
+			return html(workspaceSettingsPage(shellContext(input, {}), members, integrations));
 		}),
 	],
 	[
 		"POST",
 		"/w/:workspace/members",
 		action(settingsOf, async ({ app, user, params, fields }) => {
-			await app.workspaces.addMember(params.workspace!, user, fields.email!);
-			return settingsOf({ params });
+			const member = await app.workspaces.addMember(params.workspace!, user, fields.email!);
+			return withNotice(settingsOf({ params }), `${member.name} joined the workspace`);
 		}),
 	],
 	[
@@ -158,7 +159,7 @@ export const webRoutes: readonly Route[] = [
 				secret: fields.secret!,
 				shared: fields.shared === "true",
 			});
-			return settingsOf({ params });
+			return withNotice(settingsOf({ params }), "Credential added");
 		}),
 	],
 	[
@@ -166,11 +167,21 @@ export const webRoutes: readonly Route[] = [
 		"/w/:workspace/credentials/:credential/delete",
 		action(settingsOf, async ({ app, user, params }) => {
 			app.workspaces.deleteCredential(params.workspace!, user, params.credential!);
-			return settingsOf({ params });
+			return withNotice(settingsOf({ params }), "Credential deleted");
 		}),
 	],
 
-	["GET", "/settings", page(async ({ app, user, request }) => html(settingsPage({ user, workspaces: app.workspaces.list(user) }, await app.llm.status(), errorOf(request))))],
+	[
+		"GET",
+		"/settings",
+		page(async ({ app, user, request }) => {
+			// Keep the first workspace in the sidebar, so settings feel like part of the app.
+			const workspaces = app.workspaces.list(user);
+			const workspace = workspaces[0];
+			const channels = workspace ? app.workspaces.channels(workspace.id, user) : undefined;
+			return html(settingsPage({ user, workspaces, workspace, channels, toast: toastOf(request) }, await app.llm.status()));
+		}),
+	],
 	[
 		"GET",
 		"/settings/llm",
@@ -190,7 +201,7 @@ export const webRoutes: readonly Route[] = [
 			} catch (error) {
 				throw new HttpError(400, (error as Error).message);
 			}
-			return "/settings";
+			return withNotice("/settings", `New threads and replies use ${fields.model}`);
 		}),
 	],
 ];
@@ -249,7 +260,14 @@ function form(handler: (input: FormInput) => Promise<Response>, back: string): H
 function shellContext(input: AuthedInput, current: ShellContext["current"]): ShellContext {
 	const { app, user, params } = input;
 	const workspace = app.workspaces.get(params.workspace!, user);
-	return { user, workspaces: app.workspaces.list(user), workspace, channels: app.workspaces.channels(workspace.id, user), current };
+	return {
+		user,
+		workspaces: app.workspaces.list(user),
+		workspace,
+		channels: app.workspaces.channels(workspace.id, user),
+		current,
+		toast: toastOf(input.request),
+	};
 }
 
 function threadIn(input: AuthedInput) {
@@ -279,8 +297,17 @@ function withCookies(result: { headers: Headers }, location: string): Response {
 	return new Response(null, { status: 303, headers });
 }
 
-function errorOf(request: Request): string | null {
-	return new URL(request.url).searchParams.get("error");
+/** The toast a redirect asked for with `?error=` or `?notice=`. */
+function toastOf(request: Request): Toast {
+	const params = new URL(request.url).searchParams;
+	const error = params.get("error");
+	if (error) return { tone: "error", text: error };
+	const notice = params.get("notice");
+	return notice ? { tone: "success", text: notice } : null;
+}
+
+function withNotice(path: string, message: string): string {
+	return `${path}?notice=${encodeURIComponent(message)}`;
 }
 
 function withError(path: string, message: string): string {

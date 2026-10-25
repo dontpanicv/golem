@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+	<!-- A sibling of Mycroft's icon: a bold letter over an underscore, on a dotted grid. -->
+	<defs>
+		<pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+			<circle cx="32" cy="32" r="2.5" fill="#ffffff" opacity="0.06"/>
+		</pattern>
+	</defs>
+	<rect width="1024" height="1024" fill="#0b0b0d"/>
+	<rect width="1024" height="1024" fill="url(#grid)"/>
+	<text x="512" y="642" text-anchor="middle" font-family="Inter Variable, Inter, sans-serif" font-weight="700" font-size="520" letter-spacing="-12" fill="#aab0f7">G</text>
+	<rect x="272" y="744" width="480" height="30" fill="#6d78d5"/>
+</svg>

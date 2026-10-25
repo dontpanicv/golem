@@ -7,44 +7,54 @@ struct SettingsView: View {
     @State private var llm: Llm?
 
     var body: some View {
-        Form {
-            Section("LLM provider") {
-                if let llm {
-                    LabeledContent(llm.provider) {
-                        Badge(label: llm.connected ? "Connected" : "Not connected", tone: llm.connected ? .success : .neutral)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Tokens.Space.xxxl) {
+                SettingsCard(title: "LLM provider") {
+                    if let llm {
+                        SettingsRow(
+                            llm.provider,
+                            description: llm.error ?? (llm.connected ? "The whole server shares this connection" : nil),
+                            descriptionColor: llm.error == nil ? Tokens.Colors.textTertiary : Tokens.Colors.danger
+                        ) {
+                            HStack(spacing: Tokens.Space.md) {
+                                Badge(label: llm.connected ? "Connected" : "Not connected", tone: llm.connected ? .success : .neutral)
+                                if llm.connected {
+                                    Button("Disconnect") { update { try await session.api.llmLogout() } }.buttonStyle(.danger)
+                                } else if llm.login == nil {
+                                    Button("Connect") { update { try await session.api.llmLogin() } }.buttonStyle(.primary)
+                                }
+                            }
+                        }
+                        if !llm.connected, let login = llm.login {
+                            DeviceLogin(login: login).padding(Tokens.Space.xl)
+                        }
+                        if !llm.models.isEmpty {
+                            SettingsRow("Model") {
+                                GolemSelect(selection: Binding(get: { llm.model }, set: setModel), options: llm.models)
+                                    .accessibilityLabel("Model")
+                            }
+                        }
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.settingsRow)
                     }
-                    if !llm.models.isEmpty {
-                        Picker("Model", selection: Binding(get: { llm.model }, set: setModel)) {
-                            ForEach(llm.models, id: \.self) { Text($0) }
+                }
+                if let user = session.user {
+                    SettingsCard(title: "Account") {
+                        SettingsRow(label: user.name, description: user.email) {
+                            Avatar(name: user.name, size: 32)
+                        } control: {
+                            Button("Sign out") { Task { await session.signOut() } }.buttonStyle(.secondary)
                         }
                     }
-                    if llm.connected {
-                        Button("Disconnect", role: .destructive) { update { try await session.api.llmLogout() } }
-                    } else if let login = llm.login {
-                        DeviceLogin(login: login)
-                    } else {
-                        Button("Connect \(llm.provider)") { update { try await session.api.llmLogin() } }
-                    }
-                    if let error = llm.error {
-                        Text(error).foregroundStyle(Tokens.Colors.danger)
-                    }
-                } else {
-                    ProgressView()
                 }
             }
-            if let user = session.user {
-                Section("Account") {
-                    LabeledContent("Name", value: user.name)
-                    LabeledContent("Email", value: user.email)
-                    Button("Sign out", role: .destructive) { Task { await session.signOut() } }
-                }
-            }
+            .frame(maxWidth: 640)
+            .padding(Tokens.Space.xl)
+            .frame(maxWidth: .infinity)
         }
-        .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
-        .scrollContentBackground(.hidden)
-        .background(Tokens.Colors.canvas)
+        .background(Tokens.Colors.surface)
         .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .task { update { try await session.api.llm() } }
         // While a device login waits, poll every 2 seconds until it connects or stops.
         .task(id: llm?.login?.userCode) {
@@ -67,16 +77,23 @@ struct SettingsView: View {
 
 private struct DeviceLogin: View {
     let login: Llm.Login
+    @Environment(Session.self) private var session
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.lg) {
+            Text("Enter this code on the provider’s page to connect.")
+                .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.book))
+                .foregroundStyle(Tokens.Colors.textTertiary)
             Text(login.userCode)
                 .font(.system(size: Tokens.FontSize.xxl, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Tokens.Colors.text)
                 .textSelection(.enabled)
             HStack(spacing: Tokens.Space.lg) {
-                Button("Copy code", systemImage: "doc.on.doc") { UIPasteboard.general.string = login.userCode }
-                    .buttonStyle(.secondary)
+                Button("Copy code", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = login.userCode
+                    session.show("Code copied", .success)
+                }
+                .buttonStyle(.secondary)
                 if let url = URL(string: login.verificationUri) {
                     Link(destination: url) {
                         Label("Open \(url.host() ?? login.verificationUri)", systemImage: "arrow.up.right.square")
@@ -85,6 +102,6 @@ private struct DeviceLogin: View {
                 }
             }
         }
-        .padding(.vertical, Tokens.Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

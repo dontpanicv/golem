@@ -44,6 +44,8 @@ addresses, or code and data from employers or clients.
   Never edit `public/tokens.css` or `ios/Golem/Design/Tokens.swift` by hand.
 - A component change on one platform needs the same change on the other: `public/styles.css` and `src/ui/` for the web,
   `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Show new components on `/design` and in `DesignCatalogView`.
+- `design/components.md` is the spec for every component, measured from Linear. Build controls from it: never a
+  native select, picker, menu, toggle, or alert. Web behaviors live in `public/ui.js`.
 - iOS controls keep 44 pt touch targets where the web uses 28 px rows.
 
 ## Code Conventions

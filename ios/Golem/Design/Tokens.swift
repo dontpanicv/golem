@@ -9,20 +9,23 @@ enum Tokens {
 		static let fillSubtle = Color(light: "#efeff0", dark: "#18181a")
 		static let fillHover = Color(light: "#e9e9ea", dark: "#1e1e21")
 		static let fillActive = Color(light: "#e1e1e2", dark: "#26262a")
+		static let surfaceHover = Color(light: "#f3f3f3", dark: "#232326")
+		static let switchTrack = Color(light: "#cdcdcd", dark: "#3e3e44")
 		static let border = Color(light: "#e2e2e2", dark: "#212224")
-		static let borderSubtle = Color(light: "#f1f1f1", dark: "#1a1b1d")
-		static let borderStrong = Color(light: "#d3d3d3", dark: "#2e2f33")
+		static let borderSubtle = Color(light: "#f1f1f1", dark: "#27282b")
+		static let borderStrong = Color(light: "#d8d8d8", dark: "#2e2f33")
 		static let text = Color(light: "#1b1b1b", dark: "#f7f8f8")
 		static let textSecondary = Color(light: "#2f2f31", dark: "#d0d6e0")
 		static let textTertiary = Color(light: "#5c5c5e", dark: "#8a8f98")
 		static let textQuaternary = Color(light: "#9c9d9f", dark: "#62666d")
 		static let accent = Color(light: "#6d78d5", dark: "#6d78d5")
-		static let accentHover = Color(light: "#5e6ad2", dark: "#828bf0")
+		static let accentHover = Color(light: "#5e6ac1", dark: "#828bf0")
 		static let accentSubtle = Color(light: "#6d78d51f", dark: "#6d78d52e")
 		static let onAccent = Color(light: "#ffffff", dark: "#ffffff")
 		static let success = Color(light: "#4cb782", dark: "#4cb782")
 		static let warning = Color(light: "#f2994a", dark: "#f2994a")
 		static let danger = Color(light: "#eb5757", dark: "#eb5757")
+		static let overlay = Color(light: "#0000004d", dark: "#000000a6")
 	}
 
 	enum FontSize {
@@ -58,6 +61,7 @@ enum Tokens {
 	}
 
 	enum Radius {
+		static let xs: CGFloat = 4
 		static let sm: CGFloat = 6
 		static let md: CGFloat = 8
 		static let lg: CGFloat = 10
@@ -71,7 +75,18 @@ enum Tokens {
 		static let header: CGFloat = 44
 		static let navRow: CGFloat = 28
 		static let listRow: CGFloat = 44
-		static let control: CGFloat = 28
+		static let controlLarge: CGFloat = 40
+		static let control: CGFloat = 32
+		static let controlSmall: CGFloat = 28
+		static let controlTiny: CGFloat = 24
+		static let menuItem: CGFloat = 32
+		static let menuMinWidth: CGFloat = 180
+		static let tooltip: CGFloat = 28
+		static let switchWidth: CGFloat = 30
+		static let switchHeight: CGFloat = 20
+		static let switchKnob: CGFloat = 14
+		static let checkbox: CGFloat = 14
+		static let settingsRow: CGFloat = 60
 		static let avatar: CGFloat = 24
 		static let icon: CGFloat = 16
 		static let inset: CGFloat = 8
@@ -80,10 +95,18 @@ enum Tokens {
 	enum Shadows {
 		static let low: [Shadow] = [Shadow(y: 1, blur: 1, opacity: 0.04), Shadow(y: 3, blur: 6, opacity: 0.02)]
 		static let high: [Shadow] = [Shadow(y: 4, blur: 12, opacity: 0.08), Shadow(y: 1, blur: 2, opacity: 0.06)]
+		static let menu: [Shadow] = [Shadow(y: 6, blur: 18, opacity: 0.02), Shadow(y: 3, blur: 9, opacity: 0.04), Shadow(y: 1, blur: 1, opacity: 0.04)]
 	}
 
 	enum Duration {
-		static let fast: Double = 0.12
+		static let knob: Double = 0.1
+		static let menu: Double = 0.14
+		static let fast: Double = 0.15
 		static let normal: Double = 0.2
+	}
+
+	enum Easing {
+		static func out(_ duration: Double) -> Animation { .timingCurve(0.16, 1, 0.3, 1, duration: duration) }
+		static func standard(_ duration: Double) -> Animation { .timingCurve(0.2, 0, 0, 1, duration: duration) }
 	}
 }

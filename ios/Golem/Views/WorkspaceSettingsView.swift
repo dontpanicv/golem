@@ -11,58 +11,71 @@ struct WorkspaceSettingsView: View {
     private var workspaceID: String { session.workspace?.id ?? "" }
 
     var body: some View {
-        Form {
-            Section("Members") {
-                ForEach(members) { member in
-                    HStack(spacing: Tokens.Space.lg) {
-                        Avatar(name: member.name)
-                        VStack(alignment: .leading, spacing: Tokens.Space.xxs) {
-                            Text(member.name).foregroundStyle(Tokens.Colors.text)
-                            Text(member.email)
-                                .font(.golem(Tokens.FontSize.sm))
-                                .foregroundStyle(Tokens.Colors.textTertiary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Tokens.Space.xxxl) {
+                SettingsCard(title: "Members") {
+                    ForEach(members) { member in
+                        SettingsRow(label: member.name, description: member.email) {
+                            Avatar(name: member.name, size: 32)
+                        } control: {
+                            Badge(label: member.role.capitalized)
                         }
-                        Spacer()
-                        Badge(label: member.role.capitalized)
                     }
+                    HStack(spacing: Tokens.Space.md) {
+                        GolemTextField(nil, placeholder: "Email address", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .onSubmit(addMember)
+                            .accessibilityLabel("Email")
+                        Button("Add", action: addMember)
+                            .buttonStyle(.secondary)
+                            .disabled(email.isEmpty)
+                    }
+                    .padding(Tokens.Space.xl)
                 }
-                HStack {
-                    TextField("Email", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Add", action: addMember)
-                        .buttonStyle(.secondary)
-                        .disabled(email.isEmpty)
-                }
-            }
-            ForEach($integrations) { $integration in
-                Section(integration.name) {
-                    Toggle("Enabled", isOn: Binding(get: { integration.enabled }, set: { setEnabled($integration, $0) }))
-                    ForEach(integration.credentials) { credential in
-                        HStack {
-                            VStack(alignment: .leading, spacing: Tokens.Space.xxs) {
-                                Text(credential.label).foregroundStyle(Tokens.Colors.text)
-                                Text(credential.ownerName)
-                                    .font(.golem(Tokens.FontSize.sm))
-                                    .foregroundStyle(Tokens.Colors.textTertiary)
+                ForEach($integrations) { $integration in
+                    SettingsCard(title: integration.name) {
+                        SettingsRow("Enabled", description: "Agents in this workspace can use \(integration.name)") {
+                            Toggle(isOn: Binding(get: { integration.enabled }, set: { setEnabled($integration, $0) })) {}
+                                .toggleStyle(.golemSwitch)
+                                .accessibilityLabel("Enabled")
+                        }
+                        ForEach(integration.credentials) { credential in
+                            SettingsRow(credential.label, description: credential.ownerName) {
+                                HStack(spacing: Tokens.Space.xs) {
+                                    Badge(label: credential.shared ? "Shared with workspace" : "Only me", tone: credential.shared ? .accent : .neutral)
+                                    if credential.mine {
+                                        GolemMenu {
+                                            MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
+                                                delete(credential, from: $integration)
+                                            }
+                                        } label: {
+                                            Label("Credential actions", systemImage: "ellipsis")
+                                        }
+                                        .buttonStyle(.golem(.ghost, .icon))
+                                    }
+                                }
                             }
-                            Spacer()
-                            Badge(label: credential.shared ? "Shared with workspace" : "Only me", tone: credential.shared ? .accent : .neutral)
                         }
-                        .deleteDisabled(!credential.mine)
+                        HStack {
+                            Button("Add credential", systemImage: "plus") { addingTo = integration }
+                                .buttonStyle(.golem(.ghost, .small))
+                            Spacer()
+                        }
+                        .padding(.horizontal, Tokens.Space.md)
+                        .padding(.vertical, Tokens.Space.lg)
                     }
-                    .onDelete { offsets in deleteCredentials($integration, at: offsets) }
-                    Button("Add credential", systemImage: "plus") { addingTo = integration }
                 }
             }
+            .frame(maxWidth: 640)
+            .padding(Tokens.Space.xl)
+            .frame(maxWidth: .infinity)
         }
-        .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
-        .scrollContentBackground(.hidden)
-        .background(Tokens.Colors.canvas)
+        .background(Tokens.Colors.surface)
         .navigationTitle(session.workspace?.name ?? "")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: $addingTo) { integration in
@@ -84,10 +97,13 @@ struct WorkspaceSettingsView: View {
 
     private func addMember() {
         let email = email
+        guard !email.isEmpty else { return }
         Task {
             await session.run {
-                members.append(try await session.api.addMember(workspaceID: workspaceID, email: email))
+                let member = try await session.api.addMember(workspaceID: workspaceID, email: email)
+                members.append(member)
                 self.email = ""
+                session.show("Added \(member.name)", .success)
             }
         }
     }
@@ -107,13 +123,11 @@ struct WorkspaceSettingsView: View {
         }
     }
 
-    private func deleteCredentials(_ integration: Binding<Integration>, at offsets: IndexSet) {
-        for credential in offsets.map({ integration.wrappedValue.credentials[$0] }) {
-            Task {
-                await session.run {
-                    try await session.api.deleteCredential(workspaceID: workspaceID, credentialID: credential.id)
-                    integration.wrappedValue.credentials.removeAll { $0.id == credential.id }
-                }
+    private func delete(_ credential: Credential, from integration: Binding<Integration>) {
+        Task {
+            await session.run {
+                try await session.api.deleteCredential(workspaceID: workspaceID, credentialID: credential.id)
+                integration.wrappedValue.credentials.removeAll { $0.id == credential.id }
             }
         }
     }
@@ -128,50 +142,33 @@ private struct CredentialForm: View {
     @State private var label = ""
     @State private var secret = ""
     @State private var shared = false
-    @State private var failure: String?
     @State private var busy = false
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Label", text: $label)
-                    SecureField(integration.secretLabel, text: $secret)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Toggle("Share with all agents in this workspace", isOn: $shared)
-                }
-                if let failure {
-                    Text(failure).foregroundStyle(Tokens.Colors.danger)
-                }
-            }
-            .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
-            .scrollContentBackground(.hidden)
-            .background(Tokens.Colors.canvas)
-            .navigationTitle(integration.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add", action: save).disabled(busy || label.isEmpty || secret.isEmpty)
-                }
-            }
+        Dialog(title: "Add \(integration.name) credential") {
+            GolemTextField("Label", text: $label, autofocus: true)
+            GolemTextField(integration.secretLabel, text: $secret, secure: true)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Toggle("Share with all agents in this workspace", isOn: $shared)
+                .toggleStyle(.checkbox)
+        } actions: {
+            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
+            Button("Add", action: save)
+                .buttonStyle(.golem(.primary, .large))
+                .disabled(busy || label.isEmpty || secret.isEmpty)
         }
-        .tint(Tokens.Colors.accent)
     }
 
     private func save() {
         busy = true
         Task {
-            do {
+            await session.run {
                 added(try await session.api.addCredential(
                     workspaceID: workspaceID, integrationID: integration.id, label: label, secret: secret, shared: shared
                 ))
+                session.show("Credential added", .success)
                 dismiss()
-            } catch {
-                failure = error.localizedDescription
             }
             busy = false
         }
