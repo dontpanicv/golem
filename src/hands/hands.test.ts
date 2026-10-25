@@ -242,6 +242,34 @@ describe("the hands tools", () => {
     ).toBe("milk, bread");
   });
 
+  test("a machine's file is copied to a path part by part, and one over the limit is refused before it is read", async () => {
+    const megabyte = 1024 * 1024;
+    const content = `${"a".repeat(9 * megabyte - 1)}b`;
+    await run("hands_write", { machine: "bender", path: "photo.png", content });
+    const directory = await mkdtemp(join(tmpdir(), "golem-hands-"));
+    const destination = join(directory, "photo.png");
+    try {
+      listener.reads.length = 0;
+      await hands.file(
+        toolsWorkspace,
+        "bender",
+        "photo.png",
+        destination,
+        10 * megabyte
+      );
+      expect(await Bun.file(destination).text()).toBe(content);
+      expect(listener.reads).toEqual([8 * megabyte, 8 * megabyte]);
+
+      listener.reads.length = 0;
+      await expect(
+        hands.file(toolsWorkspace, "bender", "photo.png", destination, megabyte)
+      ).rejects.toThrow("photo.png on bender is over 1 MB");
+      expect(listener.reads).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   test("the system prompt names the machines", () => {
     expect(
       hands.section(toolsWorkspace).render({} as never, BACKGROUND_CONTEXT)
@@ -303,6 +331,8 @@ async function fakeHands() {
   const trusted: string[] = [];
   const jobs: Record<string, unknown>[] = [];
   const files = new Map<string, Buffer>();
+  /** The length that each pread asked for. */
+  const reads: number[] = [];
   const certSha256 = sha256Hex(new X509Certificate(cert).raw);
   const nonce = Buffer.alloc(32, 7).toString("base64");
 
@@ -326,9 +356,20 @@ async function fakeHands() {
     },
     open: (json) => {
       handles.set(1, json.path as string);
-      return [{ handle: 1 }];
+      return [
+        { handle: 1, stat: { size: files.get(json.path as string)?.length } },
+      ];
     },
-    pread: (json) => [{}, files.get(handles.get(json.handle as number)!)],
+    pread: (json) => {
+      reads.push(json.length as number);
+      const offset = json.offset as number;
+      return [
+        {},
+        files
+          .get(handles.get(json.handle as number)!)!
+          .subarray(offset, offset + (json.length as number)),
+      ];
+    },
     close: () => [{}],
   };
   const handles = new Map<number, string>();
@@ -383,6 +424,7 @@ async function fakeHands() {
     port: server.port!,
     certSha256,
     jobs,
+    reads,
     trust: (publicKey: string) => trusted.push(publicKey),
     stop: () => server.stop(true),
   };

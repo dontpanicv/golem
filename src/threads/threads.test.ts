@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -1015,9 +1015,9 @@ test("save_file keeps a machine's file, the browser's screenshot, and a file fro
   const dataDirectory = await mkdtemp(join(tmpdir(), "golem-save-"));
   const threads = savingThreads(
     dataDirectory,
-    async (...args) => {
-      asked.push(args);
-      return new TextEncoder().encode("machine screen");
+    async (workspaceId, machine, path, destination, limit) => {
+      asked.push([workspaceId, machine, path, limit]);
+      await Bun.write(destination, "machine screen");
     },
     async () => new TextEncoder().encode("browser screen")
   );
@@ -1038,7 +1038,7 @@ test("save_file keeps a machine's file, the browser's screenshot, and a file fro
     await save({ url: `${web.url}`, name: "front page.html" });
 
     expect(asked).toEqual([
-      [home.id, "glados", "~/Desktop/screen.png", 15 * 1024 * 1024],
+      [home.id, "glados", "~/Desktop/screen.png", 1024 ** 3],
     ]);
     const files = await threads.files({
       workspaceId: home.id,
@@ -1067,7 +1067,7 @@ test("save_file keeps a machine's file, the browser's screenshot, and a file fro
   }
 });
 
-test("save_file refuses what is not an http file under 15 MB, and stops reading a body at the limit", async () => {
+test("save_file refuses what is not an http file under 100 MB, stops reading a body at the limit, and leaves nothing of a failed file", async () => {
   const home = await golem.app.workspaces.create(alice, "Refusals");
   const general = golem.app.workspaces.channels(home.id, alice)[0]!;
   let endlessChunks = 0;
@@ -1076,14 +1076,14 @@ test("save_file refuses what is not an http file under 15 MB, and stops reading 
     fetch: (request) => {
       const { pathname } = new URL(request.url);
       if (pathname === "/large") {
-        return new Response(new Uint8Array(15 * 1024 * 1024 + 1));
+        return new Response(Bun.file(large));
       }
       if (pathname === "/endless") {
         return new Response(
           new ReadableStream({
             pull: (controller) => {
               endlessChunks += 1;
-              controller.enqueue(new Uint8Array(1024 * 1024));
+              controller.enqueue(new Uint8Array(4 * 1024 * 1024));
             },
           })
         );
@@ -1092,9 +1092,16 @@ test("save_file refuses what is not an http file under 15 MB, and stops reading 
     },
   });
   const dataDirectory = await mkdtemp(join(tmpdir(), "golem-save-"));
+  // Sparse: it says its size without taking the disk space.
+  const large = join(dataDirectory, "large.bin");
+  await Bun.write(large, "");
+  await truncate(large, 100 * 1024 ** 2 + 1);
   const threads = savingThreads(
     dataDirectory,
-    () => Promise.reject(new Error("No machine named nas. Paired: glados")),
+    async (_workspaceId, _machine, _path, destination) => {
+      await Bun.write(destination, "half a file");
+      throw new Error("The connection to glados closed");
+    },
     async () => null
   );
   try {
@@ -1115,18 +1122,18 @@ test("save_file refuses what is not an http file under 15 MB, and stops reading 
       `${web.url}missing answered 404 Not Found`
     );
     expect(await refusal({ url: `${web.url}large` })).toContain(
-      `${web.url}large is over 15 MB`
+      `${web.url}large is over 100 MB`
     );
     expect(await refusal({ url: `${web.url}endless` })).toContain(
-      `${web.url}endless is over 15 MB`
+      `${web.url}endless is over 100 MB`
     );
     // The server reads a little ahead, and stops once save_file leaves the body.
     const pulled = endlessChunks;
     await Bun.sleep(100);
     expect(endlessChunks).toBe(pulled);
     expect(pulled).toBeLessThan(32);
-    expect(await refusal({ machine: "nas", path: "a.png" })).toContain(
-      "No machine named nas. Paired: glados"
+    expect(await refusal({ machine: "glados", path: "a.png" })).toContain(
+      "The connection to glados closed"
     );
     expect(await refusal({ browser_screenshot: true })).toContain(
       "The browser could not take a screenshot."
@@ -1135,7 +1142,16 @@ test("save_file refuses what is not an http file under 15 MB, and stops reading 
       "Give machine and path, browser_screenshot, or url."
     );
     expect(
-      await threads.files({ workspaceId: home.id, channelId: general.id })
+      await readdir(
+        join(
+          dataDirectory,
+          "workspaces",
+          home.id,
+          "channels",
+          general.id,
+          "files"
+        )
+      )
     ).toEqual([]);
   } finally {
     web.stop(true);
@@ -1151,8 +1167,9 @@ function savingThreads(
     workspaceId: string,
     machine: string,
     path: string,
+    destination: string,
     limit: number
-  ) => Promise<Uint8Array>,
+  ) => Promise<void>,
   screenshot: () => Promise<Uint8Array | null>
 ) {
   // Each save is a tool call and an answer after it.

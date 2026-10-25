@@ -283,14 +283,22 @@ export class Hands {
     return opening;
   }
 
-  /** A file of one of the workspace's machines, by the machine's name; it fails for a file over `limit` bytes. */
+  /** Copies a file of one of the workspace's machines, by the machine's name, to `destination`; at most `limit` bytes. */
   file(
     workspaceId: string,
     machineName: string,
     path: string,
+    destination: string,
     limit: number
-  ): Promise<Uint8Array> {
-    return machineFile(this, workspaceId, machineName, path, limit);
+  ): Promise<void> {
+    return machineFile(
+      this,
+      workspaceId,
+      machineName,
+      path,
+      destination,
+      limit
+    );
   }
 
   /** The agent tools of a workspace's machines. */

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type {
@@ -126,10 +126,12 @@ const INSTRUCTIONS =
 /** Added to `INSTRUCTIONS` for the orchestrator, the one thread of a workspace that never ends. */
 const ORCHESTRATOR =
   "This thread is the orchestrator of the workspace: one thread that never ends, where the family comes first. Do small tasks yourself. Give larger work to the channel it belongs to: start a thread there with start_thread, or send it to a thread that is already about it with send_to_thread. When no channel fits, make one with create_channel. Their agents answer back here; tell the family what came of it. Your memory of this thread is the summary at its start: zoom it before you use recall. The summaries keep little of what tools gave you, so say in your answer what you learned that will matter later.";
-/** The largest file that save_file copies from a machine, below the largest message hands sends. */
-const MAX_SAVED_FILE = 15 * 1024 * 1024;
-/** How long save_file waits for a file from the web. */
-const DOWNLOAD_TIMEOUT = 60_000;
+/** The largest file that save_file copies from a machine. */
+const MAX_MACHINE_FILE = 1024 ** 3;
+/** The largest file that save_file downloads from the web. */
+const MAX_WEB_FILE = 100 * 1024 ** 2;
+/** How long save_file waits for a file from the web, all of it. */
+const DOWNLOAD_TIMEOUT = 10 * 60_000;
 /** Above about this many tokens of context, the orchestrator compacts after its turn, so each turn reads little. */
 const ORCHESTRATOR_TOKENS = 48_000;
 /** A compaction needs this many new messages since the one before, so a long message that stays cannot repeat it. */
@@ -677,6 +679,29 @@ export class Threads {
       saved.push(ref);
     }
     return saved;
+  }
+
+  /**
+   * Saves one file that `write` writes to the path it gets, and returns the file's name. Listings leave the file out
+   * until it is whole.
+   */
+  private async keep(
+    place: FilePlace,
+    write: (path: string) => Promise<string>
+  ): Promise<FileRef> {
+    const directory = this.filesDirectory(place);
+    await mkdir(directory, { recursive: true });
+    const id = Bun.randomUUIDv7();
+    const partial = join(directory, `.${id}.partial`);
+    try {
+      const name = fileName(await write(partial));
+      await rename(partial, join(directory, `${id}-${name}`));
+      return { id, name };
+    } catch (error) {
+      // Never a file of the place: only what a failed save wrote of it.
+      await rm(partial, { force: true });
+      throw error;
+    }
   }
 
   private filesDirectory(place: FilePlace): string {
@@ -1296,7 +1321,7 @@ export class Threads {
     return defineTool({
       name: "save_file",
       description:
-        "Save a file to this thread's channel, so people can open it and you can show it in your answer: a file of a machine (machine and path, such as a screenshot you took there with hands_exec), a screenshot of this thread's browser (browser_screenshot), or a file from the web (url). Returns the file id. Show a picture with ![what it shows](file:<id>); link another file with [name](file:<id>).",
+        "Save a file to this thread's channel, so people can open it and you can show it in your answer: a file of a machine up to 1 GB (machine and path, such as a screenshot you took there with hands_exec), a screenshot of this thread's browser (browser_screenshot), or a file from the web up to 100 MB (url). Returns the file id. Show a picture with ![what it shows](file:<id>); link another file with [name](file:<id>).",
       parameters: Type.Object({
         machine: Type.Optional(Type.String({ description: "Machine name" })),
         path: Type.Optional(
@@ -1313,39 +1338,43 @@ export class Threads {
         ),
       }),
       execute: async (args, api, context) => {
-        let data: Uint8Array | null;
-        let name: string;
-        if (args.browser_screenshot) {
-          data = await this.browser.screenshot(workspaceId, api.conversationId);
-          name = "screenshot.png";
-        } else if (args.machine && args.path) {
-          data = await this.hands.file(
-            workspaceId,
-            args.machine,
-            args.path,
-            MAX_SAVED_FILE
-          );
-          name = basename(args.path);
-        } else if (args.url) {
-          ({ data, name } = await download(args.url, context.abortSignal));
-        } else {
-          throw new Error("Give machine and path, browser_screenshot, or url.");
-        }
-        if (!data) {
-          throw new Error("The browser could not take a screenshot.");
-        }
         const place = this.placeOf(
           this.threadOf(workspaceId, api.conversationId)
         );
-        const [saved] = await this.save(place, [
-          new File([data], args.name || name),
-        ]);
+        const saved = await this.keep(place, async (path) => {
+          if (args.browser_screenshot) {
+            const screenshot = await this.browser.screenshot(
+              workspaceId,
+              api.conversationId
+            );
+            if (!screenshot) {
+              throw new Error("The browser could not take a screenshot.");
+            }
+            await Bun.write(path, screenshot);
+            return args.name || "screenshot.png";
+          }
+          if (args.machine && args.path) {
+            await this.hands.file(
+              workspaceId,
+              args.machine,
+              args.path,
+              path,
+              MAX_MACHINE_FILE
+            );
+            return args.name || basename(args.path);
+          }
+          if (args.url) {
+            const name = await download(args.url, path, context.abortSignal);
+            return args.name || name;
+          }
+          throw new Error("Give machine and path, browser_screenshot, or url.");
+        });
         this.hooks.changed(workspaceId);
         return {
           output: [
             {
               type: "text",
-              text: `Saved ${saved!.name} as file ${saved!.id}.`,
+              text: `Saved ${saved.name} as file ${saved.id}.`,
             },
           ],
         };
@@ -1775,12 +1804,15 @@ function messageText(text: string | undefined, files: readonly File[]): string {
   return files.length > 0 ? (text ?? "").trim() : required(text, "Message");
 }
 
-/** A name that stays one file in the thread's folder: no folders, control characters, or leading dots. */
-/** A file from the web and its name; it fails over `MAX_SAVED_FILE` bytes before more of it is read. */
+/**
+ * Downloads a file from the web to `destination` and returns its name. It fails over `MAX_WEB_FILE` bytes, before more
+ * of the file is read.
+ */
 async function download(
   address: string,
+  destination: string,
   signal: AbortSignal | undefined
-): Promise<{ data: Uint8Array; name: string }> {
+): Promise<string> {
   const url = URL.parse(address);
   if (url?.protocol !== "http:" && url?.protocol !== "https:") {
     throw new Error(
@@ -1799,30 +1831,30 @@ async function download(
       `${url} answered ${response.status} ${response.statusText}`
     );
   }
-  const tooLarge = new Error(
-    `${url} is over ${MAX_SAVED_FILE / 1024 / 1024} MB`
-  );
-  if (Number(response.headers.get("content-length")) > MAX_SAVED_FILE) {
+  const tooLarge = new Error(`${url} is over ${MAX_WEB_FILE / 1024 ** 2} MB`);
+  if (Number(response.headers.get("content-length")) > MAX_WEB_FILE) {
     await response.body?.cancel();
     throw tooLarge;
   }
-  const chunks: Uint8Array[] = [];
+  const writer = Bun.file(destination).writer();
   let size = 0;
-  // Leaving the loop cancels the rest of the body.
-  for await (const chunk of response.body ?? []) {
-    size += chunk.length;
-    if (size > MAX_SAVED_FILE) {
-      throw tooLarge;
+  try {
+    // Leaving the loop cancels the rest of the body.
+    for await (const chunk of response.body ?? []) {
+      size += chunk.length;
+      if (size > MAX_WEB_FILE) {
+        throw tooLarge;
+      }
+      writer.write(chunk);
     }
-    chunks.push(chunk);
+  } finally {
+    await writer.end();
   }
-  return {
-    data: new Uint8Array(Bun.concatArrayBuffers(chunks)),
-    name:
-      dispositionName(response.headers.get("content-disposition")) ||
-      decodeName(url.pathname.split("/").at(-1)!) ||
-      "download",
-  };
+  return (
+    dispositionName(response.headers.get("content-disposition")) ||
+    decodeName(url.pathname.split("/").at(-1)!) ||
+    "download"
+  );
 }
 
 /** The file name of a Content-Disposition header, in its `filename*` or `filename` form. */
@@ -1844,6 +1876,7 @@ function decodeName(name: string): string {
   }
 }
 
+/** A name that stays one file in the thread's folder: no folders, control characters, or leading dots. */
 function fileName(name: string): string {
   const clean = name
     .split(/[/\\]/)

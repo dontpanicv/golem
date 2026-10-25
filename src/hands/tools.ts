@@ -12,6 +12,8 @@ import type { Hands } from "./hands.ts";
 const MAX_OUTPUT = 16_000;
 /** The most of a text file `hands_read` and `hands_edit` take. */
 const MAX_TEXT = 512 * 1024;
+/** How much of a file machineFile reads at once, below the largest message hands sends. */
+const FILE_PART = 8 * 1024 * 1024;
 
 const machineParameter = Type.String({ description: "Machine name" });
 
@@ -445,32 +447,75 @@ async function follow(
   };
 }
 
-/** A file of a machine as it is, for a thread to keep; it fails for a file over `limit` bytes. */
+/**
+ * Copies a file of a machine to `destination`, part by part, so a large file never sits in memory; it fails for a file
+ * over `limit` bytes.
+ */
 export async function machineFile(
   hands: Hands,
   workspaceId: string,
   machineName: string,
   path: string,
+  destination: string,
   limit: number
-): Promise<Uint8Array> {
+): Promise<void> {
   const machine = machineNamed(hands, workspaceId, machineName);
-  const file = await hands.with(workspaceId, machine, (connection) =>
-    readText(connection, absolute(path, connection), limit)
-  );
-  if (file.truncated) {
-    throw new Error(
-      `${path} on ${machine.name} is over ${limit / 1024 / 1024} MB`
-    );
-  }
-  return file.data;
+  const tooLarge = () =>
+    new Error(`${path} on ${machine.name} is over ${size(limit)}`);
+  // A new connection after a lost one copies the file again from the start.
+  await hands.with(workspaceId, machine, async (connection) => {
+    const { json } = await connection.request("open", {
+      path: absolute(path, connection),
+    });
+    const { handle } = json;
+    if (typeof handle !== "number") {
+      throw new Error(
+        String(
+          (json.statError as { message?: string })?.message ??
+            `cannot open ${path}`
+        )
+      );
+    }
+    const writer = Bun.file(destination).writer();
+    try {
+      if (Number((json.stat as { size?: number })?.size) > limit) {
+        throw tooLarge();
+      }
+      let offset = 0;
+      while (true) {
+        const { payload } = await connection.request("pread", {
+          handle,
+          offset,
+          length: FILE_PART,
+        });
+        offset += payload.length;
+        // The file can grow after it was opened.
+        if (offset > limit) {
+          throw tooLarge();
+        }
+        writer.write(payload);
+        await writer.flush();
+        if (payload.length < FILE_PART) {
+          return;
+        }
+      }
+    } finally {
+      await writer.end();
+      await connection.request("close", { handle }).catch(() => {
+        // The connection closed, and the handle with it.
+      });
+    }
+  });
 }
 
-/** A text file's first `limit` bytes; `text` is null when they are not UTF-8, `truncated` when the file is longer. */
-async function readText(
-  connection: HandsConnection,
-  path: string,
-  limit = MAX_TEXT
-) {
+function size(bytes: number): string {
+  return bytes >= 1024 ** 3
+    ? `${bytes / 1024 ** 3} GB`
+    : `${bytes / 1024 ** 2} MB`;
+}
+
+/** A text file's first `MAX_TEXT` bytes; `text` is null when they are not UTF-8, `truncated` when the file is longer. */
+async function readText(connection: HandsConnection, path: string) {
   const { json } = await connection.request("open", { path });
   const { handle } = json;
   if (typeof handle !== "number") {
@@ -485,10 +530,10 @@ async function readText(
     const { payload } = await connection.request("pread", {
       handle,
       offset: 0,
-      length: limit + 1,
+      length: MAX_TEXT + 1,
     });
-    const truncated = payload.length > limit;
-    const data = payload.subarray(0, limit);
+    const truncated = payload.length > MAX_TEXT;
+    const data = payload.subarray(0, MAX_TEXT);
     let decoded: string | null = null;
     if (!truncated) {
       try {
