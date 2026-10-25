@@ -489,6 +489,7 @@ export class Threads {
           ...this.integrations.tools(workspaceId).map(connectorTool),
           ...this.artifacts.tools(workspaceId),
           ...this.browser.tools(workspaceId),
+          ...this.llm.tools(),
           ...this.hooks.tools(workspaceId),
         ],
         sections: [this.hands.section(workspaceId)],

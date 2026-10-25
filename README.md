@@ -59,7 +59,9 @@ The machines connect over a WireGuard mesh VPN.
   the agents use the newest one. Secrets never leave the server.
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread, driven by Vercel's
   [agent-browser](https://github.com/vercel-labs/agent-browser). They read pages, click, fill in forms, and see
-  screenshots. They cannot open the files of the server, and they ask before they buy, book, or send anything.
+  screenshots. They search the web with ChatGPT's own search, over the same ChatGPT login, because search engines
+  block a headless browser. They cannot open the files of the server, and they ask before they buy, book, or send
+  anything.
 - **Routines.** A channel can do work on a schedule, such as checking the school system every morning. People ask an
   agent in plain words; it writes the schedule, the instructions, and, for work that is the same every time, a script
   that collects what is new. The script runs in a code mode sandbox and calls the connectors' tools; when it finds

@@ -18,12 +18,16 @@ import {
 import { setSetting, setting } from "../platform/database.ts";
 import { HttpError } from "../platform/errors.ts";
 import type { Secrets } from "../platform/secrets.ts";
+import { searchWeb, type WebSearchResult } from "./search.ts";
+import { llmTools } from "./tools.ts";
 
 export interface LlmProvider {
   readonly defaultModel: string;
   /** Shown in settings, e.g. "ChatGPT". */
   readonly name: string;
   readonly provider: Provider;
+  /** The fast model that runs ChatGPT's web search; without one, agents have no web_search tool. */
+  readonly searchModel?: string;
 }
 
 export interface LlmModel {
@@ -188,6 +192,21 @@ export class Llm {
     this.error = null;
     await this.models.logout(this.providerId);
     return this.status();
+  }
+
+  /** The agent tools of every workspace. */
+  tools() {
+    return this.llmProvider.searchModel ? llmTools(this) : [];
+  }
+
+  /** Searches the web with ChatGPT's own search, over the stored login. */
+  async search(query: string): Promise<WebSearchResult> {
+    const model = this.find(this.llmProvider.searchModel ?? "");
+    const token = model && (await this.models.getAuth(model))?.auth.apiKey;
+    if (!(model && token)) {
+      throw new Error("Web search needs ChatGPT: connect it in Settings.");
+    }
+    return searchWeb({ baseUrl: model.baseUrl, model: model.id, token, query });
   }
 
   private find(id: string): Model<Api> | undefined {

@@ -27,7 +27,7 @@ src/
 │   └── ui/                  The design system: components and icons
 ├── accounts/                Sign-in and sign-out (better-auth is in platform/auth.ts)
 ├── workspaces/              Workspaces, members, channels, the thread registry, and the app shell
-├── llm/                     The shared LLM provider and its stored login
+├── llm/                     The shared LLM provider, its stored login, and the agents' web search
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── integrations/            The connectors, their tools, and the credentials of each workspace
 ├── artifacts/               The pages and small apps agents make in a thread, their links, and the data they keep
@@ -50,7 +50,7 @@ Each module has the same files, when it needs them:
 
 `workspaces/shell.ts` is the app frame (sidebar, workspace switcher, dialogs) that every signed-in page uses.
 `search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`; `hands/` has
-`connection.ts` and `tools.ts`; `artifacts/`, `browser/`, and `routines/` have `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
+`connection.ts` and `tools.ts`; `llm/` has `search.ts` and `tools.ts`; `artifacts/`, `browser/`, and `routines/` have `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
 
 ## Rules
 
