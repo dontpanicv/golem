@@ -1,0 +1,43 @@
+name: Golem
+options:
+  bundleIdPrefix: dev.golem
+  deploymentTarget:
+    iOS: '26.0'
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    TARGETED_DEVICE_FAMILY: '1,2'
+    PRODUCT_BUNDLE_IDENTIFIER: $(GOLEM_BUNDLE_ID)
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Golem:
+    type: application
+    platform: iOS
+    sources:
+      - path: Golem
+    info:
+      path: Golem/Info.plist
+      properties:
+        CFBundleDisplayName: Golem
+        CFBundleShortVersionString: '0.1.0'
+        CFBundleVersion: '1'
+        UILaunchScreen: {}
+        UIAppFonts: [InterVariable.ttf]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        ITSAppUsesNonExemptEncryption: false
+        GolemServerURL: $(GOLEM_SERVER_URL)
+        NSAppTransportSecurity:
+          # Golem runs on the private NetBird network without TLS; WireGuard encrypts the traffic.
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            netbird.selfhosted:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true

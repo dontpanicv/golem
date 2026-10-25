@@ -1,0 +1,25 @@
+{
+  "name": "golem",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun check",
+    "tokens": "bun scripts/tokens.ts"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "^1.4.0",
+    "@earendil-works/pi-ai": "^1.4.0",
+    "@earendil-works/pi-durable": "^1.4.0",
+    "@effect/platform-bun": "^4.0.6",
+    "@starfederation/datastar-sdk": "^1.0.0",
+    "better-auth": "^1.7.12",
+    "effect": "^4.0.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
+  }
+}

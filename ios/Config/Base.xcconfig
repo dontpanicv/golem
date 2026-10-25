@@ -1,0 +1,5 @@
+// Machine-specific values live in Local.xcconfig (gitignored): DEVELOPMENT_TEAM, GOLEM_BUNDLE_ID, GOLEM_SERVER_URL.
+GOLEM_BUNDLE_ID = dev.golem.app
+DEVELOPMENT_TEAM =
+GOLEM_SERVER_URL = http:/$()/localhost:3000
+#include? "Local.xcconfig"
