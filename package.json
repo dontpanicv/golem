@@ -6,6 +6,7 @@
     "dev": "bun --watch src/main.ts",
     "format": "ultracite fix",
     "lint": "ultracite check",
+    "lint:ios": "cd ios && swiftlint lint --strict --quiet",
     "start": "bun src/main.ts",
     "test": "bun test",
     "tokens": "bun scripts/tokens.ts",

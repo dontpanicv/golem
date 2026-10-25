@@ -78,6 +78,7 @@ bun run dev        # http://localhost:3000
 bun test
 bun run typecheck
 bun run lint       # Ultracite (Biome); `bun run format` fixes what it can
+bun run lint:ios   # SwiftLint (`brew install swiftlint`)
 ```
 
 People sign in with Google; nobody can create an account in another way. Before the first start, do the steps in

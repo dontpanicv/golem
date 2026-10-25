@@ -130,7 +130,10 @@ struct Keycap: View {
             .foregroundStyle(Tokens.Colors.textTertiary)
             .padding(.horizontal, Tokens.Space.xs)
             .frame(minWidth: 18, minHeight: 18)
-            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.xs).strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5))
+            .overlay(
+                RoundedRectangle(cornerRadius: Tokens.Radius.xs)
+                    .strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5)
+            )
     }
 }
 

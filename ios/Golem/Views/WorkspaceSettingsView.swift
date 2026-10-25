@@ -38,14 +38,20 @@ struct WorkspaceSettingsView: View {
                 ForEach($integrations) { $integration in
                     SettingsCard(title: integration.name) {
                         SettingsRow("Enabled", description: "Agents in this workspace can use \(integration.name)") {
-                            Toggle(isOn: Binding(get: { integration.enabled }, set: { setEnabled($integration, $0) })) {}
+                            let enabled = Binding(
+                                get: { integration.enabled }, set: { setEnabled($integration, $0) }
+                            )
+                            Toggle(isOn: enabled) {}
                                 .toggleStyle(.golemSwitch)
                                 .accessibilityLabel("Enabled")
                         }
                         ForEach(integration.credentials) { credential in
                             SettingsRow(credential.label, description: credential.ownerName) {
                                 HStack(spacing: Tokens.Space.xs) {
-                                    Badge(label: credential.shared ? "Shared with workspace" : "Only me", tone: credential.shared ? .accent : .neutral)
+                                    Badge(
+                                        label: credential.shared ? "Shared with workspace" : "Only me",
+                                        tone: credential.shared ? .accent : .neutral
+                                    )
                                     if credential.mine {
                                         GolemMenu {
                                             MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
@@ -114,7 +120,9 @@ struct WorkspaceSettingsView: View {
         Task {
             await session.run {
                 do {
-                    integration.wrappedValue = try await session.api.setIntegration(workspaceID: workspaceID, integrationID: integrationID, enabled: enabled)
+                    integration.wrappedValue = try await session.api.setIntegration(
+                        workspaceID: workspaceID, integrationID: integrationID, enabled: enabled
+                    )
                 } catch {
                     integration.wrappedValue.enabled = !enabled
                     throw error
@@ -165,7 +173,8 @@ private struct CredentialForm: View {
         Task {
             await session.run {
                 added(try await session.api.addCredential(
-                    workspaceID: workspaceID, integrationID: integration.id, label: label, secret: secret, shared: shared
+                    workspaceID: workspaceID, integrationID: integration.id,
+                    label: label, secret: secret, shared: shared
                 ))
                 session.show("Credential added", .success)
                 dismiss()

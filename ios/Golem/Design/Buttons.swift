@@ -91,7 +91,9 @@ extension ButtonStyle where Self == GolemButtonStyle {
     static var ghost: GolemButtonStyle { GolemButtonStyle(variant: .ghost) }
     static var danger: GolemButtonStyle { GolemButtonStyle(variant: .danger) }
     static var send: GolemButtonStyle { GolemButtonStyle(variant: .primary, round: true) }
-    static func golem(_ variant: GolemButtonStyle.Variant, _ size: GolemButtonStyle.Size = .regular) -> GolemButtonStyle {
+    static func golem(
+        _ variant: GolemButtonStyle.Variant, _ size: GolemButtonStyle.Size = .regular
+    ) -> GolemButtonStyle {
         GolemButtonStyle(variant: variant, size: size)
     }
 }

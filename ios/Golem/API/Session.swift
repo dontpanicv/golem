@@ -41,7 +41,9 @@ final class Session {
 
     /// Signs in with Google in `browser`, a web authentication session. `RootView` then calls `load()`.
     func signIn(_ browser: WebAuthenticationSession) async throws {
-        let callback = try await browser.authenticate(using: api.googleSignInURL(), callbackURLScheme: "golem", preferredBrowserSession: .ephemeral)
+        let callback = try await browser.authenticate(
+            using: api.googleSignInURL(), callbackURLScheme: "golem", preferredBrowserSession: .ephemeral
+        )
         let query = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
         guard let token = query.first(where: { $0.name == "token" })?.value else {
             throw APIError(status: 0, message: query.first(where: { $0.name == "error" })?.value ?? "Sign-in failed")
@@ -59,12 +61,12 @@ final class Session {
     /// Loads the user and the workspaces, then opens the last workspace.
     func load() async {
         do {
-            let me = try await api.me()
-            user = me.user
-            workspaces = me.workspaces
+            let profile = try await api.me()
+            user = profile.user
+            workspaces = profile.workspaces
             loadError = nil
             let last = UserDefaults.standard.string(forKey: Keys.workspaceID)
-            if let workspace = me.workspaces.first(where: { $0.id == last }) ?? me.workspaces.first {
+            if let workspace = profile.workspaces.first(where: { $0.id == last }) ?? profile.workspaces.first {
                 try await open(workspace)
             }
         } catch {
@@ -139,7 +141,7 @@ enum Keychain {
     private static let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: Bundle.main.bundleIdentifier ?? "Golem",
-        kSecAttrAccount as String: "token",
+        kSecAttrAccount as String: "token"
     ]
 
     static var token: String? {
@@ -147,7 +149,8 @@ enum Keychain {
             var result: AnyObject?
             var search = query
             search[kSecReturnData as String] = true
-            guard SecItemCopyMatching(search as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return nil }
+            guard SecItemCopyMatching(search as CFDictionary, &result) == errSecSuccess,
+                  let data = result as? Data else { return nil }
             return String(data: data, encoding: .utf8)
         }
         set {

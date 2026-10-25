@@ -15,11 +15,13 @@ struct SettingsView: View {
                             HStack(spacing: Tokens.Space.md) {
                                 if llm.connected {
                                     Badge(label: "Connected", tone: .success)
-                                    Button("Disconnect") { update { try await session.api.llmLogout() } }.buttonStyle(.secondary)
+                                    Button("Disconnect") { update { try await session.api.llmLogout() } }
+                                        .buttonStyle(.secondary)
                                 } else if llm.login != nil {
                                     Badge(label: "Waiting", tone: .warning)
                                 } else {
-                                    Button("Connect") { update { try await session.api.llmLogin() } }.buttonStyle(.primary)
+                                    Button("Connect") { update { try await session.api.llmLogin() } }
+                                        .buttonStyle(.primary)
                                 }
                             }
                         }

@@ -25,7 +25,10 @@ struct ArtifactsPanel: View {
                         .foregroundStyle(tab == candidate ? Tokens.Colors.text : Tokens.Colors.textTertiary)
                         .padding(.horizontal, Tokens.Space.md)
                         .frame(minHeight: Tokens.Size.control)
-                        .background(tab == candidate ? Tokens.Colors.fillActive : .clear, in: .rect(cornerRadius: Tokens.Radius.md))
+                        .background(
+                            tab == candidate ? Tokens.Colors.fillActive : .clear,
+                            in: .rect(cornerRadius: Tokens.Radius.md)
+                        )
                         .accessibilityAddTraits(tab == candidate ? .isSelected : [])
                 }
                 Spacer()

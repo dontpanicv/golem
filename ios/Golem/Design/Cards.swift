@@ -60,8 +60,14 @@ struct SettingsRow<Leading: View, Control: View>: View {
 }
 
 extension SettingsRow where Leading == EmptyView {
-    init(_ label: String, description: String? = nil, descriptionColor: Color = Tokens.Colors.textTertiary, @ViewBuilder control: () -> Control) {
-        self.init(label: label, description: description, descriptionColor: descriptionColor, leading: { EmptyView() }, control: control)
+    init(
+        _ label: String, description: String? = nil, descriptionColor: Color = Tokens.Colors.textTertiary,
+        @ViewBuilder control: () -> Control
+    ) {
+        self.init(
+            label: label, description: description, descriptionColor: descriptionColor,
+            leading: { EmptyView() }, control: control
+        )
     }
 }
 

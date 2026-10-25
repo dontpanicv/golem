@@ -1,0 +1,7 @@
+included:
+  - Golem
+excluded:
+  # Generated from design/tokens.json by `bun run tokens`; its names follow the token names
+  - Golem/Design/Tokens.swift
+identifier_name:
+  excluded: [id, x, y]

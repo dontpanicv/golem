@@ -10,7 +10,10 @@ struct SearchView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Tokens.Space.md) {
-                GolemTextField(nil, placeholder: "Search \(session.workspace?.name ?? "")", text: $query, large: true, autofocus: true)
+                GolemTextField(
+                    nil, placeholder: "Search \(session.workspace?.name ?? "")", text: $query,
+                    large: true, autofocus: true
+                )
                     .submitLabel(.search)
                 if let response, !response.semantic, !query.isEmpty {
                     Text("Matching words only while the search model starts.")
@@ -25,7 +28,8 @@ struct SearchView: View {
                         Button {
                             if let thread = result.threadId, result.kind == "thread" { open(.thread(thread)) }
                         } label: {
-                            SearchRow(result: result, channel: session.channels.first { $0.id == result.channelId }?.name)
+                            let channel = session.channels.first { $0.id == result.channelId }
+                            SearchRow(result: result, channel: channel?.name)
                         }
                         .buttonStyle(.plain)
                         .disabled(result.kind != "thread")

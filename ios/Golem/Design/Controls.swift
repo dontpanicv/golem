@@ -14,7 +14,10 @@ struct GolemTextField: View {
     var autofocus = false
     @FocusState private var focused: Bool
 
-    init(_ label: String?, placeholder: String? = nil, text: Binding<String>, secure: Bool = false, large: Bool = false, autofocus: Bool = false) {
+    init(
+        _ label: String?, placeholder: String? = nil, text: Binding<String>,
+        secure: Bool = false, large: Bool = false, autofocus: Bool = false
+    ) {
         self.label = label
         self.placeholder = placeholder ?? label ?? ""
         _text = text
@@ -40,7 +43,10 @@ struct GolemTextField: View {
                 .background(Tokens.Colors.surfaceRaised, in: .rect(cornerRadius: Tokens.Radius.md))
                 .overlay(
                     RoundedRectangle(cornerRadius: Tokens.Radius.md)
-                        .strokeBorder(focused ? Tokens.Colors.accent : Tokens.Colors.borderStrong, lineWidth: focused ? 1 : 0.5)
+                        .strokeBorder(
+                            focused ? Tokens.Colors.accent : Tokens.Colors.borderStrong,
+                            lineWidth: focused ? 1 : 0.5
+                        )
                 )
                 .contentShape(.rect)
                 .onTapGesture { focused = true }
@@ -108,7 +114,11 @@ private struct SwitchTrack: View {
             .fill(isOn ? Tokens.Colors.accent : Tokens.Colors.switchTrack)
             .animation(Tokens.Easing.out(Tokens.Duration.fast), value: isOn)
             .overlay {
-                KnobShape(leading: leading - (isOn ? widen : 0), trailing: trailing + (isOn ? 0 : widen), size: Tokens.Size.switchKnob)
+                KnobShape(
+                    leading: leading - (isOn ? widen : 0),
+                    trailing: trailing + (isOn ? 0 : widen),
+                    size: Tokens.Size.switchKnob
+                )
                     .fill(Tokens.Colors.onAccent)
                     .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
                     .animation(Tokens.Easing.out(Tokens.Duration.knob), value: pressed)
@@ -116,11 +126,11 @@ private struct SwitchTrack: View {
             .frame(width: Tokens.Size.switchWidth, height: Tokens.Size.switchHeight)
             .opacity(isEnabled ? 1 : 0.5)
             .contentShape(.interaction, Rectangle().inset(by: -(Tokens.Size.listRow - Tokens.Size.switchHeight) / 2))
-            .onChange(of: isOn) { _, on in move(on) }
+            .onChange(of: isOn) { _, isOn in move(isOn) }
     }
 
-    private func move(_ on: Bool) {
-        let target = Self.edges(on)
+    private func move(_ isOn: Bool) {
+        let target = Self.edges(isOn)
         guard !reduceMotion else {
             leading = target.leading
             trailing = target.trailing
@@ -129,12 +139,12 @@ private struct SwitchTrack: View {
         let front = Tokens.Easing.out(Tokens.Duration.knob)
         let back = front.delay(0.05)
         // Turning on moves right, so the trailing edge leads; turning off, the leading edge leads.
-        withAnimation(on ? front : back) { trailing = target.trailing }
-        withAnimation(on ? back : front) { leading = target.leading }
+        withAnimation(isOn ? front : back) { trailing = target.trailing }
+        withAnimation(isOn ? back : front) { leading = target.leading }
     }
 
-    private static func edges(_ on: Bool) -> (leading: CGFloat, trailing: CGFloat) {
-        let leading = inset + (on ? travel : 0)
+    private static func edges(_ isOn: Bool) -> (leading: CGFloat, trailing: CGFloat) {
+        let leading = inset + (isOn ? travel : 0)
         return (leading, leading + Tokens.Size.switchKnob)
     }
 }
@@ -195,7 +205,10 @@ private struct CheckboxBox: View {
             .overlay {
                 CheckMark()
                     .trim(from: 0, to: isOn || reduceMotion ? 1 : 0)
-                    .stroke(Tokens.Colors.onAccent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                    .stroke(
+                        Tokens.Colors.onAccent,
+                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+                    )
                     .frame(width: 10, height: 10)
                     .opacity(isOn ? 1 : 0)
             }

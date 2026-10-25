@@ -70,7 +70,10 @@ private struct SelectTriggerStyle: ButtonStyle {
                     .frame(width: Tokens.Size.icon, height: Tokens.Size.icon)
                     .padding(.trailing, Tokens.Space.sm)
             }
-            .background(configuration.isPressed ? Tokens.Colors.surfaceHover : Tokens.Colors.surfaceRaised, in: .rect(cornerRadius: Tokens.Radius.md))
+            .background(
+                configuration.isPressed ? Tokens.Colors.surfaceHover : Tokens.Colors.surfaceRaised,
+                in: .rect(cornerRadius: Tokens.Radius.md)
+            )
             .contentShape(.interaction, Rectangle().inset(by: -(Tokens.Size.listRow - height) / 2))
             .animation(Tokens.Easing.out(Tokens.Duration.fast), value: configuration.isPressed)
     }
@@ -114,7 +117,10 @@ struct MenuItem: View {
     let action: @MainActor () -> Void
     @Environment(\.closeMenu) private var closeMenu
 
-    init(_ title: String, systemImage: String? = nil, checked: Bool = false, role: ButtonRole? = nil, action: @escaping @MainActor () -> Void) {
+    init(
+        _ title: String, systemImage: String? = nil, checked: Bool = false, role: ButtonRole? = nil,
+        action: @escaping @MainActor () -> Void
+    ) {
         self.title = title
         self.systemImage = systemImage
         self.checked = checked

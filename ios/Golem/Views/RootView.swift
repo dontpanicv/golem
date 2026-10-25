@@ -42,7 +42,8 @@ private struct LoadingView: View {
     var body: some View {
         VStack(spacing: Tokens.Space.lg) {
             if let error = session.loadError {
-                EmptyState(title: error, systemImage: "wifi.exclamationmark").fixedSize(horizontal: false, vertical: true)
+                EmptyState(title: error, systemImage: "wifi.exclamationmark")
+                    .fixedSize(horizontal: false, vertical: true)
                 Button("Retry") { Task { await session.load() } }.buttonStyle(.primary)
                 Button("Sign out") { Task { await session.signOut() } }.buttonStyle(.ghost)
             } else {

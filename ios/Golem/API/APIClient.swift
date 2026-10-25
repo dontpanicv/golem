@@ -109,7 +109,7 @@ struct SearchResponse: Codable {
     let semantic: Bool
 }
 
-struct Me: Codable {
+struct Profile: Codable {
     let user: User
     let workspaces: [Workspace]
 }
@@ -148,8 +148,10 @@ final class APIClient {
 
     // MARK: Workspaces
 
-    func me() async throws -> Me { try await get("/api/v1/me") }
-    func createWorkspace(name: String) async throws -> Workspace { try await post("/api/v1/workspaces", ["name": name]) }
+    func me() async throws -> Profile { try await get("/api/v1/me") }
+    func createWorkspace(name: String) async throws -> Workspace {
+        try await post("/api/v1/workspaces", ["name": name])
+    }
     func workspace(_ id: String) async throws -> WorkspaceDetail { try await get("/api/v1/workspaces/\(id)") }
 
     func createChannel(workspaceID: String, name: String) async throws -> Channel {
@@ -164,7 +166,9 @@ final class APIClient {
         let escaped = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         return try await get("/api/v1/workspaces/\(workspaceID)/search?q=\(escaped)")
     }
-    func members(workspaceID: String) async throws -> [Member] { try await get("/api/v1/workspaces/\(workspaceID)/members") }
+    func members(workspaceID: String) async throws -> [Member] {
+        try await get("/api/v1/workspaces/\(workspaceID)/members")
+    }
 
     func addMember(workspaceID: String, email: String) async throws -> Member {
         try await post("/api/v1/workspaces/\(workspaceID)/members", ["email": email])
@@ -175,10 +179,13 @@ final class APIClient {
     }
 
     func setIntegration(workspaceID: String, integrationID: String, enabled: Bool) async throws -> Integration {
-        try decode(try await send("PUT", "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)", ["enabled": enabled]).data)
+        let path = "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)"
+        return try decode(try await send("PUT", path, ["enabled": enabled]).data)
     }
 
-    func addCredential(workspaceID: String, integrationID: String, label: String, secret: String, shared: Bool) async throws -> Credential {
+    func addCredential(
+        workspaceID: String, integrationID: String, label: String, secret: String, shared: Bool
+    ) async throws -> Credential {
         try await post(
             "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/credentials",
             ["label": label, "secret": secret, "shared": shared]
@@ -220,8 +227,12 @@ final class APIClient {
     func llm() async throws -> Llm { try await get("/api/v1/llm") }
     func llmLogin() async throws -> Llm { try await post("/api/v1/llm/login") }
     func llmLogout() async throws -> Llm { try await post("/api/v1/llm/logout") }
-    func setModel(_ model: String) async throws -> Llm { try decode(try await send("PUT", "/api/v1/llm/model", ["model": model]).data) }
-    func setEffort(_ effort: String) async throws -> Llm { try decode(try await send("PUT", "/api/v1/llm/effort", ["effort": effort]).data) }
+    func setModel(_ model: String) async throws -> Llm {
+        try decode(try await send("PUT", "/api/v1/llm/model", ["model": model]).data)
+    }
+    func setEffort(_ effort: String) async throws -> Llm {
+        try decode(try await send("PUT", "/api/v1/llm/effort", ["effort": effort]).data)
+    }
 
     // MARK: Transport
 
@@ -233,7 +244,9 @@ final class APIClient {
         try decode(try await send("POST", path, body).data)
     }
 
-    private func send(_ method: String, _ path: String, _ body: [String: Any]? = nil) async throws -> (data: Data, response: HTTPURLResponse) {
+    private func send(
+        _ method: String, _ path: String, _ body: [String: Any]? = nil
+    ) async throws -> (data: Data, response: HTTPURLResponse) {
         var request = try makeRequest(method, path)
         if let body {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -262,7 +275,8 @@ final class APIClient {
         // `/api/v1` errors use `error`; better-auth errors under `/api/auth` use `message`.
         let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         let message = body?["error"] as? String ?? body?["message"] as? String
-        throw APIError(status: http.statusCode, message: message ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode).capitalized)
+        let fallback = HTTPURLResponse.localizedString(forStatusCode: http.statusCode).capitalized
+        throw APIError(status: http.statusCode, message: message ?? fallback)
     }
 
     private func decode<Response: Decodable>(_ data: Data) throws -> Response {
