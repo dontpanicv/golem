@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import type { Auth, User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 
-/** What identifies a thread: its id, and the workspace whose folder holds its session. */
+/** What identifies a thread: its id, its workspace, and its conversation in that workspace's session. */
 export interface ThreadRef {
+  readonly conversationId: number;
   readonly id: string;
   readonly workspaceId: string;
 }
@@ -132,12 +133,13 @@ export class Workspaces {
     return channel;
   }
 
-  /** Adds a thread to a channel of the workspace. `Threads` names it and starts its session. */
+  /** Adds a thread to a channel of the workspace. `Threads` names it and creates its conversation. */
   registerThread(
     workspaceId: string,
     user: User,
     channelId: string,
-    title: string
+    title: string,
+    conversationId: number
   ): ThreadSummary {
     this.requireMember(workspaceId, user);
     const channel = this.database
@@ -150,9 +152,18 @@ export class Workspaces {
     const thread = { id: randomUUID(), channelId, title, updatedAt: now };
     this.database
       .query(
-        "INSERT INTO thread (id, workspace_id, channel_id, title, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO thread (id, workspace_id, channel_id, title, conversation_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(thread.id, workspaceId, channelId, title, user.id, now, now);
+      .run(
+        thread.id,
+        workspaceId,
+        channelId,
+        title,
+        conversationId,
+        user.id,
+        now,
+        now
+      );
     return thread;
   }
 
@@ -160,7 +171,7 @@ export class Workspaces {
   thread(threadId: string, user: User): ThreadSummary & ThreadRef {
     const thread = this.database
       .query(
-        "SELECT t.id, t.workspace_id AS workspaceId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id WHERE t.id = ? AND m.userId = ?"
+        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id WHERE t.id = ? AND m.userId = ?"
       )
       .get(threadId, user.id) as (ThreadSummary & ThreadRef) | null;
     if (!thread) {
@@ -170,12 +181,12 @@ export class Workspaces {
   }
 
   /** The threads of a workspace, for background work such as indexing that acts for no person. */
-  threadsIn(workspaceId: string): ThreadSummary[] {
+  threadsIn(workspaceId: string): (ThreadSummary & ThreadRef)[] {
     return this.database
       .query(
-        "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt FROM thread WHERE workspace_id = ?"
+        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt FROM thread WHERE workspace_id = ?"
       )
-      .all(workspaceId) as ThreadSummary[];
+      .all(workspaceId) as (ThreadSummary & ThreadRef)[];
   }
 
   /** Moves the thread up in its channel, after a new message. */

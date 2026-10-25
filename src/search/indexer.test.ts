@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "../threads/threads.ts";
-import type { ThreadSummary } from "../workspaces/workspaces.ts";
+import type { ThreadRef, ThreadSummary } from "../workspaces/workspaces.ts";
 import type { Embedder, EmbedInput } from "./embedder.ts";
 import { tools } from "./extract.ts";
 import {
@@ -22,7 +22,7 @@ afterAll(() => rm(dataDirectory, { recursive: true, force: true }));
 /** The directory the indexer reads: workspace ids, and the threads of each workspace. */
 function directory(
   ids: readonly string[] = [],
-  threads: readonly ThreadSummary[] = []
+  threads: readonly (ThreadSummary & ThreadRef)[] = []
 ): WorkspaceDirectory {
   return { ids: () => [...ids], threadsIn: () => [...threads] };
 }
@@ -45,9 +45,17 @@ function message(
   };
 }
 
-/** Thread messages come from a list instead of a session file. */
-function threadsWith(messages: readonly Message[]): ThreadReader {
-  return { messages: async () => ({ messages, running: false }) };
+/** Thread messages come from lists by thread id instead of a session file. */
+function threadsWith(
+  messages: Readonly<Record<string, readonly Message[]>>
+): ThreadReader {
+  return {
+    messages: async (thread) => ({
+      messages: messages[thread.id] ?? [],
+      running: false,
+    }),
+    version: async (thread) => String(messages[thread.id]?.length ?? 0),
+  };
 }
 
 /** A vector with one component set: equal axes mean equal meaning. */
@@ -98,7 +106,7 @@ test("start creates each workspace's folders and indexes a new file soon after i
   const indexer = new Indexer(
     data,
     directory(["family"]),
-    threadsWith([]),
+    threadsWith({}),
     null
   );
   try {
@@ -141,13 +149,26 @@ test("a scan indexes finished thread messages and thread files, and skips what i
   const threads = directory(
     ["family"],
     [
-      { id: "t1", channelId: "c1", title: "Holiday", updatedAt: 5 },
-      { id: "t2", channelId: "c1", title: "Empty", updatedAt: 6 },
+      {
+        id: "t1",
+        workspaceId: "family",
+        conversationId: 1,
+        channelId: "c1",
+        title: "Holiday",
+        updatedAt: 5,
+      },
+      {
+        id: "t2",
+        workspaceId: "family",
+        conversationId: 2,
+        channelId: "c1",
+        title: "Empty",
+        updatedAt: 6,
+      },
     ]
   );
   const thread = join(data, "workspaces", "family", "threads", "t1");
   await mkdir(join(thread, "files"), { recursive: true });
-  await Bun.write(join(thread, "session.sqlite"), "");
   await Bun.write(
     join(thread, "files", "tickets.txt"),
     "Ferry tickets for Saturday"
@@ -163,11 +184,13 @@ test("a scan indexes finished thread messages and thread files, and skips what i
   const indexer = new Indexer(
     data,
     threads,
-    threadsWith([
-      message("m1", "We take the ferry to the island"),
-      message("m2", "ferry answer in progress", { streaming: true }),
-      message("m3", "ferry answer that failed", { failed: true }),
-    ]),
+    threadsWith({
+      t1: [
+        message("m1", "We take the ferry to the island"),
+        message("m2", "ferry answer in progress", { streaming: true }),
+        message("m3", "ferry answer that failed", { failed: true }),
+      ],
+    }),
     null
   );
   try {
@@ -218,7 +241,7 @@ test("pictures read while the model is down are read again, and text waits for t
     "The children want to visit the mountain lake again next summer"
   );
   const { embedder, state } = testEmbedder();
-  const indexer = new Indexer(data, directory(), threadsWith([]), embedder);
+  const indexer = new Indexer(data, directory(), threadsWith({}), embedder);
   const real = tools.ffmpeg;
   tools.ffmpeg = fakeFfmpeg;
   try {

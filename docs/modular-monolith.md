@@ -28,7 +28,7 @@ src/
 ├── accounts/                Sign-in and sign-out (better-auth is in platform/auth.ts)
 ├── workspaces/              Workspaces, members, channels, the thread registry, and the app shell
 ├── llm/                     The shared LLM provider and its stored login
-├── threads/                 One Pi Durable session per thread, and the agent's recall tool
+├── threads/                 One Pi Durable session per workspace, a conversation per thread, and the recall tool
 ├── integrations/            The integration catalog, credentials, and who uses which integration
 ├── search/                  Extraction, embeddings, the index of each workspace, and the search page
 └── settings/                The settings pages, which show sections of several modules

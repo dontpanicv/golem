@@ -17,9 +17,10 @@ data/
 │                                    the thread registry, settings, and encrypted credentials.
 ├── workspaces/
 │   └── <workspace-id>/              One folder per workspace, and nothing of a workspace outside it.
+│       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per thread
+│       │                            (transcript, runs, tasks).
 │       ├── threads/
 │       │   └── <thread-id>/
-│       │       ├── session.sqlite   The thread: one Pi Durable session (transcript, runs, tasks).
 │       │       └── files/           Attachments and artifacts of this thread.
 │       │           └── <uuidv7>-<name>.<ext>
 │       ├── notes/                   Knowledge as markdown with YAML frontmatter; an Obsidian vault.
@@ -59,7 +60,7 @@ data/
 | People, sessions, workspaces, members | `golem.sqlite` (better-auth tables) | SQLite |
 | Channels, threads, integration settings, credentials | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
-| A thread's conversation and agent state | `threads/<id>/session.sqlite` | Pi Durable |
+| A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
 | What an agent made in a thread | `threads/<id>/files/` | the file as made |
 | Knowledge: people, places, decisions, how-tos | `notes/` | markdown + YAML frontmatter (`type`, `title`, dates, links) |
 | Uploaded documents | `files/` | the file as uploaded |

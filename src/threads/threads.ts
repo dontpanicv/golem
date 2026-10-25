@@ -5,6 +5,7 @@ import { Type } from "@earendil-works/pi-ai";
 import {
   type AgentState,
   type Conversation,
+  type ConversationId,
   type ConversationView,
   createRegistry,
   defineExtension,
@@ -14,7 +15,7 @@ import {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { Llm } from "../llm/llm.ts";
 import type { User } from "../platform/auth.ts";
-import { required } from "../platform/errors.ts";
+import { notFound, required } from "../platform/errors.ts";
 import type {
   ThreadRef,
   ThreadSummary,
@@ -42,7 +43,7 @@ const INSTRUCTIONS =
   "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know.";
 
 export interface ThreadHooks {
-  /** Called after every commit to a thread, such as a message or a finished answer. */
+  /** Called when work in the workspace's threads starts or ends, such as a message or a finished answer. */
   readonly changed: (workspaceId: string) => void;
   /** Searches one workspace; the recall tool of a thread only ever passes its own workspace. */
   readonly recall: (
@@ -66,14 +67,9 @@ export type ThreadRegistry = Pick<
   "registerThread" | "requireMember" | "thread" | "touchThread"
 >;
 
-interface Open {
-  readonly conversation: Conversation;
-  readonly harness: Harness;
-}
-
-/** One Pi Durable session per thread, in `data/workspaces/<workspace>/threads/<thread>/session.sqlite`. */
+/** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
-  private readonly open = new Map<string, Promise<Open>>();
+  private readonly open = new Map<string, Promise<Harness>>();
 
   constructor(
     private readonly dataDirectory: string,
@@ -94,25 +90,43 @@ export class Threads {
     const firstLine = message.split("\n")[0]!;
     const title =
       firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine;
+    const harness = await this.session(workspaceId);
+    // A conversation that is never registered, after an unknown channel or a crash, stays empty and unseen.
+    const conversation = await harness.createConversation(
+      {
+        ownership: { kind: "ownerless" },
+        agent: {
+          model: this.currentModel(),
+          thinkingLevel: this.llm.effort(),
+          instructions: INSTRUCTIONS,
+        },
+      },
+      BACKGROUND_CONTEXT
+    );
     const thread = this.registry.registerThread(
       workspaceId,
       user,
       channelId,
-      title
+      title,
+      conversation.id
     );
-    await this.deliver({ id: thread.id, workspaceId }, user, message);
+    await this.deliver(conversation, user, message);
     return thread;
   }
 
   /** Sends a family member's message to a thread of their workspace; the agent answers in the background. */
   async send(threadId: string, user: User, text: string): Promise<void> {
     const thread = this.registry.thread(threadId, user);
-    await this.deliver(thread, user, required(text, "Message"));
+    await this.deliver(
+      await this.conversation(thread),
+      user,
+      required(text, "Message")
+    );
     this.registry.touchThread(thread.id);
   }
 
   async messages(thread: ThreadRef): Promise<ThreadMessages> {
-    const { conversation } = await this.session(thread);
+    const conversation = await this.conversation(thread);
     const watch = await conversation.watch(BACKGROUND_CONTEXT);
     await watch.stop();
     return threadMessages(watch.value);
@@ -123,7 +137,7 @@ export class Threads {
     thread: ThreadRef,
     listener: (messages: ThreadMessages) => void
   ): Promise<() => Promise<void>> {
-    const { conversation } = await this.session(thread);
+    const conversation = await this.conversation(thread);
     const watch = await conversation.watch(BACKGROUND_CONTEXT);
     listener(threadMessages(watch.value));
     watch.start(async (view) => listener(threadMessages(view)));
@@ -132,22 +146,33 @@ export class Threads {
     };
   }
 
+  /** Changes whenever the thread gets a new entry, so search knows when to read it again. */
+  async version(thread: ThreadRef): Promise<string> {
+    const conversation = await this.conversation(thread);
+    const { items } = await conversation.entries(
+      { order: "descending" },
+      1,
+      undefined,
+      BACKGROUND_CONTEXT
+    );
+    return String(items[0]?.id ?? 0);
+  }
+
   async closeAll(): Promise<void> {
     const sessions = await Promise.allSettled(this.open.values());
     this.open.clear();
     for (const session of sessions) {
       if (session.status === "fulfilled") {
-        await session.value.harness.close(BACKGROUND_CONTEXT);
+        await session.value.close(BACKGROUND_CONTEXT);
       }
     }
   }
 
   private async deliver(
-    thread: ThreadRef,
+    conversation: Conversation,
     user: User,
     text: string
   ): Promise<void> {
-    const { conversation } = await this.session(thread);
     await this.useCurrentModel(conversation);
     await conversation.submit(
       {
@@ -162,49 +187,49 @@ export class Threads {
     );
   }
 
-  private session(thread: ThreadRef): Promise<Open> {
-    let session = this.open.get(thread.id);
+  private async conversation(thread: ThreadRef): Promise<Conversation> {
+    const harness = await this.session(thread.workspaceId);
+    const conversation = await harness.conversation(
+      thread.conversationId as ConversationId,
+      BACKGROUND_CONTEXT
+    );
+    if (!conversation) {
+      throw notFound();
+    }
+    return conversation;
+  }
+
+  private session(workspaceId: string): Promise<Harness> {
+    let session = this.open.get(workspaceId);
     if (!session) {
-      session = this.openSession(thread);
-      this.open.set(thread.id, session);
-      session.catch(() => this.open.delete(thread.id));
+      session = this.openSession(workspaceId);
+      this.open.set(workspaceId, session);
+      session.catch(() => this.open.delete(workspaceId));
     }
     return session;
   }
 
-  private async openSession(thread: ThreadRef): Promise<Open> {
+  private async openSession(workspaceId: string): Promise<Harness> {
     const path = join(
       this.dataDirectory,
       "workspaces",
-      thread.workspaceId,
-      "threads",
-      thread.id,
+      workspaceId,
       "session.sqlite"
     );
     const registry = createRegistry();
     registry.install(
-      defineExtension({
-        name: "golem",
-        tools: [this.recallTool(thread.workspaceId)],
-      })
+      defineExtension({ name: "golem", tools: [this.recallTool(workspaceId)] })
     );
     const harness = await Harness.open(
       await openNodeSqliteStorage(path),
       { models: this.llm.models, registry },
       BACKGROUND_CONTEXT
     );
-    const conversation = await harness.root(BACKGROUND_CONTEXT, {
-      agent: {
-        model: this.currentModel(),
-        thinkingLevel: this.llm.effort(),
-        instructions: INSTRUCTIONS,
-      },
-    });
-    const changes = await conversation.watch(BACKGROUND_CONTEXT);
-    changes.start(async () => this.hooks.changed(thread.workspaceId));
-    // Continue a run that a previous process left unfinished.
+    const changes = await harness.watchTaskGraph(BACKGROUND_CONTEXT);
+    changes.start(async () => this.hooks.changed(workspaceId));
+    // Continue runs that a previous process left unfinished.
     harness.resume();
-    return { harness, conversation };
+    return harness;
   }
 
   /** Lets the agent search its own workspace: threads, notes, files, and captures. */

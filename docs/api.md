@@ -117,6 +117,6 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 ## Isolation
 
 - Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
-- Each thread is one Pi Durable session in its own SQLite file under its workspace's directory.
+- Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - Integration settings belong to one user in one workspace. A credential is private to its owner, or shared with
   every agent in the workspace when `shared` is true. Secrets never leave the server.

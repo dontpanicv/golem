@@ -19,7 +19,7 @@ SQLite and markdown.
 | Data | Writer | Replication |
 | --- | --- | --- |
 | Notes and captures (markdown) | Any device | Peer-to-peer file sync (Syncthing) |
-| Agent state ([Pi Durable](https://github.com/earendil-works/pi)) | One SQLite file per thread, written by the machine that runs it | Streamed to the other machines (Litestream) |
+| Agent state ([Pi Durable](https://github.com/earendil-works/pi)) | One SQLite file per workspace, written by the machine that runs it | Streamed to the other machines (Litestream) |
 | Scheduled jobs | The machine that wins the claim | Claims in a 3-node Raft table (rqlite) |
 | Structured history | The job that pulled it | Immutable Parquet files, synced as files |
 | Search index | Each device | Not replicated; rebuilt locally |
@@ -44,8 +44,8 @@ The machines connect over a WireGuard mesh VPN.
 
 - **Workspaces.** A person can belong to several. Workspaces share nothing except the LLM provider.
 - **Channels.** Members create them; each workspace starts with `general`.
-- **Threads.** A thread lives in a channel and is one Pi Durable session. Several family members can write in it;
-  the agent knows who wrote each message.
+- **Threads.** A thread lives in a channel and is one conversation in its workspace's Pi Durable session. Several
+  family members can write in it; the agent knows who wrote each message.
 - **Search.** Each workspace has its own index: keywords plus meaning from Google's EmbeddingGemma 2, run locally.
   Search and the agents' `recall` tool never cross workspaces. See [docs/data.md](docs/data.md).
 - **Settings.** `/settings` connects the LLM provider and chooses the model, for everyone. Each workspace's settings

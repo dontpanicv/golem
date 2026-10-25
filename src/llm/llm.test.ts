@@ -376,7 +376,50 @@ describe("SqliteCredentialStore", () => {
   });
 });
 
+/** Threads over a registry in memory, with the registry methods that creating and sending use. */
+function threadsOver(dataDirectory: string, llm: Llm) {
+  const registered = new Map<
+    string,
+    {
+      id: string;
+      workspaceId: string;
+      conversationId: number;
+      channelId: string;
+    }
+  >();
+  const registry = {
+    requireMember: (workspaceId: string) => ({
+      id: workspaceId,
+      name: "Family",
+    }),
+    registerThread: (
+      workspaceId: string,
+      _user: unknown,
+      channelId: string,
+      title: string,
+      conversationId: number
+    ) => {
+      const id = `thread-${registered.size + 1}`;
+      registered.set(id, { id, workspaceId, conversationId, channelId });
+      return { id, channelId, title, updatedAt: 0 };
+    },
+    thread: (threadId: string) => ({
+      ...registered.get(threadId)!,
+      title: "",
+      updatedAt: 0,
+    }),
+    touchThread: () => undefined,
+  };
+  const threads = new Threads(dataDirectory, llm, registry, {
+    changed: () => undefined,
+    recall: async () => ({ results: [] }),
+  });
+  return { threads, thread: (id: string) => registry.thread(id) };
+}
+
 describe("Threads with the Llm", () => {
+  const user = { id: "user-1", name: "Alice", email: "alice@example.com" };
+
   test("a thread follows the model chosen in settings, also after it changes", async () => {
     const dataDirectory = await mkdtemp(join(tmpdir(), "golem-llm-"));
     const faux = twoModels();
@@ -385,25 +428,7 @@ describe("Threads with the Llm", () => {
       name: "Test",
       defaultModel: "fast",
     });
-    const thread = { id: "thread-1", workspaceId: "workspace-1" };
-    // Only the registry methods that sending to a thread uses.
-    const registry = {
-      requireMember: () => ({ id: thread.workspaceId, name: "Family" }),
-      registerThread: () => {
-        throw new Error("Not used");
-      },
-      thread: () => ({
-        ...thread,
-        channelId: "general",
-        title: "",
-        updatedAt: 0,
-      }),
-      touchThread: () => undefined,
-    };
-    const threads = new Threads(dataDirectory, llm, registry, {
-      changed: () => undefined,
-      recall: async () => ({ results: [] }),
-    });
+    const { threads, thread } = threadsOver(dataDirectory, llm);
     const used: string[] = [];
     const answer =
       (text: string) =>
@@ -417,17 +442,21 @@ describe("Threads with the Llm", () => {
         return fauxAssistantMessage(text);
       };
     faux.setResponses([answer("First"), answer("Second")]);
-    const user = { id: "user-1", name: "Alice", email: "alice@example.com" };
-    const answered = (count: number) =>
-      until(
-        () => threads.messages(thread),
-        (state) => state.messages.length === count && !state.running
-      );
     try {
-      await threads.send(thread.id, user, "Hello");
+      const { id } = await threads.create(
+        "workspace-1",
+        user,
+        "general",
+        "Hello"
+      );
+      const answered = (count: number) =>
+        until(
+          () => threads.messages(thread(id)),
+          (current) => current.messages.length === count && !current.running
+        );
       await answered(2);
       llm.setModel("deep");
-      await threads.send(thread.id, user, "Think harder");
+      await threads.send(id, user, "Think harder");
       const state = await answered(4);
       expect(used).toEqual(["fast", "deep"]);
       expect(state.messages.map((message) => message.text)).toEqual([
@@ -438,6 +467,101 @@ describe("Threads with the Llm", () => {
       ]);
     } finally {
       await threads.closeAll();
+      await rm(dataDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("the threads of a workspace are separate conversations in one session file, also after a restart", async () => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), "golem-llm-"));
+    const faux = twoModels();
+    const llm = new Llm(database(), Secrets.forTests(), {
+      provider: faux.provider,
+      name: "Test",
+      defaultModel: "fast",
+    });
+    faux.setResponses([
+      fauxAssistantMessage("Pasta"),
+      fauxAssistantMessage("Saturday"),
+      fauxAssistantMessage("Sunday"),
+    ]);
+    const first = threadsOver(dataDirectory, llm);
+    const texts = async (threads: Threads, id: string, count: number) =>
+      (
+        await until(
+          () => threads.messages(first.thread(id)),
+          (state) => state.messages.length === count && !state.running
+        )
+      ).messages.map((message) => message.text);
+    try {
+      const dinner = await first.threads.create(
+        "family",
+        user,
+        "food",
+        "Dinner?"
+      );
+      expect(await texts(first.threads, dinner.id, 2)).toEqual([
+        "Dinner?",
+        "Pasta",
+      ]);
+      const trip = await first.threads.create(
+        "family",
+        user,
+        "travel",
+        "When do we go?"
+      );
+      expect(await texts(first.threads, trip.id, 2)).toEqual([
+        "When do we go?",
+        "Saturday",
+      ]);
+      const workspace = join(dataDirectory, "workspaces", "family");
+      expect(await Bun.file(join(workspace, "session.sqlite")).exists()).toBe(
+        true
+      );
+      expect(
+        await Bun.file(
+          join(workspace, "threads", dinner.id, "session.sqlite")
+        ).exists()
+      ).toBe(false);
+      const before = await first.threads.version(first.thread(trip.id));
+      await first.threads.closeAll();
+
+      // A new process opens the same file and finds each thread's own transcript.
+      const reopened = new Threads(
+        dataDirectory,
+        llm,
+        {
+          requireMember: () => ({ id: "family", name: "Family" }),
+          registerThread: () => {
+            throw new Error("Not used");
+          },
+          thread: (id: string) => first.thread(id),
+          touchThread: () => undefined,
+        },
+        { changed: () => undefined, recall: async () => ({ results: [] }) }
+      );
+      try {
+        expect(await texts(reopened, dinner.id, 2)).toEqual([
+          "Dinner?",
+          "Pasta",
+        ]);
+        expect(await texts(reopened, trip.id, 2)).toEqual([
+          "When do we go?",
+          "Saturday",
+        ]);
+        expect(await reopened.version(first.thread(trip.id))).toBe(before);
+        await reopened.send(trip.id, user, "Or later?");
+        expect(await texts(reopened, trip.id, 4)).toEqual([
+          "When do we go?",
+          "Saturday",
+          "Or later?",
+          "Sunday",
+        ]);
+        expect(await reopened.version(first.thread(trip.id))).not.toBe(before);
+      } finally {
+        await reopened.closeAll();
+      }
+    } finally {
+      await first.threads.closeAll();
       await rm(dataDirectory, { recursive: true, force: true });
     }
   });

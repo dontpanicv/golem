@@ -56,6 +56,10 @@ const migrations = [
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);`,
+  // workspaces: a thread is one conversation in its workspace's session.sqlite. Threads from before kept a session
+  // file each; their rows go, and their files stay on disk.
+  `ALTER TABLE thread ADD COLUMN conversation_id INTEGER;
+	DELETE FROM thread WHERE conversation_id IS NULL;`,
 ];
 
 export function openDatabase(path: string): Database {

@@ -63,6 +63,10 @@ describe("the web app", () => {
   let workspaceId: string;
   let generalId: string;
   let threadId: string;
+  const threadRef = () =>
+    golem.app.workspaces
+      .threadsIn(workspaceId)
+      .find((thread) => thread.id === threadId)!;
 
   beforeAll(async () => {
     golem = await startTestApp();
@@ -165,7 +169,7 @@ describe("the web app", () => {
     expect(page).toContain('aria-label="Artifacts"');
 
     await until(
-      () => golem.app.threads.messages({ id: threadId, workspaceId }),
+      () => golem.app.threads.messages(threadRef()),
       (state) => state.messages.length === 2 && !state.running
     );
     const events = await alice.get(`${threadPath}/events`);
@@ -196,7 +200,7 @@ describe("the web app", () => {
       'event: datastar-patch-signals\ndata: signals {"message":""}'
     );
     const state = await until(
-      () => golem.app.threads.messages({ id: threadId, workspaceId }),
+      () => golem.app.threads.messages(threadRef()),
       (current) => current.messages.length === 4 && !current.running
     );
     expect(state.messages.map((message) => message.text)).toEqual([

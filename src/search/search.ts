@@ -37,7 +37,7 @@ export interface SearchResponse {
 /** What the indexer reads from the directory in `golem.sqlite`: every workspace, and the threads in one. */
 export type WorkspaceDirectory = Pick<Workspaces, "ids" | "threadsIn">;
 /** The indexer reads thread messages; it never writes to a thread. */
-export type ThreadReader = Pick<Threads, "messages">;
+export type ThreadReader = Pick<Threads, "messages" | "version">;
 
 export class Indexer {
   private readonly indexes = new Map<string, WorkspaceIndex>();
@@ -169,14 +169,6 @@ export class Indexer {
     const root = this.workspaceDirectory(workspaceId);
     const seen = new Set<string>();
     for (const thread of this.directory.threadsIn(workspaceId)) {
-      const directory = join(root, "threads", thread.id);
-      const version = versionOf(
-        join(directory, "session.sqlite"),
-        join(directory, "session.sqlite-wal")
-      );
-      if (version === null) {
-        continue;
-      }
       const uri = `thread:${thread.id}`;
       seen.add(uri);
       await index.sync(
@@ -186,14 +178,11 @@ export class Indexer {
           title: thread.title,
           threadId: thread.id,
           channelId: thread.channelId,
-          version,
+          version: await this.threads.version(thread),
           updatedAt: thread.updatedAt,
         },
         async () => {
-          const { messages } = await this.threads.messages({
-            id: thread.id,
-            workspaceId,
-          });
+          const { messages } = await this.threads.messages(thread);
           const segments = messages
             .filter((message) => !(message.streaming || message.failed))
             .flatMap((message) =>
@@ -370,14 +359,4 @@ export class Indexer {
     }
     return join(this.dataDirectory, "workspaces", workspaceId);
   }
-}
-
-function versionOf(...paths: string[]): string | null {
-  const stats = paths.map((path) => statSync(path, { throwIfNoEntry: false }));
-  if (!stats[0]) {
-    return null;
-  }
-  return stats
-    .map((stat) => (stat ? `${stat.mtimeMs}:${stat.size}` : "-"))
-    .join("/");
 }
