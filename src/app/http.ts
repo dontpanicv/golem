@@ -15,20 +15,24 @@ export type Route = readonly [
   method: "GET" | "POST" | "PUT" | "DELETE" | "*",
   path: `/${string}`,
   handler: Handler,
+  /** `share`: the route answers only on the host of `share_url`, and that host answers nothing else. */
+  options?: { readonly share: true },
 ];
 
 /** Registers plain `Request` → `Response` handlers on the Effect router. */
 export function routes(app: App, table: readonly Route[]) {
   return HttpRouter.use((router) =>
-    Effect.forEach(table, ([method, path, handler]) =>
+    Effect.forEach(table, ([method, path, handler, options]) =>
       router.add(method, path, (request) =>
         Effect.gen(function* () {
           const params = yield* HttpRouter.params;
           const web = yield* HttpServerRequest.toWeb(request);
           const response = yield* Effect.promise(() =>
-            handler({ app, request: web, params }).catch((error: unknown) =>
-              errorResponse(error)
-            )
+            onShareHost({ app, request: web }) === (options?.share === true)
+              ? handler({ app, request: web, params }).catch((error: unknown) =>
+                  errorResponse(error)
+                )
+              : Promise.resolve(new Response("Not found", { status: 404 }))
           );
           return HttpServerResponse.fromWeb(response);
         }).pipe(
@@ -41,6 +45,18 @@ export function routes(app: App, table: readonly Route[]) {
         )
       )
     )
+  );
+}
+
+/** Whether a request came to the public host of `share_url`, which serves only public artifacts. */
+export function onShareHost({
+  app,
+  request,
+}: Pick<RouteInput, "app" | "request">): boolean {
+  const { shareUrl } = app.config;
+  // Bun builds the URL from the Host header, which Cloudflare's tunnel keeps.
+  return (
+    shareUrl !== null && new URL(request.url).host === new URL(shareUrl).host
   );
 }
 

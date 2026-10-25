@@ -25,17 +25,21 @@ test("first start creates config/golem.toml and data/; later starts read it", as
         .replace('client_secret = ""', 'client_secret = "secret"')
     );
     expect(await readConfig(env)).toMatchObject({
+      host: "127.0.0.1",
       port: 3000,
       baseUrl: "http://localhost:3000",
+      shareUrl: null,
       allowedEmails: [],
       google: { clientId: "id", clientSecret: "secret" },
     });
     const google = '[google]\nclient_id = "id"\nclient_secret = "secret"\n';
     await Bun.write(
       join(root, "config", "golem.toml"),
-      `base_url = "http://golem.home"\nport = 8080\nallowed_emails = ["Anna@Example.com"]\n${google}`
+      `base_url = "http://golem.home"\nport = 8080\nhost = "0.0.0.0"\nshare_url = "https://a.golem.home/"\nallowed_emails = ["Anna@Example.com"]\n${google}`
     );
     expect(await readConfig(env)).toMatchObject({
+      host: "0.0.0.0",
+      shareUrl: "https://a.golem.home",
       port: 8080,
       baseUrl: "http://golem.home",
       allowedEmails: ["anna@example.com"],

@@ -35,8 +35,10 @@ export async function startTestApp() {
     {
       configDirectory: dataDirectory,
       dataDirectory,
+      host: "127.0.0.1",
       port: 0,
       baseUrl: "http://golem.test",
+      shareUrl: "http://share.golem.test",
       allowedEmails: [
         "alice@example.com",
         "bob@example.com",

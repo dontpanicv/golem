@@ -57,7 +57,7 @@ export async function createApp(
     baseUrl: config.baseUrl,
     binaryDirectory: resolve(import.meta.dir, "../../hands/dist"),
   });
-  const artifacts = new Artifacts(database, workspaces, config.baseUrl);
+  const artifacts = new Artifacts(database, workspaces, config);
   // The recall port and the change hook point at the indexer, which reads the threads; files read as search reads them.
   // The routine tools come from routines, which runs its work in threads.
   const threads: Threads = new Threads(

@@ -56,8 +56,10 @@ beforeAll(async () => {
     {
       configDirectory: dataDirectory,
       dataDirectory,
+      host: "127.0.0.1",
       port: 0,
       baseUrl: "http://golem.test",
+      shareUrl: null,
       allowedEmails: ["anna@example.com", "otto@example.com"],
       google: {
         clientId: "test-client.apps.googleusercontent.com",

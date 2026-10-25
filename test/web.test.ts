@@ -220,7 +220,7 @@ describe("the web app", () => {
       '<meta property="og:title" content="Trip &lt;dates&gt;">'
     );
     expect(page).toContain(
-      `<iframe src="${link}/content?v=${artifact.updatedAt}"`
+      `<iframe src="${artifact.id}/content?v=${artifact.updatedAt}"`
     );
     expect(page).toContain(
       'sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"'
@@ -265,6 +265,76 @@ describe("the web app", () => {
     expect((await bob.get(link)).status).toBe(404);
     expect((await bob.get(`${link}/content`)).status).toBe(404);
     expect((await alice.get(link)).status).toBe(200);
+  });
+
+  test("the public host serves only public artifacts at /<name>, and nothing else", async () => {
+    const thread = threadRef();
+    const make = (visibility: "public" | "members") =>
+      golem.app.artifacts.create(thread, {
+        title: "Share",
+        html: "<p>Hi</p>",
+        visibility,
+        requestKey: `share-${visibility}`,
+      });
+    const open = make("public");
+    const closed = make("members");
+    expect(open.url).toBe(`http://share.golem.test/${open.id}`);
+    expect(closed.url).toBe(`http://golem.test/a/${closed.id}`);
+    const share = (path: string, init: RequestInit = {}) =>
+      golem.handler(new Request(`http://share.golem.test${path}`, init));
+
+    const page = await share(`/${open.id}`);
+    expect(page.status).toBe(200);
+    const text = await page.text();
+    expect(text).toContain(`<iframe src="${open.id}/content?v=`);
+    expect(text).toContain(`data-rpc="${open.id}/rpc"`);
+    expect(page.headers.get("set-cookie")).toContain("Path=/;");
+    const visitor = cookies(page);
+    const content = await share(`/${open.id}/content`);
+    expect(content.headers.get("content-security-policy")).toStartWith(
+      "sandbox allow-scripts"
+    );
+    const call = (origin: string) =>
+      share(`/${open.id}/rpc`, {
+        method: "POST",
+        headers: {
+          cookie: visitor,
+          origin,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ op: "me", args: {} }),
+      });
+    expect((await call("http://share.golem.test")).status).toBe(200);
+    expect((await call("http://golem.test")).status).toBe(403);
+
+    for (const path of [
+      `/${closed.id}`,
+      `/${closed.id}/content`,
+      `/a/${open.id}`,
+      "/",
+      "/login",
+      "/api/v1/me",
+      `/w/${workspaceId}`,
+      "/assets/styles.css",
+    ]) {
+      expect([
+        path,
+        (await share(path, { headers: { cookie: aliceCookie } })).status,
+      ]).toEqual([path, 404]);
+    }
+    expect(
+      (
+        await share(`/${closed.id}/rpc`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ op: "me", args: {} }),
+        })
+      ).status
+    ).toBe(404);
+    expect((await golem.call(`/${open.id}`)).status).toBe(404);
+    expect((await golem.call(`/a/${open.id}`)).status).toBe(200);
+    golem.app.artifacts.delete(open.id, aliceUser());
+    golem.app.artifacts.delete(closed.id, aliceUser());
   });
 
   test("a client that tries many artifact links that do not exist waits", async () => {

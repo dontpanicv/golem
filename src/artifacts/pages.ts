@@ -12,8 +12,32 @@ import type { Artifact, ArtifactRecord } from "./artifacts.ts";
 const escapeHtml = Bun.escapeHTML;
 
 /**
- * The page a link opens: the artifact in a sandboxed frame, which reaches Golem only through `/assets/artifact.js`.
- * Link previews, such as WhatsApp's, show its title.
+ * The script of a link's page. The artifact's `golem` calls arrive as messages from its sandboxed frame, and go to
+ * Golem with this page's cookies; the frame has no origin of its own to name in the reply.
+ */
+const RELAY = `const frame = document.querySelector("iframe");
+addEventListener("message", async (event) => {
+  const message = event.data;
+  if (event.source !== frame.contentWindow || message?.golem !== 1) return;
+  const reply = { golem: 1, id: message.id };
+  try {
+    const response = await fetch(frame.dataset.rpc, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ op: message.op, args: message.args }),
+    });
+    const body = await response.json();
+    if (response.ok) reply.result = body.result;
+    else reply.error = body.error ?? "Golem could not do it";
+  } catch {
+    reply.error = "Golem is not reachable";
+  }
+  frame.contentWindow.postMessage(reply, "*");
+});`;
+
+/**
+ * The page a link opens: the artifact in a sandboxed frame. Its addresses are relative, so the page works at
+ * `/a/<name>` and at `/<name>` on the public host. Link previews, such as WhatsApp's, show its title.
  */
 export function artifactPage(artifact: Artifact): string {
   const title = escapeHtml(artifact.title);
@@ -26,13 +50,11 @@ export function artifactPage(artifact: Artifact): string {
 	<meta property="og:title" content="${title}">
 	<meta property="og:site_name" content="Golem">
 	<meta property="og:type" content="website">
-	<link rel="icon" href="/assets/icon.png" type="image/png">
-	<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 	<style>html, body { height: 100%; margin: 0; } iframe { display: block; width: 100%; height: 100%; border: 0; }</style>
-	<script src="/assets/artifact.js" defer></script>
 </head>
 <body>
-<iframe src="/a/${artifact.id}/content?v=${artifact.updatedAt}" title="${title}" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads" allow="fullscreen; clipboard-write; autoplay" data-rpc="/a/${artifact.id}/rpc"></iframe>
+<iframe src="${artifact.id}/content?v=${artifact.updatedAt}" title="${title}" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads" allow="fullscreen; clipboard-write; autoplay" data-rpc="${artifact.id}/rpc"></iframe>
+<script>${RELAY}</script>
 </body>
 </html>`;
 }

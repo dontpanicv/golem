@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { randomInt } from "node:crypto";
 import type { User } from "../platform/auth.ts";
+import type { Config } from "../platform/config.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type { ThreadRef, Workspaces } from "../workspaces/workspaces.ts";
 import { artifactTools } from "./tools.ts";
@@ -13,7 +14,7 @@ export interface Artifact {
   readonly threadId: string;
   readonly title: string;
   readonly visibility: Visibility;
-  /** The link people share: `<base_url>/a/<id>`. */
+  /** The link people share: `<share_url>/<id>` when public and Golem has a public host, else `<base_url>/a/<id>`. */
   readonly url: string;
   /** How many people opened it. */
   readonly visitors: number;
@@ -133,7 +134,7 @@ export class Artifacts {
   constructor(
     private readonly database: Database,
     private readonly workspaces: ArtifactWorkspaces,
-    private readonly baseUrl: string
+    private readonly addresses: Pick<Config, "baseUrl" | "shareUrl">
   ) {}
 
   /** The agent tools of a workspace. */
@@ -505,7 +506,14 @@ export class Artifacts {
 
   private artifact(row: ArtifactRow): Artifact {
     const { workspaceId: _, ...artifact } = row;
-    return { ...artifact, url: `${this.baseUrl}/a/${row.id}` };
+    const { baseUrl, shareUrl } = this.addresses;
+    return {
+      ...artifact,
+      url:
+        row.visibility === "public" && shareUrl
+          ? `${shareUrl}/${row.id}`
+          : new URL(`/a/${row.id}`, baseUrl).href,
+    };
   }
 }
 

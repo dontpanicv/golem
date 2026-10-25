@@ -1,7 +1,9 @@
 import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
 import {
   type AuthedInput,
+  type Handler,
   json,
+  onShareHost,
   type Route,
   type RouteInput,
 } from "../app/http.ts";
@@ -25,57 +27,70 @@ const MAX_MISSES = 20;
 const MISS_WINDOW = 10 * 60_000;
 const misses = new Map<string, { count: number; until: number }>();
 
+/** The page of an artifact link: the artifact in a sandboxed frame. */
+const linkPage: Handler = async (input) => {
+  try {
+    const { viewer, artifact } = await openFor(input);
+    const response = html(artifactPage(artifact));
+    return viewer.user || viewer.token
+      ? response
+      : withVisitorCookie(input, response);
+  } catch (error) {
+    return pageError(
+      error,
+      onShareHost(input) ? null : `/login?next=/a/${input.params.artifact}`
+    );
+  }
+};
+
+/** The artifact's HTML with its runtime, which runs without Golem's origin. */
+const linkContent: Handler = async (input) => {
+  try {
+    const { artifact } = await openFor(input);
+    return new Response(input.app.artifacts.content(artifact.id), {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-security-policy": SANDBOX,
+        "x-content-type-options": "nosniff",
+        "cache-control": "no-store",
+      },
+    });
+  } catch (error) {
+    return pageError(error, null);
+  }
+};
+
+/** A call of the artifact's `golem` runtime, from the link's page on the same host. */
+const linkCall: Handler = async (input) => {
+  if (onShareHost(input)) {
+    const origin = input.request.headers.get("origin");
+    if (origin && origin !== input.app.config.shareUrl) {
+      throw new HttpError(403, "Cross-site request");
+    }
+  } else {
+    rejectCrossOrigin(input);
+  }
+  const { op, args } = await readCall(input.request);
+  const { viewer, artifact } = await openFor(input);
+  return json({
+    result: input.app.artifacts.call(artifact.id, viewer, op, args),
+  });
+};
+
+const SHARE = { share: true } as const;
+
 /**
- * The link of an artifact, which anyone may open when it is public, and the runtime its page calls. Its thread's
- * Artifacts and Preview tabs open, change, and delete it.
+ * The link of an artifact, which anyone may open when it is public, and the runtime its page calls: `/a/<name>` on
+ * Golem's own address, and `/<name>` on the public host of `share_url`. Its thread's Artifacts and Preview tabs
+ * open, change, and delete it.
  */
 export const artifactWebRoutes: readonly Route[] = [
-  [
-    "GET",
-    "/a/:artifact",
-    async (input) => {
-      try {
-        const { viewer, artifact } = await openFor(input);
-        const response = html(artifactPage(artifact));
-        return viewer.user || viewer.token
-          ? response
-          : withVisitorCookie(input, response);
-      } catch (error) {
-        return pageError(error, `/login?next=/a/${input.params.artifact}`);
-      }
-    },
-  ],
-  [
-    "GET",
-    "/a/:artifact/content",
-    async (input) => {
-      try {
-        const { artifact } = await openFor(input);
-        return new Response(input.app.artifacts.content(artifact.id), {
-          headers: {
-            "content-type": "text/html; charset=utf-8",
-            "content-security-policy": SANDBOX,
-            "x-content-type-options": "nosniff",
-            "cache-control": "no-store",
-          },
-        });
-      } catch (error) {
-        return pageError(error, null);
-      }
-    },
-  ],
-  [
-    "POST",
-    "/a/:artifact/rpc",
-    async (input) => {
-      rejectCrossOrigin(input);
-      const { op, args } = await readCall(input.request);
-      const { viewer, artifact } = await openFor(input);
-      return json({
-        result: input.app.artifacts.call(artifact.id, viewer, op, args),
-      });
-    },
-  ],
+  ["GET", "/a/:artifact", linkPage],
+  ["GET", "/a/:artifact/content", linkContent],
+  ["POST", "/a/:artifact/rpc", linkCall],
+  ["GET", "/:artifact", linkPage, SHARE],
+  ["GET", "/:artifact/content", linkContent, SHARE],
+  ["POST", "/:artifact/rpc", linkCall, SHARE],
   [
     "GET",
     "/w/:workspace/t/:thread/artifacts/:artifact",
@@ -145,13 +160,21 @@ export const artifactWebRoutes: readonly Route[] = [
   ],
 ];
 
-/** The artifact in the path, for the request's viewer. Counts the client's misses, and refuses it after too many. */
+/**
+ * The artifact in the path, for the request's viewer. The public host has only public artifacts. Counts the
+ * client's misses, and refuses it after too many.
+ */
 async function openFor(input: RouteInput) {
-  // shortcut: the client is the address the proxy (Caddy) adds; a client that reaches Golem directly shares one
-  // count with every other direct client. Use the socket address if Golem ever listens without a proxy.
+  const share = onShareHost(input);
+  // On the public host the client is the address Cloudflare saw; otherwise the address the proxy (Caddy) adds.
   const client =
-    input.request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ??
-    "direct";
+    (share
+      ? input.request.headers.get("cf-connecting-ip")
+      : input.request.headers
+          .get("x-forwarded-for")
+          ?.split(",")
+          .at(-1)
+          ?.trim()) ?? "direct";
   const now = Date.now();
   const missed = misses.get(client);
   const current =
@@ -166,17 +189,23 @@ async function openFor(input: RouteInput) {
   }
   const viewer = await viewerOf(input);
   try {
-    return {
-      viewer,
-      artifact: input.app.artifacts.open(input.params.artifact!, viewer),
-    };
+    const artifact = input.app.artifacts.open(input.params.artifact!, viewer);
+    if (share && artifact.visibility !== "public") {
+      throw notFound();
+    }
+    return { viewer, artifact };
   } catch (error) {
-    if (error instanceof HttpError && error.status === 404) {
+    // The public host does not tell a members artifact from a missing one.
+    const missing =
+      error instanceof HttpError &&
+      (error.status === 404 || (share && error.status === 401));
+    if (missing) {
       current.count += 1;
       if (misses.size > 10_000) {
         misses.clear();
       }
       misses.set(client, current);
+      throw notFound();
     }
     throw error;
   }
@@ -195,15 +224,18 @@ async function viewerOf({ app, request }: RouteInput): Promise<Viewer> {
 }
 
 /** Gives a public visitor a token, which their calls send back; the runtime keeps their data under its hash. */
-function withVisitorCookie({ app }: RouteInput, response: Response): Response {
+function withVisitorCookie(input: RouteInput, response: Response): Response {
+  const share = onShareHost(input);
+  const { baseUrl, shareUrl } = input.app.config;
   const cookie = new Bun.Cookie(
     VISITOR_COOKIE,
     crypto.getRandomValues(Buffer.alloc(24)).toString("base64url"),
     {
-      path: "/a/",
+      // The public host serves only artifacts, at its root.
+      path: share ? "/" : "/a/",
       httpOnly: true,
       sameSite: "lax",
-      secure: app.config.baseUrl.startsWith("https:"),
+      secure: ((share ? shareUrl : null) ?? baseUrl).startsWith("https:"),
       maxAge: 60 * 60 * 24 * 365 * 2,
     }
   );

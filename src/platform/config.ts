@@ -10,9 +10,13 @@ import { join, resolve } from "node:path";
 export interface Config {
   readonly configDirectory: string;
   readonly dataDirectory: string;
+  /** The network address Golem listens on; `127.0.0.1` lets only a proxy on the same machine reach it. */
+  readonly host: string;
   readonly port: number;
   /** The address people open; better-auth uses it for links and origin checks. */
   readonly baseUrl: string;
+  /** The public address of public artifacts, such as https://a.example.com, when the rest of Golem is private. */
+  readonly shareUrl: string | null;
   /** The only people who may sign in. */
   readonly allowedEmails: readonly string[];
   /** The Google OAuth client for sign-in; see google-sign-in.md. */
@@ -24,6 +28,14 @@ const TEMPLATE = `# Golem configuration. Golem created this file on first start;
 # The address people open, for example https://golem.example.com. Google sign-in needs https, or localhost.
 base_url = "http://localhost:3000"
 port = 3000
+
+# The network address Golem listens on. 127.0.0.1 lets only this machine reach it, for example through a proxy;
+# 0.0.0.0 opens it to every network the machine is on.
+host = "127.0.0.1"
+
+# The public address of public artifact links, for example https://a.example.com, when the rest of Golem is private.
+# That address answers only artifact links; docs/artifacts-sharing.md shows how to set it up.
+# share_url = "https://a.example.com"
 
 # The Google accounts that may sign in, for example ["anna@gmail.com"]. Nobody else can.
 allowed_emails = []
@@ -51,8 +63,13 @@ export async function readConfig(
   return {
     configDirectory,
     dataDirectory,
+    host: text(values.host ?? "127.0.0.1", "host"),
     port: integer(values.port ?? 3000, "port"),
     baseUrl: text(values.base_url ?? "http://localhost:3000", "base_url"),
+    shareUrl:
+      values.share_url === undefined
+        ? null
+        : new URL(text(values.share_url, "share_url")).origin,
     allowedEmails: list(values.allowed_emails ?? [], "allowed_emails").map(
       (email) => email.trim().toLowerCase()
     ),

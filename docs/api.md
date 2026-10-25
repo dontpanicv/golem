@@ -85,7 +85,7 @@ type Artifact = {
 	threadId: string;
 	title: string;
 	visibility: "public" | "members"; // public: anyone with the link; members: signed-in members only
-	url: string; // the link people share: <base_url>/a/<id>
+	url: string; // the link people share: <share_url>/<id> when public and share_url is set, else <base_url>/a/<id>
 	visitors: number; // how many people opened it
 	createdAt: number;
 	updatedAt: number;
@@ -200,6 +200,10 @@ The web app opens an artifact at its `url`, with no `/api` prefix:
 | `GET /a/:artifactId/content` | `content`, with `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads`: it runs without the site's origin, so it cannot read Golem's cookies or call Golem |
 | `POST /a/:artifactId/rpc` | `{ op, args }` → `{ result }`, as the session's user or the `golem-visitor` cookie's visitor. Only from Golem's own origin. |
 
+With `share_url` set, its host serves public artifacts at `/:artifactId`, `/:artifactId/content`, and
+`/:artifactId/rpc`, and answers `404` to everything else, members artifacts too. docs/artifacts-sharing.md shows how
+to put that host on the internet while the rest of Golem stays private.
+
 ### Search (`src/search/`)
 
 | Request | Body | Response |
@@ -263,7 +267,9 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 - Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
 - A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
   keep. Its name is two words that people can remember, so it can be guessed: a client that opens 20 artifact links
-  that do not exist in 10 minutes gets `429` until the 10 minutes end. Keep private things in members artifacts.
+  that do not exist in 10 minutes gets `429` until the 10 minutes end. On the public host the client is
+  `CF-Connecting-IP`; on Golem's own address, the last `X-Forwarded-For` address. Keep private things in members
+  artifacts.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The
   machine trusts the workspace's own key, so pairing it with one workspace does not open it to another.
