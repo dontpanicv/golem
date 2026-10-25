@@ -294,8 +294,8 @@ describe("the web app", () => {
     });
     expect(location(enabled)).toBe(settings);
     const github = () =>
-      golem.app.workspaces
-        .integrations(workspaceId, aliceUser())
+      golem.app.integrations
+        .list(workspaceId, aliceUser())
         .find((integration) => integration.id === "github")!;
     expect(github().enabled).toBe(true);
     await alice.post(`/w/${workspaceId}/integrations/github`);

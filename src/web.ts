@@ -200,7 +200,7 @@ export const webRoutes: readonly Route[] = [
     page(async (input) => {
       const { app, user, params } = input;
       const members = app.workspaces.members(params.workspace!, user);
-      const integrations = app.workspaces.integrations(params.workspace!, user);
+      const integrations = app.integrations.list(params.workspace!, user);
       return html(
         workspaceSettingsPage(shellContext(input, {}), members, integrations)
       );
@@ -221,49 +221,6 @@ export const webRoutes: readonly Route[] = [
       );
     }),
   ],
-  [
-    "POST",
-    "/w/:workspace/integrations/:integration",
-    action(settingsOf, async ({ app, user, params, fields }) => {
-      app.workspaces.setEnabled(
-        params.workspace!,
-        user,
-        params.integration!,
-        fields.enabled === "true"
-      );
-      return settingsOf({ params });
-    }),
-  ],
-  [
-    "POST",
-    "/w/:workspace/integrations/:integration/credentials",
-    action(settingsOf, async ({ app, user, params, fields }) => {
-      app.workspaces.addCredential(
-        params.workspace!,
-        user,
-        params.integration!,
-        {
-          label: fields.label!,
-          secret: fields.secret!,
-          shared: fields.shared === "true",
-        }
-      );
-      return withNotice(settingsOf({ params }), "Credential added");
-    }),
-  ],
-  [
-    "POST",
-    "/w/:workspace/credentials/:credential/delete",
-    action(settingsOf, async ({ app, user, params }) => {
-      app.workspaces.deleteCredential(
-        params.workspace!,
-        user,
-        params.credential!
-      );
-      return withNotice(settingsOf({ params }), "Credential deleted");
-    }),
-  ],
-
   [
     "GET",
     "/settings",

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
@@ -18,6 +19,7 @@ export interface App {
   readonly llm: Llm;
   readonly threads: Threads;
   readonly workspaces: Workspaces;
+  readonly integrations: Integrations;
   readonly indexer: Indexer;
 }
 
@@ -53,8 +55,18 @@ export async function createApp(
     threads,
     embedder
   );
-  const workspaces = new Workspaces(database, auth, resolvedSecrets, threads);
-  return { config, database, auth, llm, threads, workspaces, indexer };
+  const workspaces = new Workspaces(database, auth, threads);
+  const integrations = new Integrations(database, resolvedSecrets, workspaces);
+  return {
+    config,
+    database,
+    auth,
+    llm,
+    threads,
+    workspaces,
+    integrations,
+    indexer,
+  };
 }
 
 export async function closeApp(app: App): Promise<void> {

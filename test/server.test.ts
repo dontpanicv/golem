@@ -182,7 +182,7 @@ test("credentials are private or shared, and secrets never leave the server", as
       .query("SELECT id, name, email FROM user WHERE email = ?")
       .get(email) as never;
   expect(
-    app.workspaces.usableCredentials(workspaceId, user("bob@example.com"))
+    app.integrations.usableCredentials(workspaceId, user("bob@example.com"))
   ).toEqual([]);
   await call(`${base}/integrations/github`, {
     method: "PUT",
@@ -190,7 +190,7 @@ test("credentials are private or shared, and secrets never leave the server", as
     body: { enabled: true },
   });
   expect(
-    app.workspaces
+    app.integrations
       .usableCredentials(workspaceId, user("bob@example.com"))
       .map((c) => c.secret)
   ).toEqual(["family-secret"]);
