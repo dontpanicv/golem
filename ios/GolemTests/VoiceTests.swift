@@ -146,21 +146,38 @@ struct ListenerTests {
 /// What a conversation reads out of a thread: the agent's messages after the person's last one.
 @Suite("Conversation")
 struct ConversationTests {
-    private func message(_ id: String, agent: Bool, _ text: String, failed: Bool = false) -> Message {
+    private func message(
+        _ id: String, agent: Bool, _ text: String, failed: Bool = false, work: Work? = nil
+    ) -> Message {
         Message(
             id: id, authorId: nil, author: agent ? "Golem" : "Alice", agent: agent, text: text, time: 0,
-            failed: failed, streaming: false, files: [])
+            failed: failed, streaming: false, files: [], work: work)
     }
 
     @Test func theRunIsTheAgentsTextAfterThePersonsLastMessage() {
+        let said = Step(
+            kind: "text", text: "Turning them on.", tool: nil, input: nil, output: nil, running: false, failed: false)
+        let tool = Step(
+            kind: "tool", text: "kitchen", tool: "lights", input: nil, output: nil, running: false, failed: false)
         let messages = [
             message("1", agent: false, "Hi"), message("2", agent: true, "Hello."),
-            message("3", agent: false, "Lights on"), message("4", agent: true, "Turning them on."),
-            message("5", agent: true, "Failed", failed: true), message("streaming", agent: true, "Done")
+            message("3", agent: false, "Lights on"),
+            message("5", agent: true, "Failed", failed: true),
+            message("streaming", agent: true, "Done", work: Work(startedAt: 0, endedAt: nil, stopped: false, steps: [said, tool]))
         ]
         let (anchor, pieces) = VoiceChat.runText(messages)
         #expect(anchor == "3")
         #expect(pieces == ["Turning them on.", "Done"])
         #expect(VoiceChat.runText([]).anchor == nil)
+    }
+
+    @Test func callsOfOneToolInARowAreOneRun() {
+        func step(_ kind: String, _ tool: String?) -> Step {
+            Step(kind: kind, text: "", tool: tool, input: nil, output: nil, running: false, failed: false)
+        }
+        let steps = [step("tool", "recall"), step("tool", "recall"), step("text", nil), step("tool", "recall")]
+        #expect(WorkLog.runs(steps).map(\.start) == [0, 2, 3])
+        #expect(WorkLog.runs(steps).map(\.steps.count) == [2, 1, 1])
+        #expect(WorkLog.duration(125) == "2m 05s")
     }
 }

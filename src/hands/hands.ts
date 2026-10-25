@@ -20,7 +20,12 @@ import {
   type Identity,
   type Machine,
 } from "./connection.ts";
-import { handsSection, handsTools, machineFile } from "./tools.ts";
+import {
+  fileToMachine,
+  handsSection,
+  handsTools,
+  machineFile,
+} from "./tools.ts";
 
 export type { Machine } from "./connection.ts";
 
@@ -299,6 +304,16 @@ export class Hands {
       destination,
       limit
     );
+  }
+
+  /** Writes a file of Golem's to `path` on one of the workspace's machines, by the machine's name; returns the absolute path. */
+  put(
+    workspaceId: string,
+    machineName: string,
+    source: string,
+    path: string
+  ): Promise<string> {
+    return fileToMachine(this, workspaceId, machineName, source, path);
   }
 
   /** The agent tools of a workspace's machines. */

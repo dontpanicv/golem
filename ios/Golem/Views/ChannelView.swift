@@ -1,15 +1,23 @@
+import QuickLook
 import SwiftUI
 
-/// The threads of one channel. Sending from the composer starts a new thread.
+/// The threads of one channel, with its files and artifacts beside them. Sending from the composer starts a new thread.
 struct ChannelView: View {
     let channelID: String
+    /// An artifact to open in the panel, as a search result does.
+    var artifactID: String?
+    /// Focuses the composer, to start a thread.
+    var compose = false
+    @Binding var showArtifacts: Bool
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
+    @State private var preview: URL?
     @State private var draft = ""
     @State private var files: [URL] = []
     @State private var sending = false
     @State private var showSettled = false
     @State private var confirmDelete = false
+    @Environment(\.phoneTabBar) private var tabBar
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
     private var activeThreads: [ThreadSummary] { channel?.threads.filter { $0.settledAt == nil } ?? [] }
@@ -20,11 +28,23 @@ struct ChannelView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 1) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                DetailTitle(title: "# \(channel?.name ?? "")")
+                    .padding(.horizontal, Tokens.Mobile.Size.margin)
+                    .padding(.vertical, Tokens.Space.md)
                 ForEach(activeThreads) { thread in threadRow(thread) }
                 if !settledThreads.isEmpty {
+                    ListSeparator()
                     Button { showSettled.toggle() } label: {
-                        NavRow(title: "Settled", systemImage: "tray", count: settledThreads.count)
+                        ListRow(title: "Settled", systemImage: "tray") {
+                            Text("\(settledThreads.count)")
+                                .font(.golem(Tokens.Mobile.FontSize.small))
+                                .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+                                .rotationEffect(.degrees(showSettled ? 90 : 0))
+                        }
                     }
                     .buttonStyle(.plain)
                     if showSettled {
@@ -32,29 +52,45 @@ struct ChannelView: View {
                     }
                 }
             }
-            .padding(Tokens.Space.lg)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onScrollPhaseChange { _, phase in
+            if phase == .interacting { tabBar?.expanded = false }
         }
         .overlay {
             if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything", systemImage: "sparkles") }
         }
-        .safeAreaInset(edge: .bottom) {
-            Composer(
-                owner: channelID, placeholder: "Message \(channel?.name ?? "")", draft: $draft, files: $files,
-                send: send
-            )
-                .padding([.horizontal, .bottom], Tokens.Space.lg)
+        .safeAreaBar(edge: .bottom) {
+            ComposerRow {
+                Composer(
+                    owner: channelID, placeholder: "Message \(channel?.name ?? "")", draft: $draft, files: $files,
+                    sending: sending, autofocus: compose, send: send
+                )
+            }
         }
-        .background(Tokens.Colors.surface)
-        .navigationTitle(channel?.name ?? "")
-        .navigationBarTitleDisplayMode(.inline)
+        .mobileBackground()
+        .inspector(isPresented: $showArtifacts) {
+            ArtifactsPanel(
+                channelID: channelID, changes: 0, artifactID: artifactID, openFile: openFile,
+                close: tabBar == nil ? nil : { showArtifacts = false }
+            )
+                .inspectorColumnWidth(Tokens.Size.artifacts)
+        }
+        // After the inspector: in a navigation stack, a title and toolbar set before it do not show.
+        .pushedScreen(channel.map { "#\($0.name)" } ?? "")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Channel details", systemImage: "info.circle") { open(.channelDetails(channelID)) }
+                Button("Artifacts", systemImage: "sidebar.right") { showArtifacts.toggle() }
             }
             ToolbarItem(placement: .primaryAction) {
-                Button("Delete channel", systemImage: "trash") { confirmDelete = true }
+                Menu("More", systemImage: "ellipsis") {
+                    Button("Channel details", systemImage: "info.circle") { open(.channelDetails(channelID)) }
+                    Button("Delete channel", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                }
             }
         }
+        .quickLookPreview($preview)
+        .onAppear { if artifactID != nil { showArtifacts = true } }
         .sheet(isPresented: $confirmDelete) {
             DeleteChannelDialog(name: channel?.name ?? "") {
                 try await session.deleteChannel(channelID: channelID)
@@ -65,11 +101,11 @@ struct ChannelView: View {
     }
 
     private func threadRow(_ thread: ThreadSummary) -> some View {
-        HStack(spacing: Tokens.Space.xs) {
-            Button { open(.thread(thread.id)) } label: {
-                NavRow(title: thread.title, systemImage: "square.and.pencil")
-            }
-            .buttonStyle(.plain)
+        Button { open(.thread(thread.id)) } label: {
+            ListRow(thread.title, systemImage: "bubble.left", working: session.working.contains(thread.id))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
             Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
                    systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
                 Task {
@@ -78,11 +114,12 @@ struct ChannelView: View {
                     }
                 }
             }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.plain)
-            .foregroundStyle(Tokens.Colors.textTertiary)
-            .frame(minWidth: 44, minHeight: 44)
         }
+    }
+
+    private func openFile(_ file: FileRef) {
+        guard let workspaceID = session.workspace?.id else { return }
+        Task { await session.run { preview = try await session.api.download(workspaceID: workspaceID, file: file) } }
     }
 
     private func send() {
@@ -102,7 +139,7 @@ struct ChannelView: View {
     }
 }
 
-/// Asks before a channel goes with its threads and routines. It stays open when deleting fails.
+/// Asks before a channel goes with its threads, files, artifacts, and routines. It stays open when deleting fails.
 private struct DeleteChannelDialog: View {
     let name: String
     let delete: () async throws -> Void
@@ -112,7 +149,7 @@ private struct DeleteChannelDialog: View {
 
     var body: some View {
         Dialog(title: "Delete #\(name)?") {
-            Text("Its threads and routines go with it.")
+            Text("Its threads, files, artifacts, and routines go with it.")
                 .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.regular))
                 .foregroundStyle(Tokens.Colors.textSecondary)
         } actions: {

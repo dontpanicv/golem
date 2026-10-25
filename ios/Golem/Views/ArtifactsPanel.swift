@@ -1,128 +1,150 @@
 import SwiftUI
 
-/// Artifacts, files, and previews of the open thread, as in T3 Code's side panel.
+/// Artifacts, files, and the open artifact of a channel beside the channel or one of its threads, or of the workspace
+/// beside the orchestrator.
 struct ArtifactsPanel: View {
     enum Tab: String, CaseIterable {
-        case artifacts = "Artifacts", files = "Files", preview = "Preview"
+        case artifacts = "Artifacts", files = "Files"
 
         var empty: (title: String, systemImage: String) {
             switch self {
             case .artifacts: ("No artifacts yet", "shippingbox")
             case .files: ("No files yet", "doc")
-            case .preview: ("Nothing to preview", "globe")
             }
         }
     }
 
-    let threadID: String
+    /// Nil for the workspace's own files and artifacts.
+    let channelID: String?
     /// Changes when the thread does, so the files and artifacts load again: they come with messages.
     let changes: Int
     let openFile: (FileRef) -> Void
+    /// Closes the panel where it is a sheet, on iPhone.
+    var close: (() -> Void)?
     @Environment(Session.self) private var session
     @State private var tab = Tab.artifacts
-    @State private var files: [ThreadFile] = []
+    @State private var files: [SavedFile] = []
+    @State private var uploading = false
     @State private var artifacts: [Artifact] = []
     @State private var openArtifact: String?
-    /// Lists the artifacts again after the Preview tab changes one.
+
+    /// `artifactID` opens an artifact at once, as a search result does.
+    init(
+        channelID: String?, changes: Int, artifactID: String? = nil, openFile: @escaping (FileRef) -> Void,
+        close: (() -> Void)? = nil
+    ) {
+        self.channelID = channelID
+        self.changes = changes
+        self.openFile = openFile
+        self.close = close
+        _openArtifact = State(initialValue: artifactID)
+    }
+    /// Lists the artifacts again after the open artifact changes one.
     @State private var artifactChanges = 0
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: Tokens.Space.xxs) {
-                ForEach(Tab.allCases, id: \.self) { candidate in
-                    Button(candidate.rawValue) { tab = candidate }
-                        .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
-                        .foregroundStyle(tab == candidate ? Tokens.Colors.text : Tokens.Colors.textTertiary)
-                        .padding(.horizontal, Tokens.Space.md)
-                        .frame(minHeight: Tokens.Size.control)
-                        .background(
-                            tab == candidate ? Tokens.Colors.fillActive : .clear,
-                            in: .rect(cornerRadius: Tokens.Radius.md)
-                        )
-                        .accessibilityAddTraits(tab == candidate ? .isSelected : [])
-                }
-                Spacer()
-            }
-            .padding(.horizontal, Tokens.Space.lg)
-            .frame(height: Tokens.Size.header)
-            Divider().overlay(Tokens.Colors.border)
-            switch tab {
-            case .files: filesTab
-            case .artifacts: artifactsTab
-            case .preview:
-                if let openArtifact {
-                    ArtifactView(artifactID: openArtifact, changes: changes) { artifactChanges += 1 }
-                        .id(openArtifact)
+            HStack(spacing: Tokens.Space.md) {
+                if openArtifact != nil {
+                    GlassCircleButton(label: "Back to artifacts", systemImage: "chevron.left") {
+                        openArtifact = nil
+                        tab = .artifacts
+                    }
+                    .padding(.leading, Tokens.Space.lg)
+                    Spacer()
                 } else {
-                    EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+                    PillBar(selection: $tab, options: Tab.allCases) { $0.rawValue }
+                }
+                if let close {
+                    GlassCircleButton(label: "Close", systemImage: "xmark", action: close)
+                        .padding(.trailing, Tokens.Space.lg)
+                }
+            }
+            .padding(.vertical, Tokens.Space.md)
+            if let openArtifact {
+                ArtifactView(artifactID: openArtifact, changes: changes) { artifactChanges += 1 }
+                    .id(openArtifact)
+            } else {
+                switch tab {
+                case .files: filesTab
+                case .artifacts: artifactsTab
                 }
             }
         }
-        .background(Tokens.Colors.surface)
-        .task(id: changes) { await session.run { files = try await session.api.threadFiles(threadID) } }
+        .mobileBackground()
+        .task(id: changes) {
+            await session.run {
+                files = try await session.api.files(workspaceID: workspaceID, channelID: channelID)
+            }
+        }
         .task(id: "\(changes)-\(artifactChanges)") {
             await session.run {
-                artifacts = try await session.api.artifacts(threadID: threadID)
+                artifacts = try await session.api.artifacts(workspaceID: workspaceID, channelID: channelID)
                 if let openArtifact, !artifacts.contains(where: { $0.id == openArtifact }) {
                     self.openArtifact = nil
-                    tab = .artifacts
                 }
             }
         }
     }
 
-    /// The thread's artifacts, newest first. Tapping one opens it in the Preview tab.
+    private var workspaceID: String { session.workspace?.id ?? "" }
+
+    /// The channel's artifacts, newest first. Tapping one opens it in the panel.
     @ViewBuilder
     private var artifactsTab: some View {
         if artifacts.isEmpty {
             EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
         } else {
             ScrollView {
-                VStack(spacing: 1) {
+                LazyVStack(spacing: 0) {
                     ForEach(artifacts) { artifact in
                         Button {
                             openArtifact = artifact.id
-                            tab = .preview
                         } label: {
-                            NavRow(title: artifact.title, systemImage: "shippingbox", count: artifact.visitors)
+                            ListRow(title: artifact.title, systemImage: "shippingbox") {
+                                Text("\(artifact.visitors)")
+                                    .font(.golem(Tokens.Mobile.FontSize.small))
+                                    .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+                                    .accessibilityLabel("\(artifact.visitors) people")
+                            }
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(Tokens.Space.lg)
             }
         }
     }
 
-    /// The thread's files, newest first, under an upload button. Files dropped on the tab upload.
+    /// The channel's files, newest first, under an upload button that spins while files upload. Files dropped on the
+    /// tab upload.
     private var filesTab: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.md) {
-            AttachMenu(add: upload) { Label("Upload files", systemImage: "plus") }
+            AttachMenu(add: upload) {
+                Label {
+                    Text("Upload files")
+                } icon: {
+                    if uploading { ProgressView().controlSize(.mini) } else { Image(systemName: "plus") }
+                }
+            }
                 .buttonStyle(.secondary)
             if files.isEmpty {
                 EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
             } else {
                 ScrollView {
-                    VStack(spacing: 1) {
+                    LazyVStack(spacing: 0) {
                         ForEach(files.reversed()) { file in
-                            HStack(spacing: Tokens.Space.xs) {
-                                Button { openFile(file.ref) } label: {
-                                    NavRow(title: file.name, systemImage: "doc")
-                                }
+                            Button { openFile(file.ref) } label: { ListRow(file.name, systemImage: "doc") }
                                 .buttonStyle(.plain)
-                                GolemMenu {
-                                    MenuItem("Delete file", systemImage: "trash", role: .destructive) { delete(file) }
-                                } label: {
-                                    Label("File actions", systemImage: "ellipsis")
+                                .contextMenu {
+                                    Button("Delete file", systemImage: "trash", role: .destructive) { delete(file) }
                                 }
-                                .buttonStyle(.golem(.ghost, .icon))
-                            }
                         }
                     }
                 }
+                .padding(.horizontal, -Tokens.Space.lg)
             }
         }
-        .padding(Tokens.Space.lg)
+        .padding(.horizontal, Tokens.Space.lg)
         .frame(maxHeight: .infinity, alignment: .top)
         .dropDestination(for: PickedFile.self) { dropped, _ in
             upload(dropped.map(\.url))
@@ -132,10 +154,18 @@ struct ArtifactsPanel: View {
 
     private func upload(_ picked: [URL]) {
         guard !picked.isEmpty else { return }
-        Task { await session.run { files = try await session.api.uploadFiles(threadID: threadID, files: picked) } }
+        uploading = true
+        Task {
+            await session.run {
+                files = try await session.api.uploadFiles(workspaceID: workspaceID, channelID: channelID, files: picked)
+            }
+            uploading = false
+        }
     }
 
-    private func delete(_ file: ThreadFile) {
-        Task { await session.run { files = try await session.api.deleteFile(threadID: threadID, fileID: file.id) } }
+    private func delete(_ file: SavedFile) {
+        Task {
+            await session.run { files = try await session.api.deleteFile(workspaceID: workspaceID, fileID: file.id) }
+        }
     }
 }

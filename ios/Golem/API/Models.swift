@@ -38,6 +38,33 @@ struct Message: Codable, Hashable, Identifiable {
     let failed: Bool
     let streaming: Bool
     let files: [FileRef]
+    /// What the agent did before this answer; nil for people and for an answer without work.
+    let work: Work?
+}
+
+/// The agent's work before an answer. `endedAt` is nil while it works.
+struct Work: Codable, Hashable {
+    let startedAt: Double
+    let endedAt: Double?
+    /// Someone stopped the agent before it answered.
+    let stopped: Bool
+    let steps: [Step]
+}
+
+/// A thought, words between tool calls, or a tool call. A tool call's text is the thread link in its result, or else
+/// the values of its arguments; `input` is its arguments as JSON, `output` the start of its result.
+struct Step: Codable, Hashable {
+    let kind: String
+    let text: String
+    let tool: String?
+    let input: String?
+    let output: String?
+    let running: Bool
+    let failed: Bool
+}
+
+struct WorkingThreads: Codable, Hashable {
+    let threadIds: [String]
 }
 
 struct FileRef: Codable, Hashable, Identifiable {
@@ -45,7 +72,8 @@ struct FileRef: Codable, Hashable, Identifiable {
     let name: String
 }
 
-struct ThreadFile: Codable, Hashable, Identifiable {
+/// A file of a channel, or of the workspace for the orchestrator: uploaded there, or attached to a message.
+struct SavedFile: Codable, Hashable, Identifiable {
     let id: String
     let name: String
     let size: Double
@@ -53,13 +81,15 @@ struct ThreadFile: Codable, Hashable, Identifiable {
     var ref: FileRef { FileRef(id: id, name: name) }
 }
 
-struct ThreadFiles: Codable { let files: [ThreadFile] }
+struct SavedFiles: Codable { let files: [SavedFile] }
 
-/// A page or small app an agent made in a thread. `url` is the link people share.
+/// A page or small app an agent made. It belongs to a channel, or to the workspace when `channelId` is nil;
+/// `threadId` is the thread that made it. `url` is the link people share.
 struct Artifact: Codable, Hashable, Identifiable {
     enum Visibility: String, Codable { case `public`, members }
 
     let id: String
+    let channelId: String?
     let threadId: String
     let title: String
     let visibility: Visibility
@@ -69,7 +99,7 @@ struct Artifact: Codable, Hashable, Identifiable {
     let updatedAt: Double
 }
 
-struct ThreadArtifacts: Codable { let artifacts: [Artifact] }
+struct ArtifactList: Codable { let artifacts: [Artifact] }
 
 /// A value an artifact keeps: shared (`visitor` is nil), or owned by one visitor.
 struct ArtifactRecord: Codable, Hashable, Identifiable {
@@ -185,6 +215,17 @@ struct Routine: Codable, Hashable, Identifiable {
 struct ChannelRoutines: Codable {
     let routines: [Routine]
     let runs: [RoutineRun]
+}
+
+/// What a channel is for, where it is now, its decisions, its open questions, and what each person wants, as Markdown
+/// with thread links; the model writes it again from the channel's threads.
+struct Brief: Codable {
+    let text: String
+    let updatedAt: Double
+}
+
+struct ChannelBrief: Codable {
+    let brief: Brief?
 }
 
 struct Machine: Codable, Hashable, Identifiable {

@@ -54,10 +54,12 @@ addresses, or code and data from employers or clients.
 
 - Change colors, type, spacing, radii, sizes, and shadows only in `design/tokens.json`, then run `bun run tokens`.
   Never edit `public/tokens.css` or `ios/Golem/Design/Tokens.swift` by hand.
-- A component change on one platform needs the same change on the other: `public/styles.css` and `src/platform/ui/`
-  for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS.
-- `design/components.md` is the spec for every component, measured from Linear. Build controls from it: never a
-  native select, picker, menu, toggle, or alert. Web behaviors live in `public/ui.js`.
+- A component change on one platform needs the same change in function on the other: `public/styles.css` and
+  `src/platform/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Each platform keeps the look of
+  Linear's app on it.
+- `design/components.md` is the spec for every component, measured from Linear's web and iOS apps. The web never uses a
+  native select, picker, menu, toggle, or alert; its behaviors live in `public/ui.js`. iOS follows Linear's iOS app:
+  native menus, the system glass, and the `mobile` tokens.
 - iOS controls keep 44 pt touch targets where the web uses 28 px rows.
 
 ## Code Conventions

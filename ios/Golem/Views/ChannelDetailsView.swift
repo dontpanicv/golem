@@ -1,74 +1,93 @@
 import SwiftUI
 
-/// A channel's summary, its routines, and their newest runs. People create routines by asking an agent.
+/// A channel's summary and brief, its routines, and their newest runs. People create routines by asking an agent; the
+/// model writes the summary and the brief from the channel's threads.
 struct ChannelDetailsView: View {
     let channelID: String
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var routines: [Routine] = []
     @State private var runs: [RoutineRun] = []
+    @State private var brief: Brief?
     @State private var loaded = false
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
     private var workspaceID: String { session.workspace?.id ?? "" }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Tokens.Space.xxxl) {
-                if let summary = channel?.summary {
-                    VStack(alignment: .leading, spacing: Tokens.Space.lg) {
-                        Text("Summary")
-                            .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.medium))
-                            .foregroundStyle(Tokens.Colors.text)
-                            .accessibilityAddTraits(.isHeader)
-                        Text(summary)
-                            .font(.golem(Tokens.FontSize.md))
-                            .foregroundStyle(Tokens.Colors.textSecondary)
-                            .lineSpacing(Tokens.FontSize.md * 0.5)
-                    }
+        SettingsList {
+            DetailTitle(title: channel.map { "# \($0.name)" } ?? "", caption: "Channel details")
+                .padding(.horizontal, Tokens.Mobile.Size.margin)
+                .padding(.vertical, Tokens.Space.md)
+            if let summary = channel?.summary {
+                SettingsCard(title: "Summary") {
+                    Text(summary)
+                        .font(.golem(Tokens.Mobile.FontSize.row))
+                        .foregroundStyle(Tokens.Mobile.Colors.text)
+                        .lineSpacing(4)
+                        .padding(.horizontal, Tokens.Mobile.Size.margin)
+                        .padding(.vertical, Tokens.Space.sm)
                 }
-                if routines.isEmpty {
-                    section("Routines") { EmptyState(title: "No routines yet", systemImage: "play") }
-                } else {
-                    SettingsCard(title: "Routines") {
-                        ForEach($routines) { $routine in routineRow($routine) }
-                    }
+            }
+            if let brief {
+                SettingsCard(title: "Brief") {
+                    Text(Self.briefText(brief.text))
+                        .font(.golem(Tokens.Mobile.FontSize.row))
+                        .foregroundStyle(Tokens.Mobile.Colors.text)
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Tokens.Mobile.Size.margin)
+                        .padding(.vertical, Tokens.Space.sm)
                 }
-                if runs.isEmpty {
-                    section("Runs") { EmptyState(title: "No runs yet", systemImage: "tray") }
-                } else {
-                    SettingsCard(title: "Runs") {
-                        ForEach(runs) { run in
-                            SettingsRow(
-                                run.routineName,
-                                description: [time(run.startedAt), run.error].compactMap { $0 }.joined(separator: " · ")
-                            ) {
-                                outcomeBadge(run.outcome)
-                            }
+            }
+            if routines.isEmpty {
+                SettingsCard(title: "Routines") {
+                    SettingsRow("No routines yet", labelColor: Tokens.Mobile.Colors.textTertiary) { EmptyView() }
+                }
+            } else {
+                SettingsCard(title: "Routines") {
+                    ForEach($routines) { $routine in routineRow($routine) }
+                }
+            }
+            if runs.isEmpty {
+                SettingsCard(title: "Runs") {
+                    SettingsRow("No runs yet", labelColor: Tokens.Mobile.Colors.textTertiary) { EmptyView() }
+                }
+            } else {
+                SettingsCard(title: "Runs") {
+                    ForEach(runs) { run in
+                        SettingsRow(
+                            run.routineName,
+                            description: [time(run.startedAt), run.error].compactMap { $0 }.joined(separator: " · ")
+                        ) {
+                            outcomeBadge(run.outcome)
                         }
                     }
                 }
             }
-            .opacity(loaded ? 1 : 0)
-            .frame(maxWidth: 640)
-            .padding(Tokens.Space.xl)
-            .frame(maxWidth: .infinity)
         }
-        .background(Tokens.Colors.surface)
-        .navigationTitle(channel.map { "#\($0.name)" } ?? "")
-        .navigationBarTitleDisplayMode(.large)
+        .opacity(loaded ? 1 : 0)
+        .phoneTabBar()
+        .pushedScreen(channel.map { "#\($0.name)" } ?? "")
         .task { await load() }
         .refreshable { await load() }
+        // Thread links in the brief open the thread here instead of leaving the app.
+        .environment(\.openURL, OpenURLAction { url in
+            guard url.scheme == "thread" else { return .systemAction }
+            open(.thread(String(url.absoluteString.dropFirst("thread:".count))))
+            return .handled
+        })
     }
 
-    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.lg) {
-            Text(title)
-                .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.medium))
-                .foregroundStyle(Tokens.Colors.text)
-                .accessibilityAddTraits(.isHeader)
-            content()
+    /// The brief's headings in bold and its list items with bullets, then inline Markdown and thread links.
+    static func briefText(_ text: String) -> AttributedString {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+            if line.hasPrefix("#") { return "**\(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces))**" }
+            if line.hasPrefix("- ") { return "• \(line.dropFirst(2))" }
+            return String(line)
         }
+        return MessageRow.linked(lines.joined(separator: "\n"))
     }
 
     private func routineRow(_ routine: Binding<Routine>) -> some View {
@@ -114,6 +133,7 @@ struct ChannelDetailsView: View {
             try await session.reloadWorkspace()
             let found = try await session.api.routines(workspaceID: workspaceID, channelID: channelID)
             (routines, runs) = (found.routines, found.runs)
+            brief = try await session.api.brief(workspaceID: workspaceID, channelID: channelID)
             loaded = true
         }
     }

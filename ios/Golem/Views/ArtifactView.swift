@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-/// The Preview tab with an artifact open: a bar with its actions, then the artifact running, or the data it keeps.
+/// An open artifact: a bar with its actions, then the artifact running, or the data it keeps.
 struct ArtifactView: View {
     let artifactID: String
     /// Changes when the thread does, so the artifact loads again after an agent changes it.
@@ -17,7 +17,6 @@ struct ArtifactView: View {
         VStack(spacing: 0) {
             if let detail {
                 bar(detail.artifact)
-                Divider().overlay(Tokens.Colors.border)
                 if showData {
                     data(detail)
                 } else {
@@ -33,8 +32,8 @@ struct ArtifactView: View {
     private func bar(_ artifact: Artifact) -> some View {
         HStack(spacing: Tokens.Space.xs) {
             Text(artifact.title)
-                .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
-                .foregroundStyle(Tokens.Colors.text)
+                .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.medium))
+                .foregroundStyle(Tokens.Mobile.Colors.text)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Badge(label: artifact.visibility == .public ? "Public" : "Members",
@@ -69,8 +68,9 @@ struct ArtifactView: View {
             }
             .buttonStyle(.golem(.ghost, .icon))
         }
-        .padding(.horizontal, Tokens.Space.lg)
-        .padding(.vertical, Tokens.Space.xs)
+        .padding(.leading, Tokens.Mobile.Size.margin)
+        .padding(.trailing, Tokens.Space.md)
+        .padding(.bottom, Tokens.Space.xs)
     }
 
     @ViewBuilder

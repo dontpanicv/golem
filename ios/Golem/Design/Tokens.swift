@@ -134,8 +134,9 @@ enum Tokens {
 			static let placeholder = Color(light: "#b0b0b0", dark: "#707170")
 			static let separator = Color(light: "#f1f1f1", dark: "#171717")
 			static let fill = Color(light: "#f1f1f1", dark: "#292929")
-			static let chip = Color(light: "#e5e5e5", dark: "#333333")
 			static let danger = Color(light: "#ea5756", dark: "#ea5756")
+			static let tabSelected = Color(light: "#e9e9e9", dark: "#333333")
+			static let menuSelected = Color(light: "#f0f0f0", dark: "#333333")
 		}
 
 		enum FontSize {
@@ -156,14 +157,12 @@ enum Tokens {
 			static let row: CGFloat = 46
 			static let tabBarWidth: CGFloat = 320
 			static let tabBar: CGFloat = 56
-			static let tabItem: CGFloat = 48
 			static let tabBarBottom: CGFloat = 24
 			static let voice: CGFloat = 48
-			static let compactTab: CGFloat = 40
 			static let menuRow: CGFloat = 45
-			static let pickerRow: CGFloat = 43
 			static let settingsRow: CGFloat = 43
 			static let homeIndicator: CGFloat = 34
+			static let barMargin: CGFloat = 28
 		}
 	}
 

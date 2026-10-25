@@ -270,6 +270,34 @@ describe("the hands tools", () => {
     }
   });
 
+  test("a file of Golem's is written to a machine part by part", async () => {
+    const megabyte = 1024 * 1024;
+    const content = `${"a".repeat(9 * megabyte - 1)}b`;
+    const directory = await mkdtemp(join(tmpdir(), "golem-hands-"));
+    const source = join(directory, "scan.pdf");
+    await Bun.write(source, content);
+    try {
+      expect(
+        await hands.put(
+          toolsWorkspace,
+          "bender",
+          source,
+          "~/Documents/scan.pdf"
+        )
+      ).toBe("/home/bender/Documents/scan.pdf");
+      expect(
+        listener.files.get("/home/bender/Documents/scan.pdf")?.toString()
+      ).toBe(content);
+      await Bun.write(source, "");
+      await hands.put(toolsWorkspace, "bender", source, "Documents/scan.pdf");
+      expect(listener.files.get("/home/bender/Documents/scan.pdf")).toEqual(
+        Buffer.alloc(0)
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   test("the system prompt names the machines", () => {
     expect(
       hands.section(toolsWorkspace).render({} as never, BACKGROUND_CONTEXT)
@@ -351,7 +379,12 @@ async function fakeHands() {
     "job.output": () => [{ nextOffset: 3, eof: true }, Buffer.from("hi\n")],
     "job.status": () => [{ state: "exited", exitCode: 0 }],
     write: (json, payload) => {
-      files.set(json.path as string, Buffer.from(payload));
+      const path = json.path as string;
+      const before = json.append ? (files.get(path) ?? Buffer.alloc(0)) : null;
+      files.set(
+        path,
+        before ? Buffer.concat([before, payload]) : Buffer.from(payload)
+      );
       return [{}];
     },
     open: (json) => {
@@ -425,6 +458,7 @@ async function fakeHands() {
     certSha256,
     jobs,
     reads,
+    files,
     trust: (publicKey: string) => trusted.push(publicKey),
     stop: () => server.stop(true),
   };

@@ -81,7 +81,8 @@ beforeAll(async () => {
     golem.app.threads,
     golem.app.indexer
   );
-  golem.faux.setResponses(Array.from({ length: 40 }, () => agent));
+  // The memory and the channel briefs ask the model in the background too.
+  golem.faux.setResponses(Array.from({ length: 200 }, () => agent));
 });
 afterAll(() => golem.close());
 
@@ -137,9 +138,6 @@ function agent(context: Context) {
   }
   if (text.endsWith("Test a script")) {
     return call("test_script", { script: 'text("hello"); return [1, 2];' });
-  }
-  if (text.endsWith("Summarize the channel")) {
-    return call("set_channel_summary", { summary: "School news." });
   }
   return fauxAssistantMessage("Ok.");
 }
@@ -318,7 +316,7 @@ test("a paused routine does not run, and a routine runs once however many runs i
   routines.delete(routine.id, alice);
 });
 
-test("agents create routines, test scripts, and write the channel summary", async () => {
+test("agents create routines and test scripts", async () => {
   const thread = await golem.app.threads.create(
     workspaceId,
     alice,
@@ -363,15 +361,4 @@ test("agents create routines, test scripts, and write the channel summary", asyn
   expect(toolResults.at(-1)).toBe(
     "The agent would get:\nhello\n[\n  1,\n  2\n]"
   );
-
-  await golem.app.threads.send(thread.id, alice, "Summarize the channel");
-  await until(
-    () => golem.app.threads.messages(ref()),
-    (state) => !state.running && state.messages.length === 8
-  );
-  expect(
-    golem.app.workspaces
-      .channelsIn(workspaceId)
-      .find((channel) => channel.id === channelId)?.summary
-  ).toBe("School news.");
 });

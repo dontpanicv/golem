@@ -21,6 +21,8 @@ final class Session {
     private(set) var channels: [Channel] = []
     /// The open workspace's thread that never ends, which channel lists leave out.
     private(set) var orchestrator: ThreadSummary?
+    /// The threads of the open workspace whose agent works.
+    private(set) var working: Set<String> = []
     /// The last failure of `load()`, shown with a retry button while no user is loaded.
     private(set) var loadError: String?
     /// The toast at the top of the screen: the last failure of an action, or a confirmation.
@@ -94,6 +96,21 @@ final class Session {
         try await open(workspace)
     }
 
+    /// Follows which threads of the open workspace work, reading the stream again after each error, until cancelled.
+    /// The channels and threads load again when work starts or ends.
+    func followWorking() async {
+        working = []
+        guard let workspace else { return }
+        while !Task.isCancelled {
+            try? await api.workingEvents(workspaceID: workspace.id) { threadIds in
+                // Agents start threads and channels as they work: the lists load again when work starts or ends.
+                if !working.isEmpty || !threadIds.isEmpty { Task { try? await reloadWorkspace() } }
+                working = Set(threadIds)
+            }
+            try? await Task.sleep(for: .seconds(2))
+        }
+    }
+
     func reloadWorkspace() async throws {
         if let workspace { try await open(workspace) }
     }
@@ -129,7 +146,7 @@ final class Session {
 
     /// Runs an action and shows its error in a toast.
     func run(_ action: () async throws -> Void) async {
-        do { try await action() } catch is CancellationError {} catch {
+        do { try await action() } catch is CancellationError {} catch URLError.cancelled {} catch {
             if (error as? APIError)?.status != 401 { show(error.localizedDescription, .error) }
         }
     }

@@ -40,13 +40,17 @@ private struct LoadingView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Tokens.Colors.surface)
+        .mobileBackground()
     }
 }
 
 enum Destination: Hashable {
     case search
     case channel(String)
+    /// A channel with its composer focused, to start a thread.
+    case newThread(String)
+    /// A channel with one of its artifacts open, or the orchestrator with one of the workspace's own for a nil channel.
+    case artifact(channel: String?, artifact: String)
     case channelDetails(String)
     case thread(String)
     case workspaceSettings
@@ -62,9 +66,21 @@ enum Destination: Hashable {
     }
 }
 
-/// Channels with their threads on the left, the open screen in the detail column, artifacts in the inspector.
-/// On iPhone the split view collapses into a stack and the inspector becomes a sheet.
+/// The iPhone shell (``PhoneShell``) or, where there is room, the split view with the sidebar.
 private struct MainView: View {
+    @Environment(Session.self) private var session
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        Group {
+            if sizeClass == .compact { PhoneShell() } else { SplitView() }
+        }
+        .task(id: session.workspace?.id) { await session.followWorking() }
+    }
+}
+
+/// Channels with their threads on the left, the open screen in the detail column, artifacts in the inspector.
+private struct SplitView: View {
     @Environment(Session.self) private var session
     @State private var selection: Destination?
     @State private var column = NavigationSplitViewColumn.sidebar
@@ -77,21 +93,36 @@ private struct MainView: View {
             Sidebar(selection: selection, open: open)
                 .navigationSplitViewColumnWidth(Tokens.Size.sidebar)
         } detail: {
-            switch selection {
-            case .search:
-                SearchView(open: open).id(session.workspace?.id)
-            case let .channel(id):
-                ChannelView(channelID: id, open: open).id(id)
-            case let .channelDetails(id):
-                ChannelDetailsView(channelID: id, open: open).id(id)
-            case let .thread(id):
-                ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
-            case .workspaceSettings:
-                WorkspaceSettingsView().id(session.workspace?.id)
-            case .settings:
-                SettingsView()
-            case nil:
-                EmptyState(title: "Choose a thread", systemImage: "bubble.left.and.bubble.right")
+            // Without the stack, a screen opened from the sidebar on iPhone disappears as it appears: its tasks stop.
+            NavigationStack {
+                switch selection {
+                case .search:
+                    SearchView(open: open).id(session.workspace?.id)
+                case let .channel(id):
+                    ChannelView(channelID: id, showArtifacts: $showArtifacts, open: open).id(id)
+                case let .newThread(id):
+                    ChannelView(channelID: id, compose: true, showArtifacts: $showArtifacts, open: open).id(id)
+                case let .artifact(channel?, artifact):
+                    ChannelView(channelID: channel, artifactID: artifact, showArtifacts: $showArtifacts, open: open)
+                        .id(artifact)
+                case let .artifact(nil, artifact):
+                    if let orchestrator = session.orchestrator {
+                        ConversationView(
+                            threadID: orchestrator.id, artifactID: artifact, showArtifacts: $showArtifacts, open: open
+                        )
+                            .id(artifact)
+                    }
+                case let .channelDetails(id):
+                    ChannelDetailsView(channelID: id, open: open).id(id)
+                case let .thread(id):
+                    ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
+                case .workspaceSettings:
+                    WorkspaceSettingsView().id(session.workspace?.id)
+                case .settings:
+                    SettingsView()
+                case nil:
+                    EmptyState(title: "Choose a thread", systemImage: "bubble.left.and.bubble.right")
+                }
             }
         }
         // Artifacts start open where there is room for them, as on the web.
@@ -143,7 +174,8 @@ private struct Sidebar: View {
             VStack(spacing: 1) {
                 workspaceMenu
                 if let orchestrator = session.orchestrator {
-                    row("Golem", systemImage: "tray", destination: .thread(orchestrator.id))
+                    row("Golem", systemImage: "tray", destination: .thread(orchestrator.id),
+                        working: session.working.contains(orchestrator.id))
                 }
                 row("Search", systemImage: "magnifyingglass", destination: .search)
                 SectionHeader(title: "Channels")
@@ -233,18 +265,21 @@ private struct Sidebar: View {
         .accessibilityValue(session.workspace?.name ?? "")
     }
 
-    private func row(_ title: String, systemImage: String, destination: Destination) -> some View {
+    private func row(
+        _ title: String, systemImage: String, destination: Destination, working: Bool = false
+    ) -> some View {
         Button {
             open(destination)
         } label: {
-            NavRow(title: title, systemImage: systemImage, selected: selection == destination)
+            NavRow(title: title, systemImage: systemImage, selected: selection == destination, working: working)
         }
         .buttonStyle(.plain)
     }
 
     private func threadRow(_ thread: ThreadSummary) -> some View {
         HStack(spacing: Tokens.Space.xs) {
-            row(thread.title, systemImage: "square.and.pencil", destination: .thread(thread.id))
+            row(thread.title, systemImage: "square.and.pencil", destination: .thread(thread.id),
+                working: session.working.contains(thread.id))
                 .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
                 .frame(maxWidth: .infinity)
             Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
@@ -265,7 +300,7 @@ private struct Sidebar: View {
 }
 
 /// A dialog that asks for a name: new channel and new workspace. It stays open when creating fails.
-private struct NameDialog: View {
+struct NameDialog: View {
     let title: String
     let create: (String) async throws -> Void
     @Environment(Session.self) private var session

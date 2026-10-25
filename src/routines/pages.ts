@@ -10,6 +10,8 @@ import {
   switchForm,
 } from "../platform/ui/components.ts";
 import { icon } from "../platform/ui/icons.ts";
+import { markdown } from "../platform/ui/markdown.ts";
+import type { Brief } from "../threads/threads.ts";
 import { type ShellContext, shell } from "../workspaces/shell.ts";
 import type { Channel } from "../workspaces/workspaces.ts";
 import type { Routine, RoutineOutcome, RoutineRun } from "./routines.ts";
@@ -26,10 +28,14 @@ const OUTCOMES: Record<
   failed: { label: "Failed", tone: "danger" },
 };
 
-/** A channel's summary, its routines, and their newest runs. People create routines by asking an agent. */
+/**
+ * A channel's summary and brief, its routines, and their newest runs. People create routines by asking an agent; the
+ * model writes the summary and the brief from the channel's threads.
+ */
 export function channelDetailsPage(
   context: ShellContext,
   channel: Channel,
+  brief: Brief | null,
   routines: readonly Routine[],
   runs: readonly RoutineRun[]
 ): string {
@@ -39,6 +45,19 @@ export function channelDetailsPage(
     ? pageSection(
         "Summary",
         `<p class="page-text">${escapeHtml(channel.summary)}</p>`
+      )
+    : "";
+  const briefSection = brief
+    ? pageSection(
+        "Brief",
+        `<div class="page-text prose">${
+          // The brief's headings sit under the section's own heading.
+          markdown(brief.text.replace(/^#{1,2} /gm, "### "), {
+            thread: (threadId) => `${base}/t/${threadId}`,
+            file: (fileId) => `${base}/files/${fileId}`,
+            afterThread: () => "",
+          })
+        }</div>`
       )
     : "";
   const routineList = routines.length
@@ -54,6 +73,7 @@ export function channelDetailsPage(
     main: pageContent(
       `<span class="breadcrumb"># </span>${escapeHtml(channel.name)}`,
       summary +
+        briefSection +
         pageSection("Routines", routineList) +
         pageSection("Runs", runList)
     ),

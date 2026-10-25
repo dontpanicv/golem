@@ -19,8 +19,9 @@ data/
 │   └── <workspace-id>/              One folder per workspace, and nothing of a workspace outside it.
 │       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per thread
 │       │                            (transcript, runs, tasks).
-│       ├── memory.sqlite            The memory of the orchestrator thread: a line for each message, merged
-│       │                            in pairs into a tree of summaries.
+│       ├── memory.sqlite            The workspace's memory, which the orchestrator reads: a line for each
+│       │                            message of every thread, merged in pairs into a tree of summaries; and
+│       │                            the brief of each channel, every version.
 │       ├── channels/
 │       │   └── <channel-id>/
 │       │       ├── files/           Files uploaded to the channel or attached to messages in its threads.
@@ -70,7 +71,7 @@ data/
 | Channels, threads, credentials, routines and their runs | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
-| The orchestrator's memory: summaries of its messages, which the fast model wrote | `memory.sqlite` | SQLite |
+| The workspace's memory and the channel briefs: summaries of the messages of all threads, which the model wrote | `memory.sqlite` | SQLite; the table `node` is the orchestrator's memory before it read all threads, which nothing reads now |
 | Files uploaded to a channel or attached to messages in its threads | `channels/<id>/files/` | the file as uploaded |
 | Artifacts: pages and small apps agents make, which belong to a channel, or the orchestrator's to the workspace | `golem.sqlite` | HTML, and the records their visitors keep |
 | Knowledge: people, places, decisions, how-tos | `notes/` | markdown + YAML frontmatter (`type`, `title`, dates, links) |

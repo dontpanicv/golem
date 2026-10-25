@@ -14,7 +14,12 @@ import {
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import { transcript } from "./pages.ts";
-import { Threads, threadMessages } from "./threads.ts";
+import {
+  type ThreadBrowser,
+  type ThreadHands,
+  Threads,
+  threadMessages,
+} from "./threads.ts";
 
 let golem: TestApp;
 let alice: User;
@@ -23,13 +28,16 @@ let bob: User;
 const toolResults: string[] = [];
 /** The memory views that the orchestrator's compactions gave the agent. */
 const memoryViews: string[] = [];
+/** The system prompts of the agents' requests. */
+const systemPrompts: string[] = [];
 
 beforeAll(async () => {
   golem = await startTestApp();
   alice = await person("Alice", "alice@example.com");
   bob = await person("Bob", "bob@example.com");
   // Threads run at the same time, so the model answers from what its conversation shows, not from a fixed order.
-  golem.faux.setResponses(Array.from({ length: 40 }, () => agent));
+  // The memory and the channel briefs ask the model in the background too.
+  golem.faux.setResponses(Array.from({ length: 200 }, () => agent));
 });
 afterAll(() => golem.close());
 
@@ -50,6 +58,24 @@ function textOf(message: Message): string {
 
 /** A scripted agent: one tool call for each request it knows, then a short answer after the tool result. */
 function agent(context: Context, options?: SimpleStreamOptions) {
+  const system = [
+    context.systemPrompt ?? "",
+    ...context.messages
+      .filter((message) => (message.role as string) === "system")
+      .flatMap((message) => [
+        textOf(message),
+        ...Object.values(
+          (message as { sections?: Record<string, string | null> }).sections ??
+            {}
+        ).map((section) => section ?? ""),
+      ]),
+  ].join("\n");
+  if (system.includes("You keep the brief")) {
+    return fauxAssistantMessage(
+      `<summary>What the family eats.</summary><brief>## Now\n- Pasta tonight ${/\[[^\]]*\]\(thread:[\w-]+\)/.exec(textOf(context.messages.at(-1)!))![0]}</brief>`
+    );
+  }
+  systemPrompts.push(system);
   const last = context.messages.at(-1)!;
   const text = textOf(last);
   const asked = context.messages.find((message) => message.role === "user");
@@ -139,14 +165,23 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (text.endsWith("List the channels")) {
     return call("list_channels", {});
   }
+  const script = /Run code: (.+)$/s.exec(text);
+  if (script) {
+    return call("codemode", { code: script[1]! });
+  }
   const other = /Tell thread ([\w-]+) hi$/.exec(text);
   if (other) {
     return call("send_to_thread", { thread: other[1]!, message: "Hi" });
   }
-  const save = /Save (\{.*\})$/.exec(text);
+  const save = /(Save|Copy) (\{.*\})$/.exec(text);
   if (save) {
     return fauxAssistantMessage(
-      [fauxToolCall("save_file", JSON.parse(save[1]!))],
+      [
+        fauxToolCall(
+          save[1] === "Save" ? "save_file" : "copy_to_machine",
+          JSON.parse(save[2]!)
+        ),
+      ],
       { stopReason: "toolUse" }
     );
   }
@@ -272,6 +307,23 @@ function postForm(
     })
   );
 }
+
+test("an agent runs a script that calls its tools, and only the script's output reaches it", async () => {
+  const garden = await golem.app.workspaces.create(alice, "Garden");
+  golem.app.workspaces.createChannel(garden.id, alice, "seeds");
+  const general = golem.app.workspaces.channels(garden.id, alice)[0]!;
+
+  const run = await golem.app.threads.create(
+    garden.id,
+    alice,
+    general.id,
+    'Run code: const list = await tools.list_channels({}); text(list.split("\\n").filter((line) => line.startsWith("#")).join(", "));'
+  );
+  await idle(garden.id, run.id);
+  expect(toolResults).toContainEqual(
+    expect.stringMatching(/^Script completed\n.*\nOutput:\n#general, #seeds$/s)
+  );
+});
 
 test("files attach to a new thread, a message, and the channel; every thread of the channel sees them; others cannot reach them", async () => {
   const token = await golem.signIn("Alice", "alice@example.com");
@@ -848,18 +900,89 @@ test("the orchestrator compacts into a view of its memory, and its agent zooms i
   const zoomed = await said("Zoom 0", 10);
   const view = memoryViews;
   expect(view[0]).toContain(
-    "0+1|user: Alice: The wifi password is on the fridge\n1+1|golem: Ok.\n2+1|user: Alice: Bring the tent"
+    "0+1|Alice: The wifi password is on the fridge\n1+1|Golem: Ok.\n2+1|Alice: Bring the tent"
   );
-  expect(view[0]).toContain("5+1|golem: Ok.");
+  expect(view[0]).toContain("5+1|Golem: Ok.");
   expect(view[0]).not.toContain("Here is the manual");
   // The transcript keeps the messages that the compaction took out of the model's context.
   expect(zoomed.messages[0]!.text).toBe("The wifi password is on the fridge");
   expect(zoomed.messages.at(-1)!.text).toBe("Done.");
   expect(toolResults).toContainEqual(
     expect.stringMatching(
-      /^Message 0, \d{4}-\d\d-\d\d \d\d:\d\d UTC:\nuser: Alice: The wifi password is on the fridge$/
+      /^Message 0, \d{4}-\d\d-\d\d \d\d:\d\d UTC:\nAlice: The wifi password is on the fridge$/
     )
   );
+});
+
+test("a settled thread goes into its channel's brief and summary, which a new thread of the channel reads with the channel's threads", async () => {
+  golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
+  const home = await golem.app.workspaces.create(alice, "Briefs");
+  const food = golem.app.workspaces.createChannel(home.id, alice, "food");
+  const general = golem.app.workspaces
+    .channels(home.id, alice)
+    .find((channel) => channel.name === "general")!;
+  const pasta = await golem.app.threads.create(
+    home.id,
+    alice,
+    food.id,
+    "We eat pasta tonight"
+  );
+  const answered = (threadId: string) =>
+    until(
+      () =>
+        golem.app.threads.messages(
+          golem.app.workspaces.thread(threadId, alice)
+        ),
+      (state) => !state.running && state.messages.length === 2
+    );
+  await answered(pasta.id);
+  expect(await golem.app.threads.brief(home.id, food.id, alice)).toBeNull();
+  golem.app.workspaces.setThreadSettled(home.id, pasta.id, alice, true);
+  // Work anywhere in the workspace makes it catch up, and the settled thread needs no quiet time.
+  const elsewhere = await golem.app.threads.create(
+    home.id,
+    alice,
+    general.id,
+    "Hello"
+  );
+  await answered(elsewhere.id);
+  const brief = await until(
+    () => golem.app.threads.brief(home.id, food.id, alice),
+    (found) => found !== null
+  );
+  expect(brief!.text).toBe(
+    `## Now\n- Pasta tonight [We eat pasta tonight](thread:${pasta.id})`
+  );
+  expect(
+    golem.app.workspaces
+      .channels(home.id, alice)
+      .find((channel) => channel.id === food.id)!.summary
+  ).toBe("What the family eats.");
+
+  const before = systemPrompts.length;
+  const next = await golem.app.threads.create(
+    home.id,
+    alice,
+    food.id,
+    "What do we eat?"
+  );
+  await answered(next.id);
+  const prompt = systemPrompts
+    .slice(before)
+    .find((text) => text.includes("This thread is in #food."))!;
+  expect(prompt).toContain(
+    `The brief of #food:\n## Now\n- Pasta tonight [We eat pasta tonight](thread:${pasta.id})`
+  );
+  expect(prompt).toMatch(
+    new RegExp(
+      `The other threads of #food, newest first:\\n- \\[We eat pasta tonight\\]\\(thread:${pasta.id}\\): settled, last message from a person \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC`
+    )
+  );
+  expect(prompt).not.toContain(next.id);
+
+  await expect(
+    golem.app.threads.brief(home.id, food.id, bob)
+  ).rejects.toThrow();
 });
 
 test("an agent creates, searches, and deletes channels, and a deleted channel keeps everything, hidden", async () => {
@@ -1139,7 +1262,7 @@ test("save_file refuses what is not an http file under 100 MB, stops reading a b
       "The browser could not take a screenshot."
     );
     expect(await refusal({ name: "nothing" })).toContain(
-      "Give machine and path, browser_screenshot, or url."
+      "Give content and name, artifact, machine and path, browser_screenshot, or url."
     );
     expect(
       await readdir(
@@ -1160,6 +1283,88 @@ test("save_file refuses what is not an http file under 100 MB, stops reading a b
   }
 });
 
+test("save_file writes text and prints an artifact, and copy_to_machine puts a file on a machine", async () => {
+  const home = await golem.app.workspaces.create(alice, "Documents");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const printed: string[] = [];
+  const copied: [string, string, string, string][] = [];
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-save-"));
+  const threads = savingThreads(
+    dataDirectory,
+    () => Promise.reject(new Error("unused")),
+    async () => null,
+    {
+      put: async (workspaceId, machine, source, path) => {
+        copied.push([
+          workspaceId,
+          machine,
+          await Bun.file(source).text(),
+          path,
+        ]);
+        return `/home/alice/${path}`;
+      },
+    },
+    {
+      pdf: async (html) => {
+        printed.push(html);
+        return new TextEncoder().encode("%PDF");
+      },
+    }
+  );
+  try {
+    const ask = async (text: string) => {
+      const { id } = await threads.create(home.id, alice, general.id, text);
+      await answeredIn(threads, home.id, id);
+      return toolResults.at(-1);
+    };
+    await ask(
+      `Save ${JSON.stringify({ content: "# Shopping\n- milk", name: "list.md" })}`
+    );
+    const invite = golem.app.artifacts.create(
+      { ...golem.app.workspaces.threadsIn(home.id)[0]!, workspaceId: home.id },
+      general.id,
+      { title: "Party invite", html: "<h1>Party</h1>", requestKey: "invite" }
+    );
+    await ask(`Save ${JSON.stringify({ artifact: invite.id })}`);
+    expect(printed).toHaveLength(1);
+    expect(printed[0]).toContain("<h1>Party</h1>");
+    expect(printed[0]).toContain("Content-Security-Policy");
+    expect(await ask(`Save ${JSON.stringify({ content: "x" })}`)).toContain(
+      "Give the file a name with its extension."
+    );
+    expect(
+      await ask(`Save ${JSON.stringify({ artifact: "no-such-thing" })}`)
+    ).toContain("There is no artifact no-such-thing in this workspace.");
+
+    const files = await threads.files({
+      workspaceId: home.id,
+      channelId: general.id,
+    });
+    const saved = await Promise.all(
+      files.map(async (file) => {
+        const { path } = await threads.file(home.id, alice, file.id);
+        return [file.name, await Bun.file(path).text()];
+      })
+    );
+    expect(saved).toEqual([
+      ["list.md", "# Shopping\n- milk"],
+      ["Party invite.pdf", "%PDF"],
+    ]);
+
+    expect(
+      await ask(
+        `Copy ${JSON.stringify({ file: files[0]!.id, machine: "glados", path: "Desktop/list.md" })}`
+      )
+    ).toBe("Copied list.md to /home/alice/Desktop/list.md on glados.");
+    expect(copied).toEqual([
+      [home.id, "glados", "# Shopping\n- milk", "Desktop/list.md"],
+    ]);
+  } finally {
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 /** Threads over the test app's workspaces and model, with a machine and a browser that the test gives. */
 function savingThreads(
   dataDirectory: string,
@@ -1170,7 +1375,9 @@ function savingThreads(
     destination: string,
     limit: number
   ) => Promise<void>,
-  screenshot: () => Promise<Uint8Array | null>
+  screenshot: () => Promise<Uint8Array | null>,
+  machine: Partial<Pick<ThreadHands, "put">> = {},
+  browser: Partial<Pick<ThreadBrowser, "pdf">> = {}
 ) {
   // Each save is a tool call and an answer after it.
   golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
@@ -1180,12 +1387,19 @@ function savingThreads(
     golem.app.workspaces,
     {
       file,
+      put: () => Promise.reject(new Error("No machines are paired.")),
       tools: () => [],
       section: () => ({ key: "machines", render: () => undefined }),
+      ...machine,
     },
     golem.app.integrations,
     golem.app.artifacts,
-    { screenshot, tools: () => [] },
+    {
+      pdf: () => Promise.reject(new Error("There is no browser.")),
+      screenshot,
+      tools: () => [],
+      ...browser,
+    },
     {
       changed: () => undefined,
       recall: async () => ({ results: [] }),

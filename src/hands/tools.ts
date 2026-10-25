@@ -12,7 +12,7 @@ import type { Hands } from "./hands.ts";
 const MAX_OUTPUT = 16_000;
 /** The most of a text file `hands_read` and `hands_edit` take. */
 const MAX_TEXT = 512 * 1024;
-/** How much of a file machineFile reads at once, below the largest message hands sends. */
+/** How much of a file machineFile reads and fileToMachine writes at once, below the largest message hands sends. */
 const FILE_PART = 8 * 1024 * 1024;
 
 const machineParameter = Type.String({ description: "Machine name" });
@@ -505,6 +505,35 @@ export async function machineFile(
         // The connection closed, and the handle with it.
       });
     }
+  });
+}
+
+/**
+ * Writes a file of Golem's to `path` on a machine, part by part, creating missing folders; returns the absolute path.
+ */
+export function fileToMachine(
+  hands: Hands,
+  workspaceId: string,
+  machineName: string,
+  source: string,
+  path: string
+): Promise<string> {
+  const machine = machineNamed(hands, workspaceId, machineName);
+  // A new connection after a lost one writes the file again from the start.
+  return hands.with(workspaceId, machine, async (connection) => {
+    const target = absolute(path, connection);
+    const file = Bun.file(source);
+    let offset = 0;
+    do {
+      const payload = await file.slice(offset, offset + FILE_PART).bytes();
+      await connection.request(
+        "write",
+        { path: target, append: offset > 0 },
+        { payload }
+      );
+      offset += payload.length;
+    } while (offset < file.size);
+    return target;
   });
 }
 

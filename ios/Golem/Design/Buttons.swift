@@ -1,70 +1,61 @@
 import SwiftUI
 
-/// Buttons per design/components.md: four variants in four sizes. The visual height follows the spec;
-/// the touch target always reaches 44 pt.
+/// Buttons per design/components.md: four variants in five sizes, all pills; secondary buttons are glass, as Linear's
+/// iOS pills are. The visual height follows the spec; the touch target always reaches 44 pt. A press shows at once and
+/// fades out in 150 ms, as a hover does on the web.
 struct GolemButtonStyle: ButtonStyle {
     enum Variant { case primary, secondary, ghost, danger }
-    enum Size { case regular, small, icon, large }
+    enum Size { case regular, small, icon, tiny, large }
 
     var variant: Variant = .secondary
     var size: Size = .regular
-    /// A circle instead of the icon square: the composer's send button.
-    var round = false
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.onRaisedSurface) private var onRaisedSurface
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed && isEnabled
-        let shape = RoundedRectangle(cornerRadius: radius)
+        let iconOnly = size == .icon || size == .tiny
         configuration.label
-            .labelStyle(ButtonLabelStyle(iconOnly: size == .icon || round))
-            .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
+            .labelStyle(ButtonLabelStyle(iconOnly: iconOnly))
+            .font(.golem(size == .small ? Tokens.FontSize.sm : Tokens.FontSize.md, Tokens.FontWeight.medium))
             .lineLimit(1)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, size == .icon || round ? 0 : Tokens.Space.lg)
+            .foregroundStyle(foreground(pressed: pressed))
+            .padding(.horizontal, iconOnly ? 0 : size == .small ? 10 : Tokens.Space.lg)
             .frame(minWidth: height, maxWidth: size == .large ? .infinity : nil, minHeight: height, maxHeight: height)
-            .background(background(pressed: pressed), in: shape)
-            .overlay(shape.strokeBorder(ring, lineWidth: 0.5))
+            .background(background(pressed: pressed), in: .capsule)
+            .glassEffect(variant == .secondary ? .regular.interactive() : .identity, in: .capsule)
             .shadow(variant == .primary ? Tokens.Shadows.low : [])
-            .opacity(isEnabled ? 1 : 0.5)
+            .opacity(isEnabled ? 1 : 0.6)
             // The visual size stays; the hit area grows to 44 pt.
             .contentShape(.interaction, Rectangle().inset(by: -max(0, (Tokens.Size.listRow - height) / 2)))
-            .contentShape(.hoverEffect, shape)
-            .animation(Tokens.Easing.out(Tokens.Duration.fast), value: pressed)
+            .contentShape(.hoverEffect, .capsule)
+            .animation(pressed ? nil : Tokens.Easing.ease(Tokens.Duration.fast), value: pressed)
     }
 
     private var height: CGFloat {
         switch size {
         case .regular: Tokens.Size.control
         case .small, .icon: Tokens.Size.controlSmall
+        case .tiny: Tokens.Size.controlTiny
         case .large: Tokens.Size.controlLarge
         }
     }
 
-    private var radius: CGFloat {
-        switch size {
-        case .regular, .large: Tokens.Radius.full
-        case .small, .icon: round ? Tokens.Radius.full : Tokens.Radius.md
-        }
-    }
-
-    private var foreground: Color {
+    private func foreground(pressed: Bool) -> Color {
         switch variant {
         case .primary: Tokens.Colors.onAccent
-        case .secondary, .ghost: Tokens.Colors.textSecondary
+        case .secondary: Tokens.Mobile.Colors.text
+        case .ghost: pressed ? Tokens.Colors.text : Tokens.Colors.textTertiary
         case .danger: Tokens.Colors.danger
         }
-    }
-
-    private var ring: Color {
-        variant == .secondary || variant == .danger ? Tokens.Colors.borderStrong : .clear
     }
 
     private func background(pressed: Bool) -> Color {
         switch variant {
         case .primary: pressed ? Tokens.Colors.accentHover : Tokens.Colors.accent
-        case .secondary, .danger: pressed ? Tokens.Colors.surfaceHover : Tokens.Colors.surfaceRaised
-        case .ghost: pressed ? (onRaisedSurface ? Tokens.Colors.surfaceHover : Tokens.Colors.fillHover) : .clear
+        case .secondary: .clear
+        // Translucent, so it fits every surface.
+        case .ghost: pressed ? Tokens.Colors.ghostHover : .clear
+        case .danger: pressed ? Tokens.Colors.dangerSubtle : .clear
         }
     }
 }
@@ -90,7 +81,8 @@ extension ButtonStyle where Self == GolemButtonStyle {
     static var secondary: GolemButtonStyle { GolemButtonStyle(variant: .secondary) }
     static var ghost: GolemButtonStyle { GolemButtonStyle(variant: .ghost) }
     static var danger: GolemButtonStyle { GolemButtonStyle(variant: .danger) }
-    static var send: GolemButtonStyle { GolemButtonStyle(variant: .primary, round: true) }
+    /// The composer's send button: a tiny primary circle.
+    static var send: GolemButtonStyle { GolemButtonStyle(variant: .primary, size: .tiny) }
     static func golem(
         _ variant: GolemButtonStyle.Variant, _ size: GolemButtonStyle.Size = .regular
     ) -> GolemButtonStyle {
@@ -103,8 +95,7 @@ struct LinkButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
-            .foregroundStyle(Tokens.Colors.accent)
-            .opacity(configuration.isPressed ? 0.6 : 1)
+            .foregroundStyle(configuration.isPressed ? Tokens.Colors.accentHover : Tokens.Colors.accent)
             .frame(minHeight: Tokens.Size.listRow)
             .contentShape(.rect)
     }

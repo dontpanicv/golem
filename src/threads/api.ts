@@ -113,6 +113,19 @@ export const threadApiRoutes: readonly Route[] = [
     ),
   ],
   [
+    "GET",
+    "/api/v1/workspaces/:workspace/channels/:channel/brief",
+    api(async ({ app, user, params }) =>
+      json({
+        brief: await app.threads.brief(
+          params.workspace!,
+          params.channel!,
+          user
+        ),
+      })
+    ),
+  ],
+  [
     "POST",
     "/api/v1/workspaces/:workspace/channels/:channel/files",
     api(async ({ app, user, params, files }) =>

@@ -23,7 +23,12 @@ export const routineWebRoutes: readonly Route[] = [
         channel.id,
         user
       );
-      return html(channelDetailsPage(context, channel, routines, runs));
+      const brief = await app.threads.brief(
+        params.workspace!,
+        channel.id,
+        user
+      );
+      return html(channelDetailsPage(context, channel, brief, routines, runs));
     }),
   ],
   [

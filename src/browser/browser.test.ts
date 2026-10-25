@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { extractText, getDocumentProxy } from "unpdf";
 import { Browser, type BrowserRunner, browserRequirements } from "./browser.ts";
 
 /** A runner that records each call and answers like agent-browser; it writes the screenshot it is asked for. */
@@ -88,6 +89,22 @@ describe("Browser", () => {
     const result = await browser.browse("s", [["click", "@e9"]], false);
     expect(result.text).toBe(output);
   });
+});
+
+describe("Browser.pdf", () => {
+  test("prints a page in Chrome with its scripts, on the paper size its CSS asks for", async () => {
+    const pdf = await getDocumentProxy(
+      await new Browser().pdf(
+        '<style>@page { size: A4 }</style><h1>Invite</h1><p id="time"></p><script>document.getElementById("time").textContent = "Saturday at 5";</script>'
+      )
+    );
+    expect((await pdf.getPage(1)).view.map(Math.round)).toEqual([
+      0, 0, 595, 842,
+    ]);
+    expect((await extractText(pdf, { mergePages: true })).text).toBe(
+      "Invite\nSaturday at 5"
+    );
+  }, 30_000);
 });
 
 describe("browserRequirements", () => {

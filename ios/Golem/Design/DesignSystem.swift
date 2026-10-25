@@ -39,40 +39,38 @@ extension Font {
 struct Shadow {
     let y: CGFloat
     let blur: CGFloat
-    let opacity: Double
+    let color: Color
 }
 
 extension View {
     func shadow(_ layers: [Shadow]) -> some View {
         layers.reduce(AnyView(self)) { view, layer in
-            AnyView(view.shadow(color: .black.opacity(layer.opacity), radius: layer.blur / 2, y: layer.y))
+            AnyView(view.shadow(color: layer.color, radius: layer.blur / 2, y: layer.y))
         }
     }
 
-    /// A raised card: composer, settings card, or showcase tile.
-    func raisedCard(radius: CGFloat = Tokens.Radius.lg) -> some View {
-        background(Tokens.Colors.surfaceRaised, in: .rect(cornerRadius: radius))
-            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.Colors.border, lineWidth: 0.5))
+    /// A raised card: a settings card with a 0.5 pt `ring`, or the composer with its own fill and no ring, and the
+    /// `low` shadow.
+    func raisedCard(
+        radius: CGFloat = Tokens.Radius.lg, fill: Color = Tokens.Colors.surfaceRaised, ring: Color = Tokens.Colors.ring
+    ) -> some View {
+        background(fill, in: .rect(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(ring, lineWidth: 0.5))
             .shadow(Tokens.Shadows.low)
-            .environment(\.onRaisedSurface, true)
     }
 
-    /// A floating card: menu, toast, or dialog. A 0.5 pt `borderStrong` ring and the `menu` shadow.
+    /// A floating card, the toast: the menu surface, a 0.5 pt `ringControl` line, and the `menu` shadow.
     func floatingCard(radius: CGFloat = Tokens.Radius.xl) -> some View {
-        background(Tokens.Colors.surfaceRaised, in: .rect(cornerRadius: radius))
-            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5))
+        background(Tokens.Colors.surfaceMenu, in: .rect(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.Colors.ringControl, lineWidth: 0.5))
             .shadow(Tokens.Shadows.menu)
-            .environment(\.onRaisedSurface, true)
     }
-}
-
-extension EnvironmentValues {
-    /// Set inside cards, menus, and dialogs: ghost buttons press to `surfaceHover` instead of `fillHover`.
-    @Entry var onRaisedSurface = false
 }
 
 // MARK: - Small components
 
+/// A person's initial on a color picked by the sum of their name's code points, as the web picks it, or an
+/// agent's on the accent.
 struct Avatar: View {
     let name: String
     var agent = false
@@ -80,14 +78,19 @@ struct Avatar: View {
 
     var body: some View {
         Text(name.prefix(1).uppercased())
-            .font(.golem(size * 0.45, Tokens.FontWeight.semibold))
-            .foregroundStyle(agent ? Tokens.Colors.onAccent : Tokens.Colors.textSecondary)
+            .font(.golem(size * 0.45, Tokens.FontWeight.medium))
+            .foregroundStyle(Tokens.Colors.onAccent)
             .frame(width: size, height: size)
             .background(
-                agent ? Tokens.Colors.accent : Tokens.Colors.fillActive,
-                in: .rect(cornerRadius: agent ? Tokens.Radius.md : Tokens.Radius.full)
+                agent ? Tokens.Colors.accent : color,
+                in: .rect(cornerRadius: agent ? Tokens.Radius.sm : Tokens.Radius.full)
             )
             .accessibilityHidden(true)
+    }
+
+    private var color: Color {
+        let sum = name.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        return Tokens.avatarColors[sum % Tokens.avatarColors.count]
     }
 }
 
@@ -98,20 +101,18 @@ struct Badge: View {
     var tone = Tone.neutral
 
     var body: some View {
-        HStack(spacing: Tokens.Space.xs) {
-            Circle().frame(width: 6, height: 6)
+        HStack(spacing: Tokens.Space.sm) {
+            Circle().fill(color).frame(width: Tokens.Size.dot, height: Tokens.Size.dot)
             Text(label)
         }
-        .font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.medium))
-        .foregroundStyle(color)
-        .padding(.horizontal, Tokens.Space.sm)
-        .frame(height: 20)
-        .overlay(Capsule().strokeBorder(Tokens.Colors.border, lineWidth: 0.5))
+        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
+        .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+        .frame(minHeight: Tokens.Size.controlTiny)
     }
 
     private var color: Color {
         switch tone {
-        case .neutral: Tokens.Colors.textTertiary
+        case .neutral: Tokens.Colors.textQuaternary
         case .accent: Tokens.Colors.accent
         case .success: Tokens.Colors.success
         case .warning: Tokens.Colors.warning
@@ -139,12 +140,13 @@ struct FileChip: View {
         }
         .font(.golem(Tokens.FontSize.sm))
         .foregroundStyle(Tokens.Colors.textSecondary)
-        .padding(.horizontal, Tokens.Space.lg)
+        .padding(.leading, Tokens.Space.md)
+        .padding(.trailing, 10)
         .frame(maxWidth: 240, minHeight: Tokens.Size.controlSmall)
         .background(Tokens.Colors.fillSubtle, in: .rect(cornerRadius: Tokens.Radius.md))
         .overlay(
             RoundedRectangle(cornerRadius: Tokens.Radius.md)
-                .strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5)
+                .strokeBorder(Tokens.Colors.ring, lineWidth: 0.5)
         )
         // Touch target: 44 pt where the web chip is 28 px.
         .frame(minHeight: Tokens.Size.listRow)
@@ -158,13 +160,13 @@ struct Keycap: View {
 
     var body: some View {
         Text(key)
-            .font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.medium))
+            .font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.regular))
             .foregroundStyle(Tokens.Colors.textTertiary)
-            .padding(.horizontal, Tokens.Space.xs)
-            .frame(minWidth: 18, minHeight: 18)
+            .padding(Tokens.Space.xxs)
+            .frame(minWidth: 18, minHeight: 17)
             .overlay(
                 RoundedRectangle(cornerRadius: Tokens.Radius.xs)
-                    .strokeBorder(Tokens.Colors.borderStrong, lineWidth: 0.5)
+                    .strokeBorder(Tokens.Colors.borderSubtle, lineWidth: 0.5)
             )
     }
 }
@@ -175,6 +177,8 @@ struct NavRow: View {
     let systemImage: String
     var selected = false
     var count: Int?
+    /// A thread whose agent works shows a spinner.
+    var working = false
 
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
@@ -182,6 +186,7 @@ struct NavRow: View {
                 .font(.system(size: Tokens.Size.icon * 0.8, weight: .medium))
                 .frame(width: Tokens.Size.icon)
             Text(title).lineLimit(1)
+            if working { ProgressView().controlSize(.mini).accessibilityLabel("Working") }
             Spacer(minLength: 0)
             if let count {
                 Text("\(count)").font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.book))

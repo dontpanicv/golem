@@ -9,7 +9,7 @@ struct LoginView: View {
     var body: some View {
         @Bindable var session = session
         CenteredForm(title: "Sign in to Golem") {
-            GolemTextField("Server", text: $session.serverURL, large: true)
+            GolemTextField("Server", text: $session.serverURL)
                 .keyboardType(.URL)
                 .textContentType(.URL)
                 .textInputAutocapitalization(.never)
@@ -47,7 +47,7 @@ struct CreateWorkspaceView: View {
 
     var body: some View {
         CenteredForm(title: "Create a workspace") {
-            GolemTextField("Name", text: $name, large: true).onSubmit(create)
+            GolemTextField("Name", text: $name).onSubmit(create)
             Button("Create workspace", action: create)
                 .buttonStyle(.golem(.primary, .large))
                 .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -95,6 +95,6 @@ private struct CenteredForm<Fields: View, Footer: View>: View {
             .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
         }
-        .background(Tokens.Colors.surface)
+        .mobileBackground()
     }
 }

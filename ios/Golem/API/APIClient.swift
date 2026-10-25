@@ -58,7 +58,9 @@ final class APIClient {
     }
 
     func search(workspaceID: String, query: String) async throws -> SearchResponse {
-        let escaped = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        // `&`, `+`, and `=` are allowed in a query but would end or change the `q` value.
+        let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+="))
+        let escaped = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
         return try await get("/api/v1/workspaces/\(workspaceID)/search?q=\(escaped)")
     }
     func members(workspaceID: String) async throws -> [Member] {
@@ -90,6 +92,11 @@ final class APIClient {
 
     func routines(workspaceID: String, channelID: String) async throws -> ChannelRoutines {
         try await get("/api/v1/workspaces/\(workspaceID)/channels/\(channelID)/routines")
+    }
+
+    func brief(workspaceID: String, channelID: String) async throws -> Brief? {
+        let found: ChannelBrief = try await get("/api/v1/workspaces/\(workspaceID)/channels/\(channelID)/brief")
+        return found.brief
     }
 
     func setRoutine(_ id: String, enabled: Bool) async throws -> Routine {
@@ -128,21 +135,26 @@ final class APIClient {
         _ = try await sendForm("/api/v1/threads/\(threadID)/messages", fields, files)
     }
 
-    func threadFiles(_ threadID: String) async throws -> [ThreadFile] {
-        (try await get("/api/v1/threads/\(threadID)/files") as ThreadFiles).files
+    // MARK: Files
+
+    /// The files of a channel, or the workspace's own for a nil `channelID`.
+    func files(workspaceID: String, channelID: String?) async throws -> [SavedFile] {
+        (try await get(filesPath(workspaceID, channelID)) as SavedFiles).files
     }
 
-    func uploadFiles(threadID: String, files: [URL]) async throws -> [ThreadFile] {
-        (try decode(try await sendForm("/api/v1/threads/\(threadID)/files", [:], files).data) as ThreadFiles).files
+    func uploadFiles(workspaceID: String, channelID: String?, files: [URL]) async throws -> [SavedFile] {
+        (try decode(try await sendForm(filesPath(workspaceID, channelID), [:], files).data) as SavedFiles).files
     }
 
-    func deleteFile(threadID: String, fileID: String) async throws -> [ThreadFile] {
-        (try decode(try await send("DELETE", "/api/v1/threads/\(threadID)/files/\(fileID)").data) as ThreadFiles).files
+    /// Returns the files left where the file was.
+    func deleteFile(workspaceID: String, fileID: String) async throws -> [SavedFile] {
+        let data = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/files/\(fileID)").data
+        return (try decode(data) as SavedFiles).files
     }
 
-    /// Downloads a file of a thread to a temporary folder under its own name, for Quick Look.
-    func download(threadID: String, file: FileRef) async throws -> URL {
-        let request = try makeRequest("GET", "/api/v1/threads/\(threadID)/files/\(file.id)")
+    /// Downloads a file of the workspace to a temporary folder under its own name, for Quick Look.
+    func download(workspaceID: String, file: FileRef) async throws -> URL {
+        let request = try makeRequest("GET", "/api/v1/workspaces/\(workspaceID)/files/\(file.id)")
         let (location, response) = try await URLSession.shared.download(for: request)
         try check(response, data: Data())
         let folder = FileManager.default.temporaryDirectory.appending(path: file.id)
@@ -155,7 +167,26 @@ final class APIClient {
 
     /// Reads the server-sent events of a thread until the stream ends, the task is cancelled, or an error occurs.
     func threadEvents(_ id: String, onState: (ThreadState) -> Void) async throws {
-        var request = try makeRequest("GET", "/api/v1/threads/\(id)/events")
+        try await events("/api/v1/threads/\(id)/events", named: "thread", onEvent: onState)
+    }
+
+    /// Stops the agent of a thread: it drops the messages it has not read yet and ends its run.
+    func stopThread(_ id: String) async throws {
+        _ = try await send("POST", "/api/v1/threads/\(id)/stop")
+    }
+
+    /// Reads the threads of a workspace whose agent works, at once and after every change, until the stream ends, the
+    /// task is cancelled, or an error occurs.
+    func workingEvents(workspaceID: String, onThreads: ([String]) -> Void) async throws {
+        try await events("/api/v1/workspaces/\(workspaceID)/working", named: "working") { (event: WorkingThreads) in
+            onThreads(event.threadIds)
+        }
+    }
+
+    private func events<Event: Decodable>(
+        _ path: String, named name: String, onEvent: (Event) -> Void
+    ) async throws {
+        var request = try makeRequest("GET", path)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 24 * 60 * 60
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -165,16 +196,18 @@ final class APIClient {
         for try await line in bytes.lines {
             if line.hasPrefix("event:") {
                 event = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-            } else if line.hasPrefix("data:"), event == "thread" {
-                onState(try decode(Data(line.dropFirst(5).utf8)))
+            } else if line.hasPrefix("data:"), event == name {
+                onEvent(try decode(Data(line.dropFirst(5).utf8)))
             }
         }
     }
 
     // MARK: Artifacts
 
-    func artifacts(threadID: String) async throws -> [Artifact] {
-        (try await get("/api/v1/threads/\(threadID)/artifacts") as ThreadArtifacts).artifacts
+    /// The artifacts of a channel, or the workspace's own for a nil `channelID`.
+    func artifacts(workspaceID: String, channelID: String?) async throws -> [Artifact] {
+        let place = channelID.map { "/channels/\($0)" } ?? ""
+        return (try await get("/api/v1/workspaces/\(workspaceID)\(place)/artifacts") as ArtifactList).artifacts
     }
 
     func artifact(_ id: String) async throws -> ArtifactDetail { try await get("/api/v1/artifacts/\(id)") }
@@ -215,6 +248,10 @@ final class APIClient {
     }
 
     // MARK: Transport
+
+    private func filesPath(_ workspaceID: String, _ channelID: String?) -> String {
+        "/api/v1/workspaces/\(workspaceID)\(channelID.map { "/channels/\($0)" } ?? "")/files"
+    }
 
     private func get<Response: Decodable>(_ path: String) async throws -> Response {
         try decode(try await send("GET", path).data)

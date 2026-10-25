@@ -281,11 +281,14 @@ final class VoiceChat {
         }
     }
 
-    /// The text of the newest run: the person's message it answers, and the agent's messages after it, the one being
-    /// written last.
+    /// The text of the newest run: the person's message it answers, and what the agent said after it, in its work and
+    /// its answer, the part being written last.
     static func runText(_ messages: [Message]) -> (anchor: String?, pieces: [String]) {
         let start = messages.lastIndex { !$0.agent }
         let after = start.map { messages[($0 + 1)...] } ?? messages[...]
-        return (start.map { messages[$0].id }, after.filter { !$0.failed }.map(\.text))
+        let said = after.filter { !$0.failed }.flatMap { message in
+            (message.work?.steps ?? []).filter { $0.kind == "text" }.map(\.text) + [message.text]
+        }
+        return (start.map { messages[$0].id }, said)
     }
 }

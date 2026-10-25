@@ -29,8 +29,12 @@ type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: 
 type Channel = {
 	id: string;
 	name: string;
-	summary: string | null; // what the channel is for and what goes on in it, as an agent last wrote it
+	summary: string | null; // what the channel is for and what goes on in it, as the model last wrote it with the brief
 	threads: ThreadSummary[]; // newest first
+};
+type Brief = {
+	text: string; // Markdown with thread links, [title](thread:<threadId>)
+	updatedAt: number;
 };
 type Message = {
 	id: string;
@@ -171,6 +175,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice? }` | `204` |
 | `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
 | `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
+| `GET /api/v1/workspaces/:workspaceId/channels/:channelId/brief` | | `{ brief: Brief \| null }`: what the channel is for, where it is now, its decisions, its open questions, and what each person wants; `null` before the first |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/files` | | `{ files: SavedFile[] }`, oldest first |
 | `POST /api/v1/workspaces/:workspaceId/channels/:channelId/files` | multipart `files` | `{ files: SavedFile[] }`: all files of the channel |
 | `GET /api/v1/workspaces/:workspaceId/files` | | `{ files: SavedFile[] }`: the workspace's own files, which the orchestrator keeps, oldest first |
@@ -188,7 +193,11 @@ any file of the workspace by its id.
 
 The orchestrator is the one thread of a workspace that never ends: the workspace opens on it, and its agent gives
 work to the threads of the channels. It is in the first channel, but no `Channel.threads` list shows it, and it cannot
-be settled. Its agent remembers all of the thread: see `src/threads/memory.ts`.
+be settled. Its agent remembers every message of every thread of the workspace: see `src/threads/memory.ts`.
+
+Each channel has a brief, which the model writes again from the new messages of the channel's threads when they are
+quiet for 10 minutes or settled, and the channel's summary with it. Every thread of the channel reads the brief and the
+list of the channel's threads before each answer: see `src/threads/brief.ts`.
 
 `voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud, and
 the message steers a run at work instead of waiting for it to end.

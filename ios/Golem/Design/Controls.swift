@@ -9,20 +9,18 @@ struct GolemTextField: View {
     let placeholder: String
     @Binding var text: String
     var secure = false
-    var large = false
     /// Focuses the field when it appears, as the alerts these fields replace did.
     var autofocus = false
     @FocusState private var focused: Bool
 
     init(
         _ label: String?, placeholder: String? = nil, text: Binding<String>,
-        secure: Bool = false, large: Bool = false, autofocus: Bool = false
+        secure: Bool = false, autofocus: Bool = false
     ) {
         self.label = label
         self.placeholder = placeholder ?? label ?? ""
         _text = text
         self.secure = secure
-        self.large = large
         self.autofocus = autofocus
     }
 
@@ -30,23 +28,22 @@ struct GolemTextField: View {
         VStack(alignment: .leading, spacing: Tokens.Space.xs) {
             if let label {
                 Text(label)
-                    .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.medium))
-                    .foregroundStyle(Tokens.Colors.textTertiary)
+                    .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium))
+                    .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+                    .frame(minHeight: 24)
                     .accessibilityHidden(true)
             }
             field
                 .focused($focused)
-                .font(.golem(Tokens.FontSize.md))
-                .foregroundStyle(Tokens.Colors.text)
+                .font(.golem(Tokens.Mobile.FontSize.body))
+                .foregroundStyle(Tokens.Mobile.Colors.text)
+                .tint(Tokens.Colors.accent)
                 .padding(.horizontal, Tokens.Space.lg)
-                .frame(height: large ? Tokens.Size.controlLarge : Tokens.Size.control)
-                .background(Tokens.Colors.surfaceRaised, in: .rect(cornerRadius: Tokens.Radius.md))
+                .frame(height: Tokens.Size.listRow)
+                .background(Tokens.Mobile.Colors.fill, in: .rect(cornerRadius: Tokens.Radius.xl))
                 .overlay(
-                    RoundedRectangle(cornerRadius: Tokens.Radius.md)
-                        .strokeBorder(
-                            focused ? Tokens.Colors.accent : Tokens.Colors.borderStrong,
-                            lineWidth: focused ? 1 : 0.5
-                        )
+                    RoundedRectangle(cornerRadius: Tokens.Radius.xl)
+                        .strokeBorder(focused ? Tokens.Colors.accent : .clear, lineWidth: 1)
                 )
                 .contentShape(.rect)
                 .onTapGesture { focused = true }
@@ -56,7 +53,7 @@ struct GolemTextField: View {
     }
 
     @ViewBuilder private var field: some View {
-        let prompt = Text(placeholder).foregroundStyle(Tokens.Colors.textQuaternary)
+        let prompt = Text(placeholder).foregroundStyle(Tokens.Mobile.Colors.placeholder)
         if secure {
             SecureField(label ?? placeholder, text: $text, prompt: prompt)
         } else {
@@ -68,7 +65,8 @@ struct GolemTextField: View {
 // MARK: - Switch
 
 /// A 30 × 20 switch. Use `Toggle(isOn:) {}` with an accessibility label where the row already shows the label.
-/// The knob's front edge leads and its back edge follows 50 ms later, so it stretches as it moves.
+/// The knob's front edge leads and its back edge follows 50 ms later, so it stretches as it moves; pressed, it
+/// widens 2 pt toward the middle, as it does under the pointer on the web.
 struct SwitchToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: Tokens.Space.md) {
@@ -98,7 +96,7 @@ private struct SwitchTrack: View {
 
     private static let inset: CGFloat = 3
     private static let travel = Tokens.Size.switchWidth - Tokens.Size.switchKnob - 2 * inset
-    private static let pressWidening: CGFloat = 4
+    private static let pressWidening: CGFloat = 2
 
     init(isOn: Bool, pressed: Bool) {
         self.isOn = isOn
@@ -111,8 +109,10 @@ private struct SwitchTrack: View {
     var body: some View {
         let widen = pressed && !reduceMotion ? Self.pressWidening : 0
         Capsule()
-            .fill(isOn ? Tokens.Colors.accent : Tokens.Colors.switchTrack)
-            .animation(Tokens.Easing.out(Tokens.Duration.fast), value: isOn)
+            .fill(isOn ? (pressed ? Tokens.Colors.accentHover : Tokens.Colors.accent)
+                : (pressed ? Tokens.Colors.switchTrackHover : Tokens.Colors.switchTrack))
+            .animation(.easeOut(duration: Tokens.Duration.fast), value: isOn)
+            .animation(.easeOut(duration: Tokens.Duration.fast), value: pressed)
             .overlay {
                 KnobShape(
                     leading: leading - (isOn ? widen : 0),
@@ -120,7 +120,6 @@ private struct SwitchTrack: View {
                     size: Tokens.Size.switchKnob
                 )
                     .fill(Tokens.Colors.onAccent)
-                    .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
                     .animation(Tokens.Easing.out(Tokens.Duration.knob), value: pressed)
             }
             .frame(width: Tokens.Size.switchWidth, height: Tokens.Size.switchHeight)
@@ -172,7 +171,7 @@ extension ToggleStyle where Self == SwitchToggleStyle {
 
 // MARK: - Checkbox
 
-/// A 14 pt checkbox with the label to the right; the whole row toggles.
+/// A 14 pt checkbox with the label to the right; the whole row toggles. Its colors change in 80 ms.
 struct CheckboxToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
@@ -195,25 +194,23 @@ struct CheckboxToggleStyle: ToggleStyle {
 
 private struct CheckboxBox: View {
     let isOn: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Tokens.Radius.xs)
+        let shape = RoundedRectangle(cornerRadius: Tokens.Radius.xxs)
         shape
-            .fill(isOn ? Tokens.Colors.accent : Tokens.Colors.surfaceRaised)
-            .overlay(shape.strokeBorder(isOn ? Tokens.Colors.accent : Tokens.Colors.borderStrong, lineWidth: 1))
+            .fill(isOn ? Tokens.Colors.accent : .clear)
+            .overlay(shape.strokeBorder(isOn ? Tokens.Colors.accent : Tokens.Colors.borderControl, lineWidth: 1))
             .overlay {
                 CheckMark()
-                    .trim(from: 0, to: isOn || reduceMotion ? 1 : 0)
                     .stroke(
                         Tokens.Colors.onAccent,
                         style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
                     )
-                    .frame(width: 10, height: 10)
+                    .frame(width: 10, height: 9)
                     .opacity(isOn ? 1 : 0)
             }
             .frame(width: Tokens.Size.checkbox, height: Tokens.Size.checkbox)
-            .animation(Tokens.Easing.out(Tokens.Duration.fast), value: isOn)
+            .animation(.easeOut(duration: 0.08), value: isOn)
     }
 }
 

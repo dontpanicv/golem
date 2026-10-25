@@ -7,78 +7,81 @@ struct SettingsView: View {
     @State private var llm: Llm?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Tokens.Space.xxxl) {
-                SettingsCard(title: "LLM provider") {
-                    if let llm {
-                        SettingsRow(llm.provider, description: llm.error, descriptionColor: Tokens.Colors.danger) {
-                            HStack(spacing: Tokens.Space.md) {
-                                if llm.connected {
-                                    Badge(label: "Connected", tone: .success)
-                                    Button("Disconnect") { update { try await session.api.llmLogout() } }
-                                        .buttonStyle(.secondary)
-                                } else if llm.login != nil {
-                                    Badge(label: "Waiting", tone: .warning)
-                                } else {
-                                    Button("Connect") { update { try await session.api.llmLogin() } }
-                                        .buttonStyle(.primary)
-                                }
+        SettingsList {
+            SettingsCard(title: "LLM provider") {
+                if let llm {
+                    SettingsRow(llm.provider, description: llm.error, descriptionColor: Tokens.Mobile.Colors.danger) {
+                        HStack(spacing: Tokens.Space.md) {
+                            if llm.connected {
+                                Badge(label: "Connected", tone: .success)
+                                Button("Disconnect") { update { try await session.api.llmLogout() } }
+                                    .buttonStyle(.secondary)
+                            } else if llm.login != nil {
+                                Badge(label: "Waiting", tone: .warning)
+                            } else {
+                                Button("Connect") { update { try await session.api.llmLogin() } }
+                                    .buttonStyle(.primary)
                             }
                         }
-                        if !llm.connected, let login = llm.login {
-                            DeviceLogin(login: login).padding(Tokens.Space.xl)
-                        }
-                        if llm.connected {
-                            SettingsRow("Model") {
-                                GolemSelect(
-                                    selection: Binding(get: { llm.model }, set: setModel),
-                                    options: llm.models.map(\.id),
-                                    title: { id in llm.models.first { $0.id == id }?.name ?? id }
-                                )
-                                .accessibilityLabel("Model")
-                            }
-                            SettingsRow("Effort") {
-                                GolemSelect(
-                                    selection: Binding(get: { llm.effort }, set: setEffort),
-                                    options: llm.models.first { $0.id == llm.model }?.efforts ?? [],
-                                    title: effortLabel
-                                )
-                                .accessibilityLabel("Effort")
-                            }
-                        }
-                    } else {
-                        ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.settingsRow)
                     }
-                }
-                if Speaker.isBundled {
-                    SettingsCard(title: "Conversation") {
-                        SettingsRow("Voice") {
+                    if !llm.connected, let login = llm.login {
+                        DeviceLogin(login: login).padding(Tokens.Space.xl)
+                    }
+                    if llm.connected {
+                        SettingsRow("Model") {
                             GolemSelect(
-                                selection: Binding(get: { Speaker.shared.voice }, set: chooseVoice),
-                                options: Speaker.voices.map(\.id),
-                                title: voiceLabel
+                                selection: Binding(get: { llm.model }, set: setModel),
+                                options: llm.models.map(\.id),
+                                title: { id in llm.models.first { $0.id == id }?.name ?? id }
                             )
-                            .accessibilityLabel("Voice")
+                            .accessibilityLabel("Model")
+                        }
+                        SettingsRow("Effort") {
+                            GolemSelect(
+                                selection: Binding(get: { llm.effort }, set: setEffort),
+                                options: llm.models.first { $0.id == llm.model }?.efforts ?? [],
+                                title: effortLabel
+                            )
+                            .accessibilityLabel("Effort")
                         }
                     }
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.settingsRow)
                 }
-                if let user = session.user {
-                    SettingsCard(title: "Account") {
-                        SettingsRow(label: user.name, description: user.email) {
-                            Avatar(name: user.name, size: 32)
-                        } control: {
-                            Button("Sign out") { Task { await session.signOut() } }.buttonStyle(.secondary)
-                        }
+            }
+            if Speaker.isBundled {
+                SettingsCard(title: "Conversation") {
+                    SettingsRow("Voice") {
+                        GolemSelect(
+                            selection: Binding(get: { Speaker.shared.voice }, set: chooseVoice),
+                            options: Speaker.voices.map(\.id),
+                            title: voiceLabel
+                        )
+                        .accessibilityLabel("Voice")
                     }
                 }
             }
-            .frame(maxWidth: 640)
-            .padding(Tokens.Space.xl)
-            .frame(maxWidth: .infinity)
+            if let user = session.user {
+                SettingsCard(title: "Account") {
+                    SettingsRow(label: user.name, description: user.email) {
+                        Avatar(name: user.name, size: 32)
+                    } control: {
+                        EmptyView()
+                    }
+                }
+            }
+            Button { Task { await session.signOut() } } label: {
+                SettingsRow("Sign out", labelColor: Tokens.Mobile.Colors.danger) {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Tokens.Mobile.Colors.danger)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
         }
-        .background(Tokens.Colors.surface)
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.large)
+        .phoneTabBar()
+        .screenTitle("Settings")
         .task { update { try await session.api.llm() } }
         // While a device login waits, poll every 2 seconds until it connects or stops.
         .task(id: llm?.login?.userCode) {
@@ -125,10 +128,10 @@ private struct DeviceLogin: View {
         VStack(alignment: .leading, spacing: Tokens.Space.lg) {
             Text("Enter this code at \(host)")
                 .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.book))
-                .foregroundStyle(Tokens.Colors.textTertiary)
+                .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
             Text(login.userCode)
                 .font(.system(size: Tokens.FontSize.xxl, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Tokens.Colors.text)
+                .foregroundStyle(Tokens.Mobile.Colors.text)
                 .textSelection(.enabled)
             HStack(spacing: Tokens.Space.lg) {
                 Button("Copy code") {

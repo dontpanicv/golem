@@ -3,8 +3,8 @@
 Every value is measured from Linear's light and dark themes (Inter 4.1, the same font file) and lives in
 `tokens.json`.
 Every component exists on the web (`public/styles.css`, `public/ui.js`, `src/platform/ui/`) and on iOS
-(`ios/Golem/Design/`) with the same look and behavior. Native selects and pickers are never used: menus, selects,
-switches, and checkboxes are our own.
+(`ios/Golem/Design/`) with the same behavior. The web looks like Linear's web app: native selects and pickers are never
+used there; menus, selects, switches, and checkboxes are our own. iOS looks like Linear's iOS app; see [iOS](#ios).
 
 ## Type and color
 
@@ -235,3 +235,48 @@ Used by the workspace switcher and action menus.
   the actions menu (Open, Copy link, Make public or Make members only, Clear data, Delete).
 - Under the bar the artifact runs and fills the panel. "Data" shows its records instead, as a settings card of compact
   rows: the key, then who (the visitor's name, "Visitor", or "Shared") and the JSON value, and a delete icon button.
+
+## iOS
+
+Measured from Linear's iOS app on an iPhone 17 Pro Max in both themes; colors and sizes are the `mobile` tokens.
+The phone's text was one step below the default size, so the font sizes are the measured ones × 17/16; Inter scales
+with Dynamic Type. iPad keeps the sidebar with the same screens.
+
+- Page: `background` (white, #0d0d0d dark). Text: `title` for screen titles, `text` for rows and messages,
+  `textSecondary` for unselected pills and icons, `textTertiary` for captions, `textQuaternary` for section titles and
+  chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
+- Tab bar: our own, not the system's. A 320 × 56 glass capsule 28 pt from the left and 24 pt above the bottom of the
+  screen; Golem, Channels, and Search tabs 48 high in it, inset 4, the open one on a `tabSelected` capsule; icons only,
+  19 pt, `title`. The fourth slot is the More chevron, 54 wide; after a screen is picked from the menu it shows that
+  screen's icon and a small chevron, 78 wide. A 48 pt glass circle 12 pt to its side starts a conversation with Golem.
+- More menu: a 320 wide glass card, radius 36, level with the bar: the workspace switcher (a native menu) on a 66 pt
+  row, a hairline, then Golem, Channels, Search, Workspace settings, and Settings as 45 pt rows with 17 pt `medium`
+  text and 21 pt icons; the open screen sits on a `menuSelected` capsule. A tap outside closes it.
+- Screen title: in the navigation bar at its leading edge, 12 pt from the screen edge, level with the 44 pt glass
+  buttons at the trailing edge; `fontSize.title` `semibold`. Pushed screens show the round glass back button and put
+  their title at the top of the content: `fontSize.detailTitle` `semibold` `text`, with a `caption` above (the channel
+  of a thread).
+- Pills: 34 high, padding 12, 7 apart, from 12 pt; the selected one is glass with `text`, the others plain
+  `textSecondary`; a count in `textQuaternary` 8 pt after the title.
+- Lists: rows 46 pt apart, 10 pt in from the screen with their content 10 pt further in, a 21 pt wide icon, the title in
+  `fontSize.row` `book`. A section title is `fontSize.small` `textQuaternary` 20 pt in, with an add button at the right.
+  Channels lists each channel as a section of its threads; its title opens the channel.
+- Conversation: as Linear's Agent chat. A person's message is a full-width `fill` bubble, radius 24, text 12 pt in;
+  Golem's reply is plain text level with it. Author and time sit above in `fontSize.small`. Text is `fontSize.body`
+  with inline Markdown; links take the accent.
+- Composer row: as Linear's issue screen. The open tab as a 48 pt glass circle, the composer, and on threads the
+  48 pt voice circle; 28 pt from the screen edges, 24 pt above the bottom. The tab circle brings the whole bar back
+  until the screen scrolls. The composer is a glass field, radius 24: add (+), the text, the mic, and the send button
+  once there is something to send. Content fades under the glass bars at the top and bottom.
+- Search: as Linear's. The field sits in the composer row between the open tab and the voice button and does not take
+  focus by itself; before a query the screen lists the channels. The tab button also closes the keyboard.
+- Artifacts: a sheet on iPhone with Artifacts and Files pills and a glass close button; an open artifact has a glass
+  back button. Each screen keeps its own panel.
+- Channels: a section's add button opens the channel with its composer focused. Dragging a conversation closes the
+  keyboard; the composer row stays 8 pt above the keyboard.
+- Settings: flat groups on the page, no cards: a section title, rows 43 high with the label 20 pt in and the value at
+  the right; a select is the value and an up-and-down chevron opening a native menu. Sign out is a `danger` row with
+  its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.
+- Menus: native. Sheets: a 40 pt round glass close button at the left and the title in the middle,
+  `fontSize.sheetTitle` `semibold`; fields are `fill` with radius 12 and a 1 pt accent outline when focused.
+

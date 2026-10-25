@@ -13,84 +13,78 @@ struct WorkspaceSettingsView: View {
     private var workspaceID: String { session.workspace?.id ?? "" }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Tokens.Space.xxxl) {
-                SettingsCard(title: "Members") {
-                    ForEach(members) { member in
-                        SettingsRow(label: member.name, description: member.email) {
-                            Avatar(name: member.name, size: 32)
-                        } control: {
-                            Badge(label: member.role.capitalized)
-                        }
+        SettingsList {
+            SettingsCard(title: "Members") {
+                ForEach(members) { member in
+                    SettingsRow(label: member.name, description: member.email) {
+                        Avatar(name: member.name, size: 32)
+                    } control: {
+                        Badge(label: member.role.capitalized)
                     }
-                    HStack(spacing: Tokens.Space.md) {
-                        GolemTextField(nil, placeholder: "Email address", text: $email)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .onSubmit(addMember)
-                            .accessibilityLabel("Email")
-                        Button("Add", action: addMember)
-                            .buttonStyle(.secondary)
-                            .disabled(email.isEmpty)
-                    }
-                    .padding(Tokens.Space.xl)
                 }
-                SettingsCard(title: "Machines") {
-                    ForEach(machines) { machine in
-                        SettingsRow(machine.name, description: machine.summary) {
+                HStack(spacing: Tokens.Space.md) {
+                    GolemTextField(nil, placeholder: "Email address", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onSubmit(addMember)
+                        .accessibilityLabel("Email")
+                    Button("Add", action: addMember)
+                        .buttonStyle(.secondary)
+                        .disabled(email.isEmpty)
+                }
+                .padding(Tokens.Space.xl)
+            }
+            SettingsCard(title: "Machines") {
+                ForEach(machines) { machine in
+                    SettingsRow(machine.name, description: machine.summary) {
+                        GolemMenu {
+                            MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }
+                        } label: {
+                            Label("Machine actions", systemImage: "ellipsis")
+                        }
+                        .buttonStyle(.golem(.ghost, .icon))
+                    }
+                }
+                if let pairing {
+                    PairingCommand(pairing: pairing).padding(Tokens.Space.xl)
+                } else {
+                    HStack {
+                        Button("Add machine", systemImage: "plus", action: startPairing)
+                            .buttonStyle(.golem(.ghost, .small))
+                        Spacer()
+                    }
+                    .padding(.horizontal, Tokens.Space.md)
+                    .padding(.vertical, Tokens.Space.lg)
+                }
+            }
+            ForEach($integrations) { $integration in
+                SettingsCard(title: integration.name) {
+                    ForEach(integration.credentials) { credential in
+                        SettingsRow(credential.label, description: "Added by \(credential.ownerName)") {
                             GolemMenu {
-                                MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }
+                                MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
+                                    delete(credential, from: $integration)
+                                }
                             } label: {
-                                Label("Machine actions", systemImage: "ellipsis")
+                                Label("Credential actions", systemImage: "ellipsis")
                             }
                             .buttonStyle(.golem(.ghost, .icon))
                         }
                     }
-                    if let pairing {
-                        PairingCommand(pairing: pairing).padding(Tokens.Space.xl)
-                    } else {
-                        HStack {
-                            Button("Add machine", systemImage: "plus", action: startPairing)
-                                .buttonStyle(.golem(.ghost, .small))
-                            Spacer()
-                        }
-                        .padding(.horizontal, Tokens.Space.md)
-                        .padding(.vertical, Tokens.Space.lg)
+                    HStack {
+                        Button("Add credential", systemImage: "plus") { addingTo = integration }
+                            .buttonStyle(.golem(.ghost, .small))
+                        Spacer()
                     }
-                }
-                ForEach($integrations) { $integration in
-                    SettingsCard(title: integration.name) {
-                        ForEach(integration.credentials) { credential in
-                            SettingsRow(credential.label, description: "Added by \(credential.ownerName)") {
-                                GolemMenu {
-                                    MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
-                                        delete(credential, from: $integration)
-                                    }
-                                } label: {
-                                    Label("Credential actions", systemImage: "ellipsis")
-                                }
-                                .buttonStyle(.golem(.ghost, .icon))
-                            }
-                        }
-                        HStack {
-                            Button("Add credential", systemImage: "plus") { addingTo = integration }
-                                .buttonStyle(.golem(.ghost, .small))
-                            Spacer()
-                        }
-                        .padding(.horizontal, Tokens.Space.md)
-                        .padding(.vertical, Tokens.Space.lg)
-                    }
+                    .padding(.horizontal, Tokens.Space.md)
+                    .padding(.vertical, Tokens.Space.lg)
                 }
             }
-            .frame(maxWidth: 640)
-            .padding(Tokens.Space.xl)
-            .frame(maxWidth: .infinity)
         }
-        .background(Tokens.Colors.surface)
-        .navigationTitle(session.workspace?.name ?? "")
-        .navigationBarTitleDisplayMode(.large)
+        .phoneTabBar()
+        .screenTitle(session.workspace?.name ?? "")
         .task { await load() }
         .refreshable { await load() }
         .task(id: pairing) {
@@ -172,10 +166,10 @@ private struct PairingCommand: View {
         VStack(alignment: .leading, spacing: Tokens.Space.lg) {
             Text("Run this on the Mac or Linux computer within 10 minutes")
                 .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.book))
-                .foregroundStyle(Tokens.Colors.textTertiary)
+                .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
             Text(pairing.command)
                 .font(.system(size: Tokens.FontSize.sm, design: .monospaced))
-                .foregroundStyle(Tokens.Colors.text)
+                .foregroundStyle(Tokens.Mobile.Colors.text)
                 .textSelection(.enabled)
             Button("Copy command") {
                 UIPasteboard.general.string = pairing.command
