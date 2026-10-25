@@ -24,6 +24,7 @@ import {
 } from "@earendil-works/pi-durable/tools";
 import { randomUUIDv5 } from "bun";
 import type { Artifacts } from "../artifacts/artifacts.ts";
+import type { Browser } from "../browser/browser.ts";
 import type { Hands } from "../hands/hands.ts";
 import type {
   Integrations,
@@ -140,6 +141,9 @@ export type ThreadIntegrations = Pick<Integrations, "tools">;
 /** The artifacts of a workspace, which its agents make with their tools. */
 export type ThreadArtifacts = Pick<Artifacts, "tools">;
 
+/** The browser that agents visit websites with. */
+export type ThreadBrowser = Pick<Browser, "tools">;
+
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
   private readonly open = new Map<string, Promise<Harness>>();
@@ -152,6 +156,7 @@ export class Threads {
     private readonly hands: ThreadHands,
     private readonly integrations: ThreadIntegrations,
     private readonly artifacts: ThreadArtifacts,
+    private readonly browser: ThreadBrowser,
     private readonly hooks: ThreadHooks
   ) {}
 
@@ -483,6 +488,7 @@ export class Threads {
           ...this.hands.tools(workspaceId),
           ...this.integrations.tools(workspaceId).map(connectorTool),
           ...this.artifacts.tools(workspaceId),
+          ...this.browser.tools(workspaceId),
           ...this.hooks.tools(workspaceId),
         ],
         sections: [this.hands.section(workspaceId)],

@@ -19,6 +19,7 @@
     "@earendil-works/pi-durable": "^1.4.0",
     "@effect/platform-bun": "^4.0.6",
     "@starfederation/datastar-sdk": "^1.0.0",
+    "agent-browser": "^0.39.2",
     "better-auth": "^1.7.12",
     "effect": "^4.0.6",
     "fflate": "^0.8.3",

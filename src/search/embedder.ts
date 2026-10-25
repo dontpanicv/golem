@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { program, type Requirement } from "../platform/requirements.ts";
 
 /**
  * Text, picture, and audio embeddings from Google's EmbeddingGemma 2 (Apache 2.0), run by a pinned llama.cpp `llama-server` child process.
@@ -42,6 +43,20 @@ const PROJECTOR = {
   url: `${HUGGING_FACE}/mmproj-embeddinggemma-2-Q8_0.gguf`,
   sha256: "c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f",
 };
+/** What the embedder needs before it downloads the rest; Golem checks it before it starts. */
+export function embedderRequirements(): Requirement[] {
+  const platform = `${process.platform}-${process.arch}`;
+  return [
+    {
+      name: "llama.cpp build",
+      purpose: "meaning in search",
+      install: `a machine of ${Object.keys(RUNTIMES).join(", ")}`,
+      problem: RUNTIMES[platform] ? null : `none for ${platform}`,
+    },
+    program("tar", "unpacking llama.cpp", "part of macOS and Linux"),
+  ];
+}
+
 const LLAMA_BUILD = "b11871";
 const RELEASES = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_BUILD}`;
 const RUNTIMES: Record<string, { url: string; sha256: string }> = {

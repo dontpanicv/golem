@@ -2,16 +2,18 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Artifacts } from "../artifacts/artifacts.ts";
-import { Hands } from "../hands/hands.ts";
+import { Browser, browserRequirements } from "../browser/browser.ts";
+import { Hands, handsRequirements } from "../hands/hands.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
+import type { Requirement } from "../platform/requirements.ts";
 import { Secrets } from "../platform/secrets.ts";
 import { Routines } from "../routines/routines.ts";
-import type { Embedder } from "../search/embedder.ts";
-import { jpeg, readText } from "../search/extract.ts";
+import { type Embedder, embedderRequirements } from "../search/embedder.ts";
+import { extractRequirements, jpeg, readText } from "../search/extract.ts";
 import { Indexer } from "../search/search.ts";
 import { Threads } from "../threads/threads.ts";
 import { Workspaces } from "../workspaces/workspaces.ts";
@@ -28,6 +30,19 @@ export interface App {
   readonly artifacts: Artifacts;
   readonly indexer: Indexer;
   readonly routines: Routines;
+}
+
+const HANDS_BINARIES = resolve(import.meta.dir, "../../hands/dist");
+
+/** Everything the modules need from this machine, checked before Golem starts. */
+export async function checkRequirements(): Promise<Requirement[]> {
+  const requirements = await Promise.all([
+    extractRequirements(),
+    embedderRequirements(),
+    handsRequirements(HANDS_BINARIES),
+    browserRequirements(),
+  ]);
+  return requirements.flat();
 }
 
 /** `embedder` gives search its meaning; without one, search and recall use keywords only. */
@@ -55,9 +70,10 @@ export async function createApp(
   const integrations = new Integrations(database, resolvedSecrets, workspaces);
   const hands = new Hands(database, resolvedSecrets, workspaces, {
     baseUrl: config.baseUrl,
-    binaryDirectory: resolve(import.meta.dir, "../../hands/dist"),
+    binaryDirectory: HANDS_BINARIES,
   });
   const artifacts = new Artifacts(database, workspaces, config);
+  const browser = new Browser();
   // The recall port and the change hook point at the indexer, which reads the threads; files read as search reads them.
   // The routine tools come from routines, which runs its work in threads.
   const threads: Threads = new Threads(
@@ -67,6 +83,7 @@ export async function createApp(
     hands,
     integrations,
     artifacts,
+    browser,
     {
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),

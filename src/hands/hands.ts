@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { connect } from "node:tls";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
+import type { Requirement } from "../platform/requirements.ts";
 import type { Secrets } from "../platform/secrets.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 import {
@@ -55,6 +56,28 @@ const BINARIES = [
   "linux-aarch64",
   "linux-x86_64",
 ] as const;
+
+/** The hands binaries that Golem serves to the machines that pair; Golem checks them before it starts. */
+export async function handsRequirements(
+  binaryDirectory: string
+): Promise<Requirement[]> {
+  const missing: string[] = [];
+  for (const target of BINARIES) {
+    if (!(await Bun.file(join(binaryDirectory, `hands-${target}`)).exists())) {
+      missing.push(`hands-${target}`);
+    }
+  }
+  return [
+    {
+      name: "hands binaries",
+      purpose: "pairing machines",
+      install: "hands/scripts/build-release.sh",
+      problem: missing.length
+        ? `${missing.join(", ")} missing in ${binaryDirectory}`
+        : null,
+    },
+  ];
+}
 
 interface PendingPairing extends Pairing {
   readonly code: string;

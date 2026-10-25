@@ -11,6 +11,7 @@ const MODULES = [
   "hands",
   "integrations",
   "artifacts",
+  "browser",
   "threads",
   "search",
   "routines",

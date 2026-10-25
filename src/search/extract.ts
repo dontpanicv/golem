@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { unzipSync } from "fflate";
 import { extractText, getDocumentProxy, getMeta } from "unpdf";
+import { program, type Requirement } from "../platform/requirements.ts";
 import { chunk, isProse } from "./workspace-index.ts";
 
 /**
@@ -86,6 +87,38 @@ export const tools = {
   sips: Bun.which("sips"),
   textutil: Bun.which("textutil"),
 };
+
+/** The programs extraction runs; Golem checks them before it starts. */
+export function extractRequirements(): Requirement[] {
+  return [
+    program(
+      "ffmpeg",
+      "pictures, audio, and video in search",
+      "brew install ffmpeg (Linux: apt install ffmpeg)"
+    ),
+    program(
+      "ffprobe",
+      "the length of audio and video in search",
+      "brew install ffmpeg (Linux: apt install ffmpeg)"
+    ),
+    program(
+      "pdftoppm",
+      "scanned PDF pages in search",
+      "brew install poppler (Linux: apt install poppler-utils)"
+    ),
+    program(
+      "tesseract",
+      "text in pictures and scans",
+      "brew install tesseract (Linux: apt install tesseract-ocr)"
+    ),
+    ...(process.platform === "darwin"
+      ? [
+          program("sips", "pictures that ffmpeg cannot read", "part of macOS"),
+          program("textutil", "legacy Word files", "part of macOS"),
+        ]
+      : []),
+  ];
+}
 
 export function kindOf(path: string): FileKind {
   const extension = extname(path).slice(1).toLowerCase();

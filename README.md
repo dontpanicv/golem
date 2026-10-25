@@ -57,6 +57,9 @@ The machines connect over a WireGuard mesh VPN.
 - **Integrations.** A connector in `src/integrations/` gives agents the tools of an outside system, such as a school
   information system. Its credentials belong to the workspace: any member adds them in the workspace settings, and
   the agents use the newest one. Secrets never leave the server.
+- **Browser.** Agents visit websites in a headless Chrome of their own for each thread, driven by Vercel's
+  [agent-browser](https://github.com/vercel-labs/agent-browser). They read pages, click, fill in forms, and see
+  screenshots. They cannot open the files of the server, and they ask before they buy, book, or send anything.
 - **Routines.** A channel can do work on a schedule, such as checking the school system every morning. People ask an
   agent in plain words; it writes the schedule, the instructions, and, for work that is the same every time, a script
   that collects what is new. The script runs in a code mode sandbox and calls the connectors' tools; when it finds
@@ -106,6 +109,15 @@ bun test
 bun run typecheck
 bun run lint       # Ultracite (Biome); `bun run format` fixes what it can
 bun run lint:ios   # SwiftLint (`brew install swiftlint`)
+```
+
+Golem checks the machine before it starts and prints one line for each requirement. It does not start until all of
+them are there:
+
+```sh
+brew install ffmpeg poppler tesseract   # media, scanned PDFs, and OCR in search
+bunx --bun agent-browser install        # Chrome for the agents' browser, if Google Chrome is not installed
+hands/scripts/build-release.sh          # the hands binaries for the machines that pair
 ```
 
 People sign in with Google; nobody can create an account in another way. Before the first start, do the steps in

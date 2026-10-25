@@ -2,11 +2,12 @@ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-code
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
 import { HttpRouter } from "effect/http";
-import { closeApp, createApp } from "./app/app.ts";
+import { checkRequirements, closeApp, createApp } from "./app/app.ts";
 import { routes } from "./app/http.ts";
 import { allRoutes } from "./app/routes.ts";
 import type { LlmProvider } from "./llm/llm.ts";
 import { readConfig } from "./platform/config.ts";
+import { reportRequirements } from "./platform/requirements.ts";
 import { LlamaEmbedder } from "./search/embedder.ts";
 
 /** ChatGPT through the Codex device login: one subscription for every workspace's agents. */
@@ -17,6 +18,12 @@ const chatGpt: LlmProvider = {
 };
 
 const config = await readConfig();
+if (!reportRequirements(await checkRequirements())) {
+  console.error(
+    "Golem does not start until this machine has everything above."
+  );
+  process.exit(1);
+}
 // EmbeddingGemma 2 downloads on first start; until it runs, search uses keywords.
 const embedder = new LlamaEmbedder(config.dataDirectory);
 
