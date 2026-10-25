@@ -8,9 +8,9 @@ import { dirname } from "node:path";
  *
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
  * `organization` and `member`), `integrations` owns `credential` and `integration_setting` (no longer read), `llm` owns
- * `provider_credential` and its keys in `setting`, `hands` owns `machine`, and `routines` owns `routine` and
- * `routine_run`. Start a new migration with a comment
- * that names its owner.
+ * `provider_credential` and its keys in `setting`, `hands` owns `machine`, `artifacts` owns `artifact`,
+ * `artifact_visitor`, and `artifact_record`, and `routines` owns `routine` and `routine_run`. Start a new migration
+ * with a comment that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (
@@ -107,6 +107,37 @@ const migrations = [
 		error TEXT
 	);
 	CREATE INDEX routine_run_routine ON routine_run (routine_id, started_at);`,
+  // artifacts: the pages and small apps agents make in a thread, and the data their visitors keep. `visibility` is
+  // `public` or `members`; `request_key` lets a create that a crash repeats find the artifact it made. A record's
+  // `scope` is `shared` or the visitor that owns it, and `value` is JSON.
+  `CREATE TABLE artifact (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		thread_id TEXT NOT NULL REFERENCES thread (id) ON DELETE CASCADE,
+		title TEXT NOT NULL,
+		html TEXT NOT NULL,
+		visibility TEXT NOT NULL,
+		request_key TEXT UNIQUE,
+		created_by TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE INDEX artifact_thread ON artifact (thread_id);
+	CREATE TABLE artifact_visitor (
+		artifact_id TEXT NOT NULL REFERENCES artifact (id) ON DELETE CASCADE,
+		visitor TEXT NOT NULL,
+		name TEXT,
+		seen_at INTEGER NOT NULL,
+		PRIMARY KEY (artifact_id, visitor)
+	);
+	CREATE TABLE artifact_record (
+		artifact_id TEXT NOT NULL REFERENCES artifact (id) ON DELETE CASCADE,
+		scope TEXT NOT NULL,
+		key TEXT NOT NULL,
+		value TEXT NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (artifact_id, scope, key)
+	);`,
 ];
 
 export function openDatabase(path: string): Database {

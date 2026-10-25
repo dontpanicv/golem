@@ -35,8 +35,12 @@ export interface ShellPage {
   readonly header?: string;
   readonly main: string;
   readonly headerActions?: string;
-  /** Adds the artifacts panel of a thread, with the content of its Files tab. */
-  readonly artifacts?: { readonly files: string };
+  /** Adds the artifacts panel of a thread, with the content of its tabs. */
+  readonly artifacts?: {
+    readonly artifacts: string;
+    readonly files: string;
+    readonly preview: string;
+  };
   /** Extra `data-signals` entries and a `data-init` expression for the page body. */
   readonly signals?: string;
   readonly init?: string;
@@ -115,7 +119,7 @@ export function shell(context: ShellContext, page: ShellPage): string {
 			${header}
 			${page.main}
 		</section>
-		${page.artifacts ? artifactsPanel(page.artifacts.files) : ""}
+		${page.artifacts ? artifactsPanel(page.artifacts) : ""}
 	</main>
 </div>
 ${dialogs(context)}`;
@@ -235,15 +239,15 @@ function channelNav(
   return `${navItem(channel.name, { icon: "hash", href: `/w/${workspace.id}/c/${channel.id}`, current: isCurrent })}<div class="nav-threads">${threads}</div>`;
 }
 
-function artifactsPanel(files: string): string {
+function artifactsPanel(tabs: NonNullable<ShellPage["artifacts"]>): string {
   return `<aside class="artifacts" data-show="$artifacts" aria-label="Artifacts">
 		<header class="panel-header">
 			<div class="tabs" role="tablist">${tab("artifacts", "Artifacts")}${tab("files", "Files")}${tab("preview", "Preview")}</div>
 			${button("Close artifacts", { variant: "ghost", icon: "close", size: "icon", attributes: 'type="button" data-on:click="$artifacts = false"' })}
 		</header>
-		<div class="empty" data-show="$tab === 'artifacts'">${icon("artifact")}<strong>No artifacts yet</strong></div>
-		${files}
-		<div class="empty" data-show="$tab === 'preview'" style="display: none">${icon("preview")}<strong>Nothing to preview</strong></div>
+		${tabs.artifacts}
+		${tabs.files}
+		${tabs.preview}
 	</aside>`;
 }
 

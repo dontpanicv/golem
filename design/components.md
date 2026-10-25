@@ -117,6 +117,16 @@ Used by selects, the workspace switcher, and action menus.
 - The composer and the Files tab take dropped files, and the composer takes pasted files. While a file is dragged
   over them they show a 1 px `accent` outline.
 
+## Artifact preview
+
+- The Artifacts tab lists the thread's artifacts as list rows: artifact icon, title, and the number of people who
+  opened it as meta. A row opens the artifact in the Preview tab.
+- The Preview tab has a bar (padding 4 16, 0.5 px `border` below): the title in `medium`, cut with an ellipsis, a
+  badge (`accent` "Public" or plain "Members"), a small ghost "Data" button that is pressed while the data shows, and
+  the actions menu (Open, Copy link, Make public or Make members only, Clear data, Delete).
+- Under the bar the artifact runs and fills the tab. "Data" shows its records instead, as a settings card of compact
+  rows: the key, then who (the visitor's name, "Visitor", or "Shared") and the JSON value, and a delete icon button.
+
 ## Badge and keycap
 
 - Badge: 20 high, `radius.full`, 0.5 px `border`, `fontSize.xs` `medium`, a 6 px dot in the tone color.

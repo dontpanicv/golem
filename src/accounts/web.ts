@@ -4,13 +4,26 @@ import { authPage } from "./pages.ts";
 
 /** Sign in with Google and sign out, in the web app. */
 export const accountWebRoutes: readonly Route[] = [
-  ["GET", "/login", async ({ request }) => html(authPage(toastOf(request)))],
+  [
+    "GET",
+    "/login",
+    async ({ request }) =>
+      html(
+        authPage(
+          toastOf(request),
+          localPath(new URL(request.url).searchParams.get("next"))
+        )
+      ),
+  ],
   [
     "POST",
     "/login",
-    form(async ({ app }) => {
+    form(async ({ app, fields }) => {
       const google = await app.auth.api.signInSocial({
-        body: { provider: "google", callbackURL: "/" },
+        body: {
+          provider: "google",
+          callbackURL: localPath(fields.next) ?? "/",
+        },
         returnHeaders: true,
       });
       return withCookies(google, google.response.url!);
@@ -30,3 +43,10 @@ export const accountWebRoutes: readonly Route[] = [
     ),
   ],
 ];
+
+/** A path on this site, so that sign-in never sends anyone to another site. */
+function localPath(path: string | null | undefined): string | null {
+  return path?.startsWith("/") && !path.startsWith("//") && !path.includes("\\")
+    ? path
+    : null;
+}

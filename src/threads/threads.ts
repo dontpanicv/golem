@@ -23,6 +23,7 @@ import {
   type ImageProcessor,
 } from "@earendil-works/pi-durable/tools";
 import { randomUUIDv5 } from "bun";
+import type { Artifacts } from "../artifacts/artifacts.ts";
 import type { Hands } from "../hands/hands.ts";
 import type {
   Integrations,
@@ -77,7 +78,7 @@ const MAX_READ_CHARACTERS = 100_000;
 const FILE_NAME =
   /^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/;
 const INSTRUCTIONS =
-  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. People attach files to their messages or upload them to the thread; list_files shows them and read_file reads them. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
+  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. People attach files to their messages or upload them to the thread; list_files shows them and read_file reads them. When people want a page to share or a small app, such as an invite, a schedule, a poll, or a game, make an artifact. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
 /** Added for the model to a message spoken in a conversation on the phone, whose answer is read aloud. */
 const VOICE =
   "(Spoken in a conversation: your words are read aloud as you write them, and they may not look at the screen. Before you use tools, say in one short sentence what you are about to do. Write the way you speak: plain sentences, no Markdown, tables, lists, code blocks, or links unless they ask. Keep answers to one to three sentences unless they ask for more. Your final answer continues from what you already said in this turn; never repeat it. Their words come from speech recognition and can have sound-alike mistakes.)";
@@ -136,6 +137,9 @@ export type ThreadHands = Pick<Hands, "section" | "tools">;
 /** The connectors of a workspace, which its agents use through their tools. */
 export type ThreadIntegrations = Pick<Integrations, "tools">;
 
+/** The artifacts of a workspace, which its agents make with their tools. */
+export type ThreadArtifacts = Pick<Artifacts, "tools">;
+
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
   private readonly open = new Map<string, Promise<Harness>>();
@@ -147,6 +151,7 @@ export class Threads {
     private readonly registry: ThreadRegistry,
     private readonly hands: ThreadHands,
     private readonly integrations: ThreadIntegrations,
+    private readonly artifacts: ThreadArtifacts,
     private readonly hooks: ThreadHooks
   ) {}
 
@@ -477,6 +482,7 @@ export class Threads {
           this.setChannelSummaryTool(workspaceId),
           ...this.hands.tools(workspaceId),
           ...this.integrations.tools(workspaceId).map(connectorTool),
+          ...this.artifacts.tools(workspaceId),
           ...this.hooks.tools(workspaceId),
         ],
         sections: [this.hands.section(workspaceId)],

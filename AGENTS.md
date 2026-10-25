@@ -37,12 +37,14 @@ addresses, or code and data from employers or clients.
   `src/<module>/web.ts` and a JSON endpoint in `src/<module>/api.ts`, documented in `docs/api.md`, and both call the
   module's service in `src/<module>/<module>.ts`.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
+- Serve HTML that an agent or a person wrote only from `/a/:id/content`, with its `sandbox` content policy; never run
+  it on Golem's origin.
 
 ## Modules
 
-- `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `threads`,
-  `search`, `routines`, `settings`) holds one domain: its service, routes, pages, and tests. `src/platform/` is shared code that knows no
-  domain; `src/app/` composes the services and holds the route helpers.
+- `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `artifacts`,
+  `threads`, `search`, `routines`, `settings`) holds one domain: its service, routes, pages, and tests. `src/platform/`
+  is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
 - A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` and
   `workspaces/shell.ts` from routes and pages. A module reads only the tables it owns. `test/architecture.test.ts`
   enforces these rules; `docs/modular-monolith.md` explains them.

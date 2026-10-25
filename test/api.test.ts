@@ -249,6 +249,89 @@ test("routines of a channel are listed, paused, run, and deleted, and only membe
   ).toBe(404);
 });
 
+test("artifacts of a thread open with their runtime, run calls, and change and delete only for members", async () => {
+  golem.faux.setResponses([fauxAssistantMessage("Here it is.")]);
+  const thread = await body(
+    await golem.call(`/api/v1/workspaces/${workspaceId}/threads`, {
+      token: alice,
+      body: { channelId, text: "Make a quiz" },
+    })
+  );
+  const artifact = golem.app.artifacts.create(
+    golem.app.workspaces
+      .threadsIn(workspaceId)
+      .find((t) => t.id === thread.id)!,
+    { title: "Quiz", html: "<p>Q</p>", requestKey: "api-test" }
+  );
+  const eve = await golem.signIn("Eve", "eve@example.com");
+  const path = `/api/v1/artifacts/${artifact.id}`;
+
+  expect(
+    await body(
+      await golem.call(`/api/v1/threads/${thread.id}/artifacts`, {
+        token: alice,
+      })
+    )
+  ).toEqual({ artifacts: [artifact] });
+  const rpc = (op: string, args: unknown, token = alice) =>
+    golem.call(`${path}/rpc`, { token, body: { op, args } });
+  expect(
+    await body(await rpc("set", { scope: "mine", key: "score", value: 7 }))
+  ).toEqual({ result: null });
+  const opened = await body(await golem.call(path, { token: alice }));
+  expect(opened.artifact).toMatchObject({ id: artifact.id, visitors: 1 });
+  expect(opened.records).toMatchObject([
+    { visitor: expect.any(String), name: "Alice", key: "score", value: 7 },
+  ]);
+  expect(opened.content).toContain("window.golem = golem");
+  expect(opened.content).toEndWith("<p>Q</p>");
+
+  for (const response of [
+    await golem.call(path, { token: eve }),
+    await rpc("me", {}, eve),
+    await golem.call(path, { method: "DELETE", token: eve }),
+  ]) {
+    expect(response.status).toBe(404);
+  }
+  expect(
+    await body(
+      await golem.call(path, {
+        method: "PUT",
+        token: alice,
+        body: { visibility: "public" },
+      })
+    )
+  ).toMatchObject({ visibility: "public" });
+  expect(await body(await rpc("me", {}, eve))).toMatchObject({
+    result: { name: "Eve", member: false },
+  });
+  expect(
+    await failure(
+      await rpc("set", { scope: "shared", key: "a", value: 1 }, eve)
+    )
+  ).toEqual({ status: 403, error: "Only members change shared data" });
+
+  expect(
+    (
+      await golem.call(`${path}/records/${opened.records[0].id}`, {
+        method: "DELETE",
+        token: alice,
+      })
+    ).status
+  ).toBe(204);
+  expect(
+    (await golem.call(`${path}/data`, { method: "DELETE", token: alice }))
+      .status
+  ).toBe(204);
+  expect(
+    (await body(await golem.call(path, { token: alice }))).records
+  ).toEqual([]);
+  expect(
+    (await golem.call(path, { method: "DELETE", token: alice })).status
+  ).toBe(204);
+  expect((await golem.call(path, { token: alice })).status).toBe(404);
+});
+
 test("machines pair only over HTTPS, and only members see them", async () => {
   const base = `/api/v1/workspaces/${workspaceId}/machines`;
   expect(await body(await golem.call(base, { token: alice }))).toEqual({

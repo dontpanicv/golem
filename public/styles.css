@@ -1105,6 +1105,55 @@ a.list-row:hover {
   text-overflow: ellipsis;
 }
 
+button.list-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.list-row:hover {
+  background: var(--color-surface-hover);
+}
+
+.artifact-preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.artifact-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-lg);
+  border-bottom: 0.5px solid var(--color-border);
+}
+
+.artifact-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.artifact-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+}
+
+.artifact-data {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-lg);
+}
+
 .empty {
   display: flex;
   flex: 1;

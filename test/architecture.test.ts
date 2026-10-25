@@ -10,6 +10,7 @@ const MODULES = [
   "llm",
   "hands",
   "integrations",
+  "artifacts",
   "threads",
   "search",
   "routines",

@@ -1,6 +1,7 @@
 import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
 import { type AuthedInput, fileResponse, type Route } from "../app/http.ts";
 import { action, html, page, readForm, rejectCrossOrigin } from "../app/web.ts";
+import { threadArtifacts } from "../artifacts/pages.ts";
 import { HttpError } from "../platform/errors.ts";
 import { rememberOpened, shellContext } from "../workspaces/shell.ts";
 import { threadFiles, threadPage, transcript } from "./pages.ts";
@@ -35,7 +36,8 @@ export const threadWebRoutes: readonly Route[] = [
             context,
             channel,
             thread,
-            await input.app.threads.files(thread)
+            await input.app.threads.files(thread),
+            input.app.artifacts.inThread(thread.id, input.user)
           )
         )
       );
@@ -48,7 +50,7 @@ export const threadWebRoutes: readonly Route[] = [
       const thread = threadIn(input);
       let stop: (() => Promise<void>) | undefined;
       let open = true;
-      // Files come with messages, so each change also lists them again, one listing after another.
+      // Files and artifacts come with messages, so each change also lists them again, one listing after another.
       let files = Promise.resolve();
       return ServerSentEventGenerator.stream(
         async (stream) => {
@@ -60,6 +62,13 @@ export const threadWebRoutes: readonly Route[] = [
               if (open) {
                 stream.patchElements(
                   threadFiles(thread.workspaceId, thread.id, listed)
+                );
+                stream.patchElements(
+                  threadArtifacts(
+                    thread.workspaceId,
+                    thread.id,
+                    input.app.artifacts.inThread(thread.id, input.user)
+                  )
                 );
               }
             });

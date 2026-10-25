@@ -1,5 +1,7 @@
 import { accountApiRoutes } from "../accounts/api.ts";
 import { accountWebRoutes } from "../accounts/web.ts";
+import { artifactApiRoutes } from "../artifacts/api.ts";
+import { artifactWebRoutes } from "../artifacts/web.ts";
 import { handsApiRoutes } from "../hands/api.ts";
 import { handsWebRoutes } from "../hands/web.ts";
 import { integrationApiRoutes } from "../integrations/api.ts";
@@ -34,6 +36,8 @@ export const allRoutes: readonly Route[] = [
   ...handsWebRoutes,
   ...integrationApiRoutes,
   ...integrationWebRoutes,
+  ...artifactApiRoutes,
+  ...artifactWebRoutes,
   ...threadApiRoutes,
   ...threadWebRoutes,
   ...searchApiRoutes,

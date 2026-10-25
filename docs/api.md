@@ -80,6 +80,24 @@ type Routine = {
 	threadId: string | null; // where its agent answers; set at the first run that reaches the agent
 	lastRun: RoutineRun | null;
 };
+type Artifact = {
+	id: string;
+	threadId: string;
+	title: string;
+	visibility: "public" | "members"; // public: anyone with the link; members: signed-in members only
+	url: string; // the link people share: <base_url>/a/<id>
+	visitors: number; // how many people opened it
+	createdAt: number;
+	updatedAt: number;
+};
+type ArtifactRecord = {
+	id: string; // names the record in the route that deletes it
+	visitor: string | null; // null for a shared record
+	name: string | null; // the visitor's name, if they gave one
+	key: string;
+	value: unknown; // JSON
+	updatedAt: number;
+};
 type Machine = {
 	id: string;
 	name: string; // what agents and people call it, unique in the workspace
@@ -140,6 +158,47 @@ first file. The thread's agent sees each attached file by name and id, and reads
 
 `voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud, and
 the message steers a run at work instead of waiting for it to end.
+
+### Artifacts (`src/artifacts/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/threads/:threadId/artifacts` | | `{ artifacts: Artifact[] }`, newest first |
+| `GET /api/v1/artifacts/:artifactId` | | `{ artifact: Artifact, records: ArtifactRecord[], content: string }` |
+| `PUT /api/v1/artifacts/:artifactId` | `{ visibility }` | `Artifact` |
+| `DELETE /api/v1/artifacts/:artifactId` | | `204`; its data goes too |
+| `POST /api/v1/artifacts/:artifactId/rpc` | `{ op, args }` | `{ result }`: a call of the artifact's `golem` runtime, as the signed-in user |
+| `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes |
+| `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |
+
+An artifact is a page or a small app that an agent makes in a thread with its `create_artifact`, `update_artifact`,
+`edit_artifact`, `read_artifact`, `list_artifacts`, `artifact_data`, and `set_artifact_data` tools. `content` is the
+agent's HTML with Golem's `golem` runtime at the top of its head. The runtime sends each call as a message: to
+`window.webkit.messageHandlers.golem` in a web view, or else to the parent window. Its reply goes back through
+`window.__golemReceive({ golem: 1, id, result })`, or `{ golem: 1, id, error }`. The iOS app loads `content` with no
+base URL, and answers each message with `rpc`.
+
+The runtime the page calls:
+
+| Call | `op` and `args` | Who |
+| --- | --- | --- |
+| `golem.ready`, `golem.me` | `me`: `{}` → `{ id, name, member }` | everyone |
+| `golem.setName(name)` | `name`: `{ name }` → the new `me` | everyone |
+| `golem.mine.get/set/delete/list` | `get`, `set`, `delete`, `list`: `{ scope: "mine", key, value?, prefix? }` | everyone, on their own records |
+| `golem.everyone.list(prefix?)` | `list`: `{ scope: "everyone", prefix }` → `ArtifactRecord[]` of visitors | everyone |
+| `golem.shared.get/set/delete/list` | the same with `scope: "shared"` | everyone reads; members change |
+
+`list` gives `{ key, value, updatedAt }[]` for `mine` and `shared`. A value is up to 64 KB of JSON; a visitor keeps up
+to 1000 keys, and an artifact up to 20,000 records. `400` names bad input, `403` a shared write by a non-member, and
+`413` a value or an artifact that is full.
+
+The web app opens an artifact at its `url`, with no `/api` prefix:
+
+| Request | Response |
+| --- | --- |
+| `GET /a/:artifactId` | The page: a frame with the artifact. A public visitor without a session gets a `golem-visitor` cookie; the runtime keeps their data under its hash. A signed-out person goes to `/login?next=/a/:artifactId` for a members artifact. |
+| `GET /a/:artifactId/content` | `content`, with `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads`: it runs without the site's origin, so it cannot read Golem's cookies or call Golem |
+| `POST /a/:artifactId/rpc` | `{ op, args }` → `{ result }`, as the session's user or the `golem-visitor` cookie's visitor. Only from Golem's own origin. |
 
 ### Search (`src/search/`)
 
@@ -202,6 +261,8 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 ## Isolation
 
 - Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
+- A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
+  keep. Its id is random, so only people who have the link find it.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The
   machine trusts the workspace's own key, so pairing it with one workspace does not open it to another.

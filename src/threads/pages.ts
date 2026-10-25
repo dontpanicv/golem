@@ -1,3 +1,5 @@
+import type { Artifact } from "../artifacts/artifacts.ts";
+import { artifactPreview, threadArtifacts } from "../artifacts/pages.ts";
 import { button, composer, empty, message } from "../platform/ui/components.ts";
 import { icon } from "../platform/ui/icons.ts";
 import { type ShellContext, shell } from "../workspaces/shell.ts";
@@ -10,7 +12,8 @@ export function threadPage(
   context: ShellContext,
   channel: Channel,
   thread: ThreadSummary,
-  files: readonly ThreadFile[]
+  files: readonly ThreadFile[],
+  artifacts: readonly Artifact[]
 ): string {
   const base = `/w/${context.workspace!.id}/t/${thread.id}`;
   return shell(context, {
@@ -18,7 +21,12 @@ export function threadPage(
     header: `<span class="breadcrumb">${escapeHtml(channel.name)} › </span>${escapeHtml(thread.title)}`,
     main: `<section id="transcript" class="transcript" aria-live="polite"></section>
 			${composer(`Message #${channel.name}`, `@post('${base}/messages', {contentType: 'form'})`)}`,
-    artifacts: { files: threadFiles(context.workspace!.id, thread.id, files) },
+    artifacts: {
+      artifacts: threadArtifacts(context.workspace!.id, thread.id, artifacts),
+      files: threadFiles(context.workspace!.id, thread.id, files),
+      preview: artifactPreview(context.workspace!.id, thread.id, null),
+    },
+    signals: "artifactData: false",
     init: `@get('${base}/events')`,
   });
 }

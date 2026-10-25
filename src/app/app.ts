@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { Artifacts } from "../artifacts/artifacts.ts";
 import { Hands } from "../hands/hands.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
@@ -24,6 +25,7 @@ export interface App {
   readonly threads: Threads;
   readonly workspaces: Workspaces;
   readonly integrations: Integrations;
+  readonly artifacts: Artifacts;
   readonly indexer: Indexer;
   readonly routines: Routines;
 }
@@ -55,6 +57,7 @@ export async function createApp(
     baseUrl: config.baseUrl,
     binaryDirectory: resolve(import.meta.dir, "../../hands/dist"),
   });
+  const artifacts = new Artifacts(database, workspaces, config.baseUrl);
   // The recall port and the change hook point at the indexer, which reads the threads; files read as search reads them.
   // The routine tools come from routines, which runs its work in threads.
   const threads: Threads = new Threads(
@@ -63,6 +66,7 @@ export async function createApp(
     workspaces,
     hands,
     integrations,
+    artifacts,
     {
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),
@@ -94,6 +98,7 @@ export async function createApp(
     threads,
     workspaces,
     integrations,
+    artifacts,
     indexer,
     routines,
   };

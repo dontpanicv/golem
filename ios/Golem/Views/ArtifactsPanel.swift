@@ -15,12 +15,16 @@ struct ArtifactsPanel: View {
     }
 
     let threadID: String
-    /// Changes when the thread does, so the files load again: files come with messages.
+    /// Changes when the thread does, so the files and artifacts load again: they come with messages.
     let changes: Int
     let openFile: (FileRef) -> Void
     @Environment(Session.self) private var session
     @State private var tab = Tab.artifacts
     @State private var files: [ThreadFile] = []
+    @State private var artifacts: [Artifact] = []
+    @State private var openArtifact: String?
+    /// Lists the artifacts again after the Preview tab changes one.
+    @State private var artifactChanges = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,14 +46,52 @@ struct ArtifactsPanel: View {
             .padding(.horizontal, Tokens.Space.lg)
             .frame(height: Tokens.Size.header)
             Divider().overlay(Tokens.Colors.border)
-            if tab == .files {
-                filesTab
-            } else {
-                EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+            switch tab {
+            case .files: filesTab
+            case .artifacts: artifactsTab
+            case .preview:
+                if let openArtifact {
+                    ArtifactView(artifactID: openArtifact, changes: changes) { artifactChanges += 1 }
+                        .id(openArtifact)
+                } else {
+                    EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+                }
             }
         }
         .background(Tokens.Colors.surface)
         .task(id: changes) { await session.run { files = try await session.api.threadFiles(threadID) } }
+        .task(id: "\(changes)-\(artifactChanges)") {
+            await session.run {
+                artifacts = try await session.api.artifacts(threadID: threadID)
+                if let openArtifact, !artifacts.contains(where: { $0.id == openArtifact }) {
+                    self.openArtifact = nil
+                    tab = .artifacts
+                }
+            }
+        }
+    }
+
+    /// The thread's artifacts, newest first. Tapping one opens it in the Preview tab.
+    @ViewBuilder
+    private var artifactsTab: some View {
+        if artifacts.isEmpty {
+            EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+        } else {
+            ScrollView {
+                VStack(spacing: 1) {
+                    ForEach(artifacts) { artifact in
+                        Button {
+                            openArtifact = artifact.id
+                            tab = .preview
+                        } label: {
+                            NavRow(title: artifact.title, systemImage: "shippingbox", count: artifact.visitors)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(Tokens.Space.lg)
+            }
+        }
     }
 
     /// The thread's files, newest first, under an upload button. Files dropped on the tab upload.

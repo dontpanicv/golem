@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { OAuthCredential } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { startTestApp, type TestApp, until } from "./harness.ts";
+import type { User } from "../src/platform/auth.ts";
+import { cookies, startTestApp, type TestApp, until } from "./harness.ts";
 
 /** A signed-in browser: it sends the session cookie, and form posts carry the site's origin. */
 function browser(golem: TestApp, cookie: string) {
@@ -62,18 +63,23 @@ describe("the web app", () => {
       .threadsIn(workspaceId)
       .find((thread) => thread.id === threadId)!;
 
+  let aliceCookie: string;
+  let bobCookie: string;
+  const aliceUser = () =>
+    golem.app.database
+      .query("SELECT id, name, email FROM user WHERE email = ?")
+      .get("alice@example.com") as User;
+
   beforeAll(async () => {
     golem = await startTestApp();
-    alice = browser(
-      golem,
-      await golem.sessionCookie(
-        await golem.signIn("Alice", "alice@example.com")
-      )
+    aliceCookie = await golem.sessionCookie(
+      await golem.signIn("Alice", "alice@example.com")
     );
-    bob = browser(
-      golem,
-      await golem.sessionCookie(await golem.signIn("Bob", "bob@example.com"))
+    bobCookie = await golem.sessionCookie(
+      await golem.signIn("Bob", "bob@example.com")
     );
+    alice = browser(golem, aliceCookie);
+    bob = browser(golem, bobCookie);
   });
 
   afterAll(() => golem.close());
@@ -196,6 +202,115 @@ describe("the web app", () => {
       "What to pack?",
       "Bring boots.",
     ]);
+  });
+
+  test("an artifact link runs the artifact in a sandbox, for anyone when public and for members otherwise", async () => {
+    const artifact = golem.app.artifacts.create(threadRef(), {
+      title: "Trip <dates>",
+      html: "<!doctype html><html><head></head><body>Vote</body></html>",
+      visibility: "public",
+      requestKey: "web-test",
+    });
+    const link = `/a/${artifact.id}`;
+
+    const opened = await golem.call(link);
+    const page = await opened.text();
+    expect(page).toContain("<title>Trip &lt;dates&gt;</title>");
+    expect(page).toContain(
+      '<meta property="og:title" content="Trip &lt;dates&gt;">'
+    );
+    expect(page).toContain(
+      `<iframe src="${link}/content?v=${artifact.updatedAt}"`
+    );
+    expect(page).toContain(
+      'sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"'
+    );
+    const visitor = cookies(opened);
+    expect(visitor).toStartWith("golem-visitor=");
+    expect(opened.headers.get("set-cookie")).toContain("Path=/a/");
+    expect(opened.headers.get("set-cookie")).toContain("HttpOnly");
+
+    const content = await golem.call(`${link}/content`);
+    const policy = content.headers.get("content-security-policy")!;
+    expect(policy).toStartWith("sandbox allow-scripts");
+    expect(policy).not.toContain("allow-same-origin");
+    expect(await content.text()).toContain("window.golem = golem");
+
+    const call = (body: unknown, headers: Record<string, string>) =>
+      golem.call(`${link}/rpc`, { body, headers });
+    const me = await call(
+      { op: "me", args: {} },
+      { cookie: visitor, origin: "http://golem.test" }
+    );
+    expect(await me.json()).toMatchObject({
+      result: { name: null, member: false },
+    });
+    expect(
+      (
+        await call(
+          { op: "set", args: { scope: "mine", key: "vote", value: 1 } },
+          { cookie: visitor, origin: "https://evil.example" }
+        )
+      ).status
+    ).toBe(403);
+    expect((await call({ op: "me", args: {} }, {})).status).toBe(403);
+
+    golem.app.artifacts.setVisibility(artifact.id, aliceUser(), "members");
+    const signedOut = await golem.call(link);
+    expect(location(signedOut)).toBe(`/login?next=${link}`);
+    expect(await (await golem.call(`/login?next=${link}`)).text()).toContain(
+      `<input type="hidden" name="next" value="${link}">`
+    );
+    expect((await golem.call(`${link}/content`)).status).toBe(404);
+    expect((await bob.get(link)).status).toBe(404);
+    expect((await bob.get(`${link}/content`)).status).toBe(404);
+    expect((await alice.get(link)).status).toBe(200);
+  });
+
+  test("the thread's Artifacts and Preview tabs open an artifact, show its data, and change and delete it", async () => {
+    const [artifact] = golem.app.artifacts.inThread(threadId, aliceUser());
+    const base = `/w/${workspaceId}/t/${threadId}/artifacts/${artifact!.id}`;
+    golem.app.artifacts.call(artifact!.id, { user: aliceUser() }, "set", {
+      scope: "mine",
+      key: "vote",
+      value: "15 Dec",
+    });
+    const page = await (
+      await alice.get(`/w/${workspaceId}/t/${threadId}`)
+    ).text();
+    expect(page).toContain('id="thread-artifacts"');
+    expect(page).toContain(`@get('${base}')`);
+    expect(page).toContain("Trip &lt;dates&gt;");
+
+    const preview = await (await alice.datastar(base, {})).text();
+    expect(preview).toContain(
+      `<iframe class="artifact-frame" src="/a/${artifact!.id}?v=`
+    );
+    expect(preview).toContain("Alice · &quot;15 Dec&quot;");
+    expect(preview).toContain('"tab":"preview"');
+
+    const visibility = await readStream(
+      await alice.post(`${base}/visibility/public`),
+      (text) => text.includes("artifact-preview")
+    );
+    expect(visibility).toContain("Make members only");
+    const datastar = (method: string, path: string, who = aliceCookie) =>
+      golem.handler(
+        new Request(`http://golem.test${path}`, {
+          method,
+          headers: { cookie: who, origin: "http://golem.test" },
+        })
+      );
+    const [record] = golem.app.artifacts.dataFor(artifact!.id, aliceUser());
+    expect(
+      (await datastar("DELETE", `${base}/records/${record!.id}`, bobCookie))
+        .status
+    ).toBe(404);
+    await (await datastar("DELETE", `${base}/records/${record!.id}`)).text();
+    expect(golem.app.artifacts.dataFor(artifact!.id, aliceUser())).toEqual([]);
+    const deleted = await (await datastar("DELETE", base)).text();
+    expect(deleted).toContain("No artifacts yet");
+    expect(deleted).toContain('"tab":"artifacts"');
   });
 
   test("pages outside the workspace are not found", async () => {
@@ -330,12 +445,6 @@ describe("the web app", () => {
       `${settings}?notice=${encodeURIComponent("Credential deleted")}`
     );
     expect(github().credentials).toEqual([]);
-
-    function aliceUser() {
-      return golem.app.database
-        .query("SELECT id, name, email FROM user WHERE email = ?")
-        .get("alice@example.com") as never;
-    }
   });
 
   test("the channel details page shows the summary and routines, and pauses, runs, and deletes them", async () => {
@@ -389,12 +498,6 @@ describe("the web app", () => {
       "No routines yet"
     );
     expect((await alice.post(`${base}/run`)).status).toBe(404);
-
-    function aliceUser() {
-      return golem.app.database
-        .query("SELECT id, name, email FROM user WHERE email = ?")
-        .get("alice@example.com") as never;
-    }
   });
 
   test("settings show the account and change the model and effort", async () => {

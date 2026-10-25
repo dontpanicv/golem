@@ -388,6 +388,7 @@ const noMachines = {
   section: () => ({ key: "machines", render: () => undefined }),
 };
 const noIntegrations = { tools: () => [] };
+const noArtifacts = { tools: () => [] };
 
 /** Threads over a registry in memory, with the registry methods that creating and sending use. */
 function threadsOver(dataDirectory: string, llm: Llm) {
@@ -438,6 +439,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     registry,
     noMachines,
     noIntegrations,
+    noArtifacts,
     hooks
   );
   return { threads, registry, thread: (id: string) => registry.thread(id) };
@@ -558,6 +560,7 @@ describe("Threads with the Llm", () => {
         first.registry,
         noMachines,
         noIntegrations,
+        noArtifacts,
         hooks
       );
       try {

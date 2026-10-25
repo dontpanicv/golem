@@ -30,6 +30,7 @@ src/
 ├── llm/                     The shared LLM provider and its stored login
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── integrations/            The connectors, their tools, and the credentials of each workspace
+├── artifacts/               The pages and small apps agents make in a thread, their links, and the data they keep
 ├── threads/                 One Pi Durable session per workspace, a conversation per thread, and the agent tools
 ├── search/                  Extraction, embeddings, the index of each workspace, and the search page
 ├── routines/                Scheduled scripts and instructions of each channel, their runs, and the channel details page
@@ -48,12 +49,12 @@ Each module has the same files, when it needs them:
 
 `workspaces/shell.ts` is the app frame (sidebar, workspace switcher, dialogs) that every signed-in page uses.
 `search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`; `hands/` has
-`connection.ts` and `tools.ts`; `routines/` has `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
+`connection.ts` and `tools.ts`; `artifacts/` and `routines/` have `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
 
 ## Rules
 
 1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
-   `threads`, `search`, `routines`, `settings`. A module uses only the modules before it. `platform/` uses no module.
+   `artifacts`, `threads`, `search`, `routines`, `settings`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts` and `workspaces/shell.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.

@@ -54,6 +54,80 @@ struct ThreadFile: Codable, Hashable, Identifiable {
 
 struct ThreadFiles: Codable { let files: [ThreadFile] }
 
+/// A page or small app an agent made in a thread. `url` is the link people share.
+struct Artifact: Codable, Hashable, Identifiable {
+    enum Visibility: String, Codable { case `public`, members }
+
+    let id: String
+    let threadId: String
+    let title: String
+    let visibility: Visibility
+    let url: String
+    let visitors: Int
+    let createdAt: Double
+    let updatedAt: Double
+}
+
+struct ThreadArtifacts: Codable { let artifacts: [Artifact] }
+
+/// A value an artifact keeps: shared (`visitor` is nil), or owned by one visitor.
+struct ArtifactRecord: Codable, Hashable, Identifiable {
+    let id: String
+    let visitor: String?
+    let name: String?
+    let key: String
+    let value: JSONValue
+    let updatedAt: Double
+}
+
+/// An artifact, its records, and the HTML to run, with Golem's `golem` runtime in it.
+struct ArtifactDetail: Codable, Hashable {
+    let artifact: Artifact
+    let records: [ArtifactRecord]
+    let content: String
+}
+
+/// Any JSON value.
+indirect enum JSONValue: Codable, Hashable {
+    case null, bool(Bool), number(Double), string(String), array([JSONValue]), object([String: JSONValue])
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([JSONValue].self) {
+            self = .array(value)
+        } else {
+            self = .object(try container.decode([String: JSONValue].self))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null: try container.encodeNil()
+        case .bool(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .string(let value): try container.encode(value)
+        case .array(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        }
+    }
+
+    /// The value as JSON text, to show it.
+    var text: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return (try? encoder.encode(self)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+}
+
 struct ThreadState: Codable, Hashable {
     let thread: ThreadSummary
     let messages: [Message]
