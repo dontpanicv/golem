@@ -376,6 +376,11 @@ describe("SqliteCredentialStore", () => {
   });
 });
 
+const hooks = {
+  changed: () => undefined,
+  recall: async () => ({ results: [] }),
+};
+
 /** Threads over a registry in memory, with the registry methods that creating and sending use. */
 function threadsOver(dataDirectory: string, llm: Llm) {
   const registered = new Map<
@@ -394,27 +399,32 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     }),
     registerThread: (
       workspaceId: string,
-      _user: unknown,
-      channelId: string,
-      title: string,
-      conversationId: number
+      thread: {
+        id: string;
+        channelId: string;
+        title: string;
+        conversationId: number;
+      }
     ) => {
-      const id = `thread-${registered.size + 1}`;
-      registered.set(id, { id, workspaceId, conversationId, channelId });
-      return { id, channelId, title, updatedAt: 0 };
+      registered.set(thread.id, { ...thread, workspaceId });
+      return { ...thread, updatedAt: 0 };
     },
     thread: (threadId: string) => ({
       ...registered.get(threadId)!,
       title: "",
       updatedAt: 0,
     }),
+    threadsIn: () =>
+      [...registered.values()].map((thread) => ({
+        ...thread,
+        title: "",
+        updatedAt: 0,
+      })),
+    channelsIn: () => [],
     touchThread: () => undefined,
   };
-  const threads = new Threads(dataDirectory, llm, registry, {
-    changed: () => undefined,
-    recall: async () => ({ results: [] }),
-  });
-  return { threads, thread: (id: string) => registry.thread(id) };
+  const threads = new Threads(dataDirectory, llm, registry, hooks);
+  return { threads, registry, thread: (id: string) => registry.thread(id) };
 }
 
 describe("Threads with the Llm", () => {
@@ -526,19 +536,7 @@ describe("Threads with the Llm", () => {
       await first.threads.closeAll();
 
       // A new process opens the same file and finds each thread's own transcript.
-      const reopened = new Threads(
-        dataDirectory,
-        llm,
-        {
-          requireMember: () => ({ id: "family", name: "Family" }),
-          registerThread: () => {
-            throw new Error("Not used");
-          },
-          thread: (id: string) => first.thread(id),
-          touchThread: () => undefined,
-        },
-        { changed: () => undefined, recall: async () => ({ results: [] }) }
-      );
+      const reopened = new Threads(dataDirectory, llm, first.registry, hooks);
       try {
         expect(await texts(reopened, dinner.id, 2)).toEqual([
           "Dinner?",

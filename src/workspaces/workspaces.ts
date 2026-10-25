@@ -92,6 +92,11 @@ export class Workspaces {
 
   channels(workspaceId: string, user: User): Channel[] {
     this.requireMember(workspaceId, user);
+    return this.channelsIn(workspaceId);
+  }
+
+  /** The channels of a workspace with their threads, newest first, for agents that act for the workspace. */
+  channelsIn(workspaceId: string): Channel[] {
     const channels = this.database
       .query(
         "SELECT id, name FROM channel WHERE workspace_id = ? ORDER BY created_at"
@@ -133,15 +138,21 @@ export class Workspaces {
     return channel;
   }
 
-  /** Adds a thread to a channel of the workspace. `Threads` names it and creates its conversation. */
+  /**
+   * Adds a thread to a channel of the workspace. `Threads` checks who asks, names the thread, and creates its
+   * conversation; `createdBy` is a person's id, or `golem` for a thread an agent started.
+   */
   registerThread(
     workspaceId: string,
-    user: User,
-    channelId: string,
-    title: string,
-    conversationId: number
+    thread: {
+      readonly channelId: string;
+      readonly conversationId: number;
+      readonly createdBy: string;
+      readonly id: string;
+      readonly title: string;
+    }
   ): ThreadSummary {
-    this.requireMember(workspaceId, user);
+    const { channelId, conversationId, title } = thread;
     const channel = this.database
       .query("SELECT 1 FROM channel WHERE id = ? AND workspace_id = ?")
       .get(channelId, workspaceId);
@@ -149,7 +160,6 @@ export class Workspaces {
       throw notFound();
     }
     const now = Date.now();
-    const thread = { id: randomUUID(), channelId, title, updatedAt: now };
     this.database
       .query(
         "INSERT INTO thread (id, workspace_id, channel_id, title, conversation_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -160,11 +170,11 @@ export class Workspaces {
         channelId,
         title,
         conversationId,
-        user.id,
+        thread.createdBy,
         now,
         now
       );
-    return thread;
+    return { id: thread.id, channelId, title, updatedAt: now };
   }
 
   /** The thread if `user` is a member of its workspace. */

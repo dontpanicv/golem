@@ -45,7 +45,9 @@ The machines connect over a WireGuard mesh VPN.
 - **Workspaces.** A person can belong to several. Workspaces share nothing except the LLM provider.
 - **Channels.** Members create them; each workspace starts with `general`.
 - **Threads.** A thread lives in a channel and is one conversation in its workspace's Pi Durable session. Several
-  family members can write in it; the agent knows who wrote each message.
+  family members can write in it; the agent knows who wrote each message. An agent can list the channels, read
+  another thread, start a thread in any channel, and send a message to another thread, whose agent can answer back.
+  A message passes between threads at most twice, so agents cannot keep talking to each other.
 - **Search.** Each workspace has its own index: keywords plus meaning from Google's EmbeddingGemma 2, run locally.
   Search and the agents' `recall` tool never cross workspaces. See [docs/data.md](docs/data.md).
 - **Settings.** `/settings` connects the LLM provider and chooses the model, for everyone. Each workspace's settings

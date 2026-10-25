@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
@@ -11,8 +12,10 @@ import {
   defineExtension,
   defineTool,
   Harness,
+  type JsonObject,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { randomUUIDv5 } from "bun";
 import type { Llm } from "../llm/llm.ts";
 import type { User } from "../platform/auth.ts";
 import { notFound, required } from "../platform/errors.ts";
@@ -39,8 +42,19 @@ export interface ThreadMessages {
 }
 
 const AUTHORED = "golem.message";
+/** A message the agent of another thread sent to this one. */
+const RELAYED = "golem.relay";
+/** How often one person's message may pass between threads: a question to another thread, and its answer back. */
+const MAX_HOPS = 2;
 const INSTRUCTIONS =
-  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know.";
+  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread.";
+
+interface Relay extends JsonObject {
+  readonly fromThreadId: string;
+  readonly fromTitle: string;
+  readonly hops: number;
+  readonly text: string;
+}
 
 export interface ThreadHooks {
   /** Called when work in the workspace's threads starts or ends, such as a message or a finished answer. */
@@ -57,6 +71,7 @@ export interface ThreadHooks {
 export interface RecallResult {
   readonly kind: string;
   readonly snippet: string;
+  readonly threadId: string | null;
   readonly title: string;
   readonly updatedAt: number;
 }
@@ -64,7 +79,12 @@ export interface RecallResult {
 /** The thread registry in `golem.sqlite`, which `Workspaces` keeps. */
 export type ThreadRegistry = Pick<
   Workspaces,
-  "registerThread" | "requireMember" | "thread" | "touchThread"
+  | "channelsIn"
+  | "registerThread"
+  | "requireMember"
+  | "thread"
+  | "threadsIn"
+  | "touchThread"
 >;
 
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
@@ -87,30 +107,15 @@ export class Threads {
   ): Promise<ThreadSummary> {
     this.registry.requireMember(workspaceId, user);
     const message = required(text, "Message");
-    const firstLine = message.split("\n")[0]!;
-    const title =
-      firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine;
-    const harness = await this.session(workspaceId);
-    // A conversation that is never registered, after an unknown channel or a crash, stays empty and unseen.
-    const conversation = await harness.createConversation(
-      {
-        ownership: { kind: "ownerless" },
-        agent: {
-          model: this.currentModel(),
-          thinkingLevel: this.llm.effort(),
-          instructions: INSTRUCTIONS,
-        },
-      },
-      BACKGROUND_CONTEXT
-    );
-    const thread = this.registry.registerThread(
-      workspaceId,
-      user,
+    const conversation = await this.newConversation(workspaceId);
+    const thread = this.registry.registerThread(workspaceId, {
+      id: randomUUID(),
       channelId,
-      title,
-      conversation.id
-    );
-    await this.deliver(conversation, user, message);
+      title: titleOf(message),
+      conversationId: conversation.id,
+      createdBy: user.id,
+    });
+    await this.deliver(conversation, authored(user, message));
     return thread;
   }
 
@@ -119,8 +124,7 @@ export class Threads {
     const thread = this.registry.thread(threadId, user);
     await this.deliver(
       await this.conversation(thread),
-      user,
-      required(text, "Message")
+      authored(user, required(text, "Message"))
     );
     this.registry.touchThread(thread.id);
   }
@@ -170,17 +174,32 @@ export class Threads {
 
   private async deliver(
     conversation: Conversation,
-    user: User,
-    text: string
+    input: {
+      readonly content: string;
+      readonly entry: {
+        readonly kind: string;
+        readonly data: Relay | Authored;
+      };
+      readonly requestId?: string;
+    }
   ): Promise<void> {
     await this.useCurrentModel(conversation);
-    await conversation.submit(
+    await conversation.submit({ type: "input", ...input }, BACKGROUND_CONTEXT);
+  }
+
+  /**
+   * A conversation for a new thread. One that is never registered, after an unknown channel or a crash, stays empty
+   * and unseen.
+   */
+  private async newConversation(workspaceId: string): Promise<Conversation> {
+    const harness = await this.session(workspaceId);
+    return harness.createConversation(
       {
-        type: "input",
-        content: `${user.name}: ${text}`,
-        entry: {
-          kind: AUTHORED,
-          data: { authorId: user.id, author: user.name, text },
+        ownership: { kind: "ownerless" },
+        agent: {
+          model: this.currentModel(),
+          thinkingLevel: this.llm.effort(),
+          instructions: INSTRUCTIONS,
         },
       },
       BACKGROUND_CONTEXT
@@ -218,7 +237,16 @@ export class Threads {
     );
     const registry = createRegistry();
     registry.install(
-      defineExtension({ name: "golem", tools: [this.recallTool(workspaceId)] })
+      defineExtension({
+        name: "golem",
+        tools: [
+          this.recallTool(workspaceId),
+          this.listChannelsTool(workspaceId),
+          this.readThreadTool(workspaceId),
+          this.startThreadTool(workspaceId),
+          this.sendToThreadTool(workspaceId),
+        ],
+      })
     );
     const harness = await Harness.open(
       await openNodeSqliteStorage(path),
@@ -258,16 +286,225 @@ export class Threads {
         const text = results.length
           ? results
               .map((result, number) => {
-                const when = new Date(result.updatedAt)
-                  .toISOString()
-                  .slice(0, 10);
-                return `${number + 1}. [${result.kind}] ${result.title} (${when}): ${result.snippet}`;
+                const where = result.threadId
+                  ? `, thread ${result.threadId}`
+                  : "";
+                return `${number + 1}. [${result.kind}] ${result.title} (${day(result.updatedAt)}${where}): ${result.snippet}`;
               })
               .join("\n")
           : "Nothing found in this workspace.";
         return { output: [{ type: "text", text }] };
       },
     });
+  }
+
+  private listChannelsTool(workspaceId: string) {
+    return defineTool({
+      name: "list_channels",
+      description:
+        "List the channels of this workspace with their newest threads and thread ids.",
+      parameters: Type.Object({}),
+      replay: "safe",
+      execute: async () => {
+        const text = this.registry
+          .channelsIn(workspaceId)
+          .map((channel) => {
+            const threads = channel.threads
+              .slice(0, 5)
+              .map(
+                (thread) =>
+                  `- ${thread.title} (thread ${thread.id}, ${day(thread.updatedAt)})`
+              );
+            return [`#${channel.name}`, ...threads].join("\n");
+          })
+          .join("\n");
+        return { output: [{ type: "text", text }] };
+      },
+    });
+  }
+
+  private readThreadTool(workspaceId: string) {
+    return defineTool({
+      name: "read_thread",
+      description: "Read the newest messages of a thread in this workspace.",
+      parameters: Type.Object({
+        thread: Type.String({ description: "The thread id" }),
+        limit: Type.Optional(
+          Type.Integer({
+            minimum: 1,
+            maximum: 50,
+            description: "How many messages; default 20",
+          })
+        ),
+      }),
+      replay: "safe",
+      execute: async (args) => {
+        const { messages } = await this.messages(
+          this.threadIn(workspaceId, args.thread)
+        );
+        const text =
+          messages
+            .filter((message) => !message.streaming)
+            .slice(-(args.limit ?? 20))
+            .map((message) => `${message.author}: ${message.text}`)
+            .join("\n") || "The thread has no messages.";
+        return { output: [{ type: "text", text }] };
+      },
+    });
+  }
+
+  private startThreadTool(workspaceId: string) {
+    return defineTool({
+      name: "start_thread",
+      description:
+        "Start a new thread in this channel or another channel of the workspace, with a first message. The agent of the new thread answers it there.",
+      parameters: Type.Object({
+        message: Type.String({ description: "The first message" }),
+        channel: Type.Optional(
+          Type.String({
+            description: "The channel name; default this thread's channel",
+          })
+        ),
+        title: Type.Optional(
+          Type.String({ description: "Default: the first line of the message" })
+        ),
+      }),
+      // A rerun after a crash finds the thread and the message it made before.
+      replay: "safe",
+      execute: async (args, api) => {
+        const { from, hops } = await this.relayFrom(
+          workspaceId,
+          api.conversationId
+        );
+        const channels = this.registry.channelsIn(workspaceId);
+        const name = args.channel?.replace(/^#/, "").toLowerCase();
+        const channel = name
+          ? channels.find((candidate) => candidate.name === name)
+          : channels.find((candidate) => candidate.id === from.channelId);
+        if (!channel) {
+          throw new Error(
+            `There is no channel #${name}. list_channels shows the channels.`
+          );
+        }
+        const id = randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url");
+        let thread = this.registry
+          .threadsIn(workspaceId)
+          .find((candidate) => candidate.id === id);
+        if (!thread) {
+          const conversation = await this.newConversation(workspaceId);
+          thread = {
+            ...this.registry.registerThread(workspaceId, {
+              id,
+              channelId: channel.id,
+              title: titleOf(args.title || args.message),
+              conversationId: conversation.id,
+              createdBy: "golem",
+            }),
+            workspaceId,
+            conversationId: conversation.id,
+          };
+        }
+        await this.deliver(
+          await this.conversation(thread),
+          relayed(from, args.message, hops, `relay:${api.taskId}`)
+        );
+        return {
+          output: [
+            {
+              type: "text",
+              text: `Started "${thread.title}" in #${channel.name} (thread ${thread.id}).`,
+            },
+          ],
+        };
+      },
+    });
+  }
+
+  private sendToThreadTool(workspaceId: string) {
+    return defineTool({
+      name: "send_to_thread",
+      description:
+        "Send a message to another thread of this workspace. Its agent answers there, and can send the answer back to this thread.",
+      parameters: Type.Object({
+        thread: Type.String({ description: "The thread id" }),
+        message: Type.String(),
+      }),
+      // The request id makes a rerun after a crash find the message it sent before.
+      replay: "safe",
+      execute: async (args, api) => {
+        const { from, hops } = await this.relayFrom(
+          workspaceId,
+          api.conversationId
+        );
+        const target = this.threadIn(workspaceId, args.thread);
+        if (target.id === from.id) {
+          throw new Error("That is this thread. Answer here instead.");
+        }
+        await this.deliver(
+          await this.conversation(target),
+          relayed(from, args.message, hops, `relay:${api.taskId}`)
+        );
+        this.registry.touchThread(target.id);
+        return {
+          output: [{ type: "text", text: `Sent to "${target.title}".` }],
+        };
+      },
+    });
+  }
+
+  /**
+   * The thread a tool runs in, and how many times the message it answers already passed between threads. Refuses at
+   * `MAX_HOPS`, so that agents cannot keep sending each other messages.
+   */
+  private async relayFrom(
+    workspaceId: string,
+    conversationId: ConversationId
+  ): Promise<{ from: ThreadSummary & ThreadRef; hops: number }> {
+    const from = this.registry
+      .threadsIn(workspaceId)
+      .find((thread) => thread.conversationId === conversationId);
+    if (!from) {
+      throw new Error("Only a thread can send to other threads.");
+    }
+    const conversation = await this.conversation(from);
+    let cursor: Parameters<Conversation["entries"]>[2];
+    do {
+      const page = await conversation.entries(
+        { order: "descending" },
+        50,
+        cursor,
+        BACKGROUND_CONTEXT
+      );
+      const input = page.items.find(
+        (entry) => entry.kind === AUTHORED || entry.kind === RELAYED
+      );
+      if (input) {
+        const hops =
+          input.kind === RELAYED ? (input.data as unknown as Relay).hops : 0;
+        if (hops >= MAX_HOPS) {
+          throw new Error(
+            "This message already passed between threads. Answer here instead."
+          );
+        }
+        return { from, hops };
+      }
+      cursor = page.next;
+    } while (cursor);
+    return { from, hops: 0 };
+  }
+
+  /** A thread of this workspace, by the id an agent gave. */
+  private threadIn(
+    workspaceId: string,
+    threadId: string
+  ): ThreadSummary & ThreadRef {
+    const thread = this.registry
+      .threadsIn(workspaceId)
+      .find((candidate) => candidate.id === threadId);
+    if (!thread) {
+      throw new Error(`There is no thread ${threadId} in this workspace.`);
+    }
+    return thread;
   }
 
   /** Threads follow the model and effort chosen in settings, also after they change. */
@@ -315,6 +552,18 @@ export function threadMessages(view: ConversationView): ThreadMessages {
         failed: false,
         streaming: false,
       });
+    } else if (entry.kind === RELAYED) {
+      const data = entry.data as unknown as Relay;
+      messages.push({
+        id: String(entry.id),
+        authorId: null,
+        author: `Golem · ${data.fromTitle}`,
+        agent: true,
+        text: data.text,
+        time: (model as UserMessage | undefined)?.timestamp ?? 0,
+        failed: false,
+        streaming: false,
+      });
     } else if (model?.role === "assistant") {
       messages.push(agentMessage(String(entry.id), model, false));
     }
@@ -357,4 +606,44 @@ function agentMessage(
     failed,
     streaming,
   };
+}
+
+interface Authored extends JsonObject {
+  readonly author: string;
+  readonly authorId: string;
+  readonly text: string;
+}
+
+function authored(user: User, text: string) {
+  const data: Authored = { authorId: user.id, author: user.name, text };
+  return { content: `${user.name}: ${text}`, entry: { kind: AUTHORED, data } };
+}
+
+/** A message from the agent of `from` to another thread; `hops` counts the passes before this one. */
+function relayed(
+  from: ThreadSummary & ThreadRef,
+  text: string,
+  hops: number,
+  requestId: string
+) {
+  const data: Relay = {
+    fromThreadId: from.id,
+    fromTitle: from.title,
+    hops: hops + 1,
+    text,
+  };
+  return {
+    content: `Golem from the thread "${from.title}" (thread ${from.id}): ${text}`,
+    entry: { kind: RELAYED, data },
+    requestId,
+  };
+}
+
+function titleOf(text: string): string {
+  const firstLine = text.split("\n")[0]!;
+  return firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine;
+}
+
+function day(time: number): string {
+  return new Date(time).toISOString().slice(0, 10);
 }
