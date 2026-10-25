@@ -1,9 +1,9 @@
 import { empty } from "../platform/ui/components.ts";
 import { type IconName, icon } from "../platform/ui/icons.ts";
-import type { SearchResponse } from "../search/indexer.ts";
-import type { Modality, SearchKind } from "../search/workspace-index.ts";
 import { type ShellContext, shell } from "../workspaces/shell.ts";
 import type { Channel } from "../workspaces/workspaces.ts";
+import type { SearchResponse } from "./indexer.ts";
+import type { Modality, SearchKind } from "./workspace-index.ts";
 
 const escapeHtml = Bun.escapeHTML;
 const KIND_ICONS: Record<SearchKind, IconName> = {

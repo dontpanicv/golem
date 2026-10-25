@@ -54,7 +54,7 @@ export async function createApp(
   });
   const indexer = new Indexer(
     config.dataDirectory,
-    database,
+    workspaces,
     threads,
     embedder
   );

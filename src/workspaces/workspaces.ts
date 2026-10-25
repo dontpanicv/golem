@@ -48,6 +48,15 @@ export class Workspaces {
       .all(user.id) as Workspace[];
   }
 
+  /** Every workspace, for background work such as indexing that acts for no person. */
+  ids(): string[] {
+    return (
+      this.database.query("SELECT id FROM organization").all() as {
+        id: string;
+      }[]
+    ).map((row) => row.id);
+  }
+
   /** The workspace if `user` is a member; otherwise not found, so other workspaces stay invisible. */
   requireMember(workspaceId: string, user: User): Workspace {
     const workspace = this.database
@@ -158,6 +167,15 @@ export class Workspaces {
       throw notFound();
     }
     return thread;
+  }
+
+  /** The threads of a workspace, for background work such as indexing that acts for no person. */
+  threadsIn(workspaceId: string): ThreadSummary[] {
+    return this.database
+      .query(
+        "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt FROM thread WHERE workspace_id = ?"
+      )
+      .all(workspaceId) as ThreadSummary[];
   }
 
   /** Moves the thread up in its channel, after a new message. */

@@ -1,7 +1,7 @@
-import type { Database } from "bun:sqlite";
 import { type FSWatcher, mkdirSync, statSync, watch } from "node:fs";
 import { basename, join } from "node:path";
 import type { Threads } from "../threads/threads.ts";
+import type { Workspaces } from "../workspaces/workspaces.ts";
 import { documentPrompt, type Embedder, queryPrompt } from "./embedder.ts";
 import {
   type ExtractedSegment,
@@ -34,6 +34,11 @@ export interface SearchResponse {
  * Keeps each workspace's index in step with its threads and folders, and embeds in the background.
  * Every index belongs to one workspace and reads only that workspace's folder; searches never cross workspaces.
  */
+/** What the indexer reads from the directory in `golem.sqlite`: every workspace, and the threads in one. */
+export type WorkspaceDirectory = Pick<Workspaces, "ids" | "threadsIn">;
+/** The indexer reads thread messages; it never writes to a thread. */
+export type ThreadReader = Pick<Threads, "messages">;
+
 export class Indexer {
   private readonly indexes = new Map<string, WorkspaceIndex>();
   private readonly scans = new Map<string, Promise<void>>();
@@ -43,8 +48,8 @@ export class Indexer {
 
   constructor(
     private readonly dataDirectory: string,
-    private readonly database: Database,
-    private readonly threads: Threads,
+    private readonly directory: WorkspaceDirectory,
+    private readonly threads: ThreadReader,
     private readonly embedder: Embedder | null
   ) {}
 
@@ -52,10 +57,7 @@ export class Indexer {
   start(): void {
     const watched = new Set<string>();
     const scanAll = () => {
-      const workspaces = this.database
-        .query("SELECT id FROM organization")
-        .all() as { id: string }[];
-      for (const { id } of workspaces) {
+      for (const id of this.directory.ids()) {
         if (!watched.has(id)) {
           watched.add(id);
           this.watchFolders(id);
@@ -156,17 +158,7 @@ export class Indexer {
     const index = this.index(workspaceId);
     const root = this.workspaceDirectory(workspaceId);
     const seen = new Set<string>();
-    const threads = this.database
-      .query(
-        "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt FROM thread WHERE workspace_id = ?"
-      )
-      .all(workspaceId) as {
-      id: string;
-      channelId: string;
-      title: string;
-      updatedAt: number;
-    }[];
-    for (const thread of threads) {
+    for (const thread of this.directory.threadsIn(workspaceId)) {
       const directory = join(root, "threads", thread.id);
       const version = versionOf(
         join(directory, "session.sqlite"),

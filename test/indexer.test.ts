@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { statSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -6,8 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Embedder, EmbedInput } from "../src/search/embedder.ts";
 import { tools } from "../src/search/extract.ts";
-import { Indexer } from "../src/search/indexer.ts";
-import type { Message, Threads } from "../src/threads/threads.ts";
+import {
+  Indexer,
+  type ThreadReader,
+  type WorkspaceDirectory,
+} from "../src/search/indexer.ts";
+import type { Message } from "../src/threads/threads.ts";
+import type { ThreadSummary } from "../src/workspaces/workspaces.ts";
 
 let dataDirectory: string;
 beforeAll(async () => {
@@ -15,14 +19,12 @@ beforeAll(async () => {
 });
 afterAll(() => rm(dataDirectory, { recursive: true, force: true }));
 
-/** The tables the indexer reads: workspaces and their threads. */
-function database(): Database {
-  const result = new Database(":memory:");
-  result.run("CREATE TABLE organization (id TEXT PRIMARY KEY)");
-  result.run(
-    "CREATE TABLE thread (id TEXT PRIMARY KEY, workspace_id TEXT, channel_id TEXT, title TEXT, updated_at INTEGER)"
-  );
-  return result;
+/** The directory the indexer reads: workspace ids, and the threads of each workspace. */
+function directory(
+  ids: readonly string[] = [],
+  threads: readonly ThreadSummary[] = []
+): WorkspaceDirectory {
+  return { ids: () => [...ids], threadsIn: () => [...threads] };
 }
 
 function message(
@@ -44,10 +46,8 @@ function message(
 }
 
 /** Thread messages come from a list instead of a session file. */
-function threadsWith(messages: readonly Message[]): Threads {
-  return {
-    messages: async () => ({ messages, running: false }),
-  } as unknown as Threads;
+function threadsWith(messages: readonly Message[]): ThreadReader {
+  return { messages: async () => ({ messages, running: false }) };
 }
 
 /** A vector with one component set: equal axes mean equal meaning. */
@@ -95,9 +95,12 @@ async function until(
 
 test("start creates each workspace's folders and indexes a new file soon after it is saved", async () => {
   const data = join(dataDirectory, "watch");
-  const db = database();
-  db.run("INSERT INTO organization (id) VALUES ('family')");
-  const indexer = new Indexer(data, db, threadsWith([]), null);
+  const indexer = new Indexer(
+    data,
+    directory(["family"]),
+    threadsWith([]),
+    null
+  );
   try {
     indexer.start();
     for (const folder of ["notes", "files", "raw"]) {
@@ -135,9 +138,12 @@ test("start creates each workspace's folders and indexes a new file soon after i
 
 test("a scan indexes finished thread messages and thread files, and skips what it cannot use", async () => {
   const data = join(dataDirectory, "threads");
-  const db = database();
-  db.run(
-    "INSERT INTO thread VALUES ('t1', 'family', 'c1', 'Holiday', 5), ('t2', 'family', 'c1', 'Empty', 6)"
+  const threads = directory(
+    ["family"],
+    [
+      { id: "t1", channelId: "c1", title: "Holiday", updatedAt: 5 },
+      { id: "t2", channelId: "c1", title: "Empty", updatedAt: 6 },
+    ]
   );
   const thread = join(data, "workspaces", "family", "threads", "t1");
   await mkdir(join(thread, "files"), { recursive: true });
@@ -156,7 +162,7 @@ test("a scan indexes finished thread messages and thread files, and skips what i
   );
   const indexer = new Indexer(
     data,
-    db,
+    threads,
     threadsWith([
       message("m1", "We take the ferry to the island"),
       message("m2", "ferry answer in progress", { streaming: true }),
@@ -212,7 +218,7 @@ test("pictures read while the model is down are read again, and text waits for t
     "The children want to visit the mountain lake again next summer"
   );
   const { embedder, state } = testEmbedder();
-  const indexer = new Indexer(data, database(), threadsWith([]), embedder);
+  const indexer = new Indexer(data, directory(), threadsWith([]), embedder);
   const real = tools.ffmpeg;
   tools.ffmpeg = fakeFfmpeg;
   try {
