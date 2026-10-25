@@ -1,13 +1,16 @@
 // Golem interface behaviors: menus, selects, tooltips, dialogs, toasts, file pickers, and controls that submit on change.
 // Everything uses event delegation on the document, so it keeps working when Datastar patches the page.
-// Looks and timings follow design/components.md.
+// Looks and timings follow design/components.md, measured from Linear.
 
-const CLOSE_MS = 100;
-const TOOLTIP_DELAY_MS = 500;
+const TOOLTIP_DELAY_MS = 450;
 const TOOLTIP_WARM_MS = 300;
-const TOAST_MS = 5000;
+const TOOLTIP_CLOSE_MS = 200;
+const TOAST_MS = 4000;
+const TOAST_CLOSE_MS = 400;
+const MENU_OFFSET = 4;
+const VIEWPORT_MARGIN = 8;
 
-// Menus and selects
+// Menus and selects open and close at once.
 //
 // <div class="popover" data-popover [data-autosubmit] [data-align="start"]>
 //   <button data-popover-trigger aria-haspopup="menu|listbox" aria-expanded="false">…</button>
@@ -27,7 +30,8 @@ document.addEventListener("click", (event) => {
     if (popover === openPopover) {
       closePopover(popover);
     } else {
-      openMenu(popover);
+      // A pointer highlights the item under it; an action menu opened by a click starts with none.
+      openMenu(popover, event.detail === 0 ? "selected" : "pointer");
     }
     return;
   }
@@ -48,7 +52,7 @@ document.addEventListener("pointermove", (event) => {
     ".menu [role=menuitem], .menu [role=option]"
   );
   if (item && !item.hasAttribute("data-highlighted")) {
-    highlight(item.closest(".menu"), item);
+    highlight(item.closest(".menu"), item, false);
   }
 });
 
@@ -118,51 +122,72 @@ function openMenu(popover, focus = "selected") {
   if (openPopover && openPopover !== popover) {
     closePopover(openPopover, false);
   }
+  hideTooltip();
   const trigger = popover.querySelector("[data-popover-trigger]");
   const menu = popover.querySelector(".menu");
-  menu.hidden = false;
-  place(trigger, menu, popover.dataset.align === "start");
-  menu.dataset.state = "open";
-  trigger.setAttribute("aria-expanded", "true");
-  openPopover = popover;
   const items = itemsOf(menu);
   const selected = items.find(
     (item) => item.getAttribute("aria-selected") === "true"
   );
-  highlight(menu, focus === "last" ? items.at(-1) : (selected ?? items[0]));
+  menu.hidden = false;
+  if (menu.getAttribute("role") === "listbox") {
+    placeOverTrigger(trigger, menu, selected ?? items[0]);
+  } else {
+    placeBelow(trigger, menu, popover.dataset.align === "start");
+  }
+  trigger.setAttribute("aria-expanded", "true");
+  openPopover = popover;
+  if (focus === "last") {
+    highlight(menu, items.at(-1));
+  } else if (focus === "selected" || selected) {
+    highlight(menu, selected ?? items[0]);
+  }
   menu.focus({ preventScroll: true });
 }
 
 function closePopover(popover, restoreFocus = true) {
   const trigger = popover.querySelector("[data-popover-trigger]");
-  const menu = popover.querySelector(".menu");
   if (popover === openPopover) {
     openPopover = null;
   }
   trigger.setAttribute("aria-expanded", "false");
-  menu.dataset.state = "closed";
-  setTimeout(() => {
-    if (menu.dataset.state === "closed") {
-      menu.hidden = true;
-    }
-  }, CLOSE_MS);
+  popover.querySelector(".menu").hidden = true;
   if (restoreFocus) {
     trigger.focus({ preventScroll: true });
   }
 }
 
 /** Fixed positioning, so scrolling containers never clip the menu. Opens below, or above when there is no room. */
-function place(trigger, menu, alignStart) {
+function placeBelow(trigger, menu, alignStart) {
   const anchor = trigger.getBoundingClientRect();
-  menu.style.minWidth = `${Math.max(anchor.width, 180)}px`;
   const { width, height } = menu.getBoundingClientRect();
   const below =
-    anchor.bottom + 4 + height <= innerHeight - 8 ||
-    anchor.top - 4 - height < 8;
+    anchor.bottom + MENU_OFFSET + height <= innerHeight - VIEWPORT_MARGIN ||
+    anchor.top - MENU_OFFSET - height < VIEWPORT_MARGIN;
   const left = alignStart ? anchor.left : anchor.right - width;
-  menu.style.left = `${Math.max(8, Math.min(left, innerWidth - width - 8))}px`;
-  menu.style.top = `${below ? anchor.bottom + 4 : anchor.top - 4 - height}px`;
-  menu.dataset.side = below ? "bottom" : "top";
+  menu.style.left = `${clamp(left, width, innerWidth)}px`;
+  menu.style.top = `${below ? anchor.bottom + MENU_OFFSET : anchor.top - MENU_OFFSET - height}px`;
+}
+
+/** A select menu opens over its trigger with the selected option on the trigger's value, as macOS menus do. */
+function placeOverTrigger(trigger, menu, selected) {
+  const anchor = trigger.getBoundingClientRect();
+  menu.style.minWidth = `${anchor.width}px`;
+  menu.scrollTop = 0;
+  const { width, height } = menu.getBoundingClientRect();
+  const optionTop = selected ? selected.offsetTop : 0;
+  const optionHeight = selected ? selected.offsetHeight : 0;
+  const top = anchor.top + anchor.height / 2 - optionHeight / 2 - optionTop;
+  // The option text sits 12 px in, the trigger's value 10 px.
+  menu.style.left = `${clamp(anchor.left - 2, width, innerWidth)}px`;
+  menu.style.top = `${clamp(top, height, innerHeight)}px`;
+}
+
+function clamp(start, size, limit) {
+  return Math.max(
+    VIEWPORT_MARGIN,
+    Math.min(start, limit - size - VIEWPORT_MARGIN)
+  );
 }
 
 function itemsOf(menu) {
@@ -171,7 +196,7 @@ function itemsOf(menu) {
   );
 }
 
-function highlight(menu, item) {
+function highlight(menu, item, scroll = true) {
   for (const other of menu.querySelectorAll("[data-highlighted]")) {
     other.removeAttribute("data-highlighted");
   }
@@ -179,7 +204,9 @@ function highlight(menu, item) {
     return;
   }
   item.setAttribute("data-highlighted", "");
-  item.scrollIntoView({ block: "nearest" });
+  if (scroll) {
+    item.scrollIntoView({ block: "nearest" });
+  }
 }
 
 function activate(item, clicked = false) {
@@ -206,23 +233,22 @@ function activate(item, clicked = false) {
   }
 }
 
-// Tooltips: <button data-tooltip="Search" data-shortcut="/">
+// Tooltips: <button data-tooltip="Search" data-shortcut="/">. One shows 450 ms after the pointer or keyboard
+// focus arrives, 8 px below its target. Within 300 ms of one closing, the next shows at once and the old one goes.
 
-let tooltip;
+let tooltip = null;
 let tooltipTimer;
 let tooltipWarmUntil = 0;
 
 document.addEventListener("pointerover", (event) => {
   const target = event.target.closest("[data-tooltip]");
-  if (target) {
+  if (target && event.pointerType !== "touch") {
     scheduleTooltip(target);
   }
 });
 document.addEventListener("pointerout", (event) => {
-  if (
-    event.target.closest("[data-tooltip]") &&
-    !event.relatedTarget?.closest?.("[data-tooltip]")
-  ) {
+  const target = event.target.closest("[data-tooltip]");
+  if (target && !target.contains(event.relatedTarget)) {
     hideTooltip();
   }
 });
@@ -247,38 +273,48 @@ function showTooltip(target) {
   if (!target.isConnected || openPopover?.contains(target)) {
     return;
   }
-  tooltip ??= Object.assign(document.createElement("div"), {
-    className: "tooltip",
-    role: "tooltip",
-  });
-  const shortcut = target.dataset.shortcut
-    ? `<span class="kbd">${escapeHtml(target.dataset.shortcut)}</span>`
-    : "";
-  tooltip.innerHTML = `${escapeHtml(target.dataset.tooltip)}${shortcut}`;
+  for (const old of document.querySelectorAll(".tooltip")) {
+    old.remove();
+  }
+  tooltip = document.createElement("div");
+  tooltip.className = "tooltip";
+  tooltip.setAttribute("role", "tooltip");
+  tooltip.dataset.state = "open";
+  tooltip.append(target.dataset.tooltip);
+  if (target.dataset.shortcut) {
+    const key = document.createElement("kbd");
+    key.className = "kbd";
+    key.textContent = target.dataset.shortcut;
+    tooltip.append(key);
+  }
   document.body.append(tooltip);
   const anchor = target.getBoundingClientRect();
   const { width, height } = tooltip.getBoundingClientRect();
-  const below = anchor.bottom + 6 + height <= innerHeight - 8;
-  tooltip.style.left = `${Math.max(8, Math.min(anchor.left + anchor.width / 2 - width / 2, innerWidth - width - 8))}px`;
-  tooltip.style.top = `${below ? anchor.bottom + 6 : anchor.top - 6 - height}px`;
-  tooltip.dataset.state = "open";
+  const below =
+    anchor.bottom + MENU_OFFSET * 2 + height <= innerHeight - VIEWPORT_MARGIN;
+  tooltip.dataset.side = below ? "bottom" : "top";
+  tooltip.style.left = `${clamp(anchor.left + anchor.width / 2 - width / 2, width, innerWidth)}px`;
+  tooltip.style.top = `${below ? anchor.bottom + MENU_OFFSET * 2 : anchor.top - MENU_OFFSET * 2 - height}px`;
 }
 
 function hideTooltip() {
   clearTimeout(tooltipTimer);
-  if (tooltip?.isConnected) {
-    tooltip.remove();
-    tooltipWarmUntil = Date.now() + TOOLTIP_WARM_MS;
+  if (!tooltip) {
+    return;
   }
+  const closing = tooltip;
+  tooltip = null;
+  closing.dataset.state = "closed";
+  setTimeout(() => closing.remove(), TOOLTIP_CLOSE_MS);
+  tooltipWarmUntil = Date.now() + TOOLTIP_WARM_MS;
 }
 
-// Dialogs: <button data-dialog-open="new-channel"> opens <dialog id="new-channel" class="dialog">
+// Dialogs open and close at once: <button data-dialog-open="new-channel"> opens <dialog id="new-channel">.
 
 document.addEventListener("click", (event) => {
   const opener = event.target.closest("[data-dialog-open]");
   if (opener) {
     const dialog = document.getElementById(opener.dataset.dialogOpen);
-    dialog.dataset.state = "open";
     dialog.showModal();
     dialog
       .querySelector(
@@ -289,38 +325,25 @@ document.addEventListener("click", (event) => {
   }
   const closer = event.target.closest("[data-dialog-close]");
   if (closer) {
-    closeDialog(closer.closest("dialog"));
+    closer.closest("dialog").close();
   }
   // A click on the backdrop lands on the dialog element itself.
   else if (event.target.matches?.("dialog.dialog[open]")) {
-    closeDialog(event.target);
+    event.target.close();
   }
 });
 
-document.addEventListener(
-  "cancel",
-  (event) => {
-    if (event.target.matches("dialog.dialog")) {
-      event.preventDefault();
-      closeDialog(event.target);
-    }
-  },
-  true
-);
+// Toasts: the server renders one after a redirect with ?error= or ?notice=, and showToast adds more. Each goes
+// after 4 s, sooner on a click; the pointer on it keeps it.
 
-function closeDialog(dialog) {
-  dialog.dataset.state = "closing";
-  setTimeout(() => dialog.close(), CLOSE_MS);
-}
-
-// Toasts: the server renders <div class="toast" data-toast> after a redirect with ?error= or ?notice=.
+const toastTimers = new WeakMap();
 
 function startToasts() {
   for (const toast of document.querySelectorAll(
     "[data-toast]:not([data-state])"
   )) {
     toast.dataset.state = "open";
-    setTimeout(() => dismissToast(toast), TOAST_MS);
+    scheduleToastDismissal(toast);
   }
   const url = new URL(location.href);
   if (url.searchParams.has("error") || url.searchParams.has("notice")) {
@@ -330,16 +353,64 @@ function startToasts() {
   }
 }
 
+function scheduleToastDismissal(toast) {
+  clearTimeout(toastTimers.get(toast));
+  toastTimers.set(
+    toast,
+    setTimeout(() => dismissToast(toast), TOAST_MS)
+  );
+}
+
 document.addEventListener("click", (event) => {
   const toast = event.target.closest("[data-toast]");
   if (toast) {
     dismissToast(toast);
   }
 });
+document.addEventListener("pointerover", (event) => {
+  const toast = event.target.closest("[data-toast]");
+  if (toast && toast.dataset.state === "open") {
+    clearTimeout(toastTimers.get(toast));
+  }
+});
+document.addEventListener("pointerout", (event) => {
+  const toast = event.target.closest("[data-toast]");
+  if (
+    toast &&
+    toast.dataset.state === "open" &&
+    !toast.contains(event.relatedTarget)
+  ) {
+    scheduleToastDismissal(toast);
+  }
+});
 
 function dismissToast(toast) {
+  if (toast.dataset.state === "closing") {
+    return;
+  }
+  clearTimeout(toastTimers.get(toast));
   toast.dataset.state = "closing";
-  setTimeout(() => toast.remove(), 200);
+  setTimeout(() => toast.remove(), TOAST_CLOSE_MS);
+}
+
+/** The same markup as the server's toast in src/platform/ui/components.ts. */
+function showToast(tone, text) {
+  const toast = document.createElement("div");
+  toast.className = `toast ${tone}`;
+  toast.setAttribute("role", "status");
+  toast.toggleAttribute("data-toast", true);
+  const icon = document.createElement("span");
+  icon.className = "toast-icon";
+  const label = document.createElement("span");
+  label.className = "toast-text";
+  label.textContent = text;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "toast-close";
+  close.setAttribute("aria-label", "Dismiss");
+  toast.append(icon, label, close);
+  document.querySelector(".toasts")?.append(toast);
+  startToasts();
 }
 
 // Buttons with data-copy="text" copy the text and confirm with a toast.
@@ -362,15 +433,32 @@ document.addEventListener("datastar-fetch", (event) => {
   }
 });
 
-function showToast(tone, text) {
-  document
-    .querySelector(".toasts")
-    ?.insertAdjacentHTML(
-      "beforeend",
-      `<div class="toast ${tone}" role="status" data-toast><span class="dot"></span>${text}</div>`
-    );
-  startToasts();
-}
+// A form is busy while its request runs, such as a message with a large file: Datastar requests until they finish,
+// plain posts until the next page loads.
+
+document.addEventListener("datastar-fetch", (event) => {
+  const form = event.detail.el.closest?.("form");
+  if (event.detail.type === "started") {
+    form?.setAttribute("aria-busy", "true");
+  } else if (event.detail.type === "finished") {
+    form?.removeAttribute("aria-busy");
+  }
+});
+
+document.addEventListener("submit", (event) => {
+  if (!event.defaultPrevented) {
+    event.target.setAttribute("aria-busy", "true");
+  }
+});
+
+// A page from the back-forward cache comes back as it was left.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    for (const form of document.querySelectorAll("form[aria-busy]")) {
+      form.removeAttribute("aria-busy");
+    }
+  }
+});
 
 // Switches and checkboxes with data-autosubmit submit their form on change.
 
@@ -399,13 +487,6 @@ document.addEventListener("keydown", (event) => {
     target.click();
   }
 });
-
-function escapeHtml(text) {
-  return String(text).replace(
-    /[&<>"']/g,
-    (character) => `&#${character.charCodeAt(0)};`
-  );
-}
 
 startToasts();
 
@@ -510,3 +591,61 @@ function showPicked(form) {
     })
   );
 }
+
+// Elapsed time
+//
+// <span data-elapsed-since="<ms>">12s</span> counts up each second, as the server writes it.
+
+setInterval(() => {
+  for (const element of document.querySelectorAll("[data-elapsed-since]")) {
+    element.textContent = duration(
+      Date.now() - Number(element.dataset.elapsedSince)
+    );
+  }
+}, 1000);
+
+/** A time span as 8s, 2m 05s, or 1h 03m. */
+function duration(milliseconds) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+  if (minutes < 60) {
+    return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  }
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+// Work in progress
+//
+// The steps of an agent at work keep the newest one in view, until the person scrolls up; scrolling back to the end
+// follows again.
+
+const unpinned = new WeakSet();
+
+document.addEventListener(
+  "scroll",
+  (event) => {
+    const steps = event.target;
+    if (!(steps instanceof Element && steps.matches(".work-steps"))) {
+      return;
+    }
+    if (steps.scrollHeight - steps.scrollTop - steps.clientHeight < 4) {
+      unpinned.delete(steps);
+    } else {
+      unpinned.add(steps);
+    }
+  },
+  true
+);
+
+new MutationObserver(() => {
+  for (const steps of document.querySelectorAll(
+    ".work.working > .work-steps"
+  )) {
+    if (!unpinned.has(steps)) {
+      steps.scrollTop = steps.scrollHeight;
+    }
+  }
+}).observe(document.body, { childList: true, subtree: true });

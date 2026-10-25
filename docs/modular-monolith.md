@@ -30,9 +30,10 @@ src/
 ├── llm/                     The shared LLM provider, its stored login, and the agents' web search
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── integrations/            The connectors, their tools, and the credentials of each workspace
-├── artifacts/               The pages and small apps agents make in a thread, their links, and the data they keep
+├── artifacts/               The pages and small apps agents make for a channel, their links, and the data they keep
 ├── browser/                 The headless Chrome of each thread, which agents visit websites with
-├── threads/                 One Pi Durable session per workspace, a conversation per thread, and the agent tools
+├── threads/                 One Pi Durable session per workspace, a conversation per thread, the agent tools, and the
+│                            channel page with the files of each channel
 ├── search/                  Extraction, embeddings, the index of each workspace, and the search page
 ├── routines/                Scheduled scripts and instructions of each channel, their runs, and the channel details page
 └── settings/                The settings pages, which show sections of several modules

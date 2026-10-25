@@ -249,7 +249,7 @@ test("routines of a channel are listed, paused, run, and deleted, and only membe
   ).toBe(404);
 });
 
-test("artifacts of a thread open with their runtime, run calls, and change and delete only for members", async () => {
+test("artifacts of a channel open with their runtime, run calls, and change and delete only for members", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Here it is.")]);
   const thread = await body(
     await golem.call(`/api/v1/workspaces/${workspaceId}/threads`, {
@@ -261,6 +261,7 @@ test("artifacts of a thread open with their runtime, run calls, and change and d
     golem.app.workspaces
       .threadsIn(workspaceId)
       .find((t) => t.id === thread.id)!,
+    channelId,
     { title: "Quiz", html: "<p>Q</p>", requestKey: "api-test" }
   );
   const eve = await golem.signIn("Eve", "eve@example.com");
@@ -268,9 +269,10 @@ test("artifacts of a thread open with their runtime, run calls, and change and d
 
   expect(
     await body(
-      await golem.call(`/api/v1/threads/${thread.id}/artifacts`, {
-        token: alice,
-      })
+      await golem.call(
+        `/api/v1/workspaces/${workspaceId}/channels/${channelId}/artifacts`,
+        { token: alice }
+      )
     )
   ).toEqual({ artifacts: [artifact] });
   const rpc = (op: string, args: unknown, token = alice) =>

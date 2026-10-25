@@ -42,13 +42,30 @@ type Message = {
 	failed: boolean; // the agent's answer failed; text is the error
 	streaming: boolean; // the agent is still writing this message
 	files: FileRef[]; // attached to the message; text may be empty when files are attached
+	work: Work | null; // what the agent did before this answer; null for people and for an answer without work
+};
+// The agent's work after a message is one answer: its last words are the text, and what came before is the work.
+type Work = {
+	startedAt: number;
+	endedAt: number | null; // null while the agent works
+	stopped: boolean; // someone stopped the agent before it answered
+	steps: Step[];
+};
+type Step = {
+	kind: "thinking" | "text" | "tool"; // a thought, words between tool calls, or a tool call
+	text: string; // for a tool call, the thread link in its result, or else the values of its arguments on one line
+	tool: string | null; // the tool's name, such as "web_search"
+	input: string | null; // a tool call's arguments as JSON, cut at 1000 characters
+	output: string | null; // the start of a tool call's result, cut at 1000 characters; null until it has one
+	running: boolean;
+	failed: boolean;
 };
 type FileRef = { id: string; name: string };
-type ThreadFile = { id: string; name: string; size: number; time: number }; // size in bytes; ids are UUIDv7
+type SavedFile = { id: string; name: string; size: number; time: number }; // size in bytes; ids are UUIDv7
 type ThreadState = { thread: ThreadSummary; messages: Message[]; running: boolean };
 type SearchResult = {
-	uri: string; // thread:<id>, or a path under the workspace folder
-	kind: "thread" | "note" | "file" | "capture";
+	uri: string; // thread:<id>, artifact:<id>, or a path under the workspace folder, such as channels/<id>/files/<file id>-<name>
+	kind: "thread" | "artifact" | "note" | "file" | "capture";
 	title: string;
 	threadId: string | null;
 	channelId: string | null;
@@ -82,7 +99,8 @@ type Routine = {
 };
 type Artifact = {
 	id: string; // two words, such as "amber-fox"; a name is never given out again
-	threadId: string;
+	channelId: string | null; // the channel it belongs to; null: the workspace's own, which the orchestrator makes
+	threadId: string; // the thread that made it
 	title: string;
 	visibility: "public" | "members"; // public: anyone with the link; members: signed-in members only
 	url: string; // the link people share: <share_url>/<id> when public and share_url is set, else <base_url>/a/<id>
@@ -137,7 +155,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/workspaces` | `{ name }` | `Workspace`; the creator becomes owner, and the workspace gets a `general` channel |
 | `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }` |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
-| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, their artifacts, and its routines go with it, and the orchestrator moves to the next channel; `409` for the last channel |
+| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrator moves to the next channel; `409` for the last channel |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
 | `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once |
 
@@ -151,15 +169,22 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice? }` | `204` |
-| `GET /api/v1/threads/:threadId/files` | | `{ files: ThreadFile[] }`, oldest first |
-| `POST /api/v1/threads/:threadId/files` | multipart `files` | `{ files: ThreadFile[] }`: all files of the thread |
-| `DELETE /api/v1/threads/:threadId/files/:fileId` | | `{ files: ThreadFile[] }`: the files left. Messages keep the name of a deleted file. |
-| `GET /api/v1/threads/:threadId/files/:fileId` | | The file. Pictures, PDFs, plain text, audio, and video are `inline`; other kinds are `attachment` and `application/octet-stream`. |
+| `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
+| `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
+| `GET /api/v1/workspaces/:workspaceId/channels/:channelId/files` | | `{ files: SavedFile[] }`, oldest first |
+| `POST /api/v1/workspaces/:workspaceId/channels/:channelId/files` | multipart `files` | `{ files: SavedFile[] }`: all files of the channel |
+| `GET /api/v1/workspaces/:workspaceId/files` | | `{ files: SavedFile[] }`: the workspace's own files, which the orchestrator keeps, oldest first |
+| `POST /api/v1/workspaces/:workspaceId/files` | multipart `files` | `{ files: SavedFile[] }`: all of the workspace's own files |
+| `GET /api/v1/workspaces/:workspaceId/files/:fileId` | | Any file of the workspace, in a channel or its own. Pictures, PDFs, plain text, audio, and video are `inline`; other kinds are `attachment` and `application/octet-stream`. |
+| `DELETE /api/v1/workspaces/:workspaceId/files/:fileId` | | `{ files: SavedFile[] }`: the files left where it was. Messages keep the name of a deleted file. |
 
-To attach files to a new thread or a message, send the same fields as a `multipart/form-data` form with one `files`
-part per file instead of JSON. A message then needs text, files, or both; a thread without text takes the name of its
-first file. The thread's agent sees each attached file by name and id, and reads files with its `list_files` and
-`read_file` tools.
+Files belong to a channel: every thread of the channel sees them, also after a thread is settled. The orchestrator
+belongs to no channel, so its files are the workspace's own. To attach files to a new thread or a message, send the
+same fields as a `multipart/form-data` form with one `files` part per file instead of JSON; the files go to the
+thread's channel, or the workspace for the orchestrator. A message then needs text, files, or both; a thread without
+text takes the name of its first file. A message's `FileRef` opens at `/api/v1/workspaces/:workspaceId/files/:fileId`.
+The agents see each attached file by name and id; `list_files` lists the files of their channel, and `read_file` reads
+any file of the workspace by its id.
 
 The orchestrator is the one thread of a workspace that never ends: the workspace opens on it, and its agent gives
 work to the threads of the channels. It is in the first channel, but no `Channel.threads` list shows it, and it cannot
@@ -172,7 +197,8 @@ the message steers a run at work instead of waiting for it to end.
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET /api/v1/threads/:threadId/artifacts` | | `{ artifacts: Artifact[] }`, newest first |
+| `GET /api/v1/workspaces/:workspaceId/channels/:channelId/artifacts` | | `{ artifacts: Artifact[] }`, newest first, from every thread of the channel |
+| `GET /api/v1/workspaces/:workspaceId/artifacts` | | `{ artifacts: Artifact[] }`: the workspace's own, which the orchestrator makes, newest first |
 | `GET /api/v1/artifacts/:artifactId` | | `{ artifact: Artifact, records: ArtifactRecord[], content: string }` |
 | `PUT /api/v1/artifacts/:artifactId` | `{ visibility }` | `Artifact` |
 | `DELETE /api/v1/artifacts/:artifactId` | | `204`; its data goes with it |
@@ -181,7 +207,9 @@ the message steers a run at work instead of waiting for it to end.
 | `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |
 
 An artifact is a page or a small app that an agent makes in a thread with its `create_artifact`, `update_artifact`,
-`edit_artifact`, `read_artifact`, `list_artifacts`, `artifact_data`, and `set_artifact_data` tools. `content` is the
+`edit_artifact`, `read_artifact`, `list_artifacts`, `artifact_data`, and `set_artifact_data` tools. It belongs to the
+thread's channel, or to a channel the agent names: every thread of the channel sees it, and it stays after the thread
+is settled. The orchestrator's belong to the workspace. `content` is the
 agent's HTML with Golem's `golem` runtime at the top of its head. The runtime sends each call as a message: to
 `window.webkit.messageHandlers.golem` in a web view, or else to the parent window. Its reply goes back through
 `window.__golemReceive({ golem: 1, id, result })`, or `{ golem: 1, id, error }`. The iOS app loads `content` with no

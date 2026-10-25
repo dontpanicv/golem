@@ -3,11 +3,13 @@ import { statSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Artifact } from "../artifacts/artifacts.ts";
 import type { Message } from "../threads/threads.ts";
 import type { ThreadRef, ThreadSummary } from "../workspaces/workspaces.ts";
 import type { Embedder, EmbedInput } from "./embedder.ts";
 import { tools } from "./extract.ts";
 import {
+  type ArtifactReader,
   Indexer,
   type ThreadReader,
   type WorkspaceDirectory,
@@ -19,12 +21,32 @@ beforeAll(async () => {
 });
 afterAll(() => rm(dataDirectory, { recursive: true, force: true }));
 
-/** The directory the indexer reads: workspace ids, and the threads of each workspace. */
+/** The directory the indexer reads: workspace ids, and the threads of each workspace and the channels they are in. */
 function directory(
   ids: readonly string[] = [],
   threads: readonly (ThreadSummary & ThreadRef)[] = []
 ): WorkspaceDirectory {
-  return { ids: () => [...ids], threadsIn: () => [...threads] };
+  return {
+    ids: () => [...ids],
+    threadsIn: () => [...threads],
+    channelsIn: () =>
+      [...new Set(threads.map((thread) => thread.channelId))].map((id) => ({
+        id,
+        name: id,
+        summary: null,
+        threads: [],
+      })),
+  };
+}
+
+/** Artifacts with their HTML, instead of the database. */
+function artifactsWith(
+  pages: readonly { artifact: Artifact; html: string }[] = []
+): ArtifactReader {
+  return {
+    inWorkspace: () => pages.map((page) => page.artifact),
+    html: (id) => pages.find((page) => page.artifact.id === id)!.html,
+  };
 }
 
 function message(
@@ -42,6 +64,7 @@ function message(
     files: [],
     streaming: false,
     time: 0,
+    work: null,
     ...state,
   };
 }
@@ -108,11 +131,12 @@ test("start creates each workspace's folders and indexes a new file soon after i
     data,
     directory(["family"]),
     threadsWith({}),
+    artifactsWith(),
     null
   );
   try {
     indexer.start();
-    for (const folder of ["notes", "files", "raw"]) {
+    for (const folder of ["notes", "files", "raw", "channels"]) {
       expect(
         statSync(join(data, "workspaces", "family", folder)).isDirectory()
       ).toBe(true);
@@ -145,7 +169,7 @@ test("start creates each workspace's folders and indexes a new file soon after i
   }
 });
 
-test("a scan indexes finished thread messages and thread files, and skips what it cannot use", async () => {
+test("a scan indexes finished thread messages, artifacts, and channel files, and skips what it cannot use", async () => {
   const data = join(dataDirectory, "threads");
   const threads = directory(
     ["family"],
@@ -170,10 +194,10 @@ test("a scan indexes finished thread messages and thread files, and skips what i
       },
     ]
   );
-  const thread = join(data, "workspaces", "family", "threads", "t1");
-  await mkdir(join(thread, "files"), { recursive: true });
+  const channel = join(data, "workspaces", "family", "channels", "c1");
+  await mkdir(join(channel, "files"), { recursive: true });
   await Bun.write(
-    join(thread, "files", "tickets.txt"),
+    join(channel, "files", "tickets.txt"),
     "Ferry tickets for Saturday"
   );
   await Bun.write(
@@ -194,6 +218,22 @@ test("a scan indexes finished thread messages and thread files, and skips what i
         message("m3", "ferry answer that failed", { failed: true }),
       ],
     }),
+    artifactsWith([
+      {
+        artifact: {
+          id: "amber-fox",
+          channelId: "c1",
+          threadId: "t1",
+          title: "Island trip",
+          visibility: "members",
+          url: "http://golem.test/a/amber-fox",
+          visitors: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        html: "<html><head><title>x</title><style>.ferry{}</style></head><body><p>Ferry at 9:00</p></body></html>",
+      },
+    ]),
     null
   );
   try {
@@ -209,9 +249,13 @@ test("a scan indexes finished thread messages and thread files, and skips what i
         ])
         .sort()
     ).toEqual([
-      ["file", "threads/t1/files/tickets.txt", "t1", "c1"],
+      ["artifact", "artifact:amber-fox", "t1", "c1"],
+      ["file", "channels/c1/files/tickets.txt", null, "c1"],
       ["thread", "thread:t1", "t1", "c1"],
     ]);
+    expect(
+      results.find((result) => result.kind === "artifact")?.snippet
+    ).toContain("Ferry at 9:00");
     expect(results.find((result) => result.kind === "thread")?.snippet).toBe(
       "Anna: We take the ferry to the island"
     );
@@ -244,7 +288,13 @@ test("pictures read while the model is down are read again, and text waits for t
     "The children want to visit the mountain lake again next summer"
   );
   const { embedder, state } = testEmbedder();
-  const indexer = new Indexer(data, directory(), threadsWith({}), embedder);
+  const indexer = new Indexer(
+    data,
+    directory(),
+    threadsWith({}),
+    artifactsWith(),
+    embedder
+  );
   const real = tools.ffmpeg;
   tools.ffmpeg = fakeFfmpeg;
   try {

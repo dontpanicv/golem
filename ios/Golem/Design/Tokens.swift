@@ -5,28 +5,50 @@ enum Tokens {
 	enum Colors {
 		static let canvas = Color(light: "#efeff0", dark: "#09090a")
 		static let surface = Color(light: "#f9f9fa", dark: "#121213")
-		static let surfaceRaised = Color(light: "#ffffff", dark: "#1b1b1d")
-		static let fillSubtle = Color(light: "#efeff0", dark: "#18181a")
-		static let fillHover = Color(light: "#e9e9ea", dark: "#1e1e21")
-		static let fillActive = Color(light: "#e1e1e2", dark: "#26262a")
-		static let surfaceHover = Color(light: "#f3f3f3", dark: "#232326")
-		static let switchTrack = Color(light: "#cdcdcd", dark: "#3e3e44")
+		static let surfaceRaised = Color(light: "#ffffff", dark: "#1a1a1b")
+		static let surfaceHover = Color(light: "#f3f3f3", dark: "#252527")
+		static let surfaceControl = Color(light: "#ffffff", dark: "#232325")
+		static let surfaceControlHover = Color(light: "#f3f3f3", dark: "#2c2d2f")
+		static let surfaceMenu = Color(light: "#ffffff", dark: "#212122")
+		static let menuHover = Color(light: "#f3f3f3", dark: "#313234")
+		static let surfaceListbox = Color(light: "#ffffff", dark: "#28292b")
+		static let listboxHover = Color(light: "#f3f3f3", dark: "#3c3d40")
+		static let surfaceComposer = Color(light: "#ffffff", dark: "#161617")
+		static let ghostHover = Color(light: "#00000009", dark: "#ffffff12")
+		static let fillSubtle = Color(light: "#efeff0", dark: "#1a1a1b")
+		static let fillHover = Color(light: "#e7e7e8", dark: "#18181a")
+		static let fillActive = Color(light: "#e1e1e2", dark: "#232325")
+		static let fillSelected = Color(light: "#ececed", dark: "#29292b")
+		static let fillIcon = Color(light: "#efefef", dark: "#1d1e1f")
+		static let switchTrack = Color(light: "#cdcdcd", dark: "#707172")
+		static let switchTrackHover = Color(light: "#bebebe", dark: "#868789")
 		static let border = Color(light: "#e2e2e2", dark: "#212224")
-		static let borderSubtle = Color(light: "#f1f1f1", dark: "#27282b")
-		static let borderStrong = Color(light: "#d8d8d8", dark: "#2e2f33")
-		static let text = Color(light: "#1b1b1b", dark: "#f7f8f8")
-		static let textSecondary = Color(light: "#2f2f31", dark: "#d0d6e0")
-		static let textTertiary = Color(light: "#5c5c5e", dark: "#8a8f98")
-		static let textQuaternary = Color(light: "#9c9d9f", dark: "#62666d")
-		static let accent = Color(light: "#6d78d5", dark: "#6d78d5")
-		static let accentHover = Color(light: "#5e6ac1", dark: "#828bf0")
-		static let accentSubtle = Color(light: "#6d78d51f", dark: "#6d78d52e")
+		static let borderSubtle = Color(light: "#e8e8e8", dark: "#303134")
+		static let borderMenu = Color(light: "#e8e8e8", dark: "#3c3d40")
+		static let borderDialog = Color(light: "#e8e8e8", dark: "#343538")
+		static let borderStrong = Color(light: "#d8d8d8", dark: "#48494c")
+		static let borderHover = Color(light: "#c2c2c2", dark: "#3e424d")
+		static let borderControl = Color(light: "#7c7c7c", dark: "#858689")
+		static let ring = Color(light: "#00000017", dark: "#ffffff15")
+		static let ringControl = Color(light: "#00000017", dark: "#ffffff23")
+		static let ringHover = Color(light: "#00000026", dark: "#ffffff3a")
+		static let ringListbox = Color(light: "#d8d8d8", dark: "#585a5d")
+		static let text = Color(light: "#1b1b1b", dark: "#ffffff")
+		static let textSecondary = Color(light: "#2f2f31", dark: "#e3e4e6")
+		static let textTertiary = Color(light: "#5c5c5e", dark: "#959597")
+		static let textQuaternary = Color(light: "#a0a0a2", dark: "#5c5d5f")
+		static let accent = Color(light: "#6d78d5", dark: "#5e6ad2")
+		static let accentHover = Color(light: "#5e6ac1", dark: "#6975e2")
+		static let accentSubtle = Color(light: "#5966cc14", dark: "#6d78d529")
 		static let onAccent = Color(light: "#ffffff", dark: "#ffffff")
 		static let success = Color(light: "#4cb782", dark: "#4cb782")
 		static let warning = Color(light: "#f2994a", dark: "#f2994a")
-		static let danger = Color(light: "#eb5757", dark: "#eb5757")
-		static let overlay = Color(light: "#0000004d", dark: "#000000a6")
+		static let danger = Color(light: "#e2253b", dark: "#ff8683")
+		static let dangerSubtle = Color(light: "#fde9e9", dark: "#361d1e")
+		static let overlay = Color(light: "#0000003d", dark: "#00000066")
 	}
+
+	static let avatarColors: [Color] = [Color(light: "#5e6ad2", dark: "#5e6ad2"), Color(light: "#4cb782", dark: "#4cb782"), Color(light: "#f2994a", dark: "#f2994a"), Color(light: "#eb5757", dark: "#eb5757"), Color(light: "#b0af35", dark: "#b0af35"), Color(light: "#26b5ce", dark: "#26b5ce"), Color(light: "#bb87fc", dark: "#bb87fc"), Color(light: "#e2649b", dark: "#e2649b"), Color(light: "#0f7488", dark: "#0f7488"), Color(light: "#95a2b3", dark: "#95a2b3")]
 
 	enum FontSize {
 		static let xs: CGFloat = 11
@@ -34,19 +56,20 @@ enum Tokens {
 		static let md: CGFloat = 13
 		static let lg: CGFloat = 15
 		static let xl: CGFloat = 20
-		static let xxl: CGFloat = 28
+		static let xxl: CGFloat = 24
 	}
 
 	enum FontWeight {
 		static let regular: Font.Weight = .regular
 		static let book: Font.Weight = .regular
 		static let medium: Font.Weight = .medium
+		static let strong: Font.Weight = .medium
 		static let semibold: Font.Weight = .semibold
 	}
 
 	enum LineHeight {
-		static let tight: CGFloat = 1.25
 		static let normal: CGFloat = 1.5
+		static let relaxed: CGFloat = 1.6
 	}
 
 	enum Space {
@@ -61,6 +84,7 @@ enum Tokens {
 	}
 
 	enum Radius {
+		static let xxs: CGFloat = 3
 		static let xs: CGFloat = 4
 		static let sm: CGFloat = 6
 		static let md: CGFloat = 8
@@ -72,7 +96,11 @@ enum Tokens {
 	enum Size {
 		static let sidebar: CGFloat = 244
 		static let settledShelf: CGFloat = 240
+		static let workLog: CGFloat = 288
 		static let artifacts: CGFloat = 400
+		static let page: CGFloat = 640
+		static let dialog: CGFloat = 560
+		static let toast: CGFloat = 384
 		static let header: CGFloat = 44
 		static let navRow: CGFloat = 28
 		static let listRow: CGFloat = 44
@@ -82,21 +110,67 @@ enum Tokens {
 		static let controlTiny: CGFloat = 24
 		static let menuItem: CGFloat = 32
 		static let menuMinWidth: CGFloat = 180
-		static let tooltip: CGFloat = 28
 		static let switchWidth: CGFloat = 30
 		static let switchHeight: CGFloat = 20
 		static let switchKnob: CGFloat = 14
 		static let checkbox: CGFloat = 14
 		static let settingsRow: CGFloat = 60
 		static let avatar: CGFloat = 24
+		static let dot: CGFloat = 9
 		static let icon: CGFloat = 16
+		static let iconSmall: CGFloat = 14
 		static let inset: CGFloat = 8
 	}
 
+	/// The iOS app's own values, measured from Linear's iOS app.
+	enum Mobile {
+		enum Colors {
+			static let background = Color(light: "#ffffff", dark: "#0d0d0d")
+			static let title = Color(light: "#000000", dark: "#ffffff")
+			static let text = Color(light: "#303030", dark: "#e3e3e3")
+			static let textSecondary = Color(light: "#5c5d5c", dark: "#979897")
+			static let textTertiary = Color(light: "#818281", dark: "#767776")
+			static let textQuaternary = Color(light: "#9c9d9c", dark: "#5a5b5a")
+			static let placeholder = Color(light: "#b0b0b0", dark: "#707170")
+			static let separator = Color(light: "#f1f1f1", dark: "#171717")
+			static let fill = Color(light: "#f1f1f1", dark: "#292929")
+			static let chip = Color(light: "#e5e5e5", dark: "#333333")
+			static let danger = Color(light: "#ea5756", dark: "#ea5756")
+		}
+
+		enum FontSize {
+			static let caption: CGFloat = 12
+			static let small: CGFloat = 14
+			static let row: CGFloat = 15.5
+			static let body: CGFloat = 16
+			static let menu: CGFloat = 17
+			static let sheetTitle: CGFloat = 17
+			static let detailTitle: CGFloat = 22
+			static let title: CGFloat = 25.5
+		}
+
+		enum Size {
+			static let margin: CGFloat = 20
+			static let header: CGFloat = 44
+			static let pill: CGFloat = 34
+			static let row: CGFloat = 46
+			static let tabBarWidth: CGFloat = 320
+			static let tabBar: CGFloat = 56
+			static let tabItem: CGFloat = 48
+			static let tabBarBottom: CGFloat = 24
+			static let voice: CGFloat = 48
+			static let compactTab: CGFloat = 40
+			static let menuRow: CGFloat = 45
+			static let pickerRow: CGFloat = 43
+			static let settingsRow: CGFloat = 43
+			static let homeIndicator: CGFloat = 34
+		}
+	}
+
 	enum Shadows {
-		static let low: [Shadow] = [Shadow(y: 1, blur: 1, opacity: 0.04), Shadow(y: 3, blur: 6, opacity: 0.02)]
-		static let high: [Shadow] = [Shadow(y: 4, blur: 12, opacity: 0.08), Shadow(y: 1, blur: 2, opacity: 0.06)]
-		static let menu: [Shadow] = [Shadow(y: 6, blur: 18, opacity: 0.02), Shadow(y: 3, blur: 9, opacity: 0.04), Shadow(y: 1, blur: 1, opacity: 0.04)]
+		static let low: [Shadow] = [Shadow(y: 3, blur: 6, color: Color(light: "#00000005", dark: "#00000000")), Shadow(y: 1, blur: 1, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 0.5, blur: 1, color: Color(light: "#00000000", dark: "#0000004d"))]
+		static let menu: [Shadow] = [Shadow(y: 6, blur: 18, color: Color(light: "#00000005", dark: "#00000000")), Shadow(y: 3, blur: 9, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 1, blur: 1, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 3, blur: 8, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 2, blur: 5, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 1, blur: 1, color: Color(light: "#00000000", dark: "#00000020"))]
+		static let modal: [Shadow] = [Shadow(y: 9, blur: 48, color: Color(light: "#00000014", dark: "#00000000")), Shadow(y: 6, blur: 24, color: Color(light: "#0000001a", dark: "#00000000")), Shadow(y: 1, blur: 1, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 4, blur: 40, color: Color(light: "#00000000", dark: "#0000001a")), Shadow(y: 3, blur: 20, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 3, blur: 12, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 2, blur: 8, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 1, blur: 1, color: Color(light: "#00000000", dark: "#00000020"))]
 	}
 
 	enum Duration {
@@ -104,10 +178,12 @@ enum Tokens {
 		static let menu: Double = 0.14
 		static let fast: Double = 0.15
 		static let normal: Double = 0.2
+		static let toast: Double = 0.4
 	}
 
 	enum Easing {
 		static func out(_ duration: Double) -> Animation { .timingCurve(0.16, 1, 0.3, 1, duration: duration) }
 		static func standard(_ duration: Double) -> Animation { .timingCurve(0.2, 0, 0, 1, duration: duration) }
+		static func ease(_ duration: Double) -> Animation { .timingCurve(0.25, 0.1, 0.25, 1, duration: duration) }
 	}
 }

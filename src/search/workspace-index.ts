@@ -18,7 +18,7 @@ export interface SourceInput {
   readonly version: string;
 }
 
-export type SearchKind = "thread" | "note" | "file" | "capture";
+export type SearchKind = "thread" | "artifact" | "note" | "file" | "capture";
 export type Modality = "text" | "image" | "audio" | "none";
 export interface Segment {
   /** Identifies the content when `text` does not, as for media. */
@@ -51,8 +51,8 @@ const SCHEMA = `
 	CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 	CREATE TABLE IF NOT EXISTS sources (
 		id INTEGER PRIMARY KEY,
-		uri TEXT NOT NULL UNIQUE,      -- thread:<id>, or <folder>/<path> under the workspace folder
-		kind TEXT NOT NULL,            -- thread | note | file | capture
+		uri TEXT NOT NULL UNIQUE,      -- thread:<id>, artifact:<id>, or <folder>/<path> under the workspace folder
+		kind TEXT NOT NULL,            -- thread | artifact | note | file | capture
 		title TEXT NOT NULL,
 		thread_id TEXT,
 		channel_id TEXT,

@@ -142,15 +142,24 @@ export function html(body: string): Response {
   });
 }
 
-/** Serves a file from `public/`; paths that leave it are not found. */
+/**
+ * Serves a file from `public/`; paths that leave it are not found. Pages link files with a hash of their content in
+ * `?v=`, and fonts never change, so browsers keep those for good; they check the others every time.
+ */
 export async function asset(request: Request): Promise<Response> {
-  const path = resolve(
-    publicDirectory,
-    decodeURIComponent(new URL(request.url).pathname.slice("/assets/".length))
-  );
+  const url = new URL(request.url);
+  const name = decodeURIComponent(url.pathname.slice("/assets/".length));
+  const path = resolve(publicDirectory, name);
   const file = Bun.file(path);
   if (!(path.startsWith(publicDirectory + sep) && (await file.exists()))) {
     return new Response("Not found", { status: 404 });
   }
-  return new Response(file);
+  const immutable = url.searchParams.has("v") || name.startsWith("fonts/");
+  return new Response(file, {
+    headers: {
+      "cache-control": immutable
+        ? "public, max-age=31536000, immutable"
+        : "no-cache",
+    },
+  });
 }

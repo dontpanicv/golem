@@ -5,12 +5,16 @@
 import tokens from "../design/tokens.json" with { type: "json" };
 
 type Tokens = typeof tokens;
-type Shadow = readonly {
+interface ShadowLayer {
   y: number;
   blur: number;
   spread: number;
   opacity: number;
-}[];
+}
+interface Shadow {
+  light: readonly ShadowLayer[];
+  dark: readonly ShadowLayer[];
+}
 
 export const outputs = {
   "public/tokens.css": css,
@@ -29,6 +33,7 @@ export function css(t: Tokens): string {
       ([name, c]) =>
         `--color-${kebab(name)}: light-dark(${c.light}, ${c.dark});`
     ),
+    ...t.avatar.map((color, index) => `--avatar-${index}: ${color};`),
     ...scale("font-size", t.fontSize, "px"),
     ...scale("font-weight", t.fontWeight, ""),
     ...scale("line-height", t.lineHeight, ""),
@@ -36,7 +41,7 @@ export function css(t: Tokens): string {
     ...scale("radius", t.radius, "px"),
     ...scale("size", t.size, "px"),
     ...Object.entries(t.shadow).map(
-      ([name, layers]) => `--shadow-${name}: ${cssShadow(layers)};`
+      ([name, shadow]) => `--shadow-${name}: ${cssShadow(shadow)};`
     ),
     ...scale("duration", t.duration, "ms"),
     ...Object.entries(t.easing).map(
@@ -52,6 +57,7 @@ export function swift(t: Tokens): string {
     400: ".regular",
     450: ".regular",
     500: ".medium",
+    550: ".medium",
     600: ".semibold",
   };
   const enumOf = (name: string, members: string[]) =>
@@ -72,6 +78,7 @@ ${[
         `static let ${name} = Color(light: "${c.light}", dark: "${c.dark}")`
     )
   ),
+  `\tstatic let avatarColors: [Color] = [${t.avatar.map((color) => `Color(light: "${color}", dark: "${color}")`).join(", ")}]`,
   enumOf("FontSize", numbers(t.fontSize)),
   enumOf(
     "FontWeight",
@@ -83,11 +90,29 @@ ${[
   enumOf("Space", numbers(t.space)),
   enumOf("Radius", numbers(t.radius)),
   enumOf("Size", numbers(t.size)),
+  `\t/// The iOS app's own values, measured from Linear's iOS app.\n\tenum Mobile {\n${[
+    enumOf(
+      "Colors",
+      Object.entries(t.mobile.color).map(
+        ([name, c]) =>
+          `static let ${name} = Color(light: "${c.light}", dark: "${c.dark}")`
+      )
+    ),
+    enumOf("FontSize", numbers(t.mobile.fontSize)),
+    enumOf("Size", numbers(t.mobile.size)),
+  ]
+    .join("\n\n")
+    .replace(/^(?=.)/gm, "\t")}\n\t}`,
   enumOf(
     "Shadows",
     Object.entries(t.shadow).map(
-      ([name, layers]) =>
-        `static let ${name}: [Shadow] = [${(layers as Shadow).map((s) => `Shadow(y: ${s.y}, blur: ${s.blur}, opacity: ${s.opacity})`).join(", ")}]`
+      ([name, shadow]) =>
+        `static let ${name}: [Shadow] = [${themedLayers(shadow)
+          .map(
+            ({ layer, light, dark }) =>
+              `Shadow(y: ${layer.y}, blur: ${layer.blur}, color: Color(light: "${light}", dark: "${dark}"))`
+          )
+          .join(", ")}]`
     )
   ),
   enumOf(
@@ -118,12 +143,33 @@ function scale(
   );
 }
 
-function cssShadow(layers: Shadow): string {
-  return layers
+function cssShadow(shadow: Shadow): string {
+  return themedLayers(shadow)
     .map(
-      (s) => `0 ${s.y}px ${s.blur}px ${s.spread}px rgb(0 0 0 / ${s.opacity})`
+      ({ layer, light, dark }) =>
+        `0 ${layer.y}px ${layer.blur}px ${layer.spread}px light-dark(${light}, ${dark})`
     )
     .join(", ");
+}
+
+/** The light layers, then the dark ones; each layer is transparent in the other theme. */
+function themedLayers(
+  shadow: Shadow
+): { layer: ShadowLayer; light: string; dark: string }[] {
+  const none = "#00000000";
+  return [
+    ...shadow.light.map((layer) => ({
+      layer,
+      light: black(layer),
+      dark: none,
+    })),
+    ...shadow.dark.map((layer) => ({ layer, light: none, dark: black(layer) })),
+  ];
+}
+
+function black(layer: ShadowLayer): string {
+  const alpha = Math.round(layer.opacity * 255);
+  return `#000000${alpha.toString(16).padStart(2, "0")}`;
 }
 
 function kebab(name: string): string {

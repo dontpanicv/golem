@@ -1,105 +1,209 @@
 # Golem components
 
-Measurements come from Linear's interface and live in `tokens.json`. Every component exists on the web
-(`public/styles.css`, `public/ui.js`, `src/platform/ui/`) and on iOS (`ios/Golem/Design/`) with the same look and
-behavior.
-Native selects and pickers are never used: menus, selects, switches, and checkboxes are our own.
+Every value is measured from Linear's light and dark themes (Inter 4.1, the same font file) and lives in
+`tokens.json`.
+Every component exists on the web (`public/styles.css`, `public/ui.js`, `src/platform/ui/`) and on iOS
+(`ios/Golem/Design/`) with the same look and behavior. Native selects and pickers are never used: menus, selects,
+switches, and checkboxes are our own.
 
-Motion: color and border changes take `duration.fast` (150 ms) ease-out. Popovers and dialogs open in
-`duration.menu` (140 ms) with `easing.out`, from opacity 0 and scale 0.96 (dialogs 0.98) toward the trigger, and close
-in 100 ms. Respect reduced motion: no scaling, fades only.
+## Type and color
+
+- Inter Variable, line height `normal` for controls, `font-display: block`. Pages link styles and scripts with a hash
+  of their content, and the server keeps them and the font in the browser for good, so text never paints in a
+  fallback font first.
+- Text: `text` for titles and values, `textSecondary` for controls and body, `textTertiary` for descriptions,
+  inactive navigation, and meta, `textQuaternary` for placeholders and times.
+- Weights: `book` (450) for body and menus, `medium` (500) for labels, navigation, and buttons, `strong` (550) for
+  the workspace name, `regular` (400) for field and select values.
+- Icons: 16 px in menus and lists, 14 px in buttons and navigation; strokes stay 1.5 px at every size.
+- Dark theme: Linear lifts each layer, so roles that share one light color split in dark. Cards, fields, buttons,
+  and dialogs use `surfaceRaised`; a select trigger on a card `surfaceControl`; action menus, tooltips, and toasts
+  `surfaceMenu`; select menus `surfaceListbox`; the composer `surfaceComposer`. Controls take `ringControl`, cards
+  `ring`. `ghostHover` is translucent, so a ghost button fits every surface. Shadows have their own dark layers.
+
+## Motion
+
+- Hover states start at once and fade out in `duration.fast` (150 ms, `ease`): every transition has a zero duration
+  while hovered or pressed. Hover styles apply only to fine pointers.
+- Menus, selects, and dialogs open and close at once.
+- Tooltips spring: opacity reaches 1 in 40 ms while the scale goes from 0.98 to 1 in 48 ms; on close the scale goes
+  back in 33 ms and the opacity fades in 180 ms after a 27 ms hold. CSS `linear()` curves trace Linear's spring.
+- Toasts slide up from their own height and fade in `duration.toast` (400 ms, `ease`), and leave the same way.
+- Reduced motion: no transitions or animations.
 
 ## Buttons
 
-| Variant | Look | Hover / pressed |
+| Variant | Look | Hover |
 | --- | --- | --- |
-| primary | `accent` fill, `onAccent` text, shadow `low` | `accentHover` |
-| secondary | `surfaceRaised` fill, 0.5 px `borderStrong` ring | `surfaceHover` |
-| ghost | transparent | `fillHover` on the canvas, `surfaceHover` on surfaces |
-| danger | secondary with `danger` text | secondary hover |
+| secondary | `surfaceRaised`, `textSecondary`, a 0.5 px `ringControl` and shadow `low` | `surfaceHover`, `ringHover` |
+| primary | `accent`, `onAccent`, shadow `low` | `accentHover` |
+| ghost | transparent, `textTertiary` | `ghostHover`; `text` |
+| danger | ghost with `danger` text | `dangerSubtle` |
 
-- Text buttons are pills (`radius.full`), `size.control` (32) high, 12 px side padding, `fontSize.md` `medium`.
-- `small`: `size.controlSmall` (28), `radius.md` (8): toolbars and headers.
-- `icon`: square, `size.controlSmall` (28) or `size.controlTiny` (24), `radius.md`, a 16 px icon.
-- `large`: `size.controlLarge` (40), full width: sign-in and dialogs on phones.
-- Disabled: 50 % opacity, no hover.
-- Focus: 1 px `accent` outline, offset 1 px.
-- iOS keeps the visual height and extends the touch target to 44 pt.
+- All are pills (`radius.full`): 32 high, 12 px side padding, `fontSize.md` `medium`. A leading 14 px icon takes the
+  left padding to 10 px and sits 6 px from the label.
+- `small`: 28 high, 10 px padding (8 px before an icon), `fontSize.sm`. `large`: 40 high, full width.
+- Icon buttons are circles: 28 (`icon`) or 24 (`tiny`), with a 14 px icon.
+- Pressed (`aria-pressed`) and open (`aria-expanded`) ghost buttons keep the hover look. Disabled: 60 % opacity.
+- Busy: while a message sends or files upload, the send or upload button shows a 14 px spinner in place of its icon
+  and takes no clicks.
+- Focus: 1 px `accent` outline, offset 2 px. The cursor stays the arrow, as in Linear.
+- iOS keeps the visual size and extends the touch target to 44 pt.
 
 ## Text field
 
-- `size.control` (32) high, `radius.md`, padding 6 × 12, `surfaceRaised` fill, 0.5 px `borderStrong`, `fontSize.md`.
-- Placeholder `textQuaternary`. Focus: 1 px `accent` outline at offset −1 px (iOS: a 1 pt `accent` border).
-- Label above: `fontSize.sm` `medium` `textTertiary`, 4 px gap. Errors use a toast, not inline text.
-- Large variant (sign-in): `size.controlLarge` (40).
+- 32 high, padding 6 × 12, `radius.md`, `surfaceRaised`, 0.5 px `borderStrong`, `fontSize.md` `regular` `text`.
+  Hover: `borderHover`. Focus: 1 px `accent` outline at offset −1 px (iOS: a 1 pt `accent` border).
+- Placeholder `textQuaternary`. Large (sign-in, search): 40 high, `fontSize.lg`.
+- Label above: `fontSize.md` `medium` `textSecondary` on a 24 px line, 4 px gap. Errors use a toast.
+- In a settings row a field is 180 wide.
 
 ## Select
 
-A trigger that opens a menu of options; never a native select.
-
-- Trigger: `size.control` − 2 (30) high, `radius.md`, padding 1 × 28 × 1 × 10, `surfaceRaised`, 0.5 px transparent border,
-  value in `fontSize.md` `regular`, chevron 16 px at the right. Hover: `surfaceHover`.
-- Opens the menu below the trigger, right-aligned, or above when there is no room.
+- Trigger: 30 high with 1 px margins, `radius.md`, padding 1 × 28 × 1 × 10, `surfaceControl`, `ringControl` and
+  shadow `low`, value `fontSize.md` `regular` `textSecondary`, a 16 px chevron 7 px from the right. Hover:
+  `surfaceControlHover`, `ringHover`.
+- The menu opens over the trigger with the selected option centered on it and its text on the value, as macOS menus
+  do; at least as wide as the trigger. It moves only to stay 8 px inside the window.
+- Menu: `surfaceListbox`, 4 px vertical padding, a 0.5 px `ringListbox` ring and shadow `menu`, `radius.xl`.
+  Options: 32 high, padding 0 × 35 × 0 × 12, `regular`; the highlight is inset 4 px, `radius.md`, `listboxHover`. The selected option
+  shows a 16 px check 12 px from the right.
 - Keyboard: Enter, Space, or ↓ opens; ↑ ↓ Home End move; Enter selects; Escape closes; typing jumps to a match.
 - Selecting closes the menu and updates the value. `autosubmit` submits the surrounding form at once.
 
 ## Menu
 
-Used by selects, the workspace switcher, and action menus.
+Used by the workspace switcher and action menus.
 
-- `surfaceRaised`, `radius.xl` (12), padding 4 × 0, min width `size.menuMinWidth`.
-- Shadow: a 0.5 px `borderStrong` ring plus shadow `menu`.
-- Item: `size.menuItem` (32) high, padding 0 × 35 × 0 × 12, `fontSize.md`, `textSecondary`.
-  The highlight is inset 4 px left and right, `radius.md`, `surfaceHover`.
-  A selected option shows a 16 px check at the right.
-- Optional leading icon (16 px, `textTertiary`) and trailing shortcut (`kbd`).
-- Separator: 0.5 px `border`, 4 px vertical margin. Section label: `fontSize.xs` `medium` `textTertiary`, 28 high.
+- `surfaceMenu`, 0.5 px `borderMenu` border, `radius.xl`, shadow `menu`, 6 px vertical padding, min width
+  `size.menuMinWidth`. Opens 4 px below its trigger, start- or end-aligned, or above when there is no room.
+- Item: 32 high, padding 0 × 18 × 0 × 14, `fontSize.md` `book` `textSecondary`, a 16 px icon 8 px before the label
+  in the same color. The highlight is inset 6 px, `radius.md`, `menuHover`, and turns the text `text`.
+- A click highlights nothing until the pointer moves; the keyboard highlights the first item.
+- A current item shows a 16 px check at the right. Shortcuts are plain text: `fontSize.xs` `medium` `textTertiary`.
+- Separator: 0.5 px `borderSubtle` with 6 px above and below. Section label: `fontSize.sm` `medium` `textTertiary`,
+  28 high.
 
 ## Switch
 
-- Track `size.switchWidth` × `size.switchHeight` (30 × 20), `radius.full`. Off: `switchTrack`. On: `accent`.
-- Knob `size.switchKnob` (14), `onAccent`, 3 px from the edge; it travels 10 px.
-- The knob's leading and trailing edges move `duration.knob` (100 ms) ease-out, the trailing edge 50 ms later,
-  so the knob stretches while it moves. While pressed, the knob widens by 4 px.
-- The track color changes in 150 ms. The touch target is 42 × 32 on the web and 44 pt on iOS.
-- `autosubmit` submits the form on change.
+- Track 30 × 20, `radius.full`. Off: `switchTrack`, hover `switchTrackHover`. On: `accent`, hover `accentHover`. The
+  color changes in 150 ms ease-out.
+- Knob 14, `onAccent`, 3 px from the edges; it travels 10 px. Its leading and trailing edges move in 100 ms
+  ease-out, the trailing edge 50 ms later, so it stretches on the way. Under the pointer it widens 2 px toward the
+  middle.
+- The touch target is 42 × 32 on the web and 44 pt on iOS. `autosubmit` submits the form on change.
 
 ## Checkbox
 
-- `size.checkbox` (14) square, `radius.xs` (4), 1 px `borderStrong`, `surfaceRaised`.
-- Checked: `accent` fill and border with a white 10 px check that draws in 150 ms.
+- 14 square, `radius.xxs`, 1 px `borderControl`, transparent; hover turns the border `accentHover`.
+- Checked: `accent` fill and border, a white 10 × 9 check. Colors change in 80 ms ease-out.
 - Label to the right, `fontSize.md` `textSecondary`, 8 px gap; the whole row toggles.
 
 ## Tooltip
 
-- Shows after 500 ms of hover or keyboard focus; hides at once on leave. Once one is shown, the next appears
-  without delay for 300 ms.
-- `size.tooltip` (28) high, padding 0 × 8, `radius.md`, `surfaceRaised`, 0.5 px `border`, shadow `low`.
-  Text `fontSize.xs` `book` `textSecondary`, with an optional shortcut `kbd`.
-- Placed 6 px below the target, centered, or above when there is no room. Fades in 100 ms.
+- Shows 450 ms after the pointer or keyboard focus arrives and hides when it leaves. Within 300 ms of one closing,
+  the next shows at once and the old one goes at once.
+- Padding 5 × 8, `radius.md`, `surfaceMenu`, 0.5 px `borderMenu`, shadow `low`. Text `fontSize.xs` `book`
+  `textSecondary` on a 16.5 px line; an optional keycap 8 px after it.
+- Placed 8 px below the target, centered, or above when there is no room. Motion as above.
 - iOS has no hover: icon buttons carry accessibility labels instead.
 
 ## Dialog
 
-- `overlay` backdrop. Card `surfaceRaised`, `radius.xl`, menu shadow and ring, width min(440, 100 % − 32).
-- Header: title `fontSize.lg` `semibold`, close icon button. Body: 16 px padding, fields stacked 12 px apart.
-- Footer: buttons right-aligned, secondary then primary. Escape and the backdrop close it.
-- iOS: a sheet with the same card styling at medium detent.
+- `overlay` backdrop. Card `surfaceRaised`, 0.5 px `borderDialog`, `radius.xl`, shadow `modal`, width
+  min(`size.dialog`, 100 % − 32), centered over the panel.
+- Header: padding 16 × 48 × 16 × 16, title `fontSize.lg` `book` on a 23 px line, a ghost close icon button 16 px from
+  the right. Body: padding 12 × 16, fields 12 px apart. Footer: padding 16 × 16 × 12, buttons right-aligned 8 px
+  apart, secondary then primary. Escape and the backdrop close it.
+- iOS: a sheet sized to its content with the same card.
 
 ## Toast
 
-- Bottom center (web) or top (iOS), 12 px from the edge. Card like a menu, padding 8 × 12, `fontSize.md`.
-- Variants: neutral, success (`success` dot), and error (`danger` dot). Slides 8 px and fades in 140 ms;
-  disappears after 5 s or on click.
+- Bottom right on the web, 24 px from the window edges; top on iOS. Width `size.toast`, padding 12, `radius.xl`,
+  `surfaceMenu`, a 0.5 px `ringControl` and shadow `menu`.
+- A 16 px icon (info in `textSecondary`, success in `success`, error in `danger`), the text in `fontSize.md`
+  `medium` `text`, and a 12 px close mark in `textTertiary` (hover `text`).
+- Goes after 4 s or on a click; the pointer on it keeps it.
 
-## Settings card
+## Sidebar
 
-- `surfaceRaised`, `radius.lg` (10), ring 0.5 px `border` and shadow `low`.
-- Row: min `size.settingsRow` (60) high, padding 16, label `fontSize.md` `medium` `text`, description
-  `fontSize.sm` `book` `textTertiary`, control at the right. Rows are separated by 0.5 px `borderSubtle`.
-- Section title above the card: `fontSize.lg` `medium` `text`, 12 px gap. Page title: `fontSize.xxl` `medium`.
-- Text in a section, such as a channel summary: `fontSize.md` `textSecondary`, line height 1.5, with its line
-  breaks.
+- 244 wide on the canvas, 12 px side padding. The header is 44 high, 8 px from the top, level with the panel header.
+- Workspace switcher: 28 high, padding 0 × 9 × 0 × 5, `radius.lg`, a 20 px workspace avatar, the name in
+  `fontSize.md` `strong` with −0.1 px letter spacing, `textSecondary`, and a chevron. Hover and open: `fillHover`.
+- Item: 28 high, 1 px apart, padding 0 × 9 × 0 × 8, `radius.md`, a 14 px icon 6 px before the label,
+  `fontSize.md` `medium` `textTertiary`. Hover: `fillHover` at once and `text` in 150 ms. Current: `fillActive`, `text`.
+  Count: `fontSize.xs` `book`.
+- Groups are 16 px apart. Section header: 28 high, the label 9 px in, `fontSize.sm` `medium` `textTertiary`; its action
+  button shows on hover or focus (always on touch screens).
+- Threads sit under their channel, indented 19 px with 6 px inner padding; each shows its settle button on hover or
+  focus (always on touch screens). Settled threads leave the active lists and appear in a collapsed Settled shelf at
+  the bottom, newest settlement first; its disclosure arrow turns 90° in 150 ms. A settled thread remains readable
+  and can receive messages.
+
+## Panel and header
+
+- The panel sits 8 px from the window, `surface`, 0.5 px `border`, `radius.xl`, shadow `low`.
+- Header: 44 high including its 0.5 px `border` bottom line, padding 0 × 8 × 0 × 18, title `fontSize.md` `medium`
+  `textSecondary`, the parents of a breadcrumb in `textTertiary`. Actions are ghost icon buttons.
+
+## Tabs
+
+- Pills 28 high, padding 0 × 10, `fontSize.sm` `medium`, 8 px apart. Unselected: `surfaceRaised`, `ringControl`, shadow
+  `low`, `textTertiary`; hover `ghostHover` and `ringHover`. Selected: `fillSelected`, `ringControl` without
+  shadow, `text`.
+
+## Settings page
+
+- A 640 px column, 64 px from the top of the panel, 40 px side margins. Page title `fontSize.xxl` `medium`, 32 px line,
+  −0.16 px letter spacing, 32 px above the first section. Sections are 48 px apart; section title `fontSize.lg`
+  `medium` on a 23 px line, 16 px above its card. Titles and text sit 16 px in, level with the row text.
+- Card: `surfaceRaised`, `radius.lg`, a 0.5 px `ring` and shadow `low`. Rows are separated by 0.5 px `ring` lines
+  inset 16 px.
+- Row: min 60 high, padding 16, 12 px gaps, label `fontSize.md` `medium` `text`, description `fontSize.sm` `book`
+  `textTertiary` 3 px below, control at the right. Compact rows (lists of people, machines, runs) are min 44 high with
+  8 px vertical padding.
+- A leading icon sits in a 32 px `fillIcon` square with `radius.sm`; a leading avatar is 24 px.
+- Text in a section, such as a channel summary: `fontSize.md` `textSecondary` on a 22 px line, with its line breaks.
+
+## Badge, keycap, and avatar
+
+- Badge: a pill 24 high, padding 0 × 8, 0.5 px `borderStrong`, a 9 px dot (`textQuaternary`, or the tone's color)
+  6 px before the label in `fontSize.sm` `book` `textTertiary`.
+- Keycap: min 18 × 17, padding 2, `radius.xs`, 0.5 px `borderSubtle`, `fontSize.xs` `regular` `textTertiary`,
+  slashed zero. In menus a shortcut is plain text.
+- Avatar: a 24 px circle with the initial in `fontSize.xs` `medium` `onAccent` on one of the `avatar` colors, picked
+  by the sum of the name's code points. Agents and workspaces use `accent` in a `radius.sm` square.
+
+## Lists
+
+- Rows: min 32 high, padding 0 × 8, `radius.md`, a 16 px `textTertiary` icon 8 px before the name in `fontSize.md`
+  `medium` `text`, meta at the right in `fontSize.sm` `book` `textTertiary`. Rows that open something turn
+  `fillSubtle` under the pointer at once.
+
+## Conversation
+
+- Message: avatar, then the author in `medium` `text` and the time in `fontSize.sm` `textQuaternary`; the text in
+  `fontSize.lg` `book` `textSecondary` on a 1.6 line with −0.1 px letter spacing and its line breaks.
+- Work log: between the meta and the text of an agent's answer, what the agent did before it. A summary in
+  `fontSize.md` `textTertiary` with tabular numbers, "Working for 12s" counting up each second while it works, then
+  "Worked for 14s", or "Stopped after 14s" when someone stopped it, with a disclosure arrow that turns 90° when open;
+  hover (web) turns it `text`. The steps sit under it in `fontSize.md` behind a 1 px `border` line, 8 px in, at most
+  `size.workLog` high, scrolling, and keeping the newest step in view until the person scrolls up: thoughts in
+  `textQuaternary`, words in `textSecondary`, and each tool call as its name in `medium` `textTertiary` (`danger` when
+  it failed, pulsing while it runs), then the thread it reached or its arguments on one truncated line in
+  `textQuaternary`. A tool call opens to show its arguments and result in `fontSize.sm` monospace on `fillSubtle`,
+  `radius.sm`. Calls of one tool in a row fold into one row, "Web search 4 times", open while one of them runs. The log
+  is open while the agent works and folds when the answer comes; a person's choice to open or fold it stays until
+  then.
+- Working spinner: a 14 px ring in `textQuaternary` with an open side, turning every 0.8 s, after a thread in the
+  sidebar, in a channel's thread list, and after each thread link while that thread's agent works. iOS shows a mini
+  progress view in rows, and "· working" after a thread link.
+- Stop: a tiny secondary button with a stop icon before Send, only while the agent works. It stops the threads the agent asked
+  for something, which still work on that message, too.
+- The sidebar shows the threads and channels that agents start while they work, without a reload.
+- Composer: `surfaceComposer`, `radius.lg`, padding 12, shadow `low`, no focus ring. The text is `fontSize.lg` on a
+  24 px line with padding 2 × 6; placeholder `textQuaternary`. Actions sit 8 px below: a tiny ghost attach button
+  and a tiny primary send button.
 
 ## Thread link
 
@@ -108,16 +212,14 @@ Used by selects, the workspace switcher, and action menus.
 
 ## Channel threads
 
-- Active threads appear newest first under their channels. Each sidebar row opens the thread and shows its settle
-  button on hover or keyboard focus (always on touch screens).
-- Settled threads leave the active lists and appear in a collapsed Settled shelf at the bottom of the sidebar,
-  newest settlement first. Each row can un-settle the thread. A settled thread remains readable and can receive messages.
+- Active threads appear newest first under their channels in the sidebar and on the channel page, each with its
+  settle button. Settled threads leave the active lists; a settled thread can be un-settled.
 
 ## File chip
 
-- A file attached to a message, or picked in the composer: `size.controlSmall` (28) high (44 pt touch target on
-  iOS), padding 0 12, `radius.md`, `fillSubtle`, ring 0.5 px `borderStrong`, paperclip icon in `textTertiary`, name in
-  `fontSize.sm` `textSecondary`, cut with an ellipsis at 240 wide. Chips wrap with a 4 px gap.
+- A file attached to a message, or picked in the composer: 28 high (44 pt touch target on iOS), padding 0 × 10 × 0 × 8,
+  `radius.md`, `fillSubtle`, a 0.5 px `ring`, a 14 px paperclip in `textTertiary`, the name in `fontSize.sm`
+  `textSecondary`, cut with an ellipsis at 240 wide. Chips wrap with a 4 px gap.
 - In a message the chip opens the file; hover (web) turns it `fillHover` and the name `text`. Picked files show
   above the composer's buttons until the message is sent, each with a close icon in `textTertiary` (hover `text`)
   that takes the file out.
@@ -127,14 +229,9 @@ Used by selects, the workspace switcher, and action menus.
 ## Artifact preview
 
 - The Artifacts tab lists the thread's artifacts as list rows: artifact icon, title, and the number of people who
-  opened it as meta. A row opens the artifact in the Preview tab.
-- The Preview tab has a bar (padding 4 16, 0.5 px `border` below): the title in `medium`, cut with an ellipsis, a
+  opened it as meta. A row opens the artifact in the panel, with a close button that returns to the Artifacts list.
+- The artifact has a bar (padding 4 16, 0.5 px `border` below): the title in `medium`, cut with an ellipsis, a
   badge (`accent` "Public" or plain "Members"), a small ghost "Data" button that is pressed while the data shows, and
   the actions menu (Open, Copy link, Make public or Make members only, Clear data, Delete).
-- Under the bar the artifact runs and fills the tab. "Data" shows its records instead, as a settings card of compact
+- Under the bar the artifact runs and fills the panel. "Data" shows its records instead, as a settings card of compact
   rows: the key, then who (the visitor's name, "Visitor", or "Shared") and the JSON value, and a delete icon button.
-
-## Badge and keycap
-
-- Badge: 20 high, `radius.full`, 0.5 px `border`, `fontSize.xs` `medium`, a 6 px dot in the tone color.
-- Keycap (`kbd`): min 18 × 18, `radius.xs`, 0.5 px `borderStrong`, `fontSize.xs`, `textTertiary`.

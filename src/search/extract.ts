@@ -374,7 +374,8 @@ function xmlText(
     .trim();
 }
 
-function htmlText(html: string): string {
+/** The visible text of an HTML page, as search reads it. */
+export function htmlText(html: string): string {
   return entities(
     html
       .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, " ")

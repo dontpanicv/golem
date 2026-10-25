@@ -7,13 +7,13 @@ import {
 import type { JsonObject } from "@earendil-works/pi-durable";
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
-import type { ThreadRef } from "../workspaces/workspaces.ts";
+import type { ThreadRef, ThreadSummary } from "../workspaces/workspaces.ts";
 import type { Artifact } from "./artifacts.ts";
 
 let golem: TestApp;
 let alice: User;
 let eve: User;
-let thread: ThreadRef;
+let thread: ThreadRef & ThreadSummary;
 /** What each tool returned to the agent, in order. */
 const toolResults: string[] = [];
 /** The tool call the scripted agent makes for the next message. */
@@ -74,10 +74,14 @@ function agent(context: Context) {
 }
 
 /** Sends a message whose answer makes `name` with `args`, and returns what the tool returned. */
-async function useTool(name: string, args: JsonObject): Promise<string> {
+async function useTool(
+  name: string,
+  args: JsonObject,
+  threadId = thread.id
+): Promise<string> {
   const before = toolResults.length;
   nextCall = { name, args };
-  await golem.app.threads.send(thread.id, alice, `Use ${name}`);
+  await golem.app.threads.send(threadId, alice, `Use ${name}`);
   await until(
     async () => toolResults.length,
     (count) => count > before
@@ -86,7 +90,11 @@ async function useTool(name: string, args: JsonObject): Promise<string> {
 }
 
 function onlyArtifact(): Artifact {
-  const artifacts = golem.app.artifacts.inThread(thread.id, alice);
+  const artifacts = golem.app.artifacts.inPlace(
+    thread.workspaceId,
+    thread.channelId,
+    alice
+  );
   expect(artifacts).toHaveLength(1);
   return artifacts[0]!;
 }
@@ -97,6 +105,7 @@ test("an agent makes an artifact in its thread, changes it, and reads and writes
   ).toContain("Made the artifact.");
   const artifact = onlyArtifact();
   expect(artifact).toMatchObject({
+    channelId: thread.channelId,
     threadId: thread.id,
     title: "Trip dates",
     visibility: "members",
@@ -268,7 +277,9 @@ test("a members artifact is only for members, and people delete its records, its
   expect(artifacts.dataFor(id, alice)).toEqual([]);
   expect(onlyArtifact().visitors).toBe(0);
   artifacts.delete(id, alice);
-  expect(artifacts.inThread(thread.id, alice)).toEqual([]);
+  expect(
+    artifacts.inPlace(thread.workspaceId, thread.channelId, alice)
+  ).toEqual([]);
   expect(() => artifacts.open(id, { user: alice })).toThrow("Not found");
   // Nothing is removed: the artifact, its records, and its visitors stay, marked deleted.
   const kept = (table: string, column: string) =>
@@ -295,7 +306,7 @@ test("a members artifact is only for members, and people delete its records, its
 test("the runtime goes at the top of the head, and after the doctype of a page without one", () => {
   const { artifacts } = golem.app;
   const make = (html: string) =>
-    artifacts.create(thread, {
+    artifacts.create(thread, thread.channelId, {
       title: "Page",
       html,
       requestKey: crypto.randomUUID(),
@@ -314,16 +325,89 @@ test("the runtime goes at the top of the head, and after the doctype of a page w
   );
   expect(artifacts.content(make("<p>Hi</p>"))).toEndWith("</script><p>Hi</p>");
   expect(
-    artifacts.create(thread, {
+    artifacts.create(thread, thread.channelId, {
       title: "Again",
       html: "<p>2</p>",
       requestKey: "same",
     }).id
   ).toBe(
-    artifacts.create(thread, {
+    artifacts.create(thread, thread.channelId, {
       title: "Again",
       html: "<p>2</p>",
       requestKey: "same",
     }).id
   );
+});
+
+test("an artifact belongs to its channel: other threads see it after its thread is settled, until the channel is deleted", async () => {
+  const { artifacts, threads, workspaces } = golem.app;
+  const workspaceId = (await workspaces.create(alice, "Kitchen")).id;
+  const recipes = workspaces.createChannel(workspaceId, alice, "recipes");
+  const made = await threads.create(
+    workspaceId,
+    alice,
+    recipes.id,
+    "Save banana bread"
+  );
+  const banana = artifacts.create(
+    workspaces.thread(made.id, alice),
+    recipes.id,
+    {
+      title: "Banana bread",
+      html: "<p>Bananas, flour, cardamom</p>",
+      requestKey: crypto.randomUUID(),
+    }
+  );
+  workspaces.setThreadSettled(workspaceId, made.id, alice, true);
+  await threads.create(workspaceId, alice, recipes.id, "Make it vegan");
+  expect(
+    artifacts
+      .inPlace(workspaceId, recipes.id, alice)
+      .map((artifact) => artifact.id)
+  ).toEqual([banana.id]);
+  expect(artifacts.get(banana.id, alice).channelId).toBe(recipes.id);
+  expect(() => artifacts.inPlace(workspaceId, recipes.id, eve)).toThrow(
+    "Not found"
+  );
+
+  workspaces.deleteChannel(workspaceId, alice, recipes.id);
+  expect(() => artifacts.get(banana.id, alice)).toThrow("Not found");
+  expect(artifacts.inWorkspace(workspaceId)).toEqual([]);
+});
+
+test("the orchestrator's artifacts belong to the workspace, and an agent puts one in a channel it names", async () => {
+  const { artifacts, threads } = golem.app;
+  const orchestrator = await threads.orchestrator(thread.workspaceId, alice);
+  await useTool(
+    "create_artifact",
+    { title: "Chores", html: "<p>Dishes</p>" },
+    orchestrator.id
+  );
+  const [chores] = artifacts.inPlace(thread.workspaceId, null, alice);
+  expect(chores).toMatchObject({
+    title: "Chores",
+    channelId: null,
+    threadId: orchestrator.id,
+  });
+  expect(toolResults.at(-1)).toContain("Made the artifact.");
+
+  const named = await useTool(
+    "create_artifact",
+    { title: "Packing list", html: "<p>Tent</p>", channel: "#trips" },
+    orchestrator.id
+  );
+  expect(named).toContain("Made the artifact.");
+  expect(
+    artifacts
+      .inPlace(thread.workspaceId, thread.channelId, alice)
+      .map((artifact) => artifact.title)
+  ).toContain("Packing list");
+  expect(
+    await useTool(
+      "create_artifact",
+      { title: "Lost", html: "<p>?</p>", channel: "nowhere" },
+      orchestrator.id
+    )
+  ).toContain("There is no channel #nowhere.");
+  expect(await useTool("list_artifacts", {})).toContain("The workspace's");
 });

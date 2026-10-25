@@ -3,11 +3,12 @@ import { type IconName, icon } from "../platform/ui/icons.ts";
 import { type ShellContext, shell } from "../workspaces/shell.ts";
 import type { Channel } from "../workspaces/workspaces.ts";
 import type { SearchResponse } from "./search.ts";
-import type { Modality, SearchKind } from "./workspace-index.ts";
+import type { Modality, SearchKind, SearchResult } from "./workspace-index.ts";
 
 const escapeHtml = Bun.escapeHTML;
 const KIND_ICONS: Record<SearchKind, IconName> = {
   thread: "compose",
+  artifact: "artifact",
   note: "file",
   file: "file",
   capture: "inbox",
@@ -61,8 +62,9 @@ export function searchResults(
         : when;
       const symbol = MEDIA_ICONS[result.modality] ?? KIND_ICONS[result.kind];
       const body = `${icon(symbol)}<span class="search-text"><strong>${escapeHtml(result.title)}</strong><span>${escapeHtml(result.snippet)}</span></span><span class="meta">${escapeHtml(place)}</span>`;
-      return result.threadId
-        ? `<a class="list-row search-row" href="/w/${workspaceId}/t/${result.threadId}">${body}</a>`
+      const href = resultHref(workspaceId, result);
+      return href
+        ? `<a class="list-row search-row" href="${href}"${result.kind === "file" ? ' target="_blank"' : ""}>${body}</a>`
         : `<div class="list-row search-row">${body}</div>`;
     })
     .join("");
@@ -70,4 +72,22 @@ export function searchResults(
     ? ""
     : '<p class="muted search-mode">Matching words only while the search model starts.</p>';
   return `<div id="results" class="search-results">${mode}${rows || empty("search", "Nothing found")}</div>`;
+}
+
+/**
+ * What a result opens: an artifact in its channel, or in the orchestrator when it is the workspace's own; a file that
+ * Golem saved, itself; or a thread.
+ */
+function resultHref(workspaceId: string, result: SearchResult): string | null {
+  if (result.kind === "artifact") {
+    const place = result.channelId ? `c/${result.channelId}` : "orchestrator";
+    return `/w/${workspaceId}/${place}?artifact=${result.uri.slice("artifact:".length)}`;
+  }
+  const file = /^(?:channels\/[^/]+\/)?files\/([0-9a-f-]{36})-/.exec(
+    result.uri
+  );
+  if (file) {
+    return `/w/${workspaceId}/files/${file[1]}`;
+  }
+  return result.threadId ? `/w/${workspaceId}/t/${result.threadId}` : null;
 }

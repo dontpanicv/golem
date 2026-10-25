@@ -7,9 +7,8 @@ import {
   toastOf,
   withNotice,
 } from "../app/web.ts";
-import { HttpError } from "../platform/errors.ts";
-import { channelPage, newWorkspacePage } from "./pages.ts";
-import { lastOpened, rememberOpened, shellContext } from "./shell.ts";
+import { newWorkspacePage } from "./pages.ts";
+import { lastOpened } from "./shell.ts";
 
 /** Workspaces, their channels, and their members in the web app. */
 export const workspaceWebRoutes: readonly Route[] = [
@@ -62,20 +61,6 @@ export const workspaceWebRoutes: readonly Route[] = [
       async ({ app, user, params, fields }) =>
         `/w/${params.workspace}/c/${app.workspaces.createChannel(params.workspace!, user, fields.name!).id}`
     ),
-  ],
-  [
-    "GET",
-    "/w/:workspace/c/:channel",
-    page(async (input) => {
-      const context = shellContext(input, { channelId: input.params.channel });
-      const channel = context.channels!.find(
-        (candidate) => candidate.id === input.params.channel
-      );
-      if (!channel) {
-        throw new HttpError(404, "Not found");
-      }
-      return rememberOpened(input.request, html(channelPage(context, channel)));
-    }),
   ],
   [
     "POST",

@@ -239,7 +239,9 @@ describe("the web app", () => {
     ).toBeNumber();
     const settled = await (await alice.get(channelPath)).text();
     expect(settled).toContain("Settled (1)");
-    expect(settled).toContain('<details class="sidebar-settled">');
+    expect(settled).toContain(
+      '<details id="sidebar-settled" class="sidebar-settled" data-preserve-attr="open">'
+    );
     expect(settled.indexOf('class="sidebar-settled"')).toBeLessThan(
       settled.indexOf('class="nav sidebar-footer"')
     );
@@ -280,7 +282,7 @@ describe("the web app", () => {
   });
 
   test("an artifact link runs the artifact in a sandbox, for anyone when public and for members otherwise", async () => {
-    const artifact = golem.app.artifacts.create(threadRef(), {
+    const artifact = golem.app.artifacts.create(threadRef(), generalId, {
       title: "Trip <dates>",
       html: "<!doctype html><html><head></head><body>Vote</body></html>",
       visibility: "public",
@@ -345,7 +347,7 @@ describe("the web app", () => {
   test("the public host serves only public artifacts at /<name>, and nothing else", async () => {
     const thread = threadRef();
     const make = (visibility: "public" | "members") =>
-      golem.app.artifacts.create(thread, {
+      golem.app.artifacts.create(thread, generalId, {
         title: "Share",
         html: "<p>Hi</p>",
         visibility,
@@ -420,7 +422,11 @@ describe("the web app", () => {
       });
       expect(response.status).toBe(404);
     }
-    const [artifact] = golem.app.artifacts.inThread(threadId, aliceUser());
+    const [artifact] = golem.app.artifacts.inPlace(
+      workspaceId,
+      generalId,
+      aliceUser()
+    );
     const refused = await golem.call(`/a/${artifact!.id}/content`, {
       headers: from("203.0.113.7"),
     });
@@ -439,9 +445,13 @@ describe("the web app", () => {
     ).toBe(404);
   });
 
-  test("the thread's Artifacts and Preview tabs open an artifact, show its data, and change and delete it", async () => {
-    const [artifact] = golem.app.artifacts.inThread(threadId, aliceUser());
-    const base = `/w/${workspaceId}/t/${threadId}/artifacts/${artifact!.id}`;
+  test("the Artifacts list of a thread and its channel opens a preview that returns to the list", async () => {
+    const [artifact] = golem.app.artifacts.inPlace(
+      workspaceId,
+      generalId,
+      aliceUser()
+    );
+    const base = `/w/${workspaceId}/artifacts/${artifact!.id}`;
     golem.app.artifacts.call(artifact!.id, { user: aliceUser() }, "set", {
       scope: "mine",
       key: "vote",
@@ -450,7 +460,12 @@ describe("the web app", () => {
     const page = await (
       await alice.get(`/w/${workspaceId}/t/${threadId}`)
     ).text();
-    expect(page).toContain('id="thread-artifacts"');
+    expect(page).toContain('id="artifact-list"');
+    expect(page).toContain('role="tablist" data-show="$tab !== \'preview\'"');
+    expect(page).toContain("data-on:click=\"$tab = 'artifacts'\"");
+    expect(page).not.toContain(
+      'role="tab" class="tab" data-attr:aria-selected="$tab === \'preview\''
+    );
     expect(page).toContain(`@get('${base}')`);
     expect(page).toContain("Trip &lt;dates&gt;");
 
@@ -541,6 +556,66 @@ describe("the web app", () => {
     expect(noQuery).toContain(
       '<div id="results" class="search-results"></div>'
     );
+  });
+
+  test("search opens an artifact in its channel or the orchestrator, and a file itself", async () => {
+    const thread = golem.app.workspaces.thread(threadId, aliceUser());
+    const recipe = golem.app.artifacts.create(thread, generalId, {
+      title: "Banana bread",
+      html: "<p>Bananas, flour, and cardamom</p>",
+      requestKey: crypto.randomUUID(),
+    });
+    const [contract] = await golem.app.threads.upload(
+      workspaceId,
+      generalId,
+      aliceUser(),
+      [new File(["The notice period is three months"], "contract.txt")]
+    );
+    await golem.app.indexer.scan(workspaceId);
+
+    const opened = `/w/${workspaceId}/c/${generalId}?artifact=${recipe.id}`;
+    const artifactResults = await (
+      await alice.get(`/w/${workspaceId}/search?q=cardamom`)
+    ).text();
+    expect(artifactResults).toContain(`href="${opened}"`);
+    const channel = await (await alice.get(opened)).text();
+    expect(channel).toContain(
+      `<iframe class="artifact-frame" src="/a/${recipe.id}?v=`
+    );
+    expect(channel).toContain("tab: &#x27;preview&#x27;");
+
+    const fileResults = await (
+      await alice.get(`/w/${workspaceId}/search?q=notice+period`)
+    ).text();
+    const href = `/w/${workspaceId}/files/${contract!.id}`;
+    expect(fileResults).toContain(`href="${href}" target="_blank"`);
+    expect(await (await alice.get(href)).text()).toBe(
+      "The notice period is three months"
+    );
+    golem.app.artifacts.delete(recipe.id, aliceUser());
+
+    // The workspace's own artifact opens in the orchestrator, and its files list there.
+    const chores = golem.app.artifacts.create(thread, null, {
+      title: "Chores",
+      html: "<p>Dishes and laundry rota</p>",
+      requestKey: crypto.randomUUID(),
+    });
+    await golem.app.threads.upload(workspaceId, null, aliceUser(), [
+      new File(["Rent 900"], "budget.txt"),
+    ]);
+    await golem.app.indexer.scan(workspaceId);
+    const workspaceResults = await (
+      await alice.get(`/w/${workspaceId}/search?q=laundry`)
+    ).text();
+    const orchestrator = `/w/${workspaceId}/orchestrator?artifact=${chores.id}`;
+    expect(workspaceResults).toContain(`href="${orchestrator}"`);
+    const redirected = location(await alice.get(orchestrator))!;
+    expect(redirected).toEndWith(`?artifact=${chores.id}`);
+    const home = await (await alice.get(redirected)).text();
+    expect(home).toContain(`src="/a/${chores.id}?v=`);
+    expect(home).toContain("budget.txt");
+    expect(home).toContain(`@post('/w/${workspaceId}/files'`);
+    golem.app.artifacts.delete(chores.id, aliceUser());
   });
 
   test("workspace settings add members and keep credential secrets on the server", async () => {

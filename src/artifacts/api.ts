@@ -2,15 +2,29 @@ import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 
 /**
- * The artifacts of a thread for the iOS app. Agents make and change them; people open them, change who sees them,
- * and delete them or their data. The app runs an artifact's `content` in a web view whose `golem` calls go to `rpc`.
+ * The artifacts of a channel, and the workspace's own, for the iOS app. Agents make and change them; people open them,
+ * change who sees them, and delete them or their data. The app runs an artifact's `content` in a web view whose
+ * `golem` calls go to `rpc`.
  */
 export const artifactApiRoutes: readonly Route[] = [
   [
     "GET",
-    "/api/v1/threads/:thread/artifacts",
+    "/api/v1/workspaces/:workspace/channels/:channel/artifacts",
     api(async ({ app, user, params }) =>
-      json({ artifacts: app.artifacts.inThread(params.thread!, user) })
+      json({
+        artifacts: app.artifacts.inPlace(
+          params.workspace!,
+          params.channel!,
+          user
+        ),
+      })
+    ),
+  ],
+  [
+    "GET",
+    "/api/v1/workspaces/:workspace/artifacts",
+    api(async ({ app, user, params }) =>
+      json({ artifacts: app.artifacts.inPlace(params.workspace!, null, user) })
     ),
   ],
   [

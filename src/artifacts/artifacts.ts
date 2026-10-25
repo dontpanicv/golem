@@ -8,9 +8,14 @@ import { artifactTools } from "./tools.ts";
 
 export type Visibility = "public" | "members";
 
-/** A page or small app that an agent made in a thread. Its HTML runs in a sandbox and keeps data through `golem`. */
+/**
+ * A page or small app that an agent made. It belongs to a channel, or to the workspace when `channelId` is null, as the
+ * orchestrator's do, and stays when its thread is settled. Its HTML runs in a sandbox and keeps data through `golem`.
+ */
 export interface Artifact {
   readonly id: string;
+  readonly channelId: string | null;
+  /** The thread that made it. */
   readonly threadId: string;
   readonly title: string;
   readonly visibility: Visibility;
@@ -54,7 +59,7 @@ export interface Me {
 
 export type ArtifactWorkspaces = Pick<
   Workspaces,
-  "requireMember" | "thread" | "threadsIn"
+  "channel" | "channelsIn" | "orchestratorOf" | "requireMember" | "threadsIn"
 >;
 
 const MAX_TITLE = 200;
@@ -115,6 +120,7 @@ const CONTENT_POLICY =
 interface ArtifactRow {
   readonly id: string;
   readonly workspaceId: string;
+  readonly channelId: string | null;
   readonly threadId: string;
   readonly title: string;
   readonly visibility: Visibility;
@@ -124,17 +130,19 @@ interface ArtifactRow {
 }
 
 const ARTIFACT_COLUMNS =
-  "id, workspace_id AS workspaceId, thread_id AS threadId, title, visibility, created_at AS createdAt, updated_at AS updatedAt, (SELECT count(*) FROM artifact_visitor v WHERE v.artifact_id = artifact.id AND v.deleted_at IS NULL) AS visitors";
+  "id, workspace_id AS workspaceId, channel_id AS channelId, thread_id AS threadId, title, visibility, created_at AS createdAt, updated_at AS updatedAt, (SELECT count(*) FROM artifact_visitor v WHERE v.artifact_id = artifact.id AND v.deleted_at IS NULL) AS visitors";
 
 /**
- * The artifacts of every thread, and the runtime their pages call. A visitor writes only their own records; members
+ * The artifacts of every channel, and the runtime their pages call. A visitor writes only their own records; members
  * and agents also write the shared ones. Everyone who may open an artifact may read all of its records.
  */
 export class Artifacts {
   constructor(
     private readonly database: Database,
     private readonly workspaces: ArtifactWorkspaces,
-    private readonly addresses: Pick<Config, "baseUrl" | "shareUrl">
+    private readonly addresses: Pick<Config, "baseUrl" | "shareUrl">,
+    /** Tells search that an artifact of the workspace changed. */
+    private readonly changed: (workspaceId: string) => void
   ) {}
 
   /** The agent tools of a workspace. */
@@ -142,9 +150,13 @@ export class Artifacts {
     return artifactTools(this, this.workspaces, workspaceId);
   }
 
-  /** Makes an artifact in a thread. The same `requestKey` again returns the artifact it made before. */
+  /**
+   * Makes an artifact in a thread, for a channel of its workspace or, for a null `channelId`, for the workspace. The
+   * same `requestKey` again returns the artifact it made before.
+   */
   create(
     thread: ThreadRef,
+    channelId: string | null,
     input: ArtifactInput & { readonly requestKey: string }
   ): Artifact {
     const title = checkedTitle(input.title);
@@ -158,11 +170,12 @@ export class Artifacts {
     }
     this.database
       .query(
-        "INSERT INTO artifact (id, workspace_id, thread_id, title, html, visibility, request_key, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'golem', ?, ?)"
+        "INSERT INTO artifact (id, workspace_id, channel_id, thread_id, title, html, visibility, request_key, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'golem', ?, ?)"
       )
       .run(
         this.newName(),
         thread.workspaceId,
+        channelId,
         thread.id,
         title,
         html,
@@ -174,6 +187,7 @@ export class Artifacts {
     const row = this.database
       .query(`SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE request_key = ?`)
       .get(input.requestKey) as ArtifactRow;
+    this.changed(thread.workspaceId);
     return this.artifact(row);
   }
 
@@ -200,12 +214,13 @@ export class Artifacts {
         Date.now(),
         id
       );
+    this.changed(workspaceId);
     return this.artifact(this.row(id)!);
   }
 
   /** The artifacts of a workspace, newest first. */
   inWorkspace(workspaceId: string): Artifact[] {
-    const threads = this.liveThreads(workspaceId);
+    const channels = this.liveChannels(workspaceId);
     return (
       this.database
         .query(
@@ -213,19 +228,30 @@ export class Artifacts {
         )
         .all(workspaceId) as ArtifactRow[]
     )
-      .filter((row) => threads.has(row.threadId))
+      .filter((row) => row.channelId === null || channels.has(row.channelId))
       .map((row) => this.artifact(row));
   }
 
-  /** The artifacts of a thread of the person's workspace, newest first. */
-  inThread(threadId: string, user: User): Artifact[] {
-    const thread = this.workspaces.thread(threadId, user);
+  /**
+   * The artifacts of a channel of the person's workspace from every thread, settled or not, or the workspace's own for
+   * a null `channelId`; newest first.
+   */
+  inPlace(
+    workspaceId: string,
+    channelId: string | null,
+    user: User
+  ): Artifact[] {
+    if (channelId === null) {
+      this.workspaces.requireMember(workspaceId, user);
+    } else {
+      this.workspaces.channel(workspaceId, channelId, user);
+    }
     return (
       this.database
         .query(
-          `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE thread_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`
+          `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE workspace_id = ? AND channel_id IS ? AND deleted_at IS NULL ORDER BY created_at DESC`
         )
-        .all(thread.id) as ArtifactRow[]
+        .all(workspaceId, channelId) as ArtifactRow[]
     ).map((row) => this.artifact(row));
   }
 
@@ -258,9 +284,11 @@ export class Artifacts {
   /** Nothing is removed: a deleted artifact stays, hidden, with its data, and its name is never given out again. */
   delete(id: string, user: User): void {
     this.get(id, user);
+    const { workspaceId } = this.row(id)!;
     this.database
       .query("UPDATE artifact SET deleted_at = ? WHERE id = ?")
       .run(Date.now(), id);
+    this.changed(workspaceId);
   }
 
   /**
@@ -512,21 +540,23 @@ export class Artifacts {
     throw new HttpError(503, "Golem has no free artifact names");
   }
 
-  /** A live artifact: not deleted, and not in a thread of a deleted channel. */
+  /** A live artifact: not deleted, and not in a deleted channel. The workspace's own artifacts have no channel. */
   private row(id: string): ArtifactRow | null {
     const row = this.database
       .query(
         `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE id = ? AND deleted_at IS NULL`
       )
       .get(id) as ArtifactRow | null;
-    return row && this.liveThreads(row.workspaceId).has(row.threadId)
+    return row &&
+      (row.channelId === null ||
+        this.liveChannels(row.workspaceId).has(row.channelId))
       ? row
       : null;
   }
 
-  private liveThreads(workspaceId: string): Set<string> {
+  private liveChannels(workspaceId: string): Set<string> {
     return new Set(
-      this.workspaces.threadsIn(workspaceId).map((thread) => thread.id)
+      this.workspaces.channelsIn(workspaceId).map((channel) => channel.id)
     );
   }
 

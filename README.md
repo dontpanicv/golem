@@ -88,7 +88,8 @@ On the iPhone you can also talk instead of type, on the device itself:
 ## Interface
 
 The layout crosses Slack and T3 Code. The sidebar lists channels with their threads nested below them. The thread
-fills the main panel, and a side panel shows the thread's artifacts, files, and previews. The app opens on the last
+fills the main panel, and a side panel shows the artifacts, files, and previews of its channel, which stay there
+after the thread is settled. The app opens on the last
 channel or thread you had open on that device, or on #general.
 
 The web app and the iOS app share one design system, modeled on Linear's clean style:

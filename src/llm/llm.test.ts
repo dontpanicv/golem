@@ -441,6 +441,12 @@ function threadsOver(dataDirectory: string, llm: Llm) {
         updatedAt: 0,
         settledAt: null,
       })),
+    channel: (_workspaceId: string, channelId: string) => ({
+      id: channelId,
+      name: channelId,
+      summary: null,
+      threads: [],
+    }),
     channelsIn: () => [],
     orchestratorOf: () => null,
     addChannel: () => {

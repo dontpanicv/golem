@@ -18,6 +18,8 @@ const paths = {
   preview:
     '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c-2 2.5-2 8.5 0 11M8 2.5c2 2.5 2 8.5 0 11"/>', // globe
   chevron: '<path d="m5 6.5 3 3 3-3"/>', // chevron.down
+  disclosure:
+    '<path d="M6.5 5.25v5.5L10.25 8z" fill="currentColor" stroke="none"/>', // arrowtriangle.right.fill
   inbox:
     '<path d="M2.5 9h3l1 1.5h3l1-1.5h3"/><path d="M4 3.5h8l1.5 5.5v3.5a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5V9z"/>', // tray
   settings:
@@ -35,6 +37,7 @@ const paths = {
   more: '<circle cx="4" cy="8" r=".75"/><circle cx="8" cy="8" r=".75"/><circle cx="12" cy="8" r=".75"/>', // ellipsis
   info: '<circle cx="8" cy="8" r="5.5"/><path d="M8 7.5V11M8 5.25v.01"/>', // info.circle
   play: '<path d="M5 3.5v9l7-4.5z"/>', // play
+  stop: '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>', // stop.fill
   link: '<path d="M7 9a2.5 2.5 0 0 0 3.5 0l2-2A2.5 2.5 0 0 0 9 3.5l-.75.75M9 7a2.5 2.5 0 0 0-3.5 0l-2 2A2.5 2.5 0 0 0 7 12.5l.75-.75"/>', // link
   lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>', // lock
 } as const;
@@ -42,5 +45,5 @@ const paths = {
 export type IconName = keyof typeof paths;
 
 export function icon(name: IconName): string {
-  return `<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
+  return `<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
 }

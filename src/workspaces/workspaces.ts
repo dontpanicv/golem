@@ -98,6 +98,17 @@ export class Workspaces {
     return this.channelsIn(workspaceId);
   }
 
+  /** A channel of the person's workspace; not found when it is deleted or in another workspace. */
+  channel(workspaceId: string, channelId: string, user: User): Channel {
+    const channel = this.channels(workspaceId, user).find(
+      (candidate) => candidate.id === channelId
+    );
+    if (!channel) {
+      throw notFound();
+    }
+    return channel;
+  }
+
   /** The channels of a workspace with their threads, newest first, for agents that act for the workspace. */
   channelsIn(workspaceId: string): Channel[] {
     const channels = this.database

@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  ToolCall,
+  ToolResultMessage,
+  UserMessage,
+} from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
 import {
   type AgentState,
@@ -16,6 +21,7 @@ import {
   type EntryRecord,
   Harness,
   type JsonObject,
+  type TaskGraph,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
@@ -53,10 +59,39 @@ export interface Message {
   readonly streaming: boolean;
   readonly text: string;
   readonly time: number;
+  /** What the agent did before this answer, in order; null for people and for an answer without work. */
+  readonly work: Work | null;
 }
 
-/** A file of a thread, saved as `threads/<thread>/files/<id>-<name>`: attached to a message, or uploaded to the thread. */
-export interface ThreadFile {
+export interface Work {
+  readonly startedAt: number;
+  /** Null while the agent works. */
+  readonly endedAt: number | null;
+  /** Someone stopped the agent before it answered. */
+  readonly stopped: boolean;
+  readonly steps: readonly Step[];
+}
+
+/**
+ * A thought, what the agent said between tool calls, or a tool call. A tool call's text is the thread link in its
+ * result, or else the values of its arguments on one line.
+ */
+export interface Step {
+  readonly kind: "thinking" | "text" | "tool";
+  readonly text: string;
+  readonly tool: string | null;
+  /** A tool call's arguments as JSON, and the start of its result once it has one. */
+  readonly input: string | null;
+  readonly output: string | null;
+  readonly running: boolean;
+  readonly failed: boolean;
+}
+
+/**
+ * A file saved as `<id>-<name>` in the folder of its place: uploaded there, or attached to a message. A channel's
+ * files are for every thread of the channel, also after a thread is settled.
+ */
+export interface SavedFile {
   /** A UUIDv7, so files sort by time. */
   readonly id: string;
   readonly name: string;
@@ -64,7 +99,7 @@ export interface ThreadFile {
   readonly time: number;
 }
 
-export type FileRef = Pick<ThreadFile, "id" | "name">;
+export type FileRef = Pick<SavedFile, "id" | "name">;
 
 export interface ThreadMessages {
   readonly messages: readonly Message[];
@@ -76,14 +111,18 @@ const AUTHORED = "golem.message";
 const RELAYED = "golem.relay";
 /** Work that no person typed, such as a routine run; the transcript leaves it out. */
 const TASK = "golem.task";
+/** Someone stopped the agent; its `at` ends the agent's work in the transcript. */
+const STOPPED = "golem.stopped";
 /** How often one person's message may pass between threads: a question to another thread, and its answer back. */
 const MAX_HOPS = 2;
 /** How much of a file's text read_file gives the agent at once. */
 const MAX_READ_CHARACTERS = 100_000;
 const FILE_NAME =
   /^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/;
+/** The search uri of a saved file: in a channel's `files/`, or in the workspace's own. */
+const FILE_URI = /^(?:channels\/[^/]+\/)?files\/([0-9a-f-]{36})-/;
 const INSTRUCTIONS =
-  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. People attach files to their messages or upload them to the thread; list_files shows them and read_file reads them. When people want a page to share or a small app, such as an invite, a schedule, a poll, or a game, make an artifact. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
+  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there, and can send its answer back with send_to_thread. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. When people want a page to share or a small app, such as an invite, a schedule, a poll, a recipe, or a game, make an artifact; when one for it exists, change it instead. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own.";
 /** Added to `INSTRUCTIONS` for the orchestrator, the one thread of a workspace that never ends. */
 const ORCHESTRATOR =
   "This thread is the orchestrator of the workspace: one thread that never ends, where the family comes first. Do small tasks yourself. Give larger work to the channel it belongs to: start a thread there with start_thread, or send it to a thread that is already about it with send_to_thread. When no channel fits, make one with create_channel. Their agents answer back here; tell the family what came of it. Your memory of this thread is the summary at its start: zoom it before you use recall. The summaries keep little of what tools gave you, so say in your answer what you learned that will matter later.";
@@ -126,12 +165,14 @@ export interface RecallResult {
   readonly threadId: string | null;
   readonly title: string;
   readonly updatedAt: number;
+  readonly uri: string;
 }
 
 /** The thread registry in `golem.sqlite`, which `Workspaces` keeps. */
 export type ThreadRegistry = Pick<
   Workspaces,
   | "addChannel"
+  | "channel"
   | "channelsIn"
   | "removeChannel"
   | "orchestratorOf"
@@ -143,8 +184,14 @@ export type ThreadRegistry = Pick<
   | "touchThread"
 >;
 
-/** Where a thread's folder is: `workspaces/<workspace>/threads/<thread>/`. */
-export type ThreadLocation = Pick<ThreadRef, "id" | "workspaceId">;
+/**
+ * Where files are kept: a channel's `channels/<channel>/files/`, or, for a null `channelId`, the workspace's own
+ * `files/`, which keeps the orchestrator's files because the orchestrator belongs to no channel.
+ */
+export interface FilePlace {
+  readonly workspaceId: string;
+  readonly channelId: string | null;
+}
 
 /** The machines of a workspace, which its agents use through the hands tools. */
 export type ThreadHands = Pick<Hands, "section" | "tools">;
@@ -201,7 +248,7 @@ export class Threads {
       conversationId: conversation.id,
       createdBy: user.id,
     });
-    const attached = await this.save({ workspaceId, id: thread.id }, files);
+    const attached = await this.save({ workspaceId, channelId }, files);
     await this.deliver(conversation, authored(user, message, attached));
     return thread;
   }
@@ -219,7 +266,7 @@ export class Threads {
   ): Promise<void> {
     const thread = this.registry.thread(threadId, user);
     const message = messageText(text, files);
-    const attached = await this.save(thread, files);
+    const attached = await this.save(this.placeOf(thread), files);
     const input = authored(user, message, attached);
     await this.deliver(
       await this.conversation(thread),
@@ -315,26 +362,53 @@ export class Threads {
     return answer.text;
   }
 
-  /** Adds files to a thread without a message; its agent finds them with list_files. Returns all files of the thread. */
+  /**
+   * Adds files to a channel of the person's workspace, or to the workspace's own files for a null `channelId`, without
+   * a message; agents find them with list_files. Returns all files of that place.
+   */
   async upload(
-    threadId: string,
+    workspaceId: string,
+    channelId: string | null,
     user: User,
     files: readonly File[]
-  ): Promise<ThreadFile[]> {
-    const thread = this.registry.thread(threadId, user);
+  ): Promise<SavedFile[]> {
+    const place = this.place(workspaceId, channelId, user);
     if (files.length === 0) {
       throw new HttpError(400, "Choose a file");
     }
-    await this.save(thread, files);
-    this.hooks.changed(thread.workspaceId);
-    return this.files(thread);
+    await this.save(place, files);
+    this.hooks.changed(workspaceId);
+    return this.files(place);
   }
 
-  /** The files of a thread, oldest first. */
-  async files(thread: ThreadLocation): Promise<ThreadFile[]> {
-    const directory = this.filesDirectory(thread);
+  /** A place of the person's workspace: a live channel, or the workspace itself for a null `channelId`. */
+  place(workspaceId: string, channelId: string | null, user: User): FilePlace {
+    if (channelId === null) {
+      this.registry.requireMember(workspaceId, user);
+      return { workspaceId, channelId };
+    }
+    this.registry.channel(workspaceId, channelId, user);
+    return { workspaceId, channelId };
+  }
+
+  /** Where a thread keeps its files: its channel, or the workspace for the orchestrator. */
+  placeOf(
+    thread: Pick<ThreadRef, "id" | "workspaceId"> & {
+      readonly channelId: string;
+    }
+  ): FilePlace {
+    const orchestrator = this.registry.orchestratorOf(thread.workspaceId);
+    return {
+      workspaceId: thread.workspaceId,
+      channelId: orchestrator?.id === thread.id ? null : thread.channelId,
+    };
+  }
+
+  /** The files of a place, oldest first. */
+  async files(place: FilePlace): Promise<SavedFile[]> {
+    const directory = this.filesDirectory(place);
     const entries = await readdir(directory).catch(() => []);
-    const files: ThreadFile[] = [];
+    const files: SavedFile[] = [];
     for (const entry of entries.sort()) {
       const match = FILE_NAME.exec(entry);
       // A file deleted while listing is left out.
@@ -353,37 +427,27 @@ export class Threads {
     return files;
   }
 
-  /** Deletes a file of a thread; messages keep its name. Returns the files left. */
+  /**
+   * Deletes a file of the person's workspace; messages keep its name. Returns its place and the files left there.
+   */
   async deleteFile(
-    threadId: string,
+    workspaceId: string,
     user: User,
     fileId: string
-  ): Promise<ThreadFile[]> {
-    const thread = this.registry.thread(threadId, user);
-    const { path } = await this.file(thread, fileId);
+  ): Promise<{ readonly place: FilePlace; readonly files: SavedFile[] }> {
+    const { path, place } = await this.file(workspaceId, user, fileId);
     // Nothing is removed: the file moves next to `files/`, where no listing or search looks.
     const deleted = join(dirname(dirname(path)), "deleted");
     await mkdir(deleted, { recursive: true });
     await rename(path, join(deleted, basename(path)));
-    this.hooks.changed(thread.workspaceId);
-    return this.files(thread);
+    this.hooks.changed(workspaceId);
+    return { place, files: await this.files(place) };
   }
 
-  /** The path and name of a file of a thread; not found for an id of another thread. */
-  async file(
-    thread: ThreadLocation,
-    fileId: string
-  ): Promise<{ readonly path: string; readonly name: string }> {
-    const file = (await this.files(thread)).find(
-      (candidate) => candidate.id === fileId
-    );
-    if (!file) {
-      throw notFound();
-    }
-    return {
-      path: join(this.filesDirectory(thread), `${file.id}-${file.name}`),
-      name: file.name,
-    };
+  /** A file of the person's workspace, in any live channel or in the workspace's own files. */
+  file(workspaceId: string, user: User, fileId: string) {
+    this.registry.requireMember(workspaceId, user);
+    return this.fileIn(workspaceId, fileId);
   }
 
   async messages(thread: ThreadRef): Promise<ThreadMessages> {
@@ -419,6 +483,121 @@ export class Threads {
     };
   }
 
+  /**
+   * Stops the agent of a thread: it drops the messages it has not read yet and ends its run. The threads it asked for
+   * something, and that still work on that message, stop too.
+   */
+  async stop(threadId: string, user: User): Promise<void> {
+    const thread = this.registry.thread(threadId, user);
+    const working = await this.workingNow(thread.workspaceId);
+    await this.stopRun(thread, user, working, new Set());
+  }
+
+  private async stopRun(
+    thread: ThreadSummary & ThreadRef,
+    user: User,
+    working: readonly string[],
+    stopped: Set<string>
+  ): Promise<void> {
+    stopped.add(thread.id);
+    if (!working.includes(thread.id)) {
+      return;
+    }
+    const conversation = await this.conversation(thread);
+    // When it stopped ends the agent's work in the transcript; the agent does not see it.
+    await conversation.submit(
+      {
+        type: "write",
+        entry: { kind: STOPPED, data: { at: Date.now(), by: user.id } },
+      },
+      BACKGROUND_CONTEXT
+    );
+    await conversation.abort(BACKGROUND_CONTEXT);
+    for (const other of this.registry.threadsIn(thread.workspaceId)) {
+      if (
+        !stopped.has(other.id) &&
+        working.includes(other.id) &&
+        (await this.askedBy(other)) === thread.id
+      ) {
+        await this.stopRun(other, user, working, stopped);
+      }
+    }
+  }
+
+  /** The thread whose agent sent the message a thread works on, if another thread's agent sent it. */
+  private async askedBy(thread: ThreadRef): Promise<string | undefined> {
+    const conversation = await this.conversation(thread);
+    let cursor: Awaited<ReturnType<Conversation["entries"]>>["next"];
+    do {
+      const page = await conversation.entries(
+        { order: "descending" },
+        50,
+        cursor,
+        BACKGROUND_CONTEXT
+      );
+      const input = page.items.find((entry) =>
+        [AUTHORED, RELAYED, TASK].includes(entry.kind)
+      );
+      if (input) {
+        return input.kind === RELAYED
+          ? (input.data as unknown as Relay).fromThreadId
+          : undefined;
+      }
+      cursor = page.next;
+    } while (cursor);
+    return undefined;
+  }
+
+  /**
+   * Calls `listener` with the ids of the threads of a workspace whose agent works, then after every change, until the
+   * returned stop is called.
+   */
+  async watchWorking(
+    workspaceId: string,
+    user: User,
+    listener: (threadIds: readonly string[]) => void
+  ): Promise<() => Promise<void>> {
+    this.registry.requireMember(workspaceId, user);
+    const harness = await this.session(workspaceId);
+    const watch = await harness.watchTaskGraph(BACKGROUND_CONTEXT);
+    let last: string | undefined;
+    const show = async (graph: TaskGraph) => {
+      const threadIds = this.workingIn(workspaceId, graph);
+      const key = threadIds.join();
+      if (key !== last) {
+        last = key;
+        listener(threadIds);
+      }
+    };
+    await show(watch.value);
+    watch.start(show);
+    return async () => {
+      await watch.stop();
+    };
+  }
+
+  private async workingNow(workspaceId: string): Promise<string[]> {
+    const watch = await (await this.session(workspaceId)).watchTaskGraph(
+      BACKGROUND_CONTEXT
+    );
+    const threadIds = this.workingIn(workspaceId, watch.value);
+    await watch.stop();
+    return threadIds;
+  }
+
+  /** The threads of a workspace with a live task that is not background work. */
+  private workingIn(workspaceId: string, graph: TaskGraph): string[] {
+    const busy = new Set(
+      Object.values(graph.tasks)
+        .filter((task) => !task.background)
+        .map((task) => String(task.conversationId))
+    );
+    return this.registry
+      .threadsIn(workspaceId)
+      .filter((thread) => busy.has(String(thread.conversationId)))
+      .map((thread) => thread.id);
+  }
+
   /** Changes whenever the thread gets a new entry, so search knows when to read it again. */
   async version(thread: ThreadRef): Promise<string> {
     const conversation = await this.conversation(thread);
@@ -448,14 +627,44 @@ export class Threads {
     }
   }
 
+  /** The path, name, and place of a file of the workspace; ids are UUIDv7, so one id names one file. */
+  private async fileIn(
+    workspaceId: string,
+    fileId: string
+  ): Promise<{
+    readonly path: string;
+    readonly name: string;
+    readonly place: FilePlace;
+  }> {
+    const places: FilePlace[] = [
+      { workspaceId, channelId: null },
+      ...this.registry
+        .channelsIn(workspaceId)
+        .map((channel) => ({ workspaceId, channelId: channel.id })),
+    ];
+    for (const place of places) {
+      const file = (await this.files(place)).find(
+        (candidate) => candidate.id === fileId
+      );
+      if (file) {
+        return {
+          path: join(this.filesDirectory(place), `${file.id}-${file.name}`),
+          name: file.name,
+          place,
+        };
+      }
+    }
+    throw notFound();
+  }
+
   private async save(
-    thread: ThreadLocation,
+    place: FilePlace,
     files: readonly File[]
   ): Promise<FileRef[]> {
     if (files.length === 0) {
       return [];
     }
-    const directory = this.filesDirectory(thread);
+    const directory = this.filesDirectory(place);
     await mkdir(directory, { recursive: true });
     const saved: FileRef[] = [];
     for (const file of files) {
@@ -466,15 +675,11 @@ export class Threads {
     return saved;
   }
 
-  private filesDirectory(thread: ThreadLocation): string {
-    return join(
-      this.dataDirectory,
-      "workspaces",
-      thread.workspaceId,
-      "threads",
-      thread.id,
-      "files"
-    );
+  private filesDirectory(place: FilePlace): string {
+    const workspace = join(this.dataDirectory, "workspaces", place.workspaceId);
+    return place.channelId === null
+      ? join(workspace, "files")
+      : join(workspace, "channels", place.channelId, "files");
   }
 
   private async deliver(
@@ -719,7 +924,7 @@ export class Threads {
     return defineTool({
       name: "recall",
       description:
-        "Search everything in this workspace: earlier threads, notes, files, and captured mail or chats. Use it to recall facts, decisions, and what people said.",
+        "Search everything in this workspace: earlier threads, artifacts, notes, files, and captured mail or chats. Use it to recall facts, decisions, and what people said.",
       parameters: Type.Object({
         query: Type.String({ description: "What to look for, in plain words" }),
         limit: Type.Optional(
@@ -745,7 +950,7 @@ export class Threads {
                   (candidate) => candidate.id === result.threadId
                 );
                 const where = thread ? `, in ${threadLink(thread)}` : "";
-                return `${number + 1}. [${result.kind}] ${result.title} (${day(result.updatedAt)}${where}): ${result.snippet}`;
+                return `${number + 1}. [${result.kind}] ${result.title} (${day(result.updatedAt)}${recalledId(result.uri)}${where}): ${result.snippet}`;
               })
               .join("\n")
           : "Nothing found in this workspace.";
@@ -1003,12 +1208,12 @@ export class Threads {
     return defineTool({
       name: "list_files",
       description:
-        "List the files of this thread: attached to messages or uploaded to the thread.",
+        "List the files of this thread's channel: uploaded to the channel, or attached to messages in any of its threads. In the orchestrator, the workspace's own files.",
       parameters: Type.Object({}),
       replay: "safe",
       execute: async (_args, api) => {
         const files = await this.files(
-          this.threadOf(workspaceId, api.conversationId)
+          this.placeOf(this.threadOf(workspaceId, api.conversationId))
         );
         const text =
           files
@@ -1016,7 +1221,7 @@ export class Threads {
               (file) =>
                 `- ${file.name} (file ${file.id}, ${Math.ceil(file.size / 1024)} KB, ${day(file.time)})`
             )
-            .join("\n") || "This thread has no files.";
+            .join("\n") || "There are no files here.";
         return { output: [{ type: "text", text }] };
       },
     });
@@ -1026,18 +1231,19 @@ export class Threads {
     return defineTool({
       name: "read_file",
       description:
-        "Read a file of this thread: the text of a document, sheet, slides, or PDF, or a picture.",
+        "Read a file of this workspace by its id, from list_files or recall: the text of a document, sheet, slides, or PDF, or a picture.",
       parameters: Type.Object({
         file: Type.String({ description: "The file id" }),
       }),
       replay: "safe",
-      execute: async (args, api) => {
-        const thread = this.threadOf(workspaceId, api.conversationId);
-        const { path, name } = await this.file(thread, args.file).catch(() => {
-          throw new Error(
-            `There is no file ${args.file} in this thread. list_files shows the files.`
-          );
-        });
+      execute: async (args) => {
+        const { path, name } = await this.fileIn(workspaceId, args.file).catch(
+          () => {
+            throw new Error(
+              `There is no file ${args.file} in this workspace. list_files and recall show files.`
+            );
+          }
+        );
         const type = Bun.file(path).type.split(";")[0]!;
         if (type.startsWith("image/")) {
           this.images ??= createNodePhotonImages();
@@ -1226,17 +1432,39 @@ async function earlierEntries(
   return entries;
 }
 
-/** The messages of a thread: the entries a compaction left out of the view first, then the view's. */
+/**
+ * The messages of a thread: the entries a compaction left out of the view first, then the view's. The agent's work
+ * after a message, up to the next one, is one answer: its last words are the text, and the thoughts, tool calls, and
+ * words before them are its work.
+ */
 export function threadMessages(
   view: ConversationView,
   earlier: readonly EntryRecord[] = []
 ): ThreadMessages {
+  const { running, generation } = liveOf(view);
   const messages: Message[] = [];
+  let startedAt = 0;
+  let turn: Turn | undefined;
+  const answer = (streaming: boolean) => {
+    const message = turn && turnMessage(turn, startedAt, streaming);
+    // The answer to a task that needs nobody's attention.
+    if (message && message.text.trim() !== "QUIET") {
+      messages.push(message);
+    }
+    turn = undefined;
+  };
   for (const entry of [...earlier, ...view.entries]) {
     const model = entry.model?.[0];
+    if (
+      entry.kind === AUTHORED ||
+      entry.kind === RELAYED ||
+      entry.kind === TASK
+    ) {
+      answer(false);
+      startedAt = (model as UserMessage | undefined)?.timestamp ?? 0;
+    }
     if (entry.kind === AUTHORED) {
       const data = entry.data as unknown as Authored;
-      const time = (model as UserMessage | undefined)?.timestamp ?? 0;
       messages.push({
         id: String(entry.id),
         authorId: data.authorId,
@@ -1245,9 +1473,10 @@ export function threadMessages(
         text: data.text,
         // Messages from before files have none.
         files: data.files ?? [],
-        time,
+        time: startedAt,
         failed: false,
         streaming: false,
+        work: null,
       });
     } else if (entry.kind === RELAYED) {
       const data = entry.data as unknown as Relay;
@@ -1258,58 +1487,179 @@ export function threadMessages(
         agent: true,
         text: `From ${threadLink({ id: data.fromThreadId, title: data.fromTitle })}: ${data.text}`,
         files: [],
-        time: (model as UserMessage | undefined)?.timestamp ?? 0,
+        time: startedAt,
         failed: false,
         streaming: false,
+        work: null,
       });
     } else if (model?.role === "assistant") {
-      const message = agentMessage(String(entry.id), model, false);
-      // The answer to a task that needs nobody's attention.
-      if (message.text.trim() !== "QUIET") {
-        messages.push(message);
-      }
+      turn ??= { id: String(entry.id), responses: [], results: new Map() };
+      turn.responses.push(model);
+    } else if (model?.role === "toolResult" && turn) {
+      turn.results.set(model.toolCallId, model);
+    } else if (entry.kind === STOPPED) {
+      turn ??= { id: String(entry.id), responses: [], results: new Map() };
+      turn.stoppedAt = (entry.data as { at: number }).at;
     }
   }
-  const live = (view.docs["pi.live"] ?? {}) as {
-    generation?: { message?: AssistantMessage };
-    tools?: Record<string, unknown>;
-  };
-  if (live.generation?.message) {
-    messages.push(agentMessage("streaming", live.generation.message, true));
+  if (running) {
+    turn ??= { id: "streaming", responses: [], results: new Map() };
+    if (generation) {
+      turn.responses.push(generation);
+    }
   }
-  const running =
-    live.generation !== undefined || Object.keys(live.tools ?? {}).length > 0;
-  // A tool-only turn has no text to show.
+  answer(running);
+  return { messages, running };
+}
+
+/** Whether the agent works, and the response it is writing. */
+function liveOf(view: ConversationView): {
+  running: boolean;
+  generation?: AssistantMessage;
+} {
+  const live = (view.docs["pi.live"] ?? {}) as {
+    run?: unknown;
+    generation?: { message?: AssistantMessage };
+    tools?: unknown[];
+  };
   return {
-    messages: messages.filter(
-      (message) =>
-        message.text !== "" || message.files.length > 0 || message.streaming
-    ),
-    running,
+    running:
+      live.run !== undefined ||
+      live.generation !== undefined ||
+      (live.tools ?? []).length > 0,
+    generation: live.generation?.message,
   };
 }
 
-function agentMessage(
-  id: string,
-  message: AssistantMessage,
+/** The agent's responses to one message, and the results of their tool calls by call id. */
+interface Turn {
+  readonly id: string;
+  readonly responses: AssistantMessage[];
+  readonly results: Map<string, ToolResultMessage>;
+  /** When someone stopped the agent. */
+  stoppedAt?: number;
+}
+
+function turnMessage(
+  turn: Turn,
+  startedAt: number,
   streaming: boolean
 ): Message {
-  const text = message.content
-    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+  const steps = turnSteps(turn, streaming);
+  // The words after the last thought or tool call are the answer.
+  const answerStart = steps.findLastIndex((s) => s.kind !== "text") + 1;
+  const answer = steps
+    .slice(answerStart)
+    .map((s) => s.text)
     .join("");
+  const work = steps.slice(0, answerStart);
+  const last = turn.responses.at(-1);
+  // An aborted response, or tool calls that never got results, end a turn that someone stopped, or a restart cut.
+  const stopped =
+    !streaming &&
+    (turn.stoppedAt !== undefined ||
+      last?.stopReason === "aborted" ||
+      last?.stopReason === "toolUse");
   const failed =
-    !streaming && text === "" && message.errorMessage !== undefined;
+    !(streaming || stopped) &&
+    answer === "" &&
+    last?.errorMessage !== undefined;
+  const ends = [
+    ...turn.responses.map((r) => r.timestamp + (r.durationMs ?? 0)),
+    ...[...turn.results.values()].map((r) => r.timestamp),
+  ];
+  const start = startedAt || (turn.responses[0]?.timestamp ?? Date.now());
   return {
-    id,
+    id: turn.id,
     authorId: null,
     author: "Golem",
     agent: true,
-    text: failed ? message.errorMessage! : text,
+    text: failed ? last!.errorMessage! : answer,
     files: [],
-    time: message.timestamp,
+    time: last?.timestamp ?? start,
     failed,
     streaming,
+    work:
+      streaming || stopped || work.length > 0
+        ? {
+            startedAt: start,
+            endedAt: streaming
+              ? null
+              : (turn.stoppedAt ?? Math.max(start, ...ends)),
+            stopped,
+            steps: work,
+          }
+        : null,
   };
+}
+
+/** The thoughts, words, and tool calls of a turn in order; words that follow each other are one step. */
+function turnSteps(turn: Turn, streaming: boolean): Step[] {
+  const steps: Step[] = [];
+  const add = (kind: Step["kind"], text: string) =>
+    steps.push({
+      kind,
+      text,
+      tool: null,
+      input: null,
+      output: null,
+      running: false,
+      failed: false,
+    });
+  for (const block of turn.responses.flatMap((r) => r.content)) {
+    const last = steps.at(-1);
+    if (block.type === "thinking") {
+      if (block.thinking.trim() !== "") {
+        add("thinking", block.thinking.trim());
+      }
+    } else if (block.type === "text") {
+      if (last?.kind === "text") {
+        steps[steps.length - 1] = { ...last, text: last.text + block.text };
+      } else if (block.text.trim() !== "") {
+        add("text", block.text);
+      }
+    } else {
+      steps.push(toolStep(block, turn.results.get(block.id), streaming));
+    }
+  }
+  return steps;
+}
+
+function toolStep(
+  call: ToolCall,
+  result: ToolResultMessage | undefined,
+  streaming: boolean
+): Step {
+  const output = result?.content
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("\n");
+  return {
+    kind: "tool",
+    text: output?.match(THREAD_LINK)?.[0] ?? argumentSummary(call.arguments),
+    tool: call.name,
+    input: clip(JSON.stringify(call.arguments, null, 2)),
+    output: output === undefined ? null : clip(output),
+    running: streaming && !result,
+    failed: result?.isError === true || call.argumentsError !== undefined,
+  };
+}
+
+/** A thread link as agents write it: `[title](thread:<id>)`. */
+const THREAD_LINK = /\[[^\]\n]+\]\(thread:[\w-]+\)/;
+/** How much of a tool call's arguments and result the transcript keeps; the transcript is sent after every change. */
+const DETAIL_LIMIT = 1000;
+
+function clip(text: string): string {
+  return text.length > DETAIL_LIMIT ? `${text.slice(0, DETAIL_LIMIT)}…` : text;
+}
+
+/** The values of a tool call's arguments on one line, such as the query of a search. */
+function argumentSummary(args: object): string {
+  return Object.values(args)
+    .filter((value) => typeof value === "string" || typeof value === "number")
+    .join(" · ")
+    .replace(/\s+/g, " ")
+    .slice(0, 200);
 }
 
 interface Authored extends JsonObject {
@@ -1337,6 +1687,16 @@ function authored(user: User, text: string, files: readonly FileRef[]) {
 }
 
 /** A message needs text, files, or both. */
+/** The id that read_file or the artifact tools take, for a recalled file or artifact. */
+function recalledId(uri: string): string {
+  const artifact = /^artifact:(.+)$/.exec(uri);
+  if (artifact) {
+    return `, artifact ${artifact[1]}`;
+  }
+  const file = FILE_URI.exec(uri);
+  return file ? `, file ${file[1]}` : "";
+}
+
 function messageText(text: string | undefined, files: readonly File[]): string {
   return files.length > 0 ? (text ?? "").trim() : required(text, "Message");
 }

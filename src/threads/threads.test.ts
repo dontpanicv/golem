@@ -1,5 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { Context, Message } from "@earendil-works/pi-ai";
+import type {
+  Context,
+  Message,
+  SimpleStreamOptions,
+} from "@earendil-works/pi-ai";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -7,6 +11,7 @@ import {
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import { transcript } from "./pages.ts";
+import { threadMessages } from "./threads.ts";
 
 let golem: TestApp;
 let alice: User;
@@ -41,9 +46,38 @@ function textOf(message: Message): string {
 }
 
 /** A scripted agent: one tool call for each request it knows, then a short answer after the tool result. */
-function agent(context: Context) {
+function agent(context: Context, options?: SimpleStreamOptions) {
   const last = context.messages.at(-1)!;
   const text = textOf(last);
+  const asked = context.messages.find((message) => message.role === "user");
+  if (asked && textOf(asked).endsWith("Delegate and wait")) {
+    if (last.role === "user") {
+      return Promise.resolve(
+        fauxAssistantMessage(
+          [
+            fauxToolCall("start_thread", {
+              channel: "general",
+              message: "Take your time",
+            }),
+          ],
+          { stopReason: "toolUse" }
+        )
+      );
+    }
+    return new Promise<never>((_, reject) =>
+      options?.signal?.addEventListener("abort", () =>
+        reject(new Error("Stopped"))
+      )
+    );
+  }
+  if (text.endsWith("Take your time")) {
+    // Works until someone stops it.
+    return new Promise<never>((_, reject) =>
+      options?.signal?.addEventListener("abort", () =>
+        reject(new Error("Stopped"))
+      )
+    );
+  }
   memoryViews.push(
     ...context.messages
       .map(textOf)
@@ -78,6 +112,10 @@ function agent(context: Context) {
   );
   if (file) {
     return call("read_file", { file: file[1]! });
+  }
+  const named = /Read file ([\w-]+)$/.exec(text);
+  if (named) {
+    return call("read_file", { file: named[1]! });
   }
   const channelCommand = /(Create|Search|Delete) channels? (.+)$/.exec(text);
   if (channelCommand) {
@@ -225,7 +263,7 @@ function postForm(
   );
 }
 
-test("files attach to a new thread, a message, and the thread; the agent reads them; others cannot reach them", async () => {
+test("files attach to a new thread, a message, and the channel; every thread of the channel sees them; others cannot reach them", async () => {
   const token = await golem.signIn("Alice", "alice@example.com");
   const outsider = await golem.signIn("Bob", "bob@example.com");
   const home = await golem.app.workspaces.create(alice, "Files");
@@ -245,9 +283,12 @@ test("files attach to a new thread, a message, and the thread; the agent reads t
   await idle(home.id, id);
   expect(toolResults).toContain("Milk, eggs, bread");
 
+  const filesPath = `/api/v1/workspaces/${home.id}/channels/${general.id}/files`;
+  const filePath = (fileId: string) =>
+    `/api/v1/workspaces/${home.id}/files/${fileId}`;
   const page = new FormData();
   page.append("files", new File(["<script>alert(1)</script>"], "page.html"));
-  const uploaded = await postForm(`/api/v1/threads/${id}/files`, page, {
+  const uploaded = await postForm(filesPath, page, {
     authorization: `Bearer ${token}`,
   });
   const message = new FormData();
@@ -263,7 +304,7 @@ test("files attach to a new thread, a message, and the thread; the agent reads t
     files: { id: string; name: string }[];
   };
   expect(files.map((file) => file.name)).toEqual(["shopping.txt", "page.html"]);
-  const listed = await golem.call(`/api/v1/threads/${id}/files`, { token });
+  const listed = await golem.call(filesPath, { token });
   expect(
     ((await listed.json()) as { files: { name: string }[] }).files.map(
       (file) => file.name
@@ -280,28 +321,22 @@ test("files attach to a new thread, a message, and the thread; the agent reads t
     ["", ["beach.png"]],
   ]);
 
-  const shopping = await golem.call(
-    `/api/v1/threads/${id}/files/${files[0]!.id}`,
-    { token }
-  );
+  const shopping = await golem.call(filePath(files[0]!.id), {
+    token,
+  });
   expect(await shopping.text()).toBe("Milk, eggs, bread");
   expect(shopping.headers.get("content-disposition")).toBe(
     "inline; filename*=UTF-8''shopping.txt"
   );
-  const html = await golem.call(`/api/v1/threads/${id}/files/${files[1]!.id}`, {
-    token,
-  });
+  const html = await golem.call(filePath(files[1]!.id), { token });
   expect(html.headers.get("content-type")).toBe("application/octet-stream");
   expect(html.headers.get("content-disposition")).toStartWith("attachment");
 
-  for (const path of [
-    `/api/v1/threads/${id}/files`,
-    `/api/v1/threads/${id}/files/${files[0]!.id}`,
-  ]) {
+  for (const path of [filesPath, filePath(files[0]!.id)]) {
     expect((await golem.call(path, { token: outsider })).status).toBe(404);
   }
 
-  const pagePath = `/api/v1/threads/${id}/files/${files[1]!.id}`;
+  const pagePath = filePath(files[1]!.id);
   const refused = await golem.call(pagePath, {
     token: outsider,
     method: "DELETE",
@@ -318,10 +353,60 @@ test("files attach to a new thread, a message, and the thread; the agent reads t
   expect(
     await Array.fromAsync(
       new Bun.Glob(`${files[1]!.id}-*`).scan(
-        `${golem.app.config.dataDirectory}/workspaces/${thread.workspaceId}/threads/${id}/deleted`
+        `${golem.app.config.dataDirectory}/workspaces/${thread.workspaceId}/channels/${general.id}/deleted`
       )
     )
   ).toHaveLength(1);
+
+  // A settled thread leaves its files to the channel, where a new thread reads them.
+  golem.app.workspaces.setThreadSettled(home.id, id, alice, true);
+  await golem.app.threads.create(home.id, alice, general.id, "Use the list");
+  expect(
+    (
+      await golem.app.threads.files(
+        golem.app.threads.place(home.id, general.id, alice)
+      )
+    ).map((file) => file.name)
+  ).toEqual(["shopping.txt", "beach.png"]);
+});
+
+test("the orchestrator keeps its files in the workspace, and an agent of any channel reads a file by its id", async () => {
+  const home = await golem.app.workspaces.create(alice, "Budget");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  await golem.app.threads.send(orchestrator.id, alice, "Keep this", [
+    new File(["Rent 900"], "budget.txt"),
+  ]);
+  const [budget] = await golem.app.threads.files(
+    golem.app.threads.place(home.id, null, alice)
+  );
+  expect(budget!.name).toBe("budget.txt");
+  expect(
+    await golem.app.threads.files(
+      golem.app.threads.place(home.id, general.id, alice)
+    )
+  ).toEqual([]);
+  expect(
+    await Bun.file(
+      `${golem.app.config.dataDirectory}/workspaces/${home.id}/files/${budget!.id}-budget.txt`
+    ).text()
+  ).toBe("Rent 900");
+
+  const reader = await golem.app.threads.create(
+    home.id,
+    alice,
+    general.id,
+    `Read file ${budget!.id}`
+  );
+  await idle(home.id, reader.id);
+  expect(toolResults).toContain("Rent 900");
+  await until(
+    () =>
+      golem.app.threads.messages(
+        golem.app.workspaces.thread(orchestrator.id, alice)
+      ),
+    (state) => !state.running
+  );
 });
 
 test("a composer with no file chosen starts a thread and sends a message", async () => {
@@ -405,14 +490,296 @@ test("the web shows each thread link in a message as a link into the workspace, 
           failed: false,
           files: [],
           streaming: false,
+          work: null,
         },
       ],
     },
     { id: "dinner", workspaceId: "family" }
   );
   expect(html).toContain(
-    'Started <a class="thread-link" href="/w/family/t/abc-1">Dinner &lt;b&gt;plan&lt;/b&gt;</a> and [not a link](thread:&quot;x) &lt;i&gt;'
+    'Started <a class="thread-link" href="/w/family/t/abc-1">Dinner &lt;b&gt;plan&lt;/b&gt;</a><span class="working-spinner" data-show="$working.tabc1" style="display: none" role="img" aria-label="Working"></span> and [not a link](thread:&quot;x) &lt;i&gt;'
   );
+});
+
+test("an answer carries the work before it: open while the agent works, folded once it answers", () => {
+  const entries = [
+    {
+      id: 1,
+      kind: "golem.message",
+      data: { author: "Alice", authorId: "a", text: "Weather?", files: [] },
+      model: [{ role: "user", content: "Weather?", timestamp: 1000 }],
+    },
+    {
+      id: 2,
+      kind: "pi.generation",
+      model: [
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "Check the forecast." },
+            { type: "text", text: "I'll look." },
+            {
+              type: "toolCall",
+              id: "c1",
+              name: "web_search",
+              arguments: { query: "Prague weather" },
+            },
+          ],
+          timestamp: 2000,
+        },
+      ],
+    },
+  ];
+  const view = (live: object, more: object[] = []) =>
+    ({ entries: [...entries, ...more], docs: { "pi.live": live } }) as never;
+
+  const working = threadMessages(view({ run: {}, tools: [{}] }));
+  expect(working.running).toBe(true);
+  expect(working.messages[1]).toMatchObject({
+    text: "",
+    streaming: true,
+    work: {
+      startedAt: 1000,
+      endedAt: null,
+      steps: [
+        { kind: "thinking", text: "Check the forecast." },
+        { kind: "text", text: "I'll look." },
+        {
+          kind: "tool",
+          tool: "web_search",
+          text: "Prague weather",
+          running: true,
+        },
+      ],
+    },
+  });
+  const html = transcript(working, { id: "t", workspaceId: "w" });
+  expect(html).toContain(
+    'class="work working" data-preserve-attr="open" open>'
+  );
+  expect(html).toContain('Working for <span data-elapsed-since="1000">');
+
+  const done = threadMessages(
+    view({}, [
+      {
+        id: 3,
+        kind: "pi.tool",
+        model: [
+          {
+            role: "toolResult",
+            toolCallId: "c1",
+            content: [{ type: "text", text: "Sunny, 21 °C" }],
+            isError: false,
+            timestamp: 3000,
+          },
+        ],
+      },
+      {
+        id: 4,
+        kind: "pi.generation",
+        model: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Sunny." }],
+            timestamp: 4000,
+            durationMs: 5000,
+          },
+        ],
+      },
+    ])
+  );
+  expect(done.messages.map((message) => message.text)).toEqual([
+    "Weather?",
+    "Sunny.",
+  ]);
+  expect(done.messages[1]!.work).toMatchObject({ endedAt: 9000 });
+  expect(done.messages[1]!.work!.steps.map((step) => step.running)).toEqual([
+    false,
+    false,
+    false,
+  ]);
+  const folded = transcript(done, { id: "t", workspaceId: "w" });
+  expect(folded).toContain(
+    '<details id="work-2" class="work" data-preserve-attr="open">'
+  );
+  expect(folded).toContain("Worked for 8s");
+  expect(done.messages[1]!.work!.steps[2]).toMatchObject({
+    input: '{\n  "query": "Prague weather"\n}',
+    output: "Sunny, 21 °C",
+  });
+});
+
+test("a stopped turn says so, calls of one tool in a row fold into one row, and thread links show their work", () => {
+  const call = (id: string, args: object) => ({
+    type: "toolCall",
+    id,
+    name: "start_thread",
+    arguments: args,
+  });
+  const result = (id: string, text: string) => ({
+    id,
+    kind: "pi.tool",
+    model: [
+      {
+        role: "toolResult",
+        toolCallId: id,
+        content: [{ type: "text", text }],
+        isError: false,
+        timestamp: 3000,
+      },
+    ],
+  });
+  const view = {
+    entries: [
+      {
+        id: 1,
+        kind: "golem.message",
+        data: { author: "Alice", authorId: "a", text: "Plan it", files: [] },
+        model: [{ role: "user", content: "Plan it", timestamp: 1000 }],
+      },
+      {
+        id: 2,
+        kind: "pi.generation",
+        model: [
+          {
+            role: "assistant",
+            content: [
+              call("a", { channel: "food" }),
+              call("b", { channel: "trips" }),
+            ],
+            stopReason: "toolUse",
+            timestamp: 2000,
+          },
+        ],
+      },
+      result("a", "Started [Dinner](thread:d-1) in #food."),
+      result("b", "Started [Trip](thread:t-2) in #trips."),
+      {
+        id: 5,
+        kind: "pi.generation",
+        model: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Half" }],
+            stopReason: "aborted",
+            errorMessage: "Request was aborted",
+            timestamp: 4000,
+          },
+        ],
+      },
+    ],
+    docs: {},
+  } as never;
+
+  const answer = threadMessages(view).messages[1]!;
+  expect(answer).toMatchObject({ failed: false, work: { stopped: true } });
+  expect(answer.work!.steps.map((step) => step.text)).toEqual([
+    "[Dinner](thread:d-1)",
+    "[Trip](thread:t-2)",
+  ]);
+  const html = transcript(threadMessages(view), { id: "t", workspaceId: "w" });
+  expect(html).toContain("Stopped after 3s");
+  expect(html).toContain(
+    '<span class="work-tool-name">Start thread</span><span class="work-tool-detail">2 times</span>'
+  );
+  expect(html).toContain(
+    '<a class="thread-link" href="/w/w/t/d-1">Dinner</a><span class="working-spinner" data-show="$working.td1"'
+  );
+});
+
+test("the workspace's working stream shows a thread while its agent works, and people stop it", async () => {
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const family = await golem.app.workspaces.create(alice, "Busy");
+  const [general] = golem.app.workspaces.channels(family.id, alice);
+  const stream = await golem.call(`/api/v1/workspaces/${family.id}/working`, {
+    token,
+  });
+
+  const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
+  const working = async () => {
+    let event = "";
+    while (!event.includes("\n\n")) {
+      event += (await reader.read()).value ?? "";
+    }
+    return JSON.parse(/^data: (.*)$/m.exec(event)![1]!).threadIds;
+  };
+  expect(await working()).toEqual([]);
+
+  const thread = await golem.app.threads.create(
+    family.id,
+    alice,
+    general!.id,
+    "Take your time"
+  );
+  expect(await working()).toEqual([thread.id]);
+  const stopped = await golem.call(`/api/v1/threads/${thread.id}/stop`, {
+    token,
+    method: "POST",
+  });
+  expect(stopped.status).toBe(204);
+  expect(await working()).toEqual([]);
+  await reader.cancel();
+  expect(
+    await golem.app.threads.messages(
+      golem.app.workspaces.thread(thread.id, alice)
+    )
+  ).toMatchObject({
+    running: false,
+    messages: [
+      { text: "Take your time" },
+      { agent: true, text: "", work: { stopped: true, steps: [] } },
+    ],
+  });
+
+  const outsider = await golem.signIn("Eve", "eve@example.com");
+  expect(
+    (
+      await golem.call(`/api/v1/workspaces/${family.id}/working`, {
+        token: outsider,
+      })
+    ).status
+  ).toBe(404);
+  expect(
+    (
+      await golem.call(`/api/v1/threads/${thread.id}/stop`, {
+        token: outsider,
+        method: "POST",
+      })
+    ).status
+  ).toBe(404);
+});
+
+test("stopping a thread also stops the threads it asked, which still work on its message", async () => {
+  const family = await golem.app.workspaces.create(alice, "Delegating");
+  const [general] = golem.app.workspaces.channels(family.id, alice);
+  const seen: (readonly string[])[] = [];
+  const stopWatching = await golem.app.threads.watchWorking(
+    family.id,
+    alice,
+    (threadIds) => seen.push(threadIds)
+  );
+  const asking = await golem.app.threads.create(
+    family.id,
+    alice,
+    general!.id,
+    "Delegate and wait"
+  );
+  await until(
+    async () => seen.at(-1) ?? [],
+    (threadIds) => threadIds.length === 2
+  );
+  const asked = seen.at(-1)!.find((id) => id !== asking.id)!;
+
+  await golem.app.threads.stop(asking.id, alice);
+  await until(
+    async () => seen.at(-1) ?? [],
+    (threadIds) => threadIds.length === 0
+  );
+  await stopWatching();
+  const answer = (
+    await golem.app.threads.messages(golem.app.workspaces.thread(asked, alice))
+  ).messages.at(-1);
+  expect(answer).toMatchObject({ agent: true, work: { stopped: true } });
 });
 
 test("a workspace has one orchestrator thread, which stays open and out of the channel lists", async () => {

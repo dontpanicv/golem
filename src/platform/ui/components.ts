@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { type IconName, icon } from "./icons.ts";
 
 // Server-rendered components. Looks are in public/styles.css, behaviors in public/ui.js,
@@ -6,6 +7,7 @@ import { type IconName, icon } from "./icons.ts";
 const escapeHtml = Bun.escapeHTML;
 
 export interface Message {
+  readonly id: string;
   readonly author: string;
   readonly agent: boolean;
   readonly text: string;
@@ -13,12 +15,37 @@ export interface Message {
   readonly failed?: boolean;
   readonly streaming?: boolean;
   readonly files?: readonly { readonly id: string; readonly name: string }[];
+  readonly work?: Work | null;
+}
+
+/** What an agent did before its answer. `endedAt` is null while it works. */
+export interface Work {
+  readonly startedAt: number;
+  readonly endedAt: number | null;
+  readonly stopped: boolean;
+  readonly steps: readonly {
+    readonly kind: "thinking" | "text" | "tool";
+    readonly text: string;
+    readonly tool: string | null;
+    readonly input: string | null;
+    readonly output: string | null;
+    readonly running: boolean;
+    readonly failed: boolean;
+  }[];
 }
 
 export type Toast = {
   readonly tone: "error" | "success";
   readonly text: string;
 } | null;
+
+const PUBLIC_DIRECTORY = new URL("../../../public/", import.meta.url);
+
+/** The address of a file in `public/` with a hash of its content, so browsers keep it until it changes. */
+function asset(path: string): string {
+  const hash = Bun.hash(readFileSync(new URL(path, PUBLIC_DIRECTORY)));
+  return `/assets/${path}?v=${hash.toString(36)}`;
+}
 
 export function htmlDocument(
   title: string,
@@ -35,23 +62,27 @@ export function htmlDocument(
 	<link rel="icon" href="/assets/icon.png" type="image/png">
 	<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 	<link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
-	<link rel="stylesheet" href="/assets/tokens.css">
-	<link rel="stylesheet" href="/assets/styles.css">
-	<script type="module" src="/assets/datastar.js"></script>
-	<script type="module" src="/assets/ui.js"></script>
+	<link rel="stylesheet" href="${asset("tokens.css")}">
+	<link rel="stylesheet" href="${asset("styles.css")}">
+	<script type="module" src="${asset("datastar.js")}"></script>
+	<script type="module" src="${asset("ui.js")}"></script>
 </head>
 <body ${bodyAttributes}>
 ${body}
-<div class="toasts" aria-live="polite">${toast ? `<div class="toast ${toast.tone}" role="status" data-toast><span class="dot"></span>${escapeHtml(toast.text)}</div>` : ""}</div>
+<div class="toasts" aria-live="polite">${toast ? toastCard(toast) : ""}</div>
 </body>
 </html>`;
+}
+
+/** A toast; ui.js builds the same markup for the toasts it shows. */
+function toastCard(toast: NonNullable<Toast>): string {
+  return `<div class="toast ${toast.tone}" role="status" data-toast><span class="toast-icon"></span><span class="toast-text">${escapeHtml(toast.text)}</span><button type="button" class="toast-close" aria-label="Dismiss"></button></div>`;
 }
 
 export interface ButtonOptions {
   readonly variant?: "primary" | "ghost" | "danger";
   readonly size?: "small" | "large" | "icon" | "tiny";
   readonly icon?: IconName;
-  readonly round?: boolean;
   /** Shortcut shown in the tooltip of an icon button. */
   readonly shortcut?: string;
   /** Raw attributes; defaults to `type="button"`. */
@@ -66,7 +97,6 @@ export function button(label: string, options: ButtonOptions = {}): string {
     options.variant,
     iconOnly ? "icon-only" : options.size,
     options.size === "tiny" && "tiny",
-    options.round && "round",
   ];
   const content = iconOnly
     ? icon(options.icon!)
@@ -79,15 +109,46 @@ export function button(label: string, options: ButtonOptions = {}): string {
 
 export function navItem(
   label: string,
-  options: { icon: IconName; href: string; current?: boolean; count?: number }
+  options: {
+    icon: IconName;
+    href: string;
+    current?: boolean;
+    count?: number;
+    /** A thread whose spinner shows while its agent works. */
+    threadId?: string;
+  }
 ): string {
   const current = options.current ? ' aria-current="page"' : "";
   const count = options.count
     ? `<span class="count">${options.count}</span>`
     : "";
-  return `<a class="nav-item" href="${escapeHtml(options.href)}"${current}>${icon(options.icon)}<span class="label">${escapeHtml(label)}</span>${count}</a>`;
+  const working = options.threadId ? workingSpinner(options.threadId) : "";
+  return `<a class="nav-item" href="${escapeHtml(options.href)}"${current}>${icon(options.icon)}<span class="label">${escapeHtml(label)}</span>${working}${count}</a>`;
 }
 
+/** The key in the `working` signal that is true while the agent of a thread works; signal keys cannot hold dashes. */
+export function workingKey(threadId: string): string {
+  return `t${threadId.replaceAll("-", "")}`;
+}
+
+/** A spinner that shows while the agent of a thread works. The workspace's working stream sets `working`. */
+export function workingSpinner(threadId: string): string {
+  return `<span class="working-spinner" data-show="$working.${workingKey(escapeHtml(threadId))}" style="display: none" role="img" aria-label="Working"></span>`;
+}
+
+/** The number of colors in `avatar` of design/tokens.json. */
+const AVATAR_COLORS = 10;
+
+/** The avatar color of a name: the sum of its code points, as iOS's `Avatar` picks it too. */
+function avatarColor(name: string): number {
+  let sum = 0;
+  for (const character of name) {
+    sum += character.codePointAt(0)!;
+  }
+  return sum % AVATAR_COLORS;
+}
+
+/** A person's initial on a color picked by their name, or an agent's on the accent. */
 export function avatar(
   name: string,
   options: { agent?: boolean; size?: "small" | "large" } = {}
@@ -95,7 +156,10 @@ export function avatar(
   const classes = ["avatar", options.agent && "agent", options.size]
     .filter(Boolean)
     .join(" ");
-  return `<span class="${classes}" aria-hidden="true">${escapeHtml(name.slice(0, 1).toUpperCase())}</span>`;
+  const color = options.agent
+    ? ""
+    : ` style="--avatar: var(--avatar-${avatarColor(name)})"`;
+  return `<span class="${classes}"${color} aria-hidden="true">${escapeHtml(name.slice(0, 1).toUpperCase())}</span>`;
 }
 
 /** A link to a thread as agents write it in messages: `[title](thread:<id>)`. */
@@ -111,6 +175,12 @@ export function message(
     hour: "2-digit",
     minute: "2-digit",
   });
+  const linked = (text: string) =>
+    escapeHtml(text).replace(
+      THREAD_LINK,
+      (_, title: string, threadId: string) =>
+        `<a class="thread-link" href="${escapeHtml(threadHref(threadId))}">${title}</a>${workingSpinner(threadId)}`
+    );
   const classes = ["message", m.failed && "failed", m.streaming && "streaming"]
     .filter(Boolean)
     .join(" ");
@@ -118,10 +188,104 @@ export function message(
 	${avatar(m.author, { agent: m.agent })}
 	<div class="message-body">
 		<div class="message-meta"><span class="message-author">${escapeHtml(m.author)}</span><time class="message-time">${time}</time></div>
-		${m.text ? `<p class="message-text">${escapeHtml(m.text).replace(THREAD_LINK, (_, title: string, threadId: string) => `<a class="thread-link" href="${escapeHtml(threadHref(threadId))}">${title}</a>`)}</p>` : ""}
+		${m.work ? workLog(m.id, m.work, linked) : ""}
+		${m.text ? `<p class="message-text">${linked(m.text)}</p>` : ""}
 		${m.files?.length ? `<div class="file-chips">${m.files.map((file) => fileChip(file.name, { href: fileHref(file.id) })).join("")}</div>` : ""}
 	</div>
 </article>`;
+}
+
+/**
+ * The work before an answer: open while the agent works, then folded into "Worked for …". The person's choice to open
+ * or fold it survives the transcript's patches; the fold gets a new id when the work ends, so it then folds. Calls of
+ * one tool in a row fold into one row, and each tool call opens to show its arguments and result.
+ */
+function workLog(
+  messageId: string,
+  work: Work,
+  linked: (text: string) => string
+): string {
+  const working = work.endedAt === null;
+  const id = `work-${escapeHtml(messageId)}${working ? "-live" : ""}`;
+  const elapsed = duration((work.endedAt ?? Date.now()) - work.startedAt);
+  let label = `Worked for ${elapsed}`;
+  if (working) {
+    label = `Working for <span data-elapsed-since="${work.startedAt}">${elapsed}</span>`;
+  } else if (work.stopped) {
+    label = `Stopped after ${elapsed}`;
+  }
+  const steps = runs(work.steps)
+    .map(({ start, steps: run }) => {
+      if (run.length === 1) {
+        return workStep(run[0]!, `${id}-${start}`, linked);
+      }
+      const rows = run
+        .map((step, index) => workStep(step, `${id}-${start + index}`, linked))
+        .join("");
+      const running = run.some((step) => step.running);
+      return `<li><details id="${id}-group-${start}" class="work-group" data-preserve-attr="open"${running ? " open" : ""}><summary class="work-row">${toolName(run[0]!.tool!)}<span class="work-tool-detail">${run.length} times</span></summary><ol class="work-group-steps">${rows}</ol></details></li>`;
+    })
+    .join("");
+  return `<details id="${id}" class="work${working ? " working" : ""}" data-preserve-attr="open"${working ? " open" : ""}><summary class="work-summary"><span>${label}</span>${steps ? `<span class="disclosure">${icon("disclosure")}</span>` : ""}</summary>${steps ? `<ol class="work-steps">${steps}</ol>` : ""}</details>`;
+}
+
+type WorkStep = Work["steps"][number];
+
+/** The steps in runs: each call of a tool that the call before it also made joins that call's run. */
+function runs(
+  steps: readonly WorkStep[]
+): { start: number; steps: WorkStep[] }[] {
+  const result: { start: number; steps: WorkStep[] }[] = [];
+  for (const [index, step] of steps.entries()) {
+    const last = result.at(-1);
+    if (step.kind === "tool" && last && last.steps[0]!.tool === step.tool) {
+      last.steps.push(step);
+    } else {
+      result.push({ start: index, steps: [step] });
+    }
+  }
+  return result;
+}
+
+function workStep(
+  step: WorkStep,
+  id: string,
+  linked: (text: string) => string
+): string {
+  if (step.kind !== "tool") {
+    return `<li class="work-${step.kind}">${linked(step.text)}</li>`;
+  }
+  const classes = [
+    "work-tool",
+    step.running && "running",
+    step.failed && "failed",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const io = [step.input, step.output]
+    .filter((part) => part !== null && part !== "" && part !== "{}")
+    .map((part) => `<pre>${escapeHtml(part!)}</pre>`)
+    .join("");
+  return `<li><details id="${id}" class="${classes}" data-preserve-attr="open"><summary class="work-row">${toolName(step.tool!)}${step.text ? `<span class="work-tool-detail">${linked(step.text)}</span>` : ""}</summary>${io}</details></li>`;
+}
+
+/** A tool's name as words: `web_search` is Web search. */
+function toolName(tool: string): string {
+  const words = tool.replaceAll("_", " ");
+  return `<span class="work-tool-name">${escapeHtml(words.charAt(0).toUpperCase() + words.slice(1))}</span>`;
+}
+
+/** A time span as 8s, 2m 05s, or 1h 03m. */
+function duration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+  if (minutes < 60) {
+    return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  }
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
 /** An attached file: with `href`, a link that opens it; with `remove`, a picked file with a remove button. */
@@ -141,11 +305,13 @@ export function fileChip(
 
 /**
  * A message box that posts `text` and the attached `files` as a multipart form. Files are picked, dropped on it, or
- * pasted into it. `action` is a Datastar expression, or `{ post }` for a plain form post.
+ * pasted into it. `action` is a Datastar expression, or `{ post }` for a plain form post. `stop`, a Datastar expression,
+ * adds a Stop button that shows while `$running`.
  */
 export function composer(
   placeholder: string,
-  action: string | { post: string }
+  action: string | { post: string },
+  stop?: string
 ): string {
   const form =
     typeof action === "string"
@@ -157,10 +323,11 @@ export function composer(
 	<div class="file-chips" data-file-list hidden></div>
 	<template data-file-chip>${fileChip("", { remove: true })}</template>
 	<div class="composer-actions">
-		${button("Attach file", { variant: "ghost", icon: "attach", size: "icon", attributes: 'type="button" data-file-pick' })}
+		${button("Attach file", { variant: "ghost", icon: "attach", size: "tiny", attributes: 'type="button" data-file-pick' })}
 		<input type="file" name="files" multiple hidden>
 		<span class="spacer"></span>
-		${button("Send", { variant: "primary", icon: "send", size: "tiny", round: true, shortcut: "↵", attributes: 'type="submit"' })}
+		${stop ? button("Stop", { icon: "stop", size: "tiny", attributes: `type="button" data-show="$running" style="display: none" data-on:click="${escapeHtml(stop)}"` }) : ""}
+		${button("Send", { variant: "primary", icon: "send", size: "tiny", shortcut: "↵", attributes: 'type="submit"' })}
 	</div>
 </form>`;
 }
@@ -306,7 +473,10 @@ export function settingsRow(
   control: string,
   options: { lead?: string; compact?: boolean } = {}
 ): string {
-  return `<div class="settings-row${options.compact ? " compact" : ""}">${options.lead ?? ""}<div class="settings-text"><strong>${escapeHtml(label)}</strong>${description ? `<span>${escapeHtml(description)}</span>` : ""}</div>${control}</div>`;
+  const lead = options.lead
+    ? `<span class="settings-lead">${options.lead}</span>`
+    : "";
+  return `<div class="settings-row${options.compact ? " compact" : ""}">${lead}<div class="settings-text"><strong>${escapeHtml(label)}</strong>${description ? `<span>${escapeHtml(description)}</span>` : ""}</div>${control}</div>`;
 }
 
 /** The content of a settings-style page: its title and sections. */

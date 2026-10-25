@@ -21,13 +21,14 @@ data/
 │       │                            (transcript, runs, tasks).
 │       ├── memory.sqlite            The memory of the orchestrator thread: a line for each message, merged
 │       │                            in pairs into a tree of summaries.
-│       ├── threads/
-│       │   └── <thread-id>/
-│       │       ├── files/           Attachments and artifacts of this thread.
+│       ├── channels/
+│       │   └── <channel-id>/
+│       │       ├── files/           Files uploaded to the channel or attached to messages in its threads.
 │       │       │   └── <uuidv7>-<name>.<ext>
-│       │       └── deleted/         Files deleted from the thread, kept as they were.
+│       │       └── deleted/         Files deleted from the channel, kept as they were.
 │       ├── notes/                   Knowledge as markdown with YAML frontmatter; an Obsidian vault.
-│       ├── files/                   Documents people upload to the workspace.
+│       ├── files/                   Documents people upload to the workspace, and the orchestrator's files.
+│       ├── deleted/                 Files deleted from `files/`, kept as they were.
 │       ├── raw/                     Captures from integrations, exactly as received, never edited.
 │       │   └── <source>/<yyyy>/<mm>/<uuidv7>.<ext>
 │       ├── tables/                  Structured history as Parquet, append-only, read with DuckDB.
@@ -42,21 +43,21 @@ data/
 ## Rules
 
 - **Nothing is ever removed.** A delete marks the row with `deleted_at`, and reads leave it out; a deleted thread file
-  moves to `threads/<id>/deleted/`. A deleted channel hides its threads, their artifacts, and its routines. Deleted
+  moves to `channels/<id>/deleted/`. A deleted channel hides its threads, files, artifacts, and routines. Deleted
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
   Artifact records that were deleted still count toward the artifact's limits.
 - **Workspaces are separate on disk.** Every byte of a workspace is under `data/workspaces/<workspace-id>/`:
   its threads, files, notes, captures, tables, and its own search index. Deleting a workspace is deleting its
   folder plus its rows in `golem.sqlite`. Nothing reads one workspace's folder on behalf of another.
 - **Search never crosses workspaces.** "Search everything" means everything in one workspace: all channels,
-  threads, notes, files, and captures. Each workspace has its own `index.sqlite`; there is no shared index.
+  threads, artifacts, notes, files, and captures. Each workspace has its own `index.sqlite`; there is no shared index.
 - **Folders are named by id, not by name.** Renaming a workspace, channel, or thread changes a row, never a path.
-  Channels have no folder; a thread's channel is a column in `golem.sqlite`, so moving a thread moves nothing.
+  A channel's folder holds only its files; a thread's channel is a column in `golem.sqlite`, and so is an artifact's.
 - **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `memory.sqlite`, `notes/`, `files/`,
   `raw/`, and `tables/` are the record; `memory.sqlite` comes from `session.sqlite`, but only model calls can write it
   again. `index.sqlite`, `models/`, and `logs/` can be deleted; Golem rebuilds or
   downloads them.
-- **Immutable things get time-ordered names.** Captures, thread files, and Parquet parts are named with UUIDv7,
+- **Immutable things get time-ordered names.** Captures, channel files, and Parquet parts are named with UUIDv7,
   so names never collide, sort by time, and merge as a set union when copies sync between machines.
 - **One writer per SQLite file.** This Golem process is the only writer of each database. Other machines read
   copies (see the replication design in the README).
@@ -70,9 +71,10 @@ data/
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
 | The orchestrator's memory: summaries of its messages, which the fast model wrote | `memory.sqlite` | SQLite |
-| Files attached to a thread's messages or uploaded to the thread, and what its agent made | `threads/<id>/files/` | the file as uploaded or made |
+| Files uploaded to a channel or attached to messages in its threads | `channels/<id>/files/` | the file as uploaded |
+| Artifacts: pages and small apps agents make, which belong to a channel, or the orchestrator's to the workspace | `golem.sqlite` | HTML, and the records their visitors keep |
 | Knowledge: people, places, decisions, how-tos | `notes/` | markdown + YAML frontmatter (`type`, `title`, dates, links) |
-| Uploaded documents | `files/` | the file as uploaded |
+| Uploaded documents, and the files of the orchestrator, which belongs to no channel | `files/` | the file as uploaded |
 | Mail, chats, transcripts, API responses | `raw/<source>/…` | as received (JSON, `.eml`, text) |
 | Finances, metrics, any history of numbers | `tables/<dataset>/…` | Parquet, one part per import run |
 
@@ -87,8 +89,8 @@ that snapshots the file system. Keep `config/` in a password manager or another 
 Each workspace has its own index at `data/workspaces/<workspace-id>/index.sqlite`. Search, the search page, and the
 agents' `recall` tool read only the index of the workspace they are in; there is no search across workspaces.
 
-- **What is indexed:** every thread's messages, and every file in the workspace's `notes/`, `files/`, `raw/`, and each
-  thread's `files/`. Drop files into those folders; Golem notices within a second. Every file's path is searchable by
+- **What is indexed:** every thread's messages, every artifact's text, and every file in the workspace's `notes/`,
+  `files/`, `raw/`, and each channel's `files/`. Drop files into those folders; Golem notices within a second. Every file's path is searchable by
   keywords, also when Golem cannot read the file. The same kinds as DigUp:
 
   | Kind | Formats | How |

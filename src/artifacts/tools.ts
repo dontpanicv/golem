@@ -11,7 +11,7 @@ Values are JSON, up to 64 KB each. A write replaces the value. Keep each person'
 
 const idParameter = Type.String({ description: "The artifact id" });
 
-/** The tools that let agents make artifacts in their thread, change them, and read the data their visitors keep. */
+/** The tools that let agents make artifacts in their channel, change them, and read the data their visitors keep. */
 export function artifactTools(
   artifacts: Artifacts,
   workspaces: ArtifactWorkspaces,
@@ -25,6 +25,27 @@ export function artifactTools(
       throw new Error("This tool works only in a thread.");
     }
     return thread;
+  };
+  /** The channel an artifact belongs to: the named one, or the thread's; null, the workspace, for the orchestrator. */
+  const placeOf = (
+    thread: { readonly id: string; readonly channelId: string },
+    channel: string | undefined
+  ) => {
+    if (channel !== undefined) {
+      const name = channel.replace(/^#/, "");
+      const named = workspaces
+        .channelsIn(workspaceId)
+        .find((candidate) => candidate.name === name);
+      if (!named) {
+        throw new Error(
+          `There is no channel #${name}. list_channels shows the channels.`
+        );
+      }
+      return named.id;
+    }
+    return workspaces.orchestratorOf(workspaceId)?.id === thread.id
+      ? null
+      : thread.channelId;
   };
   const artifactOf = (id: string) => {
     const artifact = artifacts
@@ -47,18 +68,25 @@ export function artifactTools(
   return [
     defineTool({
       name: "create_artifact",
-      description: `Make an artifact in this thread and give its link to the people. ${RUNTIME}`,
+      description: `Make an artifact and give its link to the people. It belongs to the channel of this thread, or to another channel you name, and stays there after the thread is settled; the orchestrator's belong to the workspace. Before you make one, look for an artifact to change with list_artifacts or recall. ${RUNTIME}`,
       parameters: Type.Object({
         title: Type.String({
           description: "A short title; link previews show it",
         }),
         html: Type.String({ description: "The whole HTML document" }),
         visibility,
+        channel: Type.Optional(
+          Type.String({
+            description:
+              "The name of the channel it belongs to, such as recipes, when it is not this thread's channel",
+          })
+        ),
       }),
       // The request key comes from the task, so a rerun after a crash finds the artifact it made before.
       replay: "safe",
-      execute: async (args, api) => {
-        const artifact = artifacts.create(threadOf(api.conversationId), {
+      execute: async ({ channel, ...args }, api) => {
+        const thread = threadOf(api.conversationId);
+        const artifact = artifacts.create(thread, placeOf(thread, channel), {
           ...args,
           requestKey: `${workspaceId}:${api.taskId}`,
         });
@@ -120,16 +148,23 @@ export function artifactTools(
     defineTool({
       name: "list_artifacts",
       description:
-        "List the artifacts of this workspace, newest first, with their links and threads.",
+        "List the artifacts of this workspace, newest first, with their links, channels, and the threads that made them.",
       parameters: Type.Object({}),
       replay: "safe",
       execute: async () => {
+        const channels = workspaces.channelsIn(workspaceId);
         const threads = workspaces.threadsIn(workspaceId);
         const list = artifacts.inWorkspace(workspaceId).map((artifact) => {
+          const channel = channels.find(
+            (candidate) => candidate.id === artifact.channelId
+          );
           const thread = threads.find(
             (candidate) => candidate.id === artifact.threadId
           );
-          return `${describe(artifact)}\nThread: [${thread?.title}](thread:${artifact.threadId})`;
+          const place = channel
+            ? `Channel: #${channel.name}`
+            : "The workspace's";
+          return `${describe(artifact)}\n${place}\nMade in: [${thread?.title}](thread:${artifact.threadId})`;
         });
         return text(list.join("\n\n") || "This workspace has no artifacts.");
       },

@@ -59,34 +59,35 @@ export function artifactPage(artifact: Artifact): string {
 </html>`;
 }
 
-/** The Artifacts tab of a thread: its artifacts, newest first. A click opens one in the Preview tab. */
-export function threadArtifacts(
+/**
+ * The Artifacts tab of a place: a channel and its threads, or the orchestrator with the workspace's own. Newest first;
+ * a click opens one in the panel.
+ */
+export function artifactList(
   workspaceId: string,
-  threadId: string,
   artifacts: readonly Artifact[]
 ): string {
   const rows = artifacts
     .map(
       (artifact) =>
-        `<button type="button" class="list-row" data-on:click="@get('${artifactBase(workspaceId, threadId, artifact.id)}')">${icon("artifact")}<span class="name">${escapeHtml(artifact.title)}</span><span class="meta">${visitors(artifact.visitors)}</span></button>`
+        `<button type="button" class="list-row" data-on:click="@get('${artifactBase(workspaceId, artifact.id)}')">${icon("artifact")}<span class="name">${escapeHtml(artifact.title)}</span><span class="meta">${visitors(artifact.visitors)}</span></button>`
     )
     .join("");
-  return `<div id="thread-artifacts" class="thread-files" data-show="$tab === 'artifacts'">
+  return `<div id="artifact-list" class="thread-files" data-show="$tab === 'artifacts'">
 		${rows ? `<div class="list">${rows}</div>` : empty("artifact", "No artifacts yet")}
 	</div>`;
 }
 
-/** The Preview tab: the open artifact running, or the data it keeps, with its actions. */
+/** The open artifact running, or the data it keeps, with its actions. */
 export function artifactPreview(
   workspaceId: string,
-  threadId: string,
   artifact: Artifact | null,
   records: readonly ArtifactRecord[] = []
 ): string {
   if (!artifact) {
     return `<div id="artifact-preview" class="artifact-preview" data-show="$tab === 'preview'" style="display: none">${empty("preview", "Nothing to preview")}</div>`;
   }
-  const base = artifactBase(workspaceId, threadId, artifact.id);
+  const base = artifactBase(workspaceId, artifact.id);
   const isPublic = artifact.visibility === "public";
   const actions = menu(
     button(`${artifact.title} actions`, {
@@ -108,6 +109,12 @@ export function artifactPreview(
         label: "Copy link",
         icon: "link",
         attributes: `type="button" data-copy="${escapeHtml(artifact.url)}"`,
+      },
+      {
+        kind: "action",
+        label: "Open thread",
+        icon: "compose",
+        attributes: `type="button" data-on:click="window.location = '/w/${workspaceId}/t/${artifact.threadId}'"`,
       },
       {
         kind: "action",
@@ -160,8 +167,8 @@ function recordRow(base: string, record: ArtifactRecord): string {
   );
 }
 
-function artifactBase(workspaceId: string, threadId: string, id: string) {
-  return `/w/${workspaceId}/t/${threadId}/artifacts/${id}`;
+function artifactBase(workspaceId: string, id: string) {
+  return `/w/${workspaceId}/artifacts/${id}`;
 }
 
 function visitors(count: number): string {

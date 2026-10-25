@@ -2,7 +2,7 @@ import { api, eventStream } from "../app/api.ts";
 import { fileResponse, json, type Route } from "../app/http.ts";
 import { HttpError } from "../platform/errors.ts";
 
-/** Threads and their files for the iOS app. Messages and files post as JSON, or as a multipart form with files. */
+/** Threads, and the files of channels and of the workspace, for the iOS app. Messages and files post as JSON, or as a multipart form with files. */
 export const threadApiRoutes: readonly Route[] = [
   [
     "POST",
@@ -67,6 +67,27 @@ export const threadApiRoutes: readonly Route[] = [
     }),
   ],
   [
+    "GET",
+    "/api/v1/workspaces/:workspace/working",
+    api(async ({ app, user, params }) => {
+      // A non-member gets 404 before the stream starts.
+      app.workspaces.requireMember(params.workspace!, user);
+      return eventStream((send) =>
+        app.threads.watchWorking(params.workspace!, user, (threadIds) =>
+          send("working", { threadIds })
+        )
+      );
+    }),
+  ],
+  [
+    "POST",
+    "/api/v1/threads/:thread/stop",
+    api(async ({ app, user, params }) => {
+      await app.threads.stop(params.thread!, user);
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
     "POST",
     "/api/v1/threads/:thread/messages",
     api(async ({ app, user, params, body, files }) => {
@@ -82,28 +103,56 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "GET",
-    "/api/v1/threads/:thread/files",
+    "/api/v1/workspaces/:workspace/channels/:channel/files",
     api(async ({ app, user, params }) =>
       json({
         files: await app.threads.files(
-          app.workspaces.thread(params.thread!, user)
+          app.threads.place(params.workspace!, params.channel!, user)
         ),
       })
     ),
   ],
   [
     "POST",
-    "/api/v1/threads/:thread/files",
+    "/api/v1/workspaces/:workspace/channels/:channel/files",
     api(async ({ app, user, params, files }) =>
-      json({ files: await app.threads.upload(params.thread!, user, files) })
+      json({
+        files: await app.threads.upload(
+          params.workspace!,
+          params.channel!,
+          user,
+          files
+        ),
+      })
     ),
   ],
   [
     "GET",
-    "/api/v1/threads/:thread/files/:file",
+    "/api/v1/workspaces/:workspace/files",
+    api(async ({ app, user, params }) =>
+      json({
+        files: await app.threads.files(
+          app.threads.place(params.workspace!, null, user)
+        ),
+      })
+    ),
+  ],
+  [
+    "POST",
+    "/api/v1/workspaces/:workspace/files",
+    api(async ({ app, user, params, files }) =>
+      json({
+        files: await app.threads.upload(params.workspace!, null, user, files),
+      })
+    ),
+  ],
+  [
+    "GET",
+    "/api/v1/workspaces/:workspace/files/:file",
     api(async ({ app, user, params }) => {
       const { path, name } = await app.threads.file(
-        app.workspaces.thread(params.thread!, user),
+        params.workspace!,
+        user,
         params.file!
       );
       return fileResponse(path, name);
@@ -111,12 +160,15 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "DELETE",
-    "/api/v1/threads/:thread/files/:file",
-    api(async ({ app, user, params }) =>
-      json({
-        files: await app.threads.deleteFile(params.thread!, user, params.file!),
-      })
-    ),
+    "/api/v1/workspaces/:workspace/files/:file",
+    api(async ({ app, user, params }) => {
+      const { files } = await app.threads.deleteFile(
+        params.workspace!,
+        user,
+        params.file!
+      );
+      return json({ files });
+    }),
   ],
 ];
 

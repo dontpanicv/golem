@@ -72,9 +72,12 @@ export async function createApp(
     baseUrl: config.baseUrl,
     binaryDirectory: HANDS_BINARIES,
   });
-  const artifacts = new Artifacts(database, workspaces, config);
+  // The change hooks point at the indexer, which reads the threads and the artifacts.
+  const artifacts = new Artifacts(database, workspaces, config, (workspaceId) =>
+    indexer.touch(workspaceId)
+  );
   const browser = new Browser();
-  // The recall port and the change hook point at the indexer, which reads the threads; files read as search reads them.
+  // The recall port points at the indexer too; files read as search reads them.
   // The routine tools come from routines, which runs its work in threads.
   const threads: Threads = new Threads(
     config.dataDirectory,
@@ -97,6 +100,7 @@ export async function createApp(
     config.dataDirectory,
     workspaces,
     threads,
+    artifacts,
     embedder
   );
   const routines = new Routines(

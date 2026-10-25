@@ -37,7 +37,7 @@ export interface ShellPage {
   readonly header?: string;
   readonly main: string;
   readonly headerActions?: string;
-  /** Adds the artifacts panel of a thread, with the content of its tabs. */
+  /** Adds the artifacts panel of a thread, with its lists and artifact preview. */
   readonly artifacts?: {
     readonly artifacts: string;
     readonly files: string;
@@ -99,7 +99,7 @@ export function lastOpened(
 
 /** The app: workspace and channels with their threads on the left, the page in the inset panel. */
 export function shell(context: ShellContext, page: ShellPage): string {
-  const signals = `{sidebar: false, artifacts: matchMedia('(min-width: 1001px)').matches, tab: 'artifacts'${page.signals ? `, ${page.signals}` : ""}}`;
+  const signals = `{sidebar: false, artifacts: matchMedia('(min-width: 1001px)').matches, tab: 'artifacts', working: {}${page.signals ? `, ${page.signals}` : ""}}`;
   const menuButton = button("Menu", {
     variant: "ghost",
     icon: "sidebar",
@@ -135,6 +135,21 @@ ${dialogs(context)}`;
 }
 
 function sidebar(context: ShellContext): string {
+  const { workspace, current } = context;
+  // The working stream follows which threads work and patches the content when threads or channels change.
+  const page = new URLSearchParams(
+    Object.entries(current ?? {}).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
+  const working = workspace
+    ? ` data-init="${escapeHtml(`@get('/w/${workspace.id}/working?${page}')`)}"`
+    : "";
+  return `<aside class="sidebar" data-class:is-open="$sidebar"${working}>${sidebarContent(context)}</aside>`;
+}
+
+/** The sidebar inside its frame, which the working stream patches. */
+export function sidebarContent(context: ShellContext): string {
   const { workspace, current } = context;
   const settled = (context.channels ?? [])
     .flatMap((channel) => channel.threads)
@@ -179,7 +194,7 @@ function sidebar(context: ShellContext): string {
     "start"
   );
   const search = workspace
-    ? `<nav class="nav">${navItem("Golem", { icon: "inbox", href: `/w/${workspace.id}/orchestrator`, current: current?.threadId !== undefined && current.threadId === context.orchestratorId })}${navItem("Search", { icon: "search", href: `/w/${workspace.id}/search`, current: current?.page === "search" }).replace("<a ", '<a data-hotkey="/" ')}</nav>`
+    ? `<nav class="nav">${navItem("Golem", { icon: "inbox", href: `/w/${workspace.id}/orchestrator`, current: current?.threadId !== undefined && current.threadId === context.orchestratorId, threadId: context.orchestratorId })}${navItem("Search", { icon: "search", href: `/w/${workspace.id}/search`, current: current?.page === "search" }).replace("<a ", '<a data-hotkey="/" ')}</nav>`
     : "";
   const channels = workspace
     ? `<nav class="nav" aria-label="Channels">
@@ -187,16 +202,16 @@ function sidebar(context: ShellContext): string {
 			${(context.channels ?? []).map((channel) => channelNav(workspace, channel, current)).join("")}
 		</nav>`
     : "";
-  return `<aside class="sidebar" data-class:is-open="$sidebar">
+  return `<div id="sidebar-content" class="sidebar-content">
 		<div class="sidebar-header">${switcher}</div>
 		<div class="sidebar-channels">${search}${channels}</div>
-		${settled.length ? `<details class="sidebar-settled"><summary>Settled (${settled.length})</summary><nav class="settled-list" aria-label="Settled threads">${settled.map((thread) => threadNav(workspace!, thread, current)).join("")}</nav></details>` : ""}
+		${settled.length ? `<details id="sidebar-settled" class="sidebar-settled" data-preserve-attr="open"><summary class="nav-section">Settled (${settled.length})<span class="disclosure">${icon("disclosure")}</span></summary><nav class="settled-list" aria-label="Settled threads">${settled.map((thread) => threadNav(workspace!, thread, current)).join("")}</nav></details>` : ""}
 		<nav class="nav sidebar-footer">
 			${workspace ? navItem("Workspace settings", { icon: "members", href: `/w/${workspace.id}/settings`, current: current?.page === "workspace-settings" }) : ""}
 			${navItem("Settings", { icon: "settings", href: "/settings", current: current?.page === "settings" })}
 		</nav>
 		<form id="sign-out" method="post" action="/logout" hidden></form>
-	</aside>`;
+	</div>`;
 }
 
 function dialogs(context: ShellContext): string {
@@ -251,13 +266,15 @@ function threadNav(
     icon: "compose",
     href: `/w/${workspace.id}/t/${thread.id}`,
     current: thread.id === current?.threadId,
+    threadId: thread.id,
   })}<form class="settle-action" method="post" action="/w/${workspace.id}/t/${thread.id}/settled"><input type="hidden" name="settled" value="${!settled}">${button(settled ? "Un-settle thread" : "Settle thread", { variant: "ghost", icon: settled ? "inbox" : "check", size: "tiny", attributes: 'type="submit"' })}</form></div>`;
 }
 
 function artifactsPanel(tabs: NonNullable<ShellPage["artifacts"]>): string {
   return `<aside class="artifacts" data-show="$artifacts" aria-label="Artifacts">
 		<header class="panel-header">
-			<div class="tabs" role="tablist">${tab("artifacts", "Artifacts")}${tab("files", "Files")}${tab("preview", "Preview")}</div>
+			<div class="tabs" role="tablist" data-show="$tab !== 'preview'">${tab("artifacts", "Artifacts")}${tab("files", "Files")}</div>
+			${button("Close preview", { variant: "ghost", size: "small", attributes: 'type="button" data-show="$tab === \'preview\'" style="display: none; margin-right: auto" data-on:click="$tab = \'artifacts\'"' })}
 			${button("Close artifacts", { variant: "ghost", icon: "close", size: "icon", attributes: 'type="button" data-on:click="$artifacts = false"' })}
 		</header>
 		${tabs.artifacts}

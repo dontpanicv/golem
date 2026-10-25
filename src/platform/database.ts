@@ -163,6 +163,11 @@ const migrations = [
   "ALTER TABLE credential ADD COLUMN deleted_at INTEGER;",
   // llm: the login of a provider after a logout, which nothing reads again.
   "ALTER TABLE provider_credential ADD COLUMN deleted_at INTEGER;",
+  // artifacts: an artifact belongs to its channel and stays after its thread is settled; `thread_id` is the thread
+  // that made it. The orchestrator's belong to the workspace: their `channel_id` is null.
+  `ALTER TABLE artifact ADD COLUMN channel_id TEXT;
+	UPDATE artifact SET channel_id = (SELECT CASE WHEN orchestrator = 1 THEN NULL ELSE channel_id END FROM thread WHERE thread.id = artifact.thread_id);
+	CREATE INDEX artifact_channel ON artifact (channel_id);`,
 ];
 
 export function openDatabase(path: string): Database {

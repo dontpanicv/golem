@@ -1,5 +1,6 @@
 import { type FSWatcher, mkdirSync, statSync, watch } from "node:fs";
 import { basename, join } from "node:path";
+import type { Artifacts } from "../artifacts/artifacts.ts";
 import type { Threads } from "../threads/threads.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 import { documentPrompt, type Embedder, queryPrompt } from "./embedder.ts";
@@ -7,6 +8,7 @@ import {
   type ExtractedSegment,
   type Extraction,
   extract,
+  htmlText,
   isIgnored,
 } from "./extract.ts";
 import {
@@ -17,7 +19,7 @@ import {
   WorkspaceIndex,
 } from "./workspace-index.ts";
 
-/** Folders of a workspace that are indexed, and what their files are. Thread files are found per thread. */
+/** Folders of a workspace that are indexed, and what their files are. Channel files are found per channel. */
 const FOLDERS: readonly { folder: string; kind: SearchKind }[] = [
   { folder: "notes", kind: "note" },
   { folder: "files", kind: "file" },
@@ -34,10 +36,15 @@ export interface SearchResponse {
  * Keeps each workspace's index in step with its threads and folders, and embeds in the background.
  * Every index belongs to one workspace and reads only that workspace's folder; searches never cross workspaces.
  */
-/** What the indexer reads from the directory in `golem.sqlite`: every workspace, and the threads in one. */
-export type WorkspaceDirectory = Pick<Workspaces, "ids" | "threadsIn">;
+/** What the indexer reads from the directory in `golem.sqlite`: every workspace, and the channels and threads in one. */
+export type WorkspaceDirectory = Pick<
+  Workspaces,
+  "ids" | "channelsIn" | "threadsIn"
+>;
 /** The indexer reads thread messages; it never writes to a thread. */
 export type ThreadReader = Pick<Threads, "messages" | "version">;
+/** The indexer reads the live artifacts and their HTML. */
+export type ArtifactReader = Pick<Artifacts, "inWorkspace" | "html">;
 
 export class Indexer {
   private readonly indexes = new Map<string, WorkspaceIndex>();
@@ -51,6 +58,7 @@ export class Indexer {
     private readonly dataDirectory: string,
     private readonly directory: WorkspaceDirectory,
     private readonly threads: ThreadReader,
+    private readonly artifacts: ArtifactReader,
     private readonly embedder: Embedder | null
   ) {}
 
@@ -151,7 +159,10 @@ export class Indexer {
 
   /** Creates the folders people drop files into, and scans a second after anything in them changes. */
   private watchFolders(workspaceId: string): void {
-    for (const { folder } of FOLDERS) {
+    for (const folder of [
+      ...FOLDERS.map((indexed) => indexed.folder),
+      "channels",
+    ]) {
       const directory = join(this.workspaceDirectory(workspaceId), folder);
       mkdirSync(directory, { recursive: true });
       try {
@@ -194,13 +205,35 @@ export class Indexer {
           return { segments };
         }
       );
+    }
+    for (const artifact of this.artifacts.inWorkspace(workspaceId)) {
+      const uri = `artifact:${artifact.id}`;
+      seen.add(uri);
+      await index.sync(
+        {
+          uri,
+          kind: "artifact",
+          title: artifact.title,
+          threadId: artifact.threadId,
+          channelId: artifact.channelId ?? undefined,
+          version: String(artifact.updatedAt),
+          updatedAt: artifact.updatedAt,
+        },
+        async () => ({
+          segments: chunk(htmlText(this.artifacts.html(artifact.id))).map(
+            (text, part) => ({ key: String(part), text })
+          ),
+        })
+      );
+    }
+    for (const channel of this.directory.channelsIn(workspaceId)) {
       await this.syncFolder(
         index,
         seen,
         root,
-        join("threads", thread.id, "files"),
+        join("channels", channel.id, "files"),
         "file",
-        thread
+        channel.id
       );
     }
     for (const { folder, kind } of FOLDERS) {
@@ -216,7 +249,7 @@ export class Indexer {
     root: string,
     folder: string,
     kind: SearchKind,
-    thread?: { id: string; channelId: string }
+    channelId?: string
   ): Promise<void> {
     const directory = join(root, folder);
     let paths: string[];
@@ -243,7 +276,7 @@ export class Indexer {
       const uri = `${folder}/${relative}`;
       const version = `${stats.mtimeMs}:${stats.size}`;
       seen.add(uri);
-      // Thread files start with their UUIDv7, which is no part of their name.
+      // Channel files start with their UUIDv7, which is no part of their name.
       const title = basename(relative)
         .replace(
           /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}-/,
@@ -255,8 +288,7 @@ export class Indexer {
           uri,
           kind,
           title,
-          threadId: thread?.id,
-          channelId: thread?.channelId,
+          channelId,
           version,
           updatedAt: Math.round(stats.mtimeMs),
         },
