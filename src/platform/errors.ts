@@ -2,9 +2,10 @@
 export class HttpError extends Error {
   constructor(
     readonly status: number,
-    message: string
+    message: string,
+    options?: ErrorOptions
   ) {
-    super(message);
+    super(message, options);
   }
 }
 

@@ -22,6 +22,8 @@ export interface ThreadSummary {
 export interface Channel {
   readonly id: string;
   readonly name: string;
+  /** What the channel is for and what goes on in it, as an agent last wrote it. */
+  readonly summary: string | null;
   readonly threads: readonly ThreadSummary[];
 }
 export interface Member {
@@ -99,9 +101,9 @@ export class Workspaces {
   channelsIn(workspaceId: string): Channel[] {
     const channels = this.database
       .query(
-        "SELECT id, name FROM channel WHERE workspace_id = ? ORDER BY created_at"
+        "SELECT id, name, summary FROM channel WHERE workspace_id = ? ORDER BY created_at"
       )
-      .all(workspaceId) as { id: string; name: string }[];
+      .all(workspaceId) as Omit<Channel, "threads">[];
     const threads = this.database
       .query(
         "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt FROM thread WHERE workspace_id = ? ORDER BY updated_at DESC"
@@ -129,13 +131,29 @@ export class Workspaces {
     if (exists) {
       throw new HttpError(409, `#${slug} already exists`);
     }
-    const channel = { id: randomUUID(), name: slug, threads: [] };
+    const channel = {
+      id: randomUUID(),
+      name: slug,
+      summary: null,
+      threads: [],
+    };
     this.database
       .query(
         "INSERT INTO channel (id, workspace_id, name, created_by, created_at) VALUES (?, ?, ?, ?, ?)"
       )
       .run(channel.id, workspaceId, slug, user.id, Date.now());
     return channel;
+  }
+
+  /** Replaces the summary of a channel, for an agent that acts for the workspace. */
+  setChannelSummary(
+    workspaceId: string,
+    channelId: string,
+    summary: string
+  ): void {
+    this.database
+      .query("UPDATE channel SET summary = ? WHERE id = ? AND workspace_id = ?")
+      .run(summary.trim() || null, channelId, workspaceId);
   }
 
   /**

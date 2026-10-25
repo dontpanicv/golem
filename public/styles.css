@@ -1170,6 +1170,11 @@ a.list-row:hover {
 .muted {
   color: var(--color-text-tertiary);
 }
+.page-text {
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
 .page-section > h2 {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-medium);

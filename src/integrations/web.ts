@@ -1,21 +1,8 @@
 import type { Route, RouteInput } from "../app/http.ts";
 import { action, withNotice } from "../app/web.ts";
 
-/** Integration switches and credentials on the workspace settings page. */
+/** Integration credentials on the workspace settings page. */
 export const integrationWebRoutes: readonly Route[] = [
-  [
-    "POST",
-    "/w/:workspace/integrations/:integration",
-    action(settingsOf, async ({ app, user, params, fields }) => {
-      app.integrations.setEnabled(
-        params.workspace!,
-        user,
-        params.integration!,
-        fields.enabled === "true"
-      );
-      return settingsOf({ params });
-    }),
-  ],
   [
     "POST",
     "/w/:workspace/integrations/:integration/credentials",
@@ -24,11 +11,7 @@ export const integrationWebRoutes: readonly Route[] = [
         params.workspace!,
         user,
         params.integration!,
-        {
-          label: fields.label!,
-          secret: fields.secret!,
-          shared: fields.shared === "true",
-        }
+        { label: fields.label!, secret: fields.secret! }
       );
       return withNotice(settingsOf({ params }), "Credential added");
     }),

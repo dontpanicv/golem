@@ -156,16 +156,12 @@ test("workspaces are isolated until someone adds you", async () => {
   ).toBe(200);
 });
 
-test("credentials are private or shared, and secrets never leave the server", async () => {
+test("credentials belong to the workspace, and secrets never leave the server", async () => {
   const base = `/api/v1/workspaces/${workspaceId}`;
-  await call(`${base}/integrations/github/credentials`, {
-    token: alice,
-    body: { label: "Alice's", secret: "alice-secret", shared: false },
-  });
-  const shared = (await (
+  const credential = (await (
     await call(`${base}/integrations/github/credentials`, {
       token: alice,
-      body: { label: "Family", secret: "family-secret", shared: true },
+      body: { label: "Family", secret: "family-secret" },
     })
   ).json()) as any;
 
@@ -173,44 +169,25 @@ test("credentials are private or shared, and secrets never leave the server", as
     await call(`${base}/integrations`, { token: bob })
   ).text();
   expect(bobsView).toContain("Family");
-  expect(bobsView).not.toContain("Alice's");
   expect(bobsView).not.toContain("family-secret");
-  expect(bobsView).not.toContain("alice-secret");
 
-  const user = (email: string) =>
-    app.database
-      .query("SELECT id, name, email FROM user WHERE email = ?")
-      .get(email) as never;
-  expect(
-    app.integrations.usableCredentials(workspaceId, user("bob@example.com"))
-  ).toEqual([]);
-  await call(`${base}/integrations/github`, {
-    method: "PUT",
-    token: bob,
-    body: { enabled: true },
-  });
-  expect(
-    app.integrations
-      .usableCredentials(workspaceId, user("bob@example.com"))
-      .map((c) => c.secret)
-  ).toEqual(["family-secret"]);
-
+  // Any member deletes a credential of the workspace.
   expect(
     (
-      await call(`${base}/credentials/${shared.id}`, {
+      await call(`${base}/credentials/${credential.id}`, {
         method: "DELETE",
         token: bob,
       })
     ).status
-  ).toBe(404);
+  ).toBe(204);
   expect(
     (
-      await call(`${base}/credentials/${shared.id}`, {
+      await call(`${base}/credentials/${credential.id}`, {
         method: "DELETE",
         token: alice,
       })
     ).status
-  ).toBe(204);
+  ).toBe(404);
 });
 
 test("the LLM provider is shared by everyone", async () => {

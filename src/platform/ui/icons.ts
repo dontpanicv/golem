@@ -33,6 +33,8 @@ const paths = {
     '<rect x="2" y="3" width="12" height="10" rx="2"/><circle cx="6" cy="6.5" r="1.25"/><path d="m2.5 12 4-4 3 3 1.5-1.5 2.5 2.5"/>', // photo
   sound: '<path d="M3 6.5v3M5.5 4.5v7M8 2.5v11M10.5 5v6M13 7v2"/>', // waveform
   more: '<circle cx="4" cy="8" r=".75"/><circle cx="8" cy="8" r=".75"/><circle cx="12" cy="8" r=".75"/>', // ellipsis
+  info: '<circle cx="8" cy="8" r="5.5"/><path d="M8 7.5V11M8 5.25v.01"/>', // info.circle
+  play: '<path d="M5 3.5v9l7-4.5z"/>', // play
 } as const;
 
 export type IconName = keyof typeof paths;

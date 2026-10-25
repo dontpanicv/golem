@@ -6,6 +6,8 @@ import { integrationApiRoutes } from "../integrations/api.ts";
 import { integrationWebRoutes } from "../integrations/web.ts";
 import { llmApiRoutes } from "../llm/api.ts";
 import { llmWebRoutes } from "../llm/web.ts";
+import { routineApiRoutes } from "../routines/api.ts";
+import { routineWebRoutes } from "../routines/web.ts";
 import { searchApiRoutes } from "../search/api.ts";
 import { searchWebRoutes } from "../search/web.ts";
 import { settingsWebRoutes } from "../settings/web.ts";
@@ -30,11 +32,13 @@ export const allRoutes: readonly Route[] = [
   ...llmWebRoutes,
   ...handsApiRoutes,
   ...handsWebRoutes,
-  ...threadApiRoutes,
-  ...threadWebRoutes,
   ...integrationApiRoutes,
   ...integrationWebRoutes,
+  ...threadApiRoutes,
+  ...threadWebRoutes,
   ...searchApiRoutes,
   ...searchWebRoutes,
+  ...routineApiRoutes,
+  ...routineWebRoutes,
   ...settingsWebRoutes,
 ];

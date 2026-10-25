@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
+import type { Static, TSchema } from "@earendil-works/pi-ai";
 import type { User } from "../platform/auth.ts";
 import { notFound, required } from "../platform/errors.ts";
 import type { Secrets } from "../platform/secrets.ts";
@@ -9,120 +10,113 @@ export interface CredentialSummary {
   readonly createdAt: number;
   readonly id: string;
   readonly label: string;
-  readonly mine: boolean;
   readonly ownerName: string;
-  readonly shared: boolean;
 }
 export interface Integration {
   readonly credentials: readonly CredentialSummary[];
-  readonly enabled: boolean;
   readonly id: string;
   readonly name: string;
   readonly secretLabel: string;
 }
-/** What an agent run may use: the secrets of enabled integrations that are the user's own or shared. */
-export interface UsableCredential {
-  readonly integration: string;
-  readonly label: string;
-  readonly secret: string;
+
+/**
+ * A tool of a connector, which agents call in threads and routine scripts call as `tools.<name>(args)`. It gets the
+ * secret of the workspace's credential for its integration; the secret never reaches the agent or the script.
+ */
+export interface ConnectorTool<Parameters extends TSchema = TSchema> {
+  /** Starts with the integration, such as `school_messages`. */
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Parameters;
+  /** Returns JSON: agents read it as text, and scripts get the value. */
+  // biome-ignore lint/style/useConsistentMethodSignatures: a method keeps a tool with typed arguments a ConnectorTool.
+  execute(
+    args: Static<Parameters>,
+    secret: string,
+    signal: AbortSignal | undefined
+  ): Promise<unknown>;
 }
 
-/** Integrations whose tools agents can use. Token-based for now; OAuth ones arrive with Google sign-in. */
-export const integrationCatalog = [
-  { id: "github", name: "GitHub", secretLabel: "Personal access token" },
-  { id: "linear", name: "Linear", secretLabel: "API key" },
+/** An outside system that agents use through the tools of its connector, with a secret from Workspace settings. */
+export interface Connector {
+  readonly id: string;
+  readonly name: string;
+  readonly secretLabel: string;
+  readonly tools: readonly ConnectorTool[];
+}
+
+/** A connector tool of one workspace, with its credential applied. */
+export interface WorkspaceTool {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: TSchema;
+  readonly execute: (args: unknown, signal?: AbortSignal) => Promise<unknown>;
+}
+
+/** The connectors that Golem has. Token-based for now; OAuth ones arrive with Google sign-in. */
+export const integrationCatalog: readonly Connector[] = [
+  {
+    id: "github",
+    name: "GitHub",
+    secretLabel: "Personal access token",
+    tools: [],
+  },
+  { id: "linear", name: "Linear", secretLabel: "API key", tools: [] },
   {
     id: "home-assistant",
     name: "Home Assistant",
     secretLabel: "Long-lived access token",
+    tools: [],
   },
-] as const;
+];
 
 /**
- * What agents may use in a workspace: each person turns integrations on for themselves, and adds credentials that
- * are their own or shared with the workspace. Secrets never leave the server.
+ * The outside systems the agents of a workspace use. Everything in a workspace is shared: any member adds or deletes
+ * its credentials, and the agents use the newest one of each integration. Secrets never leave the server.
  */
 export class Integrations {
   constructor(
     private readonly database: Database,
     private readonly secrets: Secrets,
-    private readonly workspaces: Workspaces
+    private readonly workspaces: Workspaces,
+    private readonly catalog: readonly Connector[] = integrationCatalog
   ) {}
 
   list(workspaceId: string, user: User): Integration[] {
     this.workspaces.requireMember(workspaceId, user);
-    const enabled = new Set(
-      (
-        this.database
-          .query(
-            "SELECT integration FROM integration_setting WHERE workspace_id = ? AND user_id = ? AND enabled = 1"
-          )
-          .all(workspaceId, user.id) as { integration: string }[]
-      ).map((row) => row.integration)
-    );
     const credentials = this.database
       .query(
-        "SELECT c.id, c.integration, c.label, c.shared, c.owner_id AS ownerId, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE c.workspace_id = ? AND (c.shared = 1 OR c.owner_id = ?) ORDER BY c.created_at"
+        "SELECT c.id, c.integration, c.label, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE c.workspace_id = ? ORDER BY c.created_at"
       )
-      .all(workspaceId, user.id) as {
-      id: string;
-      integration: string;
-      label: string;
-      shared: number;
-      ownerId: string;
-      ownerName: string;
-      createdAt: number;
-    }[];
-    return integrationCatalog.map((integration) => ({
-      ...integration,
-      enabled: enabled.has(integration.id),
+      .all(workspaceId) as (CredentialSummary & { integration: string })[];
+    return this.catalog.map(({ id, name, secretLabel }) => ({
+      id,
+      name,
+      secretLabel,
       credentials: credentials
-        .filter((credential) => credential.integration === integration.id)
-        .map(({ integration: _, ownerId, shared, ...credential }) => ({
-          ...credential,
-          shared: shared === 1,
-          mine: ownerId === user.id,
-        })),
+        .filter((credential) => credential.integration === id)
+        .map(({ integration: _, ...credential }) => credential),
     }));
-  }
-
-  setEnabled(
-    workspaceId: string,
-    user: User,
-    integrationId: string,
-    enabled: boolean
-  ): Integration {
-    this.workspaces.requireMember(workspaceId, user);
-    catalogEntry(integrationId);
-    this.database
-      .query(
-        "INSERT INTO integration_setting (workspace_id, user_id, integration, enabled) VALUES (?, ?, ?, ?) ON CONFLICT (workspace_id, user_id, integration) DO UPDATE SET enabled = excluded.enabled"
-      )
-      .run(workspaceId, user.id, integrationId, enabled ? 1 : 0);
-    return this.list(workspaceId, user).find(
-      (integration) => integration.id === integrationId
-    )!;
   }
 
   addCredential(
     workspaceId: string,
     user: User,
     integrationId: string,
-    input: { label: string; secret: string; shared: boolean }
+    input: { label: string; secret: string }
   ): CredentialSummary {
     this.workspaces.requireMember(workspaceId, user);
-    catalogEntry(integrationId);
+    this.connector(integrationId);
     const credential = {
       id: randomUUID(),
       label: required(input.label, "Label"),
-      shared: input.shared,
-      mine: true,
       ownerName: user.name,
       createdAt: Date.now(),
     };
+    // `shared` is left from when credentials could be private.
     this.database
       .query(
-        "INSERT INTO credential (id, workspace_id, integration, owner_id, label, shared, secret, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO credential (id, workspace_id, integration, owner_id, label, shared, secret, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
       )
       .run(
         credential.id,
@@ -130,7 +124,6 @@ export class Integrations {
         integrationId,
         user.id,
         credential.label,
-        input.shared ? 1 : 0,
         this.secrets.encrypt(required(input.secret, "Secret")),
         credential.createdAt
       );
@@ -144,40 +137,52 @@ export class Integrations {
   ): void {
     this.workspaces.requireMember(workspaceId, user);
     const { changes } = this.database
-      .query(
-        "DELETE FROM credential WHERE id = ? AND workspace_id = ? AND owner_id = ?"
-      )
-      .run(credentialId, workspaceId, user.id);
+      .query("DELETE FROM credential WHERE id = ? AND workspace_id = ?")
+      .run(credentialId, workspaceId);
     if (changes === 0) {
       throw notFound();
     }
   }
 
-  /** Secrets an agent acting for `user` may use in this workspace. */
-  usableCredentials(workspaceId: string, user: User): UsableCredential[] {
-    const rows = this.database
-      .query(
-        "SELECT c.integration, c.label, c.secret FROM credential c JOIN integration_setting s ON s.workspace_id = c.workspace_id AND s.integration = c.integration AND s.user_id = ? AND s.enabled = 1 WHERE c.workspace_id = ? AND (c.shared = 1 OR c.owner_id = ?) ORDER BY c.owner_id = ? DESC, c.created_at"
-      )
-      .all(user.id, workspaceId, user.id, user.id) as {
-      integration: string;
-      label: string;
-      secret: Uint8Array;
-    }[];
-    return rows.map((row) => ({
-      integration: row.integration,
-      label: row.label,
-      secret: this.secrets.decrypt(row.secret),
-    }));
+  /** The tools of every connector for the agents and routines of a workspace. */
+  tools(workspaceId: string): WorkspaceTool[] {
+    return this.catalog.flatMap((connector) =>
+      connector.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+        execute: async (args: unknown, signal?: AbortSignal) =>
+          tool.execute(
+            args as never,
+            this.secret(workspaceId, connector),
+            signal
+          ),
+      }))
+    );
   }
-}
 
-function catalogEntry(integrationId: string) {
-  const entry = integrationCatalog.find(
-    (integration) => integration.id === integrationId
-  );
-  if (!entry) {
-    throw notFound();
+  /** The newest secret of the workspace for a connector. */
+  private secret(workspaceId: string, connector: Connector): string {
+    const row = this.database
+      .query(
+        "SELECT secret FROM credential WHERE workspace_id = ? AND integration = ? ORDER BY created_at DESC LIMIT 1"
+      )
+      .get(workspaceId, connector.id) as { secret: Uint8Array } | null;
+    if (!row) {
+      throw new Error(
+        `${connector.name} is not connected. Someone must add a credential in Workspace settings, Integrations.`
+      );
+    }
+    return this.secrets.decrypt(row.secret);
   }
-  return entry;
+
+  private connector(integrationId: string): Connector {
+    const connector = this.catalog.find(
+      (candidate) => candidate.id === integrationId
+    );
+    if (!connector) {
+      throw notFound();
+    }
+    return connector;
+  }
 }

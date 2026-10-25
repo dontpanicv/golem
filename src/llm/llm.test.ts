@@ -381,11 +381,13 @@ const hooks = {
   recall: async () => ({ results: [] }),
   read: async () => null,
   picture: async () => null,
+  tools: () => [],
 };
 const noMachines = {
   tools: () => [],
   section: () => ({ key: "machines", render: () => undefined }),
 };
+const noIntegrations = { tools: () => [] };
 
 /** Threads over a registry in memory, with the registry methods that creating and sending use. */
 function threadsOver(dataDirectory: string, llm: Llm) {
@@ -427,9 +429,17 @@ function threadsOver(dataDirectory: string, llm: Llm) {
         updatedAt: 0,
       })),
     channelsIn: () => [],
+    setChannelSummary: () => undefined,
     touchThread: () => undefined,
   };
-  const threads = new Threads(dataDirectory, llm, registry, noMachines, hooks);
+  const threads = new Threads(
+    dataDirectory,
+    llm,
+    registry,
+    noMachines,
+    noIntegrations,
+    hooks
+  );
   return { threads, registry, thread: (id: string) => registry.thread(id) };
 }
 
@@ -547,6 +557,7 @@ describe("Threads with the Llm", () => {
         llm,
         first.registry,
         noMachines,
+        noIntegrations,
         hooks
       );
       try {

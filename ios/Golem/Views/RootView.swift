@@ -47,6 +47,7 @@ private struct LoadingView: View {
 enum Destination: Hashable {
     case search
     case channel(String)
+    case channelDetails(String)
     case thread(String)
     case workspaceSettings
     case settings
@@ -81,6 +82,8 @@ private struct MainView: View {
                 SearchView(open: open).id(session.workspace?.id)
             case let .channel(id):
                 ChannelView(channelID: id, open: open).id(id)
+            case let .channelDetails(id):
+                ChannelDetailsView(channelID: id, open: open).id(id)
             case let .thread(id):
                 ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
             case .workspaceSettings:

@@ -35,6 +35,11 @@ struct ChannelView: View {
         .background(Tokens.Colors.surface)
         .navigationTitle(channel?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Channel details", systemImage: "info.circle") { open(.channelDetails(channelID)) }
+            }
+        }
         .task { await session.run { try await session.reloadWorkspace() } }
     }
 

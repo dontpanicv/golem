@@ -261,7 +261,6 @@ describe("the web app", () => {
     const page = await (await alice.get(settings)).text();
     expect(page).toContain("alice@example.com");
     expect(page).toContain("No credentials · Personal access token");
-    expect(page).toContain('aria-label="Use GitHub"');
     expect(page).toContain(`action="/w/${workspaceId}/machines/pairing"`);
     // The test server is not on https, so machines cannot pair with it.
     expect(
@@ -285,39 +284,36 @@ describe("the web app", () => {
     );
     expect((await bob.get(settings)).status).toBe(200);
 
-    const enabled = await alice.post(`/w/${workspaceId}/integrations/github`, {
-      enabled: "true",
-    });
-    expect(location(enabled)).toBe(settings);
     const github = () =>
       golem.app.integrations
         .list(workspaceId, aliceUser())
         .find((integration) => integration.id === "github")!;
-    expect(github().enabled).toBe(true);
-    await alice.post(`/w/${workspaceId}/integrations/github`);
-    expect(github().enabled).toBe(false);
     expect(
-      (await alice.post(`/w/${workspaceId}/integrations/unknown`)).status
+      (
+        await alice.post(`/w/${workspaceId}/integrations/unknown/credentials`, {
+          label: "Key",
+          secret: "x",
+        })
+      ).status
     ).toBe(404);
 
     const credential = await alice.post(
       `/w/${workspaceId}/integrations/github/credentials`,
-      { label: "Family", secret: "family-secret", shared: "true" }
+      { label: "Family", secret: "family-secret" }
     );
     expect(location(credential)).toBe(
       `${settings}?notice=${encodeURIComponent("Credential added")}`
     );
     const [added_] = github().credentials;
-    expect(added_).toMatchObject({ label: "Family", shared: true, mine: true });
+    expect(added_).toMatchObject({ label: "Family", ownerName: "Alice" });
     const withCredential = await (await alice.get(settings)).text();
     expect(withCredential).toContain("1 credential · Personal access token");
-    expect(withCredential).toContain("Shared with workspace");
     expect(withCredential).toContain("Delete Family");
     expect(withCredential).not.toContain("family-secret");
-    // Bob sees the shared credential, but only its owner may delete it.
+    // Credentials belong to the workspace: Bob sees it and may delete it.
     const bobsView = await (await bob.get(settings)).text();
     expect(bobsView).toContain("Added by Alice");
-    expect(bobsView).not.toContain("Delete Family");
+    expect(bobsView).toContain("Delete Family");
 
     const missingLabel = await alice.post(
       `/w/${workspaceId}/integrations/github/credentials`,
@@ -334,6 +330,65 @@ describe("the web app", () => {
       `${settings}?notice=${encodeURIComponent("Credential deleted")}`
     );
     expect(github().credentials).toEqual([]);
+
+    function aliceUser() {
+      return golem.app.database
+        .query("SELECT id, name, email FROM user WHERE email = ?")
+        .get("alice@example.com") as never;
+    }
+  });
+
+  test("the channel details page shows the summary and routines, and pauses, runs, and deletes them", async () => {
+    const details = `/w/${workspaceId}/c/${generalId}/details`;
+    const channel = await (
+      await alice.get(`/w/${workspaceId}/c/${generalId}`)
+    ).text();
+    expect(channel).toContain(`href="${details}"`);
+    expect(await (await alice.get(details)).text()).toContain(
+      "No routines yet"
+    );
+
+    golem.app.workspaces.setChannelSummary(
+      workspaceId,
+      generalId,
+      "Family plans."
+    );
+    const routine = golem.app.routines.create(workspaceId, generalId, {
+      id: crypto.randomUUID(),
+      name: "Morning",
+      schedule: "0 7 * * *",
+      instructions: "Say what is new.",
+      script: "return [];",
+      createdBy: "golem",
+    });
+    const page = await (await alice.get(details)).text();
+    expect(page).toContain("Family plans.");
+    expect(page).toContain("Morning");
+    expect(page).toContain("Next ");
+    expect(page).toContain("No runs yet");
+
+    const base = `/w/${workspaceId}/c/${generalId}/routines/${routine.id}`;
+    expect(location(await alice.post(base))).toBe(details);
+    expect(await (await alice.get(details)).text()).toContain("Paused");
+    await alice.post(base, { enabled: "true" });
+    expect(golem.app.routines.get(routine.id, aliceUser()).enabled).toBe(true);
+
+    expect(location(await alice.post(`${base}/run`))).toBe(
+      `${details}?notice=${encodeURIComponent("Morning runs now")}`
+    );
+    const ran = await until(
+      async () => (await alice.get(details)).text(),
+      (text) => text.includes("Quiet")
+    );
+    expect(ran).not.toContain("No runs yet");
+
+    expect(location(await alice.post(`${base}/delete`))).toBe(
+      `${details}?notice=${encodeURIComponent("Morning deleted")}`
+    );
+    expect(await (await alice.get(details)).text()).toContain(
+      "No routines yet"
+    );
+    expect((await alice.post(`${base}/run`)).status).toBe(404);
 
     function aliceUser() {
       return golem.app.database

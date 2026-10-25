@@ -26,7 +26,12 @@ Send `Authorization: Bearer <token>` on every `/api/v1` request. A `401` respons
 type User = { id: string; name: string; email: string };
 type Workspace = { id: string; name: string };
 type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: number }; // times are Unix milliseconds
-type Channel = { id: string; name: string; threads: ThreadSummary[] }; // threads newest first
+type Channel = {
+	id: string;
+	name: string;
+	summary: string | null; // what the channel is for and what goes on in it, as an agent last wrote it
+	threads: ThreadSummary[]; // newest first
+};
 type Message = {
 	id: string;
 	authorId: string | null; // null for the agent
@@ -52,8 +57,29 @@ type SearchResult = {
 	updatedAt: number;
 };
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
-type Credential = { id: string; label: string; shared: boolean; mine: boolean; ownerName: string; createdAt: number };
-type Integration = { id: string; name: string; secretLabel: string; enabled: boolean; credentials: Credential[] };
+type Credential = { id: string; label: string; ownerName: string; createdAt: number };
+type Integration = { id: string; name: string; secretLabel: string; credentials: Credential[] };
+type RoutineRun = {
+	id: string;
+	routineId: string;
+	routineName: string;
+	startedAt: number;
+	finishedAt: number | null;
+	outcome: "running" | "quiet" | "posted" | "failed"; // quiet: nothing needed anyone's attention
+	error: string | null;
+};
+type Routine = {
+	id: string;
+	channelId: string;
+	name: string;
+	schedule: string; // a cron expression in the server's time zone
+	instructions: string;
+	script: string | null; // code mode JavaScript that collects what is new before the agent sees it
+	enabled: boolean;
+	nextRunAt: number | null; // null while paused
+	threadId: string | null; // where its agent answers; set at the first run that reaches the agent
+	lastRun: RoutineRun | null;
+};
 type Machine = {
 	id: string;
 	name: string; // what agents and people call it, unique in the workspace
@@ -122,10 +148,24 @@ first file. The thread's agent sees each attached file by name and id, and reads
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET /api/v1/workspaces/:workspaceId/integrations` | | `Integration[]` for the current user |
-| `PUT /api/v1/workspaces/:workspaceId/integrations/:integrationId` | `{ enabled }` | `Integration` |
-| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/credentials` | `{ label, secret, shared }` | `Credential` |
-| `DELETE /api/v1/workspaces/:workspaceId/credentials/:credentialId` | | `204`; only the owner can delete |
+| `GET /api/v1/workspaces/:workspaceId/integrations` | | `Integration[]` |
+| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/credentials` | `{ label, secret }` | `Credential` |
+| `DELETE /api/v1/workspaces/:workspaceId/credentials/:credentialId` | | `204` |
+
+Credentials belong to the workspace: every member sees and deletes them, and the agents use the newest credential of
+each integration through the tools of its connector. Secrets never leave the server.
+
+### Routines (`src/routines/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/channels/:channelId/routines` | | `{ routines: Routine[], runs: RoutineRun[] }`; the 20 newest runs, newest first |
+| `PUT /api/v1/routines/:routineId` | `{ enabled }` | `Routine` |
+| `POST /api/v1/routines/:routineId/runs` | | `202`; the run shows in the list; `409` while it runs |
+| `DELETE /api/v1/routines/:routineId` | | `204`; its thread stays |
+
+People create and change routines by asking an agent in a thread: agents have the `create_routine`,
+`update_routine`, `delete_routine`, `list_routines`, and `test_script` tools.
 
 ### Machines (`src/hands/`)
 

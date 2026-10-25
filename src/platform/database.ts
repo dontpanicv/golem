@@ -7,8 +7,9 @@ import { dirname } from "node:path";
  * `member`, and `invitation`; it migrates them itself. Append a migration; never edit one that shipped.
  *
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
- * `organization` and `member`), `integrations` owns `credential` and `integration_setting`, `llm` owns
- * `provider_credential` and its keys in `setting`, and `hands` owns `machine`. Start a new migration with a comment
+ * `organization` and `member`), `integrations` owns `credential` and `integration_setting` (no longer read), `llm` owns
+ * `provider_credential` and its keys in `setting`, `hands` owns `machine`, and `routines` owns `routine` and
+ * `routine_run`. Start a new migration with a comment
  * that names its owner.
  */
 const migrations = [
@@ -77,6 +78,35 @@ const migrations = [
 		UNIQUE (workspace_id, cert_sha256),
 		UNIQUE (workspace_id, name)
 	);`,
+  // workspaces: what a channel is for and what goes on in it, as an agent last wrote it.
+  "ALTER TABLE channel ADD COLUMN summary TEXT;",
+  // routines: the scheduled work of a channel. `schedule` is a cron expression in the server's time zone, `script`
+  // runs in code mode (null: the agent does the work), and `store` is the JSON the script keeps between runs.
+  `CREATE TABLE routine (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		channel_id TEXT NOT NULL REFERENCES channel (id) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		schedule TEXT NOT NULL,
+		instructions TEXT NOT NULL,
+		script TEXT,
+		store TEXT NOT NULL,
+		enabled INTEGER NOT NULL,
+		next_run_at INTEGER,
+		thread_id TEXT,
+		created_by TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX routine_channel ON routine (channel_id);
+	CREATE TABLE routine_run (
+		id TEXT PRIMARY KEY,
+		routine_id TEXT NOT NULL REFERENCES routine (id) ON DELETE CASCADE,
+		started_at INTEGER NOT NULL,
+		finished_at INTEGER,
+		outcome TEXT NOT NULL,
+		error TEXT
+	);
+	CREATE INDEX routine_run_routine ON routine_run (routine_id, started_at);`,
 ];
 
 export function openDatabase(path: string): Database {

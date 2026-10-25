@@ -177,20 +177,75 @@ test("an unknown integration is not found", async () => {
   const base = `/api/v1/workspaces/${workspaceId}/integrations/nope`;
   expect(
     (
-      await golem.call(base, {
-        method: "PUT",
-        token: alice,
-        body: { enabled: true },
-      })
-    ).status
-  ).toBe(404);
-  expect(
-    (
       await golem.call(`${base}/credentials`, {
         token: alice,
         body: { label: "Key", secret: "x" },
       })
     ).status
+  ).toBe(404);
+});
+
+test("routines of a channel are listed, paused, run, and deleted, and only members see them", async () => {
+  const routine = golem.app.routines.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Morning",
+    schedule: "0 7 * * *",
+    instructions: "Say what is new.",
+    script: "return [];",
+    createdBy: "golem",
+  });
+  const list = `/api/v1/workspaces/${workspaceId}/channels/${channelId}/routines`;
+  expect(await body(await golem.call(list, { token: alice }))).toMatchObject({
+    routines: [
+      {
+        id: routine.id,
+        channelId,
+        name: "Morning",
+        schedule: "0 7 * * *",
+        instructions: "Say what is new.",
+        script: "return [];",
+        enabled: true,
+        nextRunAt: routine.nextRunAt,
+        threadId: null,
+        lastRun: null,
+      },
+    ],
+    runs: [],
+  });
+  const path = `/api/v1/routines/${routine.id}`;
+  // Bob joined the workspace in an earlier test; Eve is not a member.
+  const eve = await golem.signIn("Eve", "eve@example.com");
+  expect((await golem.call(list, { token: eve })).status).toBe(404);
+  expect(
+    (await golem.call(path, { method: "DELETE", token: eve })).status
+  ).toBe(404);
+
+  expect(
+    await body(
+      await golem.call(path, {
+        method: "PUT",
+        token: alice,
+        body: { enabled: false },
+      })
+    )
+  ).toMatchObject({ enabled: false, nextRunAt: null });
+  expect(
+    (await golem.call(`${path}/runs`, { method: "POST", token: alice })).status
+  ).toBe(202);
+  const { runs } = await until(
+    async () => body(await golem.call(list, { token: alice })),
+    (state) => state.runs[0]?.outcome === "quiet"
+  );
+  expect(runs[0]).toMatchObject({
+    routineId: routine.id,
+    routineName: "Morning",
+    error: null,
+  });
+  expect(
+    (await golem.call(path, { method: "DELETE", token: alice })).status
+  ).toBe(204);
+  expect(
+    (await golem.call(`${path}/runs`, { method: "POST", token: alice })).status
   ).toBe(404);
 });
 

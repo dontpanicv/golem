@@ -1,173 +1,5 @@
 import Foundation
 
-// Models mirror the TypeScript types in docs/api.md. Times are Unix milliseconds.
-
-struct User: Codable, Hashable {
-    let id: String
-    let name: String
-    let email: String
-}
-
-struct Workspace: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-}
-
-struct ThreadSummary: Codable, Hashable, Identifiable {
-    let id: String
-    let channelId: String
-    let title: String
-    let updatedAt: Double
-}
-
-struct Channel: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-    let threads: [ThreadSummary]
-}
-
-struct Message: Codable, Hashable, Identifiable {
-    let id: String
-    let authorId: String?
-    let author: String
-    let agent: Bool
-    let text: String
-    let time: Double
-    let failed: Bool
-    let streaming: Bool
-    let files: [FileRef]
-}
-
-struct FileRef: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-}
-
-struct ThreadFile: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-    let size: Double
-    let time: Double
-    var ref: FileRef { FileRef(id: id, name: name) }
-}
-
-struct ThreadFiles: Codable { let files: [ThreadFile] }
-
-struct ThreadState: Codable, Hashable {
-    let thread: ThreadSummary
-    let messages: [Message]
-    let running: Bool
-}
-
-struct Member: Codable, Hashable, Identifiable {
-    let userId: String
-    let name: String
-    let email: String
-    let role: String
-    var id: String { userId }
-}
-
-struct Credential: Codable, Hashable, Identifiable {
-    let id: String
-    let label: String
-    let shared: Bool
-    let mine: Bool
-    let ownerName: String
-    let createdAt: Double
-}
-
-struct Integration: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-    let secretLabel: String
-    var enabled: Bool
-    var credentials: [Credential]
-}
-
-struct Machine: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-    let system: String
-    let arch: String
-    let version: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, arch, version
-        case system = "os"
-    }
-
-    /// "macOS arm64 · hands 0.5.0"
-    var summary: String {
-        let names = ["macos": "macOS", "linux": "Linux"]
-        return "\(names[system] ?? system) \(arch) · hands \(version)"
-    }
-}
-
-struct Pairing: Codable, Hashable {
-    let command: String
-    let expiresAt: Double
-}
-
-struct Machines: Codable {
-    let machines: [Machine]
-    let pairing: Pairing?
-}
-
-struct Llm: Codable, Hashable {
-    struct Login: Codable, Hashable {
-        let userCode: String
-        let verificationUri: String
-        let expiresAt: Double
-    }
-
-    struct Model: Codable, Hashable {
-        let id: String
-        let name: String
-        let efforts: [String]
-    }
-
-    let connected: Bool
-    let provider: String
-    let model: String
-    let effort: String
-    let models: [Model]
-    let login: Login?
-    let error: String?
-}
-
-struct SearchResult: Codable, Hashable, Identifiable {
-    let uri: String
-    let kind: String
-    let title: String
-    let threadId: String?
-    let channelId: String?
-    let snippet: String
-    let modality: String
-    let loc: Double?
-    let score: Double
-    let updatedAt: Double
-    var id: String { uri }
-}
-
-struct SearchResponse: Codable {
-    let results: [SearchResult]
-    let semantic: Bool
-}
-
-struct Profile: Codable {
-    let user: User
-    let workspaces: [Workspace]
-}
-
-struct WorkspaceDetail: Codable {
-    let workspace: Workspace
-    let channels: [Channel]
-}
-
-extension Date {
-    init(milliseconds: Double) { self.init(timeIntervalSince1970: milliseconds / 1000) }
-}
-
 struct APIError: LocalizedError {
     let status: Int
     let message: String
@@ -226,22 +58,35 @@ final class APIClient {
         try await get("/api/v1/workspaces/\(workspaceID)/integrations")
     }
 
-    func setIntegration(workspaceID: String, integrationID: String, enabled: Bool) async throws -> Integration {
-        let path = "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)"
-        return try decode(try await send("PUT", path, ["enabled": enabled]).data)
-    }
-
     func addCredential(
-        workspaceID: String, integrationID: String, label: String, secret: String, shared: Bool
+        workspaceID: String, integrationID: String, label: String, secret: String
     ) async throws -> Credential {
         try await post(
             "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/credentials",
-            ["label": label, "secret": secret, "shared": shared]
+            ["label": label, "secret": secret]
         )
     }
 
     func deleteCredential(workspaceID: String, credentialID: String) async throws {
         _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/credentials/\(credentialID)")
+    }
+
+    // MARK: Routines
+
+    func routines(workspaceID: String, channelID: String) async throws -> ChannelRoutines {
+        try await get("/api/v1/workspaces/\(workspaceID)/channels/\(channelID)/routines")
+    }
+
+    func setRoutine(_ id: String, enabled: Bool) async throws -> Routine {
+        try decode(try await send("PUT", "/api/v1/routines/\(id)", ["enabled": enabled]).data)
+    }
+
+    func runRoutine(_ id: String) async throws {
+        _ = try await send("POST", "/api/v1/routines/\(id)/runs")
+    }
+
+    func deleteRoutine(_ id: String) async throws {
+        _ = try await send("DELETE", "/api/v1/routines/\(id)")
     }
 
     // MARK: Machines

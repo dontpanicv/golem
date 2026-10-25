@@ -9,9 +9,10 @@ const MODULES = [
   "workspaces",
   "llm",
   "hands",
-  "threads",
   "integrations",
+  "threads",
   "search",
+  "routines",
   "settings",
 ];
 /** The files of a module that route or render; the other files are its service. */

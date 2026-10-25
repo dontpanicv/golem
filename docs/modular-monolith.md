@@ -29,9 +29,10 @@ src/
 ├── workspaces/              Workspaces, members, channels, the thread registry, and the app shell
 ├── llm/                     The shared LLM provider and its stored login
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
+├── integrations/            The connectors, their tools, and the credentials of each workspace
 ├── threads/                 One Pi Durable session per workspace, a conversation per thread, and the agent tools
-├── integrations/            The integration catalog, credentials, and who uses which integration
 ├── search/                  Extraction, embeddings, the index of each workspace, and the search page
+├── routines/                Scheduled scripts and instructions of each channel, their runs, and the channel details page
 └── settings/                The settings pages, which show sections of several modules
 ```
 
@@ -47,12 +48,12 @@ Each module has the same files, when it needs them:
 
 `workspaces/shell.ts` is the app frame (sidebar, workspace switcher, dialogs) that every signed-in page uses.
 `search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`; `hands/` has
-`connection.ts` and `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
+`connection.ts` and `tools.ts`; `routines/` has `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
 
 ## Rules
 
-1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `threads`,
-   `integrations`, `search`, `settings`. A module uses only the modules before it. `platform/` uses no module.
+1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
+   `threads`, `search`, `routines`, `settings`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts` and `workspaces/shell.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.
@@ -62,9 +63,10 @@ Each module has the same files, when it needs them:
    indexer reads workspaces and threads through `Workspaces.ids` and `Workspaces.threadsIn`.
 5. **Membership in one place.** Every workspace read and write calls `Workspaces.requireMember` first. Non-members
    get `404`.
-6. **Ports for the one backward edge.** `threads` needs search for its recall tool, and search reads threads. So
+6. **Ports for the backward edges.** `threads` needs search for its recall tool, and search reads threads. So
    `threads` declares the port it needs (`ThreadHooks.recall`, with its own `RecallResult` type), and
-   `app/app.ts` connects it to the indexer.
+   `app/app.ts` connects it to the indexer. In the same way, `ThreadHooks.tools` gives agents the tools of
+   `routines`, which runs its work in threads.
 
 ## Schema
 

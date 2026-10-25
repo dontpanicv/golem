@@ -98,6 +98,8 @@ Used by selects, the workspace switcher, and action menus.
 - Row: min `size.settingsRow` (60) high, padding 16, label `fontSize.md` `medium` `text`, description
   `fontSize.sm` `book` `textTertiary`, control at the right. Rows are separated by 0.5 px `borderSubtle`.
 - Section title above the card: `fontSize.lg` `medium` `text`, 12 px gap. Page title: `fontSize.xxl` `medium`.
+- Text in a section, such as a channel summary: `fontSize.md` `textSecondary`, line height 1.5, with its line
+  breaks.
 
 ## Thread link
 

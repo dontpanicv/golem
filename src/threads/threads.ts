@@ -14,6 +14,7 @@ import {
   defineTool,
   Harness,
   type JsonObject,
+  type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -23,6 +24,10 @@ import {
 } from "@earendil-works/pi-durable/tools";
 import { randomUUIDv5 } from "bun";
 import type { Hands } from "../hands/hands.ts";
+import type {
+  Integrations,
+  WorkspaceTool,
+} from "../integrations/integrations.ts";
 import type { Llm } from "../llm/llm.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
@@ -63,6 +68,8 @@ export interface ThreadMessages {
 const AUTHORED = "golem.message";
 /** A message the agent of another thread sent to this one. */
 const RELAYED = "golem.relay";
+/** Work that no person typed, such as a routine run; the transcript leaves it out. */
+const TASK = "golem.task";
 /** How often one person's message may pass between threads: a question to another thread, and its answer back. */
 const MAX_HOPS = 2;
 /** How much of a file's text read_file gives the agent at once. */
@@ -88,6 +95,8 @@ export interface ThreadHooks {
     query: string,
     limit: number
   ) => Promise<{ readonly results: readonly RecallResult[] }>;
+  /** Tools of the modules after threads, such as routines, for the agents of a workspace. */
+  readonly tools: (workspaceId: string) => readonly ToolRegistration[];
   /** The text of a document or PDF for read_file; `null` for a kind of file without text. */
   readonly read: (path: string) => Promise<string | null>;
   /** A JPEG of a picture that read_file cannot open as it is, such as HEIC; `null` when it cannot convert it. */
@@ -109,6 +118,7 @@ export type ThreadRegistry = Pick<
   | "channelsIn"
   | "registerThread"
   | "requireMember"
+  | "setChannelSummary"
   | "thread"
   | "threadsIn"
   | "touchThread"
@@ -120,6 +130,9 @@ export type ThreadLocation = Pick<ThreadRef, "id" | "workspaceId">;
 /** The machines of a workspace, which its agents use through the hands tools. */
 export type ThreadHands = Pick<Hands, "section" | "tools">;
 
+/** The connectors of a workspace, which its agents use through their tools. */
+export type ThreadIntegrations = Pick<Integrations, "tools">;
+
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
   private readonly open = new Map<string, Promise<Harness>>();
@@ -130,6 +143,7 @@ export class Threads {
     private readonly llm: Llm,
     private readonly registry: ThreadRegistry,
     private readonly hands: ThreadHands,
+    private readonly integrations: ThreadIntegrations,
     private readonly hooks: ThreadHooks
   ) {}
 
@@ -171,6 +185,64 @@ export class Threads {
       authored(user, message, attached)
     );
     this.registry.touchThread(thread.id);
+  }
+
+  /** Starts a thread that an agent owns, such as the thread of a routine, without a first message. */
+  async startAgentThread(
+    workspaceId: string,
+    channelId: string,
+    title: string
+  ): Promise<ThreadSummary & ThreadRef> {
+    const conversation = await this.newConversation(workspaceId);
+    const thread = this.registry.registerThread(workspaceId, {
+      id: randomUUID(),
+      channelId,
+      title: titleOf(title),
+      conversationId: conversation.id,
+      createdBy: "golem",
+    });
+    return { ...thread, workspaceId, conversationId: conversation.id };
+  }
+
+  /**
+   * Gives a thread's agent work that no person typed, and waits for its answer. The transcript shows only the answer,
+   * and not an answer of exactly `QUIET`. Returns the answer, or `null` for a quiet one. `requestId` makes a retry
+   * find the work it gave before.
+   */
+  async instruct(
+    thread: ThreadRef,
+    text: string,
+    requestId: string
+  ): Promise<string | null> {
+    const conversation = await this.conversation(thread);
+    await this.useCurrentModel(conversation);
+    const submission = await conversation.submit(
+      {
+        type: "input",
+        content: text,
+        entry: { kind: TASK, data: {} },
+        requestId,
+      },
+      BACKGROUND_CONTEXT
+    );
+    const settled = await submission.wait(BACKGROUND_CONTEXT);
+    const { messages } = await this.messages(thread);
+    if (settled.status !== "done") {
+      // A model that fails leaves its error as the newest message.
+      const failed = messages.at(-1)?.failed ? messages.at(-1)!.text : null;
+      throw new Error(failed ?? `The agent did not answer: ${settled.reason}`);
+    }
+    const answer = messages.find(
+      (message) => message.id === String(settled.answer)
+    );
+    if (!answer) {
+      return null;
+    }
+    this.registry.touchThread(thread.id);
+    if (answer.failed) {
+      throw new Error(answer.text);
+    }
+    return answer.text;
   }
 
   /** Adds files to a thread without a message; its agent finds them with list_files. Returns all files of the thread. */
@@ -387,7 +459,10 @@ export class Threads {
           this.sendToThreadTool(workspaceId),
           this.listFilesTool(workspaceId),
           this.readFileTool(workspaceId),
+          this.setChannelSummaryTool(workspaceId),
           ...this.hands.tools(workspaceId),
+          ...this.integrations.tools(workspaceId).map(connectorTool),
+          ...this.hooks.tools(workspaceId),
         ],
         sections: [this.hands.section(workspaceId)],
       })
@@ -678,6 +753,37 @@ export class Threads {
     });
   }
 
+  private setChannelSummaryTool(workspaceId: string) {
+    return defineTool({
+      name: "set_channel_summary",
+      description:
+        "Replace the summary of a channel, which people see on the channel's details page: what the channel is for and what goes on in its threads now. Keep it short.",
+      parameters: Type.Object({
+        summary: Type.String({ maxLength: 2000 }),
+        channel: Type.Optional(
+          Type.String({
+            description: "The channel name; default this thread's channel",
+          })
+        ),
+      }),
+      replay: "safe",
+      execute: async (args, api) => {
+        const channels = this.registry.channelsIn(workspaceId);
+        const name = args.channel?.replace(/^#/, "").toLowerCase();
+        const channelId = name
+          ? channels.find((candidate) => candidate.name === name)?.id
+          : this.threadOf(workspaceId, api.conversationId).channelId;
+        if (!channelId) {
+          throw new Error(
+            `There is no channel #${name}. list_channels shows the channels.`
+          );
+        }
+        this.registry.setChannelSummary(workspaceId, channelId, args.summary);
+        return { output: [{ type: "text", text: "Saved the summary." }] };
+      },
+    });
+  }
+
   /**
    * The thread a tool runs in, and how many times the message it answers already passed between threads. Refuses at
    * `MAX_HOPS`, so that agents cannot keep sending each other messages.
@@ -799,7 +905,11 @@ export function threadMessages(view: ConversationView): ThreadMessages {
         streaming: false,
       });
     } else if (model?.role === "assistant") {
-      messages.push(agentMessage(String(entry.id), model, false));
+      const message = agentMessage(String(entry.id), model, false);
+      // The answer to a task that needs nobody's attention.
+      if (message.text.trim() !== "QUIET") {
+        messages.push(message);
+      }
     }
   }
   const live = (view.docs["pi.live"] ?? {}) as {
@@ -903,6 +1013,21 @@ function relayed(
     entry: { kind: RELAYED, data },
     requestId,
   };
+}
+
+/** A connector's tool for the agent; its JSON result is the text the agent reads. */
+function connectorTool(tool: WorkspaceTool) {
+  return defineTool({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    execute: async (args, _api, context) => {
+      const result = await tool.execute(args, context.abortSignal);
+      return {
+        output: [{ type: "text", text: JSON.stringify(result) ?? "null" }],
+      };
+    },
+  });
 }
 
 /** A thread as the agent writes it, `[title](thread:<id>)`, which the web and iOS show as a link to the thread. */

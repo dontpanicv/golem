@@ -58,7 +58,7 @@ data/
 | Data | Where | Format |
 | --- | --- | --- |
 | People, sessions, workspaces, members | `golem.sqlite` (better-auth tables) | SQLite |
-| Channels, threads, integration settings, credentials | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
+| Channels, threads, credentials, routines and their runs | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
 | Files attached to a thread's messages or uploaded to the thread, and what its agent made | `threads/<id>/files/` | the file as uploaded or made |

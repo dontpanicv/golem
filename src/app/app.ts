@@ -8,6 +8,7 @@ import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
 import { Secrets } from "../platform/secrets.ts";
+import { Routines } from "../routines/routines.ts";
 import type { Embedder } from "../search/embedder.ts";
 import { jpeg, readText } from "../search/extract.ts";
 import { Indexer } from "../search/search.ts";
@@ -24,6 +25,7 @@ export interface App {
   readonly workspaces: Workspaces;
   readonly integrations: Integrations;
   readonly indexer: Indexer;
+  readonly routines: Routines;
 }
 
 /** `embedder` gives search its meaning; without one, search and recall use keywords only. */
@@ -54,15 +56,18 @@ export async function createApp(
     binaryDirectory: resolve(import.meta.dir, "../../hands/dist"),
   });
   // The recall port and the change hook point at the indexer, which reads the threads; files read as search reads them.
+  // The routine tools come from routines, which runs its work in threads.
   const threads: Threads = new Threads(
     config.dataDirectory,
     llm,
     workspaces,
     hands,
+    integrations,
     {
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),
       changed: (workspaceId) => indexer.touch(workspaceId),
+      tools: (workspaceId) => routines.tools(workspaceId),
       read: readText,
       picture: jpeg,
     }
@@ -72,6 +77,13 @@ export async function createApp(
     workspaces,
     threads,
     embedder
+  );
+  const routines = new Routines(
+    database,
+    workspaces,
+    integrations,
+    threads,
+    indexer
   );
   return {
     config,
@@ -83,10 +95,12 @@ export async function createApp(
     workspaces,
     integrations,
     indexer,
+    routines,
   };
 }
 
 export async function closeApp(app: App): Promise<void> {
+  app.routines.close();
   await app.indexer.close();
   await app.threads.closeAll();
   await app.hands.close();

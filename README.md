@@ -54,9 +54,17 @@ The machines connect over a WireGuard mesh VPN.
   daemon, Golem's own copy of Mycroft's. They run commands and long jobs there, and read and edit files. **Add
   machine** in the workspace settings gives a command to paste on the machine; it installs `hands` and pairs it with
   the workspace. Every agent in the workspace can use every machine of the workspace.
+- **Integrations.** A connector in `src/integrations/` gives agents the tools of an outside system, such as a school
+  information system. Its credentials belong to the workspace: any member adds them in the workspace settings, and
+  the agents use the newest one. Secrets never leave the server.
+- **Routines.** A channel can do work on a schedule, such as checking the school system every morning. People ask an
+  agent in plain words; it writes the schedule, the instructions, and, for work that is the same every time, a script
+  that collects what is new. The script runs in a code mode sandbox and calls the connectors' tools; when it finds
+  nothing, the run ends without the LLM. Otherwise the agent of the routine's thread judges what the script found,
+  and posts in that thread or stays quiet. When a script fails, the agent repairs it. The channel's details page
+  shows its summary, its routines, and their runs.
 - **Settings.** `/settings` connects the LLM provider and chooses the model, for everyone. Each workspace's settings
-  hold its members, its machines, and each person's integrations. A credential is private to its owner or shared with every agent
-  in the workspace.
+  hold its members, its machines, and its integrations.
 
 The iOS app is a thin client with the same functionality; it talks to the JSON API in [docs/api.md](docs/api.md).
 
