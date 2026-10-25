@@ -51,6 +51,19 @@ type SearchResult = {
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; shared: boolean; mine: boolean; ownerName: string; createdAt: number };
 type Integration = { id: string; name: string; secretLabel: string; enabled: boolean; credentials: Credential[] };
+type Machine = {
+	id: string;
+	name: string; // what agents and people call it, unique in the workspace
+	hostname: string | null;
+	addresses: string[];
+	port: number;
+	certSha256: string; // the hands listener's certificate, which Golem pins
+	os: string; // "macos" or "linux"
+	arch: string;
+	version: string; // hands version when it paired
+	pairedAt: number;
+};
+type Pairing = { command: string; expiresAt: number }; // run `command` on the machine before `expiresAt`
 type Effort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 type Llm = {
 	connected: boolean;
@@ -102,6 +115,23 @@ Workspace paths answer `404` to users who are not members of the workspace.
 | `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/credentials` | `{ label, secret, shared }` | `Credential` |
 | `DELETE /api/v1/workspaces/:workspaceId/credentials/:credentialId` | | `204`; only the owner can delete |
 
+### Machines (`src/hands/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/machines` | | `{ machines: Machine[], pairing: Pairing \| null }`; poll it while `pairing` is set to see the machine arrive |
+| `POST /api/v1/workspaces/:workspaceId/machines/pairing` | | `Pairing`; replaces the workspace's earlier pairing. `409` when `base_url` is not `https://` or Golem has no hands binaries |
+| `DELETE /api/v1/workspaces/:workspaceId/machines/:machineId` | | `204` |
+
+The machine calls these, without an account; the six-character pairing code in the path is the credential. They follow
+the contract of Mycroft's `hands/docs/pairing.md`, with Golem in the phone's place.
+
+| Request | Response |
+| --- | --- |
+| `GET /hands/:code` | The install script, with Golem's address, the pin of its TLS key, and the binaries' SHA-256 |
+| `GET /hands/:code/hands-<os>-<arch>` | A binary from `data/hands/` |
+| `POST /hands/:code/pair` | `{ phoneName, publicKey }`: the workspace's name and Ed25519 key. `400` on a malformed request, `404` once the code was used, `410` once it expired |
+
 ### LLM (`src/llm/`)
 
 | Request | Body | Response |
@@ -118,5 +148,7 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 - Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
+- A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The
+  machine trusts the workspace's own key, so pairing it with one workspace does not open it to another.
 - Integration settings belong to one user in one workspace. A credential is private to its owner, or shared with
   every agent in the workspace when `shared` is true. Secrets never leave the server.

@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Members and integrations of the open workspace.
+/// Members, machines, and integrations of the open workspace.
 struct WorkspaceSettingsView: View {
     @Environment(Session.self) private var session
     @State private var members: [Member] = []
+    @State private var machines: [Machine] = []
+    @State private var pairing: Pairing?
     @State private var integrations: [Integration] = []
     @State private var email = ""
     @State private var addingTo: Integration?
@@ -34,6 +36,29 @@ struct WorkspaceSettingsView: View {
                             .disabled(email.isEmpty)
                     }
                     .padding(Tokens.Space.xl)
+                }
+                SettingsCard(title: "Machines") {
+                    ForEach(machines) { machine in
+                        SettingsRow(machine.name, description: machine.summary) {
+                            GolemMenu {
+                                MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }
+                            } label: {
+                                Label("Machine actions", systemImage: "ellipsis")
+                            }
+                            .buttonStyle(.golem(.ghost, .icon))
+                        }
+                    }
+                    if let pairing {
+                        PairingCommand(pairing: pairing).padding(Tokens.Space.xl)
+                    } else {
+                        HStack {
+                            Button("Add machine", systemImage: "plus", action: startPairing)
+                                .buttonStyle(.golem(.ghost, .small))
+                            Spacer()
+                        }
+                        .padding(.horizontal, Tokens.Space.md)
+                        .padding(.vertical, Tokens.Space.lg)
+                    }
                 }
                 ForEach($integrations) { $integration in
                     SettingsCard(title: integration.name) {
@@ -84,6 +109,13 @@ struct WorkspaceSettingsView: View {
         .navigationBarTitleDisplayMode(.large)
         .task { await load() }
         .refreshable { await load() }
+        .task(id: pairing) {
+            // While a pairing waits, look for the machine every 2 seconds.
+            while pairing != nil, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                await loadMachines()
+            }
+        }
         .sheet(item: $addingTo) { integration in
             CredentialForm(workspaceID: workspaceID, integration: integration) { credential in
                 if let index = integrations.firstIndex(where: { $0.id == integration.id }) {
@@ -96,8 +128,31 @@ struct WorkspaceSettingsView: View {
     private func load() async {
         await session.run {
             async let members = session.api.members(workspaceID: workspaceID)
+            async let machines = session.api.machines(workspaceID: workspaceID)
             async let integrations = session.api.integrations(workspaceID: workspaceID)
-            (self.members, self.integrations) = try await (members, integrations)
+            let found: Machines
+            (self.members, found, self.integrations) = try await (members, machines, integrations)
+            (self.machines, self.pairing) = (found.machines, found.pairing)
+        }
+    }
+
+    private func loadMachines() async {
+        guard let found = try? await session.api.machines(workspaceID: workspaceID) else { return }
+        (machines, pairing) = (found.machines, found.pairing)
+    }
+
+    private func startPairing() {
+        Task {
+            await session.run { pairing = try await session.api.startPairing(workspaceID: workspaceID) }
+        }
+    }
+
+    private func remove(_ machine: Machine) {
+        Task {
+            await session.run {
+                try await session.api.removeMachine(workspaceID: workspaceID, machineID: machine.id)
+                machines.removeAll { $0.id == machine.id }
+            }
         }
     }
 
@@ -138,6 +193,30 @@ struct WorkspaceSettingsView: View {
                 integration.wrappedValue.credentials.removeAll { $0.id == credential.id }
             }
         }
+    }
+}
+
+/// The command that installs hands on a machine and pairs it with the workspace.
+private struct PairingCommand: View {
+    let pairing: Pairing
+    @Environment(Session.self) private var session
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.lg) {
+            Text("Run this on the Mac or Linux computer within 10 minutes")
+                .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.book))
+                .foregroundStyle(Tokens.Colors.textTertiary)
+            Text(pairing.command)
+                .font(.system(size: Tokens.FontSize.sm, design: .monospaced))
+                .foregroundStyle(Tokens.Colors.text)
+                .textSelection(.enabled)
+            Button("Copy command") {
+                UIPasteboard.general.string = pairing.command
+                session.show("Copied", .success)
+            }
+            .buttonStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

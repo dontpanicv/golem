@@ -1168,6 +1168,13 @@ a.list-row:hover {
   user-select: all;
 }
 
+.command {
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 /* Sign-in */
 
 .auth {

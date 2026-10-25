@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { Hands } from "../hands/hands.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
@@ -17,6 +18,7 @@ export interface App {
   readonly database: Database;
   readonly auth: Auth;
   readonly llm: Llm;
+  readonly hands: Hands;
   readonly threads: Threads;
   readonly workspaces: Workspaces;
   readonly integrations: Integrations;
@@ -46,12 +48,22 @@ export async function createApp(
   const llm = new Llm(database, resolvedSecrets, llmProvider);
   const workspaces = new Workspaces(database, auth);
   const integrations = new Integrations(database, resolvedSecrets, workspaces);
-  // The recall port and the change hook point at the indexer, which reads the threads.
-  const threads: Threads = new Threads(config.dataDirectory, llm, workspaces, {
-    recall: (workspaceId, query, limit) =>
-      indexer.search(workspaceId, query, limit),
-    changed: (workspaceId) => indexer.touch(workspaceId),
+  const hands = new Hands(database, resolvedSecrets, workspaces, {
+    baseUrl: config.baseUrl,
+    binaryDirectory: join(config.dataDirectory, "hands"),
   });
+  // The recall port and the change hook point at the indexer, which reads the threads.
+  const threads: Threads = new Threads(
+    config.dataDirectory,
+    llm,
+    workspaces,
+    hands,
+    {
+      recall: (workspaceId, query, limit) =>
+        indexer.search(workspaceId, query, limit),
+      changed: (workspaceId) => indexer.touch(workspaceId),
+    }
+  );
   const indexer = new Indexer(
     config.dataDirectory,
     workspaces,
@@ -63,6 +75,7 @@ export async function createApp(
     database,
     auth,
     llm,
+    hands,
     threads,
     workspaces,
     integrations,
@@ -73,5 +86,6 @@ export async function createApp(
 export async function closeApp(app: App): Promise<void> {
   await app.indexer.close();
   await app.threads.closeAll();
+  await app.hands.close();
   app.database.close();
 }

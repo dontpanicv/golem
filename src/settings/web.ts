@@ -12,8 +12,15 @@ export const settingsWebRoutes: readonly Route[] = [
       const { app, user, params } = input;
       const members = app.workspaces.members(params.workspace!, user);
       const integrations = app.integrations.list(params.workspace!, user);
+      const machines = app.hands.machines(params.workspace!, user);
+      const pairing = app.hands.pairing(params.workspace!, user);
       return html(
-        workspaceSettingsPage(shellContext(input, {}), members, integrations)
+        workspaceSettingsPage(
+          shellContext(input, {}),
+          members,
+          { machines, pairing },
+          integrations
+        )
       );
     }),
   ],

@@ -50,8 +50,12 @@ The machines connect over a WireGuard mesh VPN.
   A message passes between threads at most twice, so agents cannot keep talking to each other.
 - **Search.** Each workspace has its own index: keywords plus meaning from Google's EmbeddingGemma 2, run locally.
   Search and the agents' `recall` tool never cross workspaces. See [docs/data.md](docs/data.md).
+- **Hands.** A workspace's agents can use its machines: Macs and Linux computers that run Mycroft's
+  [`hands`](https://github.com/dontpanicv/mycroft/tree/main/hands) daemon. They run commands and long jobs there, and
+  read and edit files. **Add machine** in the workspace settings gives a command to paste on the machine; it installs
+  `hands` and pairs it with the workspace. Every agent in the workspace can use every machine of the workspace.
 - **Settings.** `/settings` connects the LLM provider and chooses the model, for everyone. Each workspace's settings
-  hold its members and each person's integrations. A credential is private to its owner or shared with every agent
+  hold its members, its machines, and each person's integrations. A credential is private to its owner or shared with every agent
   in the workspace.
 
 The iOS app is a thin client with the same functionality; it talks to the JSON API in [docs/api.md](docs/api.md).

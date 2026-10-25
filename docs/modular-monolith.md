@@ -28,6 +28,7 @@ src/
 ├── accounts/                Sign-in and sign-out (better-auth is in platform/auth.ts)
 ├── workspaces/              Workspaces, members, channels, the thread registry, and the app shell
 ├── llm/                     The shared LLM provider and its stored login
+├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── threads/                 One Pi Durable session per workspace, a conversation per thread, and the agent tools
 ├── integrations/            The integration catalog, credentials, and who uses which integration
 ├── search/                  Extraction, embeddings, the index of each workspace, and the search page
@@ -45,12 +46,13 @@ Each module has the same files, when it needs them:
 | `*.test.ts` | The tests of the module |
 
 `workspaces/shell.ts` is the app frame (sidebar, workspace switcher, dialogs) that every signed-in page uses.
-`search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`.
+`search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`; `hands/` has
+`connection.ts`, `tools.ts`, and the `install.sh` it serves.
 
 ## Rules
 
-1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `threads`, `integrations`,
-   `search`, `settings`. A module uses only the modules before it. `platform/` uses no module.
+1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `threads`,
+   `integrations`, `search`, `settings`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts` and `workspaces/shell.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.

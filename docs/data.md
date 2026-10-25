@@ -32,6 +32,9 @@ data/
 │       └── index.sqlite             The search index of this workspace (derived, rebuildable).
 ├── models/                          Downloaded models, shared because they hold no data.
 │   └── embeddinggemma-2-Q8_0.gguf
+├── hands/                           The hands binaries machines install when they pair: hands-darwin-arm64,
+│                                    hands-darwin-x86_64, hands-linux-aarch64, hands-linux-x86_64. Copy them from
+│                                    Mycroft's hands/dist (hands/scripts/build-release.sh builds them).
 └── logs/
     └── golem.log
 ```
@@ -47,7 +50,7 @@ data/
   Channels have no folder; a thread's channel is a column in `golem.sqlite`, so moving a thread moves nothing.
 - **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `notes/`, `files/`, `raw/`, and
   `tables/` are the record. `index.sqlite`, `models/`, and `logs/` can be deleted; Golem rebuilds or
-  downloads them.
+  downloads them. `hands/` can be copied again.
 - **Immutable things get time-ordered names.** Captures, thread files, and Parquet parts are named with UUIDv7,
   so names never collide, sort by time, and merge as a set union when copies sync between machines.
 - **One writer per SQLite file.** This Golem process is the only writer of each database. Other machines read

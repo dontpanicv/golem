@@ -194,6 +194,29 @@ test("an unknown integration is not found", async () => {
   ).toBe(404);
 });
 
+test("machines pair only over HTTPS, and only members see them", async () => {
+  const base = `/api/v1/workspaces/${workspaceId}/machines`;
+  expect(await body(await golem.call(base, { token: alice }))).toEqual({
+    machines: [],
+    pairing: null,
+  });
+  expect(
+    await failure(
+      await golem.call(`${base}/pairing`, { token: alice, body: {} })
+    )
+  ).toEqual({
+    status: 409,
+    error:
+      "Machines pair over HTTPS: set base_url in config/golem.toml to Golem's https:// address",
+  });
+  const eve = await golem.signIn("Eve", "eve@example.com");
+  expect((await golem.call(base, { token: eve })).status).toBe(404);
+  expect((await golem.call("/hands/zzzzzz")).status).toBe(404);
+  expect((await golem.call("/hands/zzzzzz/pair", { body: {} })).status).toBe(
+    404
+  );
+});
+
 test("thread events stream every change until the client leaves", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Saturday works.")]);
   const thread = await body(

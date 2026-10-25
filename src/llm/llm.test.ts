@@ -380,6 +380,10 @@ const hooks = {
   changed: () => undefined,
   recall: async () => ({ results: [] }),
 };
+const noMachines = {
+  tools: () => [],
+  section: () => ({ key: "machines", render: () => undefined }),
+};
 
 /** Threads over a registry in memory, with the registry methods that creating and sending use. */
 function threadsOver(dataDirectory: string, llm: Llm) {
@@ -423,7 +427,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     channelsIn: () => [],
     touchThread: () => undefined,
   };
-  const threads = new Threads(dataDirectory, llm, registry, hooks);
+  const threads = new Threads(dataDirectory, llm, registry, noMachines, hooks);
   return { threads, registry, thread: (id: string) => registry.thread(id) };
 }
 
@@ -536,7 +540,13 @@ describe("Threads with the Llm", () => {
       await first.threads.closeAll();
 
       // A new process opens the same file and finds each thread's own transcript.
-      const reopened = new Threads(dataDirectory, llm, first.registry, hooks);
+      const reopened = new Threads(
+        dataDirectory,
+        llm,
+        first.registry,
+        noMachines,
+        hooks
+      );
       try {
         expect(await texts(reopened, dinner.id, 2)).toEqual([
           "Dinner?",

@@ -8,6 +8,7 @@ const MODULES = [
   "accounts",
   "workspaces",
   "llm",
+  "hands",
   "threads",
   "integrations",
   "search",

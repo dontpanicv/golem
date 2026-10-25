@@ -68,6 +68,35 @@ struct Integration: Codable, Hashable, Identifiable {
     var credentials: [Credential]
 }
 
+struct Machine: Codable, Hashable, Identifiable {
+    let id: String
+    let name: String
+    let system: String
+    let arch: String
+    let version: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, arch, version
+        case system = "os"
+    }
+
+    /// "macOS arm64 · hands 0.5.0"
+    var summary: String {
+        let names = ["macos": "macOS", "linux": "Linux"]
+        return "\(names[system] ?? system) \(arch) · hands \(version)"
+    }
+}
+
+struct Pairing: Codable, Hashable {
+    let command: String
+    let expiresAt: Double
+}
+
+struct Machines: Codable {
+    let machines: [Machine]
+    let pairing: Pairing?
+}
+
 struct Llm: Codable, Hashable {
     struct Login: Codable, Hashable {
         let userCode: String
@@ -194,6 +223,20 @@ final class APIClient {
 
     func deleteCredential(workspaceID: String, credentialID: String) async throws {
         _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/credentials/\(credentialID)")
+    }
+
+    // MARK: Machines
+
+    func machines(workspaceID: String) async throws -> Machines {
+        try await get("/api/v1/workspaces/\(workspaceID)/machines")
+    }
+
+    func startPairing(workspaceID: String) async throws -> Pairing {
+        try await post("/api/v1/workspaces/\(workspaceID)/machines/pairing")
+    }
+
+    func removeMachine(workspaceID: String, machineID: String) async throws {
+        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/machines/\(machineID)")
     }
 
     // MARK: Threads

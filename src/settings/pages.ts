@@ -1,3 +1,5 @@
+import type { Machine, Pairing } from "../hands/hands.ts";
+import { machinesSection } from "../hands/pages.ts";
 import type { Integration } from "../integrations/integrations.ts";
 import { integrationsSection } from "../integrations/pages.ts";
 import type { LlmStatus } from "../llm/llm.ts";
@@ -19,11 +21,16 @@ const escapeHtml = Bun.escapeHTML;
 export function workspaceSettingsPage(
   context: ShellContext,
   members: readonly Member[],
+  hands: { machines: readonly Machine[]; pairing: Pairing | null },
   integrations: readonly Integration[]
 ): string {
   const main = pageContent(
     `${escapeHtml(context.workspace!.name)}`,
     pageSection("Members", membersSection(context.workspace!.id, members)) +
+      pageSection(
+        "Machines",
+        machinesSection(context.workspace!.id, hands.machines, hands.pairing)
+      ) +
       pageSection(
         "Integrations",
         integrationsSection(context.workspace!.id, integrations)

@@ -16,6 +16,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { randomUUIDv5 } from "bun";
+import type { Hands } from "../hands/hands.ts";
 import type { Llm } from "../llm/llm.ts";
 import type { User } from "../platform/auth.ts";
 import { notFound, required } from "../platform/errors.ts";
@@ -87,6 +88,9 @@ export type ThreadRegistry = Pick<
   | "touchThread"
 >;
 
+/** The machines of a workspace, which its agents use through the hands tools. */
+export type ThreadHands = Pick<Hands, "section" | "tools">;
+
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
   private readonly open = new Map<string, Promise<Harness>>();
@@ -95,6 +99,7 @@ export class Threads {
     private readonly dataDirectory: string,
     private readonly llm: Llm,
     private readonly registry: ThreadRegistry,
+    private readonly hands: ThreadHands,
     private readonly hooks: ThreadHooks
   ) {}
 
@@ -245,7 +250,9 @@ export class Threads {
           this.readThreadTool(workspaceId),
           this.startThreadTool(workspaceId),
           this.sendToThreadTool(workspaceId),
+          ...this.hands.tools(workspaceId),
         ],
+        sections: [this.hands.section(workspaceId)],
       })
     );
     const harness = await Harness.open(

@@ -7,8 +7,9 @@ import { dirname } from "node:path";
  * `member`, and `invitation`; it migrates them itself. Append a migration; never edit one that shipped.
  *
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
- * `organization` and `member`), `integrations` owns `credential` and `integration_setting`, and `llm` owns
- * `provider_credential` and its keys in `setting`. Start a new migration with a comment that names its owner.
+ * `organization` and `member`), `integrations` owns `credential` and `integration_setting`, `llm` owns
+ * `provider_credential` and its keys in `setting`, and `hands` owns `machine`. Start a new migration with a comment
+ * that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (
@@ -60,6 +61,22 @@ const migrations = [
   // file each; their rows go, and their files stay on disk.
   `ALTER TABLE thread ADD COLUMN conversation_id INTEGER;
 	DELETE FROM thread WHERE conversation_id IS NULL;`,
+  // hands: the machines paired with a workspace. `addresses` is a JSON array.
+  `CREATE TABLE machine (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		hostname TEXT,
+		addresses TEXT NOT NULL,
+		port INTEGER NOT NULL,
+		cert_sha256 TEXT NOT NULL,
+		os TEXT NOT NULL,
+		arch TEXT NOT NULL,
+		version TEXT NOT NULL,
+		paired_at INTEGER NOT NULL,
+		UNIQUE (workspace_id, cert_sha256),
+		UNIQUE (workspace_id, name)
+	);`,
 ];
 
 export function openDatabase(path: string): Database {

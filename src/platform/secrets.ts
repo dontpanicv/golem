@@ -35,6 +35,11 @@ export class Secrets {
       .digest("hex");
   }
 
+  /** 32 bytes for `purpose`, derived from the key, so a lost key also loses them and they need no storage. */
+  derive(purpose: string): Buffer {
+    return createHash("sha256").update(this.key).update(purpose).digest();
+  }
+
   encrypt(plaintext: string): Uint8Array {
     const iv = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", this.key, iv);

@@ -275,6 +275,11 @@ describe("the web app", () => {
     expect(page).toContain("alice@example.com");
     expect(page).toContain("No credentials · Personal access token");
     expect(page).toContain('aria-label="Use GitHub"');
+    expect(page).toContain(`action="/w/${workspaceId}/machines/pairing"`);
+    // The test server is not on https, so machines cannot pair with it.
+    expect(
+      location(await alice.post(`/w/${workspaceId}/machines/pairing`))
+    ).toStartWith(`${settings}?error=Machines%20pair%20over%20HTTPS`);
 
     const unknown = await alice.post(`/w/${workspaceId}/members`, {
       email: "nobody@example.com",
