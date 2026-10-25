@@ -2,7 +2,7 @@ import { empty } from "../platform/ui/components.ts";
 import { type IconName, icon } from "../platform/ui/icons.ts";
 import { type ShellContext, shell } from "../workspaces/shell.ts";
 import type { Channel } from "../workspaces/workspaces.ts";
-import type { SearchResponse } from "./indexer.ts";
+import type { SearchResponse } from "./search.ts";
 import type { Modality, SearchKind } from "./workspace-index.ts";
 
 const escapeHtml = Bun.escapeHTML;

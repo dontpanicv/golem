@@ -7,7 +7,7 @@ iOS app uses this JSON API. Both call the same server code.
 
 Accounts are managed by [better-auth](https://www.better-auth.com). People sign in only with Google, and only with
 an email in `allowed_emails` in `config/golem.toml`. There is no sign-up and no password. Native clients use bearer
-tokens.
+tokens. The routes are in `src/accounts/`.
 
 | Request | Response |
 | --- | --- |
@@ -67,23 +67,45 @@ type Llm = {
 
 Workspace paths answer `404` to users who are not members of the workspace.
 
+### Workspaces (`src/workspaces/`)
+
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[] }` |
 | `POST /api/v1/workspaces` | `{ name }` | `Workspace`; the creator becomes owner, and the workspace gets a `general` channel |
 | `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }` |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
+| `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
+| `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once |
+
+### Threads (`src/threads/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
 | `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message and the title |
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text }` | `204` |
+
+### Search (`src/search/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/search?q=…&limit=20` | | `{ results: SearchResult[], semantic: boolean }`; `semantic` is false while the model starts, and results then match words only |
-| `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
-| `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once |
+
+### Integrations (`src/integrations/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/integrations` | | `Integration[]` for the current user |
 | `PUT /api/v1/workspaces/:workspaceId/integrations/:integrationId` | `{ enabled }` | `Integration` |
 | `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/credentials` | `{ label, secret, shared }` | `Credential` |
 | `DELETE /api/v1/workspaces/:workspaceId/credentials/:credentialId` | | `204`; only the owner can delete |
+
+### LLM (`src/llm/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
 | `GET /api/v1/llm` | | `Llm` |
 | `POST /api/v1/llm/login` | | `Llm` with `login` set; open `verificationUri` and enter `userCode` |
 | `POST /api/v1/llm/logout` | | `Llm` |

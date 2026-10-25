@@ -34,16 +34,27 @@ addresses, or code and data from employers or clients.
 ## Web and iOS
 
 - The web app and the iOS app have the same functionality. Every feature is a web page or Datastar endpoint in
-  `src/web.ts` and a JSON endpoint in `src/api.ts`, documented in `docs/api.md`, and both call the same code in
-  `src/workspaces.ts`, `src/threads.ts`, or `src/llm.ts`.
-- Every workspace read and write goes through a membership check in `Workspaces`; answer `404` to non-members.
+  `src/<module>/web.ts` and a JSON endpoint in `src/<module>/api.ts`, documented in `docs/api.md`, and both call the
+  module's service in `src/<module>/<module>.ts`.
+- Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
+
+## Modules
+
+- `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `threads`, `integrations`, `search`,
+  `settings`) holds one domain: its service, routes, pages, and tests. `src/platform/` is shared code that knows no
+  domain; `src/app/` composes the services and holds the route helpers.
+- A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` and
+  `workspaces/shell.ts` from routes and pages. A module reads only the tables it owns. `test/architecture.test.ts`
+  enforces these rules; `docs/modular-monolith.md` explains them.
+- Register new route tables in `src/app/routes.ts` and new services in `createApp` in `src/app/app.ts`.
 
 ## Design System
 
 - Change colors, type, spacing, radii, sizes, and shadows only in `design/tokens.json`, then run `bun run tokens`.
   Never edit `public/tokens.css` or `ios/Golem/Design/Tokens.swift` by hand.
-- A component change on one platform needs the same change on the other: `public/styles.css` and `src/ui/` for the web,
-  `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Show new components on `/design` and in `DesignCatalogView`.
+- A component change on one platform needs the same change on the other: `public/styles.css` and `src/platform/ui/`
+  for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Show new components on `/design` and in
+  `DesignCatalogView`.
 - `design/components.md` is the spec for every component, measured from Linear. Build controls from it: never a
   native select, picker, menu, toggle, or alert. Web behaviors live in `public/ui.js`.
 - iOS controls keep 44 pt touch targets where the web uses 28 px rows.

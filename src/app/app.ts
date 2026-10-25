@@ -8,7 +8,7 @@ import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
 import { Secrets } from "../platform/secrets.ts";
 import type { Embedder } from "../search/embedder.ts";
-import { Indexer } from "../search/indexer.ts";
+import { Indexer } from "../search/search.ts";
 import { Threads } from "../threads/threads.ts";
 import { Workspaces } from "../workspaces/workspaces.ts";
 

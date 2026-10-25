@@ -1,7 +1,8 @@
 # Golem components
 
 Measurements come from Linear's interface and live in `tokens.json`. Every component exists on the web
-(`public/styles.css`, `public/ui.js`, `src/ui/`) and on iOS (`ios/Golem/Design/`) with the same look and behavior.
+(`public/styles.css`, `public/ui.js`, `src/platform/ui/`) and on iOS (`ios/Golem/Design/`) with the same look and
+behavior.
 Native selects and pickers are never used: menus, selects, switches, and checkboxes are our own.
 
 Motion: color and border changes take `duration.fast` (150 ms) ease-out. Popovers and dialogs open in

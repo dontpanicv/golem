@@ -11,7 +11,7 @@ import {
   Indexer,
   type ThreadReader,
   type WorkspaceDirectory,
-} from "./indexer.ts";
+} from "./search.ts";
 
 let dataDirectory: string;
 beforeAll(async () => {
