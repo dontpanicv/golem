@@ -351,14 +351,26 @@ document.addEventListener("click", async (event) => {
   }
   // The clipboard needs https or localhost, which sign-in needs too.
   await navigator.clipboard.writeText(button.dataset.copy);
+  showToast("success", "Copied");
+});
+
+// A Datastar request that fails, such as a message that does not send, shows an error toast.
+
+document.addEventListener("datastar-fetch", (event) => {
+  if (event.detail.type === "error") {
+    showToast("error", "The request failed. Try again.");
+  }
+});
+
+function showToast(tone, text) {
   document
     .querySelector(".toasts")
     ?.insertAdjacentHTML(
       "beforeend",
-      '<div class="toast success" role="status" data-toast><span class="dot"></span>Copied</div>'
+      `<div class="toast ${tone}" role="status" data-toast><span class="dot"></span>${text}</div>`
     );
   startToasts();
-});
+}
 
 // Switches and checkboxes with data-autosubmit submit their form on change.
 

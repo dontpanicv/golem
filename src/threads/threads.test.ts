@@ -289,6 +289,45 @@ test("files attach to a new thread, a message, and the thread; the agent reads t
   expect((await golem.call(pagePath, { token })).status).toBe(404);
 });
 
+test("a composer with no file chosen starts a thread and sends a message", async () => {
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const home = await golem.app.workspaces.create(alice, "No files");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const cookie = await golem.sessionCookie(token);
+  // What a browser posts for the composer: its empty file field is a part with `filename=""`.
+  const post = (path: string, text: string) =>
+    golem.handler(
+      new Request(`http://golem.test${path}`, {
+        method: "POST",
+        headers: {
+          cookie,
+          origin: "http://golem.test",
+          "content-type": "multipart/form-data; boundary=X",
+        },
+        body: `--X\r\nContent-Disposition: form-data; name="text"\r\n\r\n${text}\r\n--X\r\nContent-Disposition: form-data; name="files"; filename=""\r\nContent-Type: application/octet-stream\r\n\r\n\r\n--X--\r\n`,
+      })
+    );
+
+  const created = await post(`/w/${home.id}/c/${general.id}/threads`, "Hello");
+  expect(created.status).toBe(303);
+  const id = created.headers.get("location")!.split("/t/")[1]!;
+  await until(
+    () => golem.app.threads.messages(golem.app.workspaces.thread(id, alice)),
+    (state) => !state.running && state.messages.length === 2
+  );
+  const sent = await post(`/w/${home.id}/t/${id}/messages`, "Thanks");
+  expect(sent.status).toBe(200);
+
+  const { messages } = await golem.app.threads.messages(
+    golem.app.workspaces.thread(id, alice)
+  );
+  expect(messages.slice(0, 3).map((m) => [m.text, m.files.length])).toEqual([
+    ["Hello", 0],
+    ["Ok.", 0],
+    ["Thanks", 0],
+  ]);
+});
+
 test("a spoken message asks the agent for an answer to read aloud, and the transcript shows only the words", async () => {
   const token = await golem.signIn("Alice", "alice@example.com");
   const home = await golem.app.workspaces.create(alice, "Voice");

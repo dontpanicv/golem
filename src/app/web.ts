@@ -107,7 +107,8 @@ export async function readForm(request: Request): Promise<{
       ])
     ),
     files: entries.flatMap(([, value]) =>
-      typeof value !== "string" && value.name !== "" ? [value] : []
+      // Browsers send an empty file field as a part with `filename=""`, which Bun reads as a file without a name.
+      typeof value !== "string" && value.name ? [value] : []
     ),
   };
 }
