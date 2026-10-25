@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "bunx ultracite fix --skip=correctness/noUnusedImports --hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "apply_patch"
+      }
+    ]
+  }
+}

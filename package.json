@@ -1,13 +1,15 @@
 {
   "name": "golem",
-  "type": "module",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "bun --watch src/main.ts",
+    "format": "ultracite fix",
+    "lint": "ultracite check",
     "start": "bun src/main.ts",
     "test": "bun test",
-    "typecheck": "bun check",
-    "tokens": "bun scripts/tokens.ts"
+    "tokens": "bun scripts/tokens.ts",
+    "typecheck": "bun check"
   },
   "dependencies": {
     "@earendil-works/chord": "^1.4.0",
@@ -21,7 +23,10 @@
     "unpdf": "^1.9.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@types/bun": "latest",
-    "typescript": "^7.0.2"
+    "better-call": "1.4.4",
+    "typescript": "^7.0.2",
+    "ultracite": "8.0.2"
   }
 }

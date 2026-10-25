@@ -7,7 +7,7 @@ import { dirname } from "node:path";
  * `member`, and `invitation`; it migrates them itself. Append a migration; never edit one that shipped.
  */
 const migrations = [
-	`CREATE TABLE channel (
+  `CREATE TABLE channel (
 		id TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL,
 		name TEXT NOT NULL,
@@ -55,30 +55,48 @@ const migrations = [
 ];
 
 export function openDatabase(path: string): Database {
-	if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-	const database = new Database(path, { create: true, strict: true });
-	database.run("PRAGMA journal_mode = WAL");
-	database.run("PRAGMA foreign_keys = ON");
-	database.run("PRAGMA busy_timeout = 5000");
-	return database;
+  if (path !== ":memory:") {
+    mkdirSync(dirname(path), { recursive: true });
+  }
+  const database = new Database(path, { create: true, strict: true });
+  database.run("PRAGMA journal_mode = WAL");
+  database.run("PRAGMA foreign_keys = ON");
+  database.run("PRAGMA busy_timeout = 5000");
+  return database;
 }
 
 /** Runs the application migrations that this database has not run yet. */
 export function migrate(database: Database): void {
-	const { user_version: version } = database.query("PRAGMA user_version").get() as { user_version: number };
-	for (const [index, sql] of migrations.entries()) {
-		if (index < version) continue;
-		database.transaction(() => {
-			database.run(sql);
-			database.run(`PRAGMA user_version = ${index + 1}`);
-		})();
-	}
+  const { user_version: version } = database
+    .query("PRAGMA user_version")
+    .get() as { user_version: number };
+  for (const [index, sql] of migrations.entries()) {
+    if (index < version) {
+      continue;
+    }
+    database.transaction(() => {
+      database.run(sql);
+      database.run(`PRAGMA user_version = ${index + 1}`);
+    })();
+  }
 }
 
 export function setting(database: Database, key: string): string | undefined {
-	return (database.query("SELECT value FROM setting WHERE key = ?").get(key) as { value: string } | null)?.value;
+  return (
+    database.query("SELECT value FROM setting WHERE key = ?").get(key) as {
+      value: string;
+    } | null
+  )?.value;
 }
 
-export function setSetting(database: Database, key: string, value: string): void {
-	database.query("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(key, value);
+export function setSetting(
+  database: Database,
+  key: string,
+  value: string
+): void {
+  database
+    .query(
+      "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value"
+    )
+    .run(key, value);
 }
