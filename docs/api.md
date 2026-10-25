@@ -25,7 +25,7 @@ Send `Authorization: Bearer <token>` on every `/api/v1` request. A `401` respons
 ```ts
 type User = { id: string; name: string; email: string };
 type Workspace = { id: string; name: string };
-type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: number }; // times are Unix milliseconds
+type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: number; settledAt: number | null }; // times are Unix milliseconds
 type Channel = {
 	id: string;
 	name: string;
@@ -144,6 +144,7 @@ Workspace paths answer `404` to users who are not members of the workspace.
 | --- | --- | --- |
 | `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message and the title |
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
+| `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice? }` | `204` |
 | `GET /api/v1/threads/:threadId/files` | | `{ files: ThreadFile[] }`, oldest first |

@@ -18,6 +18,7 @@ struct ThreadSummary: Codable, Hashable, Identifiable {
     let channelId: String
     let title: String
     let updatedAt: Double
+    let settledAt: Double?
 }
 
 struct Channel: Codable, Hashable, Identifiable {

@@ -157,6 +157,7 @@ test("a scan indexes finished thread messages and thread files, and skips what i
         channelId: "c1",
         title: "Holiday",
         updatedAt: 5,
+        settledAt: null,
       },
       {
         id: "t2",
@@ -165,6 +166,7 @@ test("a scan indexes finished thread messages and thread files, and skips what i
         channelId: "c1",
         title: "Empty",
         updatedAt: 6,
+        settledAt: null,
       },
     ]
   );

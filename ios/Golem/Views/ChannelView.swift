@@ -8,19 +8,27 @@ struct ChannelView: View {
     @State private var draft = ""
     @State private var files: [URL] = []
     @State private var sending = false
+    @State private var showSettled = false
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
+    private var activeThreads: [ThreadSummary] { channel?.threads.filter { $0.settledAt == nil } ?? [] }
+    private var settledThreads: [ThreadSummary] {
+        (channel?.threads.filter { $0.settledAt != nil } ?? [])
+            .sorted { ($0.settledAt ?? 0) > ($1.settledAt ?? 0) }
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 1) {
-                ForEach(channel?.threads ?? []) { thread in
-                    Button {
-                        open(.thread(thread.id))
-                    } label: {
-                        NavRow(title: thread.title, systemImage: "square.and.pencil")
+                ForEach(activeThreads) { thread in threadRow(thread) }
+                if !settledThreads.isEmpty {
+                    Button { showSettled.toggle() } label: {
+                        NavRow(title: "Settled", systemImage: "tray", count: settledThreads.count)
                     }
                     .buttonStyle(.plain)
+                    if showSettled {
+                        ForEach(settledThreads) { thread in threadRow(thread) }
+                    }
                 }
             }
             .padding(Tokens.Space.lg)
@@ -44,6 +52,27 @@ struct ChannelView: View {
             }
         }
         .task { await session.run { try await session.reloadWorkspace() } }
+    }
+
+    private func threadRow(_ thread: ThreadSummary) -> some View {
+        HStack(spacing: Tokens.Space.xs) {
+            Button { open(.thread(thread.id)) } label: {
+                NavRow(title: thread.title, systemImage: "square.and.pencil")
+            }
+            .buttonStyle(.plain)
+            Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
+                   systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
+                Task {
+                    await session.run {
+                        try await session.setThreadSettled(threadID: thread.id, settled: thread.settledAt == nil)
+                    }
+                }
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .foregroundStyle(Tokens.Colors.textTertiary)
+            .frame(minWidth: 44, minHeight: 44)
+        }
     }
 
     private func send() {

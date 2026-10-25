@@ -42,6 +42,12 @@ final class APIClient {
         return try decode(try await sendForm("/api/v1/workspaces/\(workspaceID)/threads", fields, files).data)
     }
 
+    func setThreadSettled(workspaceID: String, threadID: String, settled: Bool) async throws {
+        _ = try await post(
+            "/api/v1/workspaces/\(workspaceID)/threads/\(threadID)/settled", ["settled": settled]
+        ) as ThreadSummary
+    }
+
     func search(workspaceID: String, query: String) async throws -> SearchResponse {
         let escaped = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         return try await get("/api/v1/workspaces/\(workspaceID)/search?q=\(escaped)")

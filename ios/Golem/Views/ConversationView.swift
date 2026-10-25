@@ -57,6 +57,18 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button(state?.thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
+                       systemImage: state?.thread.settledAt == nil ? "checkmark" : "tray") {
+                    guard let thread = state?.thread else { return }
+                    Task {
+                        await session.run {
+                            try await session.setThreadSettled(threadID: threadID, settled: thread.settledAt == nil)
+                            open(.channel(thread.channelId))
+                        }
+                    }
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button("Artifacts", systemImage: "sidebar.right") { showArtifacts.toggle() }
             }
         }

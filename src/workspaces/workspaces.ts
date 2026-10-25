@@ -18,6 +18,7 @@ export interface ThreadSummary {
   readonly id: string;
   readonly title: string;
   readonly updatedAt: number;
+  readonly settledAt: number | null;
 }
 export interface Channel {
   readonly id: string;
@@ -106,7 +107,7 @@ export class Workspaces {
       .all(workspaceId) as Omit<Channel, "threads">[];
     const threads = this.database
       .query(
-        "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt FROM thread WHERE workspace_id = ? ORDER BY updated_at DESC"
+        "SELECT id, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt FROM thread WHERE workspace_id = ? ORDER BY updated_at DESC"
       )
       .all(workspaceId) as ThreadSummary[];
     return channels.map((channel) => ({
@@ -192,14 +193,14 @@ export class Workspaces {
         now,
         now
       );
-    return { id: thread.id, channelId, title, updatedAt: now };
+    return { id: thread.id, channelId, title, updatedAt: now, settledAt: null };
   }
 
   /** The thread if `user` is a member of its workspace. */
   thread(threadId: string, user: User): ThreadSummary & ThreadRef {
     const thread = this.database
       .query(
-        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id WHERE t.id = ? AND m.userId = ?"
+        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id WHERE t.id = ? AND m.userId = ?"
       )
       .get(threadId, user.id) as (ThreadSummary & ThreadRef) | null;
     if (!thread) {
@@ -212,7 +213,7 @@ export class Workspaces {
   threadsIn(workspaceId: string): (ThreadSummary & ThreadRef)[] {
     return this.database
       .query(
-        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt FROM thread WHERE workspace_id = ?"
+        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt FROM thread WHERE workspace_id = ?"
       )
       .all(workspaceId) as (ThreadSummary & ThreadRef)[];
   }
@@ -222,6 +223,27 @@ export class Workspaces {
     this.database
       .query("UPDATE thread SET updated_at = ? WHERE id = ?")
       .run(Date.now(), threadId);
+  }
+
+  /** Moves a thread into or out of its channel's settled list. */
+  setThreadSettled(
+    workspaceId: string,
+    threadId: string,
+    user: User,
+    settled: boolean
+  ): ThreadSummary {
+    this.requireMember(workspaceId, user);
+    const thread = this.thread(threadId, user);
+    if (thread.workspaceId !== workspaceId) {
+      throw notFound();
+    }
+    if ((thread.settledAt !== null) === settled) {
+      return thread;
+    }
+    this.database
+      .query("UPDATE thread SET settled_at = ? WHERE id = ?")
+      .run(settled ? Date.now() : null, threadId);
+    return this.thread(threadId, user);
   }
 
   members(workspaceId: string, user: User): Member[] {

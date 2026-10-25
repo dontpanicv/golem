@@ -106,6 +106,13 @@ Used by selects, the workspace switcher, and action menus.
 - Agents write a thread as `[title](thread:<id>)` in a message. It shows as the title in `accent`, no underline;
   hover (web) turns it `accentHover` and underlined. Clicking or tapping opens the thread in the app.
 
+## Channel threads
+
+- Active threads appear newest first under their channels. Each sidebar row opens the thread and shows its settle
+  button on hover or keyboard focus (always on touch screens).
+- Settled threads leave the active lists and appear in a collapsed Settled shelf at the bottom of the sidebar,
+  newest settlement first. Each row can un-settle the thread. A settled thread remains readable and can receive messages.
+
 ## File chip
 
 - A file attached to a message, or picked in the composer: `size.controlSmall` (28) high (44 pt touch target on

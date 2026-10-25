@@ -110,6 +110,12 @@ final class Session {
         return thread
     }
 
+    func setThreadSettled(threadID: String, settled: Bool) async throws {
+        guard let workspace else { return }
+        try await api.setThreadSettled(workspaceID: workspace.id, threadID: threadID, settled: settled)
+        try await reloadWorkspace()
+    }
+
     /// Runs an action and shows its error in a toast.
     func run(_ action: () async throws -> Void) async {
         do { try await action() } catch is CancellationError {} catch {

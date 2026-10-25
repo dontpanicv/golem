@@ -44,6 +44,25 @@ export const threadWebRoutes: readonly Route[] = [
     }),
   ],
   [
+    "POST",
+    "/w/:workspace/t/:thread/settled",
+    action(
+      ({ params }) => `/w/${params.workspace}/t/${params.thread}`,
+      async ({ app, user, params, fields }) => {
+        if (fields.settled !== "true" && fields.settled !== "false") {
+          throw new HttpError(400, "Settled must be true or false");
+        }
+        const thread = app.workspaces.setThreadSettled(
+          params.workspace!,
+          params.thread!,
+          user,
+          fields.settled === "true"
+        );
+        return `/w/${params.workspace}/c/${thread.channelId}`;
+      }
+    ),
+  ],
+  [
     "GET",
     "/w/:workspace/t/:thread/events",
     page(async (input) => {

@@ -133,6 +133,12 @@ a {
   gap: var(--space-xl);
   min-width: 0;
   padding: var(--space-md) var(--space-lg);
+  overflow: hidden;
+}
+
+.sidebar-channels {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -232,8 +238,55 @@ a {
 .nav-threads .nav-item {
   font-weight: var(--font-weight-book);
 }
+.sidebar-thread {
+  position: relative;
+}
+.sidebar-thread .nav-item {
+  padding-right: var(--space-xxl);
+}
+.sidebar-thread .settle-action {
+  position: absolute;
+  top: 0;
+  right: 0;
+  opacity: 0;
+}
+.sidebar-thread:hover .settle-action,
+.sidebar-thread:focus-within .settle-action {
+  opacity: 1;
+}
+.sidebar-settled summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  list-style: none;
+}
+.sidebar-settled summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar-settled summary::after {
+  content: "⌄";
+}
+.sidebar-settled[open] summary::after {
+  transform: rotate(180deg);
+}
+.settled-list {
+  max-height: var(--size-settled-shelf);
+  overflow-y: auto;
+}
+.sidebar-settled .nav-item {
+  font-weight: var(--font-weight-book);
+}
 .sidebar-footer {
-  margin-top: auto;
+  flex: none;
+}
+
+@media (hover: none) {
+  .sidebar-thread .settle-action {
+    opacity: 1;
+  }
 }
 
 /* Buttons */
@@ -1081,6 +1134,20 @@ a.list-row:hover {
   margin-left: auto;
   font-size: var(--font-size-sm);
   color: var(--color-text-quaternary);
+}
+
+.settled-threads {
+  margin-top: var(--space-lg);
+}
+.settled-threads summary {
+  padding: var(--space-xs) var(--space-md);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.list .file-row .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thread-files {

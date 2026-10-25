@@ -129,6 +129,12 @@ private struct Sidebar: View {
     @Environment(Session.self) private var session
     @State private var newChannel = false
     @State private var newWorkspace = false
+    @State private var showSettled = false
+
+    private var settledThreads: [ThreadSummary] {
+        session.channels.flatMap(\.threads).filter { $0.settledAt != nil }
+            .sorted { ($0.settledAt ?? 0) > ($1.settledAt ?? 0) }
+    }
 
     var body: some View {
         ScrollView {
@@ -139,9 +145,8 @@ private struct Sidebar: View {
                 ForEach(session.channels) { channel in
                     row(channel.name, systemImage: "number", destination: .channel(channel.id))
                     VStack(spacing: 1) {
-                        ForEach(channel.threads) { thread in
-                            row(thread.title, systemImage: "square.and.pencil", destination: .thread(thread.id))
-                                .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
+                        ForEach(channel.threads.filter { $0.settledAt == nil }) { thread in
+                            threadRow(thread)
                         }
                     }
                     .padding(.leading, Tokens.Space.xl)
@@ -159,6 +164,26 @@ private struct Sidebar: View {
             .padding(.horizontal, Tokens.Space.lg)
         }
         .refreshable { await session.run { try await session.reloadWorkspace() } }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !settledThreads.isEmpty {
+                VStack(spacing: Tokens.Space.xs) {
+                    Button { showSettled.toggle() } label: {
+                        NavRow(title: "Settled", systemImage: "tray", count: settledThreads.count)
+                    }
+                    .buttonStyle(.plain)
+                    if showSettled {
+                        ScrollView {
+                            VStack(spacing: 1) {
+                                ForEach(settledThreads) { thread in threadRow(thread) }
+                            }
+                        }
+                        .frame(maxHeight: Tokens.Size.settledShelf)
+                    }
+                }
+                .padding(.horizontal, Tokens.Space.lg)
+                .background(Tokens.Colors.canvas)
+            }
+        }
         .background(Tokens.Colors.canvas)
         .navigationTitle("Golem")
         .sheet(isPresented: $newChannel) {
@@ -210,6 +235,27 @@ private struct Sidebar: View {
             NavRow(title: title, systemImage: systemImage, selected: selection == destination)
         }
         .buttonStyle(.plain)
+    }
+
+    private func threadRow(_ thread: ThreadSummary) -> some View {
+        HStack(spacing: Tokens.Space.xs) {
+            row(thread.title, systemImage: "square.and.pencil", destination: .thread(thread.id))
+                .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
+                .frame(maxWidth: .infinity)
+            Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
+                   systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
+                Task {
+                    await session.run {
+                        try await session.setThreadSettled(threadID: thread.id, settled: thread.settledAt == nil)
+                        if selection == .thread(thread.id) { open(.channel(thread.channelId)) }
+                    }
+                }
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .foregroundStyle(Tokens.Colors.textTertiary)
+            .frame(minWidth: 44, minHeight: 44)
+        }
     }
 }
 

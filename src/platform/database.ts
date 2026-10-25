@@ -142,6 +142,8 @@ const migrations = [
   // never given out again.
   `CREATE TABLE artifact_name (id TEXT PRIMARY KEY);
 	INSERT INTO artifact_name (id) SELECT id FROM artifact;`,
+  // workspaces: keep finished threads available without showing them among active threads.
+  "ALTER TABLE thread ADD COLUMN settled_at INTEGER;",
 ];
 
 export function openDatabase(path: string): Database {

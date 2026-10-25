@@ -417,18 +417,20 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       }
     ) => {
       registered.set(thread.id, { ...thread, workspaceId });
-      return { ...thread, updatedAt: 0 };
+      return { ...thread, updatedAt: 0, settledAt: null };
     },
     thread: (threadId: string) => ({
       ...registered.get(threadId)!,
       title: "",
       updatedAt: 0,
+      settledAt: null,
     }),
     threadsIn: () =>
       [...registered.values()].map((thread) => ({
         ...thread,
         title: "",
         updatedAt: 0,
+        settledAt: null,
       })),
     channelsIn: () => [],
     setChannelSummary: () => undefined,

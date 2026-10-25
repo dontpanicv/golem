@@ -19,6 +19,7 @@ export function threadPage(
   return shell(context, {
     title: thread.title,
     header: `<span class="breadcrumb">${escapeHtml(channel.name)} › </span>${escapeHtml(thread.title)}`,
+    headerActions: `<form method="post" action="${base}/settled"><input type="hidden" name="settled" value="${thread.settledAt === null}">${button(thread.settledAt === null ? "Settle thread" : "Un-settle thread", { variant: "ghost", icon: thread.settledAt === null ? "check" : "inbox", size: "icon", attributes: 'type="submit"' })}</form>`,
     main: `<section id="transcript" class="transcript" aria-live="polite"></section>
 			${composer(`Message #${channel.name}`, `@post('${base}/messages', {contentType: 'form'})`)}`,
     artifacts: {

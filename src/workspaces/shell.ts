@@ -133,6 +133,10 @@ ${dialogs(context)}`;
 
 function sidebar(context: ShellContext): string {
   const { workspace, current } = context;
+  const settled = (context.channels ?? [])
+    .flatMap((channel) => channel.threads)
+    .filter((thread) => thread.settledAt !== null)
+    .sort((left, right) => right.settledAt! - left.settledAt!);
   const switcher = menu(
     `<button type="button" class="workspace-trigger" data-popover-trigger aria-haspopup="menu" aria-expanded="false">${avatar(workspace?.name ?? "Golem", { agent: true, size: "small" })}<span class="name">${escapeHtml(workspace?.name ?? "Golem")}</span>${icon("chevron")}</button>`,
     [
@@ -182,8 +186,8 @@ function sidebar(context: ShellContext): string {
     : "";
   return `<aside class="sidebar" data-class:is-open="$sidebar">
 		<div class="sidebar-header">${switcher}</div>
-		${search}
-		${channels}
+		<div class="sidebar-channels">${search}${channels}</div>
+		${settled.length ? `<details class="sidebar-settled"><summary>Settled (${settled.length})</summary><nav class="settled-list" aria-label="Settled threads">${settled.map((thread) => threadNav(workspace!, thread, current)).join("")}</nav></details>` : ""}
 		<nav class="nav sidebar-footer">
 			${workspace ? navItem("Workspace settings", { icon: "members", href: `/w/${workspace.id}/settings`, current: current?.page === "workspace-settings" }) : ""}
 			${navItem("Settings", { icon: "settings", href: "/settings", current: current?.page === "settings" })}
@@ -226,17 +230,25 @@ function channelNav(
   current: ShellContext["current"]
 ): string {
   const threads = channel.threads
-    .map((thread) =>
-      navItem(thread.title, {
-        icon: "compose",
-        href: `/w/${workspace.id}/t/${thread.id}`,
-        current: thread.id === current?.threadId,
-      })
-    )
+    .filter((thread) => thread.settledAt === null)
+    .map((thread) => threadNav(workspace, thread, current))
     .join("");
   const isCurrent =
     channel.id === current?.channelId && current.threadId === undefined;
   return `${navItem(channel.name, { icon: "hash", href: `/w/${workspace.id}/c/${channel.id}`, current: isCurrent })}<div class="nav-threads">${threads}</div>`;
+}
+
+function threadNav(
+  workspace: Workspace,
+  thread: Channel["threads"][number],
+  current: ShellContext["current"]
+): string {
+  const settled = thread.settledAt !== null;
+  return `<div class="sidebar-thread">${navItem(thread.title, {
+    icon: "compose",
+    href: `/w/${workspace.id}/t/${thread.id}`,
+    current: thread.id === current?.threadId,
+  })}<form class="settle-action" method="post" action="/w/${workspace.id}/t/${thread.id}/settled"><input type="hidden" name="settled" value="${!settled}">${button(settled ? "Un-settle thread" : "Settle thread", { variant: "ghost", icon: settled ? "inbox" : "check", size: "tiny", attributes: 'type="submit"' })}</form></div>`;
 }
 
 function artifactsPanel(tabs: NonNullable<ShellPage["artifacts"]>): string {

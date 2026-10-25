@@ -1,5 +1,6 @@
 import { api, eventStream } from "../app/api.ts";
 import { fileResponse, json, type Route } from "../app/http.ts";
+import { HttpError } from "../platform/errors.ts";
 
 /** Threads and their files for the iOS app. Messages and files post as JSON, or as a multipart form with files. */
 export const threadApiRoutes: readonly Route[] = [
@@ -27,6 +28,23 @@ export const threadApiRoutes: readonly Route[] = [
         thread: summary(thread),
         ...(await app.threads.messages(thread)),
       });
+    }),
+  ],
+  [
+    "POST",
+    "/api/v1/workspaces/:workspace/threads/:thread/settled",
+    api(async ({ app, user, params, body }) => {
+      if (typeof body.settled !== "boolean") {
+        throw new HttpError(400, "Settled must be true or false");
+      }
+      return json(
+        app.workspaces.setThreadSettled(
+          params.workspace!,
+          params.thread!,
+          user,
+          body.settled
+        )
+      );
     }),
   ],
   [
@@ -100,11 +118,13 @@ function summary(thread: {
   channelId: string;
   title: string;
   updatedAt: number;
+  settledAt: number | null;
 }) {
   return {
     id: thread.id,
     channelId: thread.channelId,
     title: thread.title,
     updatedAt: thread.updatedAt,
+    settledAt: thread.settledAt,
   };
 }

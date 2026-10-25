@@ -36,8 +36,13 @@ export function newWorkspacePage(context: ShellContext): string {
 
 export function channelPage(context: ShellContext, channel: Channel): string {
   const workspaceId = context.workspace!.id;
+  const active = channel.threads.filter((thread) => thread.settledAt === null);
+  const settled = channel.threads
+    .filter((thread) => thread.settledAt !== null)
+    .sort((left, right) => right.settledAt! - left.settledAt!);
   const threads = channel.threads.length
-    ? `<div class="list">${channel.threads.map((thread) => threadRow(workspaceId, thread)).join("")}</div>`
+    ? `<div class="list">${active.map((thread) => threadRow(workspaceId, thread)).join("")}
+      ${settled.length ? `<details class="settled-threads"><summary>Settled (${settled.length})</summary>${settled.map((thread) => threadRow(workspaceId, thread)).join("")}</details>` : ""}</div>`
     : empty("compose", "No threads yet");
   return shell(context, {
     title: `#${channel.name}`,
@@ -55,7 +60,8 @@ function threadRow(workspaceId: string, thread: ThreadSummary): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-  return `<a class="list-row" href="/w/${workspaceId}/t/${thread.id}">${icon("compose")}${escapeHtml(thread.title)}<span class="meta">${time}</span></a>`;
+  const settled = thread.settledAt !== null;
+  return `<div class="file-row"><a class="list-row" href="/w/${workspaceId}/t/${thread.id}">${icon("compose")}<span class="name">${escapeHtml(thread.title)}</span><span class="meta">${time}</span></a><form method="post" action="/w/${workspaceId}/t/${thread.id}/settled"><input type="hidden" name="settled" value="${!settled}">${button(settled ? "Un-settle thread" : "Settle thread", { variant: "ghost", icon: settled ? "inbox" : "check", size: "icon", attributes: 'type="submit"' })}</form></div>`;
 }
 
 /** The members of a workspace, and a form to add one, for the workspace settings page. */

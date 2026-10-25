@@ -71,6 +71,7 @@ enum Tokens {
 
 	enum Size {
 		static let sidebar: CGFloat = 244
+		static let settledShelf: CGFloat = 240
 		static let artifacts: CGFloat = 400
 		static let header: CGFloat = 44
 		static let navRow: CGFloat = 28

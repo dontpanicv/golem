@@ -182,6 +182,51 @@ describe("the web app", () => {
     expect(text).toContain("Saturday works.");
   });
 
+  test("a settled thread leaves the active list and can return", async () => {
+    const workspace = await golem.app.workspaces.create(
+      aliceUser(),
+      "Settle test"
+    );
+    const channel = golem.app.workspaces.channels(
+      workspace.id,
+      aliceUser()
+    )[0]!;
+    const thread = await golem.app.threads.create(
+      workspace.id,
+      aliceUser(),
+      channel.id,
+      "Keep this thread"
+    );
+    const channelPath = `/w/${workspace.id}/c/${channel.id}`;
+    const threadPath = `/w/${workspace.id}/t/${thread.id}`;
+    const action = `${threadPath}/settled`;
+    expect((await bob.post(action, { settled: "true" })).status).toBe(404);
+    expect(location(await alice.post(action, { settled: "true" }))).toBe(
+      channelPath
+    );
+    expect(
+      golem.app.workspaces.thread(thread.id, aliceUser()).settledAt
+    ).toBeNumber();
+    const settled = await (await alice.get(channelPath)).text();
+    expect(settled).toContain("Settled (1)");
+    expect(settled).toContain('<details class="sidebar-settled">');
+    expect(settled.indexOf('class="sidebar-settled"')).toBeLessThan(
+      settled.indexOf('class="nav sidebar-footer"')
+    );
+    expect(settled).toContain(`href="${threadPath}"`);
+    expect(settled).toContain('value="false"');
+    expect((await alice.get(threadPath)).status).toBe(200);
+    expect(location(await alice.post(action, { settled: "false" }))).toBe(
+      channelPath
+    );
+    expect(
+      golem.app.workspaces.thread(thread.id, aliceUser()).settledAt
+    ).toBeNull();
+    expect(await (await alice.get(channelPath)).text()).not.toContain(
+      "Settled (1)"
+    );
+  });
+
   test("a message posts over Datastar, clears the composer, and joins the thread", async () => {
     const path = `/w/${workspaceId}/t/${threadId}/messages`;
     expect((await alice.post(path, { text: "  " })).status).toBe(400);
