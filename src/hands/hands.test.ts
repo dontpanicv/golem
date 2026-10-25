@@ -254,7 +254,7 @@ describe("the hands tools", () => {
 });
 
 /**
- * A `hands` listener on 127.0.0.1 with a new self-signed certificate: the handshake of mycroft/hands/docs/pairing.md
+ * A `hands` listener on 127.0.0.1 with a new self-signed certificate: the handshake of hands/docs/pairing.md
  * §2, and the operations the tools use, over files kept in memory.
  */
 async function fakeHands() {

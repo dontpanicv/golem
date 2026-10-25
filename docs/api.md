@@ -124,12 +124,12 @@ Workspace paths answer `404` to users who are not members of the workspace.
 | `DELETE /api/v1/workspaces/:workspaceId/machines/:machineId` | | `204` |
 
 The machine calls these, without an account; the six-character pairing code in the path is the credential. They follow
-the contract of Mycroft's `hands/docs/pairing.md`, with Golem in the phone's place.
+the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 
 | Request | Response |
 | --- | --- |
-| `GET /hands/:code` | The install script, with Golem's address, the pin of its TLS key, and the binaries' SHA-256 |
-| `GET /hands/:code/hands-<os>-<arch>` | A binary from `data/hands/` |
+| `GET /hands/:code` | `hands/scripts/pair-install.sh`, with Golem's address, the pin of its TLS key, and the binaries' SHA-256 |
+| `GET /hands/:code/hands-<os>-<arch>` | A binary from `hands/dist/`, which `hands/scripts/build-release.sh` builds |
 | `POST /hands/:code/pair` | `{ phoneName, publicKey }`: the workspace's name and Ed25519 key. `400` on a malformed request, `404` once the code was used, `410` once it expired |
 
 ### LLM (`src/llm/`)

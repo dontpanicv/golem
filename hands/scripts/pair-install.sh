@@ -4,8 +4,8 @@
 #
 #   curl -fsSL https://GOLEM/hands/CODE | sh
 #
-# BASE is Golem's HTTPS address, and the downloads and the pairing below are pinned to its key.
-# Adapted from Mycroft's hands/scripts/phone-install.sh (MIT).
+# BASE is Golem's HTTPS address, and the downloads and the pairing below are pinned to its key: -k skips only the CA
+# check, and curl still refuses any other key.
 #
 # POSIX sh: dash, bash, zsh and macOS sh. Quiet unless something fails. The work happens in main, so a script
 # cut short in transit runs nothing.
@@ -61,7 +61,7 @@ main() {
 	[ -n "$sum" ] || fail "Golem has no $name to install"
 
 	tmp=$(mktemp -d 2>/dev/null || mktemp -d -t golem) || fail "cannot create a temporary directory"
-	curl -fsSL --retry 3 --pinnedpubkey "sha256//$PIN" -o "$tmp/hands" "$BASE/$name" </dev/null ||
+	curl -fsSLk --retry 3 --pinnedpubkey "sha256//$PIN" -o "$tmp/hands" "$BASE/$name" </dev/null ||
 		fail "could not download $name from Golem"
 
 	actual=$(sha256 "$tmp/hands") || exit 1

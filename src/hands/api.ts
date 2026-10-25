@@ -1,7 +1,7 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 
-/** The machines of a workspace, and the endpoints a machine pairs with (mycroft/hands/docs/pairing.md). */
+/** The machines of a workspace, and the endpoints a machine pairs with (hands/docs/pairing.md). */
 export const handsApiRoutes: readonly Route[] = [
   [
     "GET",

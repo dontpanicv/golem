@@ -32,12 +32,18 @@ export interface Pairing {
 export interface HandsOptions {
   /** Golem's public address; machines download hands and pair over it. */
   readonly baseUrl: string;
-  /** Where the `hands-<os>-<arch>` binaries are, which Golem serves to machines. */
+  /** Where the `hands-<os>-<arch>` binaries are, which Golem serves to machines: `hands/dist`, which
+   * `hands/scripts/build-release.sh` builds. */
   readonly binaryDirectory: string;
   /** The pin of Golem's TLS key at `baseUrl`; tests replace it. */
   readonly serverPin?: (baseUrl: string) => Promise<string>;
 }
 
+/** The install script template, in the hands source that Golem builds (`hands/`). */
+const INSTALL_SCRIPT = join(
+  import.meta.dir,
+  "../../hands/scripts/pair-install.sh"
+);
 const PAIRING_LIFETIME = 10 * 60 * 1000;
 /** Readable and typable: no 0/o or 1/i/l. */
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -57,7 +63,7 @@ interface PendingPairing extends Pairing {
 }
 
 /**
- * The machines of a workspace: Macs and Linux computers that run Mycroft's `hands` daemon. Every agent in the
+ * The machines of a workspace: Macs and Linux computers that run the `hands` daemon in `hands/`. Every agent in the
  * workspace can use every machine, whoever it works for. A machine pairs with the command from the workspace settings,
  * and trusts the workspace's own Ed25519 key from then on; Golem connects to it and pins its certificate.
  */
@@ -147,7 +153,7 @@ export class Hands {
   async installScript(code: string): Promise<string> {
     this.pendingPairing(code);
     const [template, checksums, pin] = await Promise.all([
-      Bun.file(join(import.meta.dir, "install.sh")).text(),
+      Bun.file(INSTALL_SCRIPT).text(),
       this.checksums(),
       this.serverPin(this.options.baseUrl),
     ]);
@@ -170,7 +176,7 @@ export class Hands {
   }
 
   /**
-   * The machine's pairing request (mycroft/hands/docs/pairing.md, `POST /S/pair`): stores the machine in the
+   * The machine's pairing request (hands/docs/pairing.md, `POST /S/pair`): stores the machine in the
    * workspace and answers with the workspace's identity. A code pairs one machine only.
    */
   pair(code: string, body: unknown): { phoneName: string; publicKey: string } {
@@ -329,7 +335,7 @@ export class Hands {
     if (!Object.values(checksums).some(Boolean)) {
       throw new HttpError(
         409,
-        `Golem has no hands binaries: copy hands-<os>-<arch> to ${this.options.binaryDirectory}`
+        "Golem has no hands binaries: build them with hands/scripts/build-release.sh"
       );
     }
     return checksums;

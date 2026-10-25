@@ -54,9 +54,9 @@ const FrameType = {
 } as const;
 
 /**
- * One authenticated connection to a machine's `hands` listener (mycroft/hands/docs/pairing.md §2): WebSocket over TLS
+ * One authenticated connection to a machine's `hands` listener (hands/docs/pairing.md §2): WebSocket over TLS
  * pinned to the machine's certificate, the hello/auth/ready handshake, then one protocol frame per binary message
- * (mycroft/hands/docs/protocol.md). Requests are matched to replies by id.
+ * (hands/docs/protocol.md). Requests are matched to replies by id.
  */
 export class HandsConnection {
   /** What the machine reported in `hello`: home, os, arch, version, features. */

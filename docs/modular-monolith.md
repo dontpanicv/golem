@@ -47,7 +47,7 @@ Each module has the same files, when it needs them:
 
 `workspaces/shell.ts` is the app frame (sidebar, workspace switcher, dialogs) that every signed-in page uses.
 `search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`; `hands/` has
-`connection.ts`, `tools.ts`, and the `install.sh` it serves.
+`connection.ts` and `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
 
 ## Rules
 

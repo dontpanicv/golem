@@ -50,10 +50,10 @@ The machines connect over a WireGuard mesh VPN.
   A message passes between threads at most twice, so agents cannot keep talking to each other.
 - **Search.** Each workspace has its own index: keywords plus meaning from Google's EmbeddingGemma 2, run locally.
   Search and the agents' `recall` tool never cross workspaces. See [docs/data.md](docs/data.md).
-- **Hands.** A workspace's agents can use its machines: Macs and Linux computers that run Mycroft's
-  [`hands`](https://github.com/dontpanicv/mycroft/tree/main/hands) daemon. They run commands and long jobs there, and
-  read and edit files. **Add machine** in the workspace settings gives a command to paste on the machine; it installs
-  `hands` and pairs it with the workspace. Every agent in the workspace can use every machine of the workspace.
+- **Hands.** A workspace's agents can use its machines: Macs and Linux computers that run the [`hands`](hands/)
+  daemon, Golem's own copy of Mycroft's. They run commands and long jobs there, and read and edit files. **Add
+  machine** in the workspace settings gives a command to paste on the machine; it installs `hands` and pairs it with
+  the workspace. Every agent in the workspace can use every machine of the workspace.
 - **Settings.** `/settings` connects the LLM provider and chooses the model, for everyone. Each workspace's settings
   hold its members, its machines, and each person's integrations. A credential is private to its owner or shared with every agent
   in the workspace.
@@ -102,6 +102,13 @@ Golem keeps everything in two gitignored folders ([docs/data.md](docs/data.md)):
 To keep Golem running on a Mac, run `scripts/install-service.sh` in the checkout. It installs a LaunchAgent that runs
 `bun start` and restarts it; logs go to `data/logs/golem.log`. To update: `git pull && bun install`, then
 `launchctl kickstart -k user/$(id -u)/dev.golem.server`.
+
+Machines install the `hands` binaries that Golem builds from `hands/` (needs Rust, and on a Mac
+`brew install zig && cargo install --locked cargo-zigbuild` for the Linux builds):
+
+```sh
+hands/scripts/build-release.sh   # hands/dist/hands-<os>-<arch>, which Golem serves to machines that pair
+```
 
 iOS (needs Xcode and `brew install xcodegen`):
 

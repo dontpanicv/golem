@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Hands } from "../hands/hands.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
@@ -50,7 +50,7 @@ export async function createApp(
   const integrations = new Integrations(database, resolvedSecrets, workspaces);
   const hands = new Hands(database, resolvedSecrets, workspaces, {
     baseUrl: config.baseUrl,
-    binaryDirectory: join(config.dataDirectory, "hands"),
+    binaryDirectory: resolve(import.meta.dir, "../../hands/dist"),
   });
   // The recall port and the change hook point at the indexer, which reads the threads.
   const threads: Threads = new Threads(
