@@ -1,14 +1,14 @@
 #!/bin/sh
 # Install hands on this machine: pick the binary for this OS and architecture, check it against SHA256SUMS when
-# that file is next to it, and run `hands install`, which copies it to ~/.local/bin/hands and sets up the
+# that file is next to it, and run `golem-hands install`, which copies it to ~/.local/bin/golem-hands and sets up the
 # supervisor service (systemd user unit on Linux, LaunchAgent on macOS).
 #
 # Usage: install.sh [--dir DIR | --binary FILE] [--dry-run] [--uninstall]
 #   --dir DIR      where the hands-<os>-<arch> binaries are (default: ../dist next to this script, else this
 #                  script's own directory)
 #   --binary FILE  use this binary as is
-#   --dry-run      print what `hands install` would do, change nothing
-#   --uninstall    reverse `hands install` (keeps the state dir)
+#   --dry-run      print what `golem-hands install` would do, change nothing
+#   --uninstall    reverse `golem-hands install` (keeps the state dir)
 set -eu
 
 die() {

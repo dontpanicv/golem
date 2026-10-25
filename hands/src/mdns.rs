@@ -1,22 +1,22 @@
-//! Bonjour (docs/pairing.md §3): the listener advertises `_mycroft-hands._tcp` with TXT `name`, `version` and `cert`
+//! Bonjour (docs/pairing.md §3): the listener advertises `_golem-hands._tcp` with TXT `name`, `version` and `cert`
 //! (the first 16 hex digits of `certSha256`), so the phone can find a paired machine whose address changed. Best
 //! effort: a failure is logged and nothing else depends on it.
 //!
 //! macOS registers with the system's mDNSResponder through `dns_sd`; Linux runs the pure-Rust `mdns-sd` responder,
 //! which also answers for `<name>.local`, the hostname pairing reports there (pairing.rs).
-//! Skipped when the listener is bound to a loopback address; `HANDS_MDNS=0` turns it off, `HANDS_MDNS=1` forces it.
+//! Skipped when the listener is bound to a loopback address; `GOLEM_HANDS_MDNS=0` turns it off, `GOLEM_HANDS_MDNS=1` forces it.
 
 use crate::serve::VERSION;
 use std::net::IpAddr;
 
-pub const SERVICE: &str = "_mycroft-hands._tcp";
+pub const SERVICE: &str = "_golem-hands._tcp";
 
 /// Keeps the advertisement alive; dropping it withdraws it.
 pub struct Advertisement(#[allow(dead_code)] platform::Handle);
 
 /// Whether a listener bound to `bind` advertises itself (and, on Linux, answers for `<name>.local`).
 pub fn enabled(bind: IpAddr) -> bool {
-    match std::env::var("HANDS_MDNS").as_deref() {
+    match std::env::var("GOLEM_HANDS_MDNS").as_deref() {
         Ok("0") => false,
         Ok("1") => true,
         _ => !bind.is_loopback(),
@@ -32,7 +32,7 @@ pub fn advertise(name: &str, port: u16, cert_sha256: &str, bind: IpAddr) -> Opti
     match platform::register(name, port, &txt) {
         Ok(handle) => Some(Advertisement(handle)),
         Err(error) => {
-            eprintln!("hands: Bonjour advertisement failed: {error}");
+            eprintln!("golem-hands: Bonjour advertisement failed: {error}");
             None
         }
     }

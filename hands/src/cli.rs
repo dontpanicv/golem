@@ -1,4 +1,4 @@
-//! The human-facing subcommands: `hands jobs`, `hands paired`, `hands unpair` and `hands doctor`.
+//! The human-facing subcommands: `golem-hands jobs`, `golem-hands paired`, `golem-hands unpair` and `golem-hands doctor`.
 
 use crate::serve::{PROTOCOL, VERSION, now_ms};
 use crate::{install, jobs, listener, pairing, state, supervisor};
@@ -44,7 +44,7 @@ fn command_text(job: &Value) -> String {
     }
 }
 
-/// `hands jobs [--json]`: the supervisor's jobs, or the records on disk when no supervisor runs.
+/// `golem-hands jobs [--json]`: the supervisor's jobs, or the records on disk when no supervisor runs.
 pub fn jobs(args: &[String]) -> i32 {
     let as_json = args.iter().any(|arg| arg == "--json");
     let (jobs, from_disk) = match supervisor::call_running(&json!({ "op": "job.list" })) {
@@ -85,13 +85,13 @@ pub fn jobs(args: &[String]) -> i32 {
     0
 }
 
-/// `hands paired [--json]`: the phones that may connect to the listener.
+/// `golem-hands paired [--json]`: the phones that may connect to the listener.
 pub fn paired(args: &[String]) -> i32 {
     let as_json = match args {
         [] => false,
         [flag] if flag == "--json" => true,
         _ => {
-            eprintln!("usage: hands paired [--json]");
+            eprintln!("usage: golem-hands paired [--json]");
             return 2;
         }
     };
@@ -101,7 +101,7 @@ pub fn paired(args: &[String]) -> i32 {
         return 0;
     }
     if phones.is_empty() {
-        println!("no paired phones; pair with the command from Mycroft's Add machine");
+        println!("no paired phones; pair with the command from Add machine in Golem");
         return 0;
     }
     let now = now_ms();
@@ -118,15 +118,15 @@ pub fn paired(args: &[String]) -> i32 {
     0
 }
 
-/// `hands unpair <name>`: remove the phones with this name (or this public key).
+/// `golem-hands unpair <name>`: remove the phones with this name (or this public key).
 pub fn unpair(args: &[String]) -> i32 {
     let [name] = args else {
-        eprintln!("usage: hands unpair <name>");
+        eprintln!("usage: golem-hands unpair <name>");
         return 2;
     };
     match pairing::remove(name) {
         Ok(0) => {
-            eprintln!("hands unpair: no paired phone named {name}; see `hands paired`");
+            eprintln!("golem-hands unpair: no paired phone named {name}; see `golem-hands paired`");
             1
         }
         Ok(count) => {
@@ -135,7 +135,7 @@ pub fn unpair(args: &[String]) -> i32 {
             0
         }
         Err(error) => {
-            eprintln!("hands unpair: {error}");
+            eprintln!("golem-hands unpair: {error}");
             1
         }
     }
@@ -146,7 +146,7 @@ fn present(path: &Path) -> String {
     format!("{} ({mark})", path.display())
 }
 
-/// `hands doctor`: what is installed and running, for humans and bug reports.
+/// `golem-hands doctor`: what is installed and running, for humans and bug reports.
 pub fn doctor() -> i32 {
     let row = |name: &str, value: String| println!("{name:<12} {value}");
     row("hands", format!("{VERSION} (protocol {PROTOCOL})"));
@@ -175,7 +175,7 @@ pub fn doctor() -> i32 {
             let mismatch = if version == VERSION {
                 ""
             } else {
-                " (differs from this binary; `hands install` restarts it)"
+                " (differs from this binary; `golem-hands install` restarts it)"
             };
             row(
                 "supervisor",
@@ -206,7 +206,7 @@ pub fn doctor() -> i32 {
         match (listening, port) {
             (Some(pid), Some(port)) => format!("running, pid {pid}, port {port}"),
             (Some(pid), None) => format!("running, pid {pid}"),
-            (None, _) => "not running (the service runs `hands supervise --listen`)".into(),
+            (None, _) => "not running (the service runs `golem-hands supervise --listen`)".into(),
         },
     );
     let cert = state::dir().join("listener-cert.pem");

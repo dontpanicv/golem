@@ -1,4 +1,4 @@
-//! The walkthrough of `hands permissions` (mod.rs): one item at a time on the terminal, asking macOS through the
+//! The walkthrough of `golem-hands permissions` (mod.rs): one item at a time on the terminal, asking macOS through the
 //! service's supervisor and waiting until it's granted or the user presses Enter.
 
 use super::{Item, Mac, RealMac, Status, remember_asked};
@@ -187,22 +187,22 @@ fn summary(outcomes: &[(Item, Outcome)]) -> Vec<String> {
         .collect();
     let required: Vec<&str> = left.iter().filter(|item| !item.optional()).map(|item| item.title()).collect();
     if required.is_empty() {
-        let mut line = "All set: Mycroft can use this Mac.".to_string();
+        let mut line = "All set: Golem can use this Mac.".to_string();
         if !left.is_empty() {
-            line += " Full Disk Access is still off; add it any time with `hands permissions`.";
+            line += " Full Disk Access is still off; add it any time with `golem-hands permissions`.";
         }
         return vec![line];
     }
     vec![format!(
-        "Still to approve: {}. Run `hands permissions` on this Mac any time to finish.",
+        "Still to approve: {}. Run `golem-hands permissions` on this Mac any time to finish.",
         required.join(", ")
     )]
 }
 
 /// The walkthrough on this Mac's terminal. Returns 0 when nothing required is left.
 pub fn walkthrough(tty: &mut Tty) -> i32 {
-    tty.line("Mycroft needs a few permissions on this Mac. macOS asks for each one; approve them one at a time.");
-    tty.line("Press Enter to skip a step, Ctrl-C to stop. `hands permissions` comes back to this any time.");
+    tty.line("Golem needs a few permissions on this Mac. macOS asks for each one; approve them one at a time.");
+    tty.line("Press Enter to skip a step, Ctrl-C to stop. `golem-hands permissions` comes back to this any time.");
     tty.line("");
     // Every permission is asked for by the service: without it, say so and stop.
     let hello = supervisor::call_running(&json!({ "op": "hello" })).ok().map(|(hello, _)| hello);
@@ -212,7 +212,7 @@ pub fn walkthrough(tty: &mut Tty) -> i32 {
             Some(Some(_)) => "hands runs from a terminal rather than as the service, so it can't ask macOS yet.",
             None => "The hands service isn't running, so macOS can't be asked yet.",
         });
-        tty.line("Run `hands install`, then `hands permissions` again.");
+        tty.line("Run `golem-hands install`, then `golem-hands permissions` again.");
         return 1;
     }
     let mac: Arc<dyn Mac> = Arc::new(RealMac { restart: true });
@@ -313,7 +313,7 @@ mod tests {
         // Screen Recording was already granted: only Accessibility was asked for.
         assert_eq!(mac.events(), ["ask accessibility"]);
         assert_eq!(console.lines[0], "[1/2] Accessibility: read and use apps' buttons, menus and fields");
-        assert!(console.lines.iter().any(|line| line.contains("turn on \"hands\" under Accessibility")));
+        assert!(console.lines.iter().any(|line| line.contains("turn on \"golem-hands\" under Accessibility")));
         assert!(console.lines.iter().any(|line| line.starts_with("[2/2] Screen Recording")));
     }
 
@@ -357,8 +357,8 @@ mod tests {
     #[test]
     fn summarises_whats_left() {
         let all_done = [(Item::Accessibility, Outcome::Granted), (Item::FullDisk, Outcome::Skipped)];
-        assert_eq!(summary(&all_done), ["All set: Mycroft can use this Mac. Full Disk Access is still off; add it any time with `hands permissions`."]);
+        assert_eq!(summary(&all_done), ["All set: Golem can use this Mac. Full Disk Access is still off; add it any time with `golem-hands permissions`."]);
         let left = [(Item::Accessibility, Outcome::Skipped), (Item::Desktop, Outcome::Unknown("x".into())), (Item::Documents, Outcome::Granted)];
-        assert_eq!(summary(&left), ["Still to approve: Accessibility, Desktop folder. Run `hands permissions` on this Mac any time to finish."]);
+        assert_eq!(summary(&left), ["Still to approve: Accessibility, Desktop folder. Run `golem-hands permissions` on this Mac any time to finish."]);
     }
 }

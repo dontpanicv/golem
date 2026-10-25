@@ -1,4 +1,4 @@
-//! The operations of `hands __serve` that the phone sends, and the command-line surfaces. Desktop control is in
+//! The operations of `golem-hands __serve` that the phone sends, and the command-line surfaces. Desktop control is in
 //! desktop.rs, jobs in jobs.rs.
 
 mod common;
@@ -111,7 +111,7 @@ fn install_dry_run_changes_nothing() {
         let output = Command::new(HANDS)
             .args(args)
             .env("HOME", &home)
-            .env("HANDS_STATE_DIR", &state.path)
+            .env("GOLEM_HANDS_STATE_DIR", &state.path)
             .env("PATH", "/usr/bin:/bin:/opt/marker/bin")
             .env_remove("XDG_CONFIG_HOME")
             .output()
@@ -119,7 +119,7 @@ fn install_dry_run_changes_nothing() {
         assert!(output.status.success());
         let text = String::from_utf8(output.stdout).unwrap();
         assert!(text.lines().all(|line| line.starts_with("would ") || line.starts_with("    | ")), "{text}");
-        assert!(text.contains(".local/bin/hands"), "{text}");
+        assert!(text.contains(".local/bin/golem-hands"), "{text}");
         if args.contains(&"--uninstall") {
             continue;
         }

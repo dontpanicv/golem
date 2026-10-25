@@ -70,7 +70,7 @@ script:
 4. Runs `"$TMP/hands" install --pair "$BASE" --pin "$PIN"`. That copies the binary, sets up the service and pairs.
 5. Prints one line saying the machine is paired. On macOS, `install` then walks through the permissions Mycroft needs,
    one at a time, on the terminal (`/dev/tty`, since stdin is the script): see hands/README.md, "Permissions on
-   macOS". Without a terminal it prints one line saying to run `hands permissions`. On Linux it prints one line only
+   macOS". Without a terminal it prints one line saying to run `golem-hands permissions`. On Linux it prints one line only
    when hands would stop at logout.
 
 The script must be POSIX `sh` and finish in seconds, apart from that walkthrough, and print nothing else unless
@@ -78,7 +78,7 @@ something fails.
 
 ### `POST /S/pair`
 
-`hands` sends this from `hands install --pair BASE --pin PIN` (or `hands pair --with BASE --pin PIN`) once its listener is running. It uses rustls with the same SPKI pin.
+`hands` sends this from `golem-hands install --pair BASE --pin PIN` (or `golem-hands pair --with BASE --pin PIN`) once its listener is running. It uses rustls with the same SPKI pin.
 
 Request:
 
@@ -115,7 +115,7 @@ Trust comes from the pinned TLS channel together with knowing `S`.
 
 ## 2. The listener
 
-`hands supervise --listen`, which is what the installed service runs, serves WebSocket over TLS 1.3.
+`golem-hands supervise --listen`, which is what the installed service runs, serves WebSocket over TLS 1.3.
 
 - **Port:** chosen at random on first start and kept in `listener.json` in the state dir. It is the same port that was sent when pairing.
 - **Bind:** `0.0.0.0`, or `--bind ADDR`.
@@ -135,7 +135,7 @@ Trust comes from the pinned TLS channel together with knowing `S`.
 ### After `ready`
 
 - Every binary message carries exactly one complete frame, including its 4-byte length prefix (see protocol.md), in both directions.
-- The listener runs one `hands __serve` child per connection, so a crash in one connection's requests ends only that connection:
+- The listener runs one `golem-hands __serve` child per connection, so a crash in one connection's requests ends only that connection:
   - it splits the child's stdout into frames;
   - it writes each incoming frame to the child's stdin.
 - When the WebSocket closes, the child is killed. Supervised jobs keep running.
@@ -143,7 +143,7 @@ Trust comes from the pinned TLS channel together with knowing `S`.
 
 ## 3. Discovery (optional)
 
-The listener advertises `_mycroft-hands._tcp` on the local network with TXT `name`, `version` and `cert` (the first 16 hex digits of `certSha256`). The phone uses it to find a paired machine whose address changed. Pairing never depends on it.
+The listener advertises `_golem-hands._tcp` on the local network with TXT `name`, `version` and `cert` (the first 16 hex digits of `certSha256`). The phone uses it to find a paired machine whose address changed. Pairing never depends on it.
 
 ## 4. Test vectors
 
@@ -209,7 +209,7 @@ XNJS+wzokyQ2+vjM0QQJgbie5K1rn+niorfnGqyyfNM=
 
 These record how `hands` 0.2.0 reads the parts the sections above leave open. The wire contract above is unchanged.
 
-**Pairing request (`hands pair`, `hands install --pair`)**
+**Pairing request (`golem-hands pair`, `golem-hands install --pair`)**
 - **Pin check.** `PIN` is compared with the SHA-256 of the leaf certificate's SubjectPublicKeyInfo. There is no CA, hostname or validity check. The TLS handshake signature is still verified against that certificate's key. The whole handshake, and with it the pin check, completes before any byte of the HTTP request is written, so a wrong pin sends nothing. `--pin` also accepts curl's `sha256//` prefix.
 - **TLS versions.** Toward the phone, `hands` accepts TLS 1.2 and 1.3. The listener accepts TLS 1.3 only.
 - **HTTP.** The request is HTTP/1.1 with `Content-Type: application/json` and `Connection: close`. The response body may be delimited by `Content-Length`, by chunked encoding, or by the end of the connection.
@@ -222,22 +222,22 @@ These record how `hands` 0.2.0 reads the parts the sections above leave open. Th
 - **`paired.json`.** A JSON array of `{ "name", "publicKey", "pairedAt" }`, with mode 0600. `pairedAt` is Unix time in milliseconds, like the job timestamps in jobs.md.
   - Pairing a key that is already present replaces its entry, so there is one entry per key.
   - Two phones with the same name are kept as separate entries.
-  - `hands unpair <name>` removes every entry with that name, or the entry whose `publicKey` equals the argument.
+  - `golem-hands unpair <name>` removes every entry with that name, or the entry whose `publicKey` equals the argument.
   - The file is read at every `auth`, so changes apply to the next connection. Connections that are already open stay open.
 - **Ensuring the listener runs.**
-  - `hands pair` starts `hands supervise --listen --detached` if no listener holds `listener.lock`. It never touches services.
-  - `hands install --pair` first waits up to 10 s for the service's listener.
-  - If the service could not be started (a Mac with no GUI login, or no user systemd), or with `--no-service`, it falls back to a detached listener started from `~/.local/bin/hands`. That listener runs until the machine restarts, and the service's listener takes over at the next login. In that case `install` prints one warning line on stderr.
+  - `golem-hands pair` starts `golem-hands supervise --listen --detached` if no listener holds `listener.lock`. It never touches services.
+  - `golem-hands install --pair` first waits up to 10 s for the service's listener.
+  - If the service could not be started (a Mac with no GUI login, or no user systemd), or with `--no-service`, it falls back to a detached listener started from `~/.local/bin/golem-hands`. That listener runs until the machine restarts, and the service's listener takes over at the next login. In that case `install` prints one warning line on stderr.
   - On Linux, with `--pair`, a failed `systemctl --user daemon-reload` or `enable --now` is not fatal for the same reason.
-- **Output.** With `--pair`, `hands install` prints only `Paired with <phoneName>. Mycroft can use this <Mac|machine> now.` on stdout, and failures on stderr. This is the "one line" of §1 step 6: the script prints nothing of its own when it succeeds. On macOS the permissions walkthrough follows it on the terminal.
+- **Output.** With `--pair`, `golem-hands install` prints only `Paired with <phoneName>. Mycroft can use this <Mac|machine> now.` on stdout, and failures on stderr. This is the "one line" of §1 step 6: the script prints nothing of its own when it succeeds. On macOS the permissions walkthrough follows it on the terminal.
 
 **Listener**
 - **Process.** `supervise --listen` is the listener and the supervisor in one process.
   - It holds `listener.lock` and writes its pid there. When started by the service it waits for the lock; when started with `--detached` it exits if another listener holds the lock.
   - If another (on-demand) supervisor holds `supervisor.lock`, the listener serves anyway and takes the supervisor role when that supervisor exits.
-  - `hands install` stops a running listener before (re)starting the service.
-- **Port.** The port is chosen at random from 20000–32767 (below the ports macOS and Linux hand out for port 0 and outgoing connections), free on both `0.0.0.0` and `127.0.0.1`, by whichever comes first, `hands pair` or the listener, and is stored as `{ "port": N }` in `listener.json` (0600). It never changes after that. If it is taken when the listener starts, the listener fails and the service retries. Moving to another port means deleting `listener.json` and pairing again.
-- **Certificate.** Common name `Mycroft hands on <name>`, subject alternative name `hands`, and rcgen's default validity (1975 to 4096). The phone pins `certSha256` and should not evaluate the name or the dates.
+  - `golem-hands install` stops a running listener before (re)starting the service.
+- **Port.** The port is chosen at random from 20000–32767 (below the ports macOS and Linux hand out for port 0 and outgoing connections), free on both `0.0.0.0` and `127.0.0.1`, by whichever comes first, `golem-hands pair` or the listener, and is stored as `{ "port": N }` in `listener.json` (0600). It never changes after that. If it is taken when the listener starts, the listener fails and the service retries. Moving to another port means deleting `listener.json` and pairing again.
+- **Certificate.** Common name `Golem hands on <name>`, subject alternative name `hands`, and rcgen's default validity (1975 to 4096). The phone pins `certSha256` and should not evaluate the name or the dates.
 - **Handshake.**
   - The upgrade path is matched without its query string. Any other path gets HTTP `404`.
   - WebSocket ping and pong control frames are allowed before `ready`.
@@ -255,7 +255,7 @@ These record how `hands` 0.2.0 reads the parts the sections above leave open. Th
   - `serve` runs in the user's home directory, and its stderr goes to the supervisor log.
 - **Discovery.** The instance name is `name`.
   - On macOS, registration goes through the system's mDNSResponder (`dns_sd`). On Linux, `hands` runs its own responder (`mdns-sd`), which also answers for `<name>.local`.
-  - It is skipped when the listener is bound to a loopback address. `HANDS_MDNS=0` turns it off and `HANDS_MDNS=1` forces it on.
+  - It is skipped when the listener is bound to a loopback address. `GOLEM_HANDS_MDNS=0` turns it off and `GOLEM_HANDS_MDNS=1` forces it on.
 
 **Install script**
 - **Rosetta.** On Apple silicon, a shell running under Rosetta still gets `hands-darwin-arm64` (via `sysctl hw.optional.arm64`).

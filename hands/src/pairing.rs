@@ -1,4 +1,4 @@
-//! Pairing with the phone (docs/pairing.md §1): `hands pair --with BASE --pin PIN` (and `hands install --pair`)
+//! Pairing with the phone (docs/pairing.md §1): `golem-hands pair --with BASE --pin PIN` (and `golem-hands install --pair`)
 //! makes sure the listener runs, then POSTs this machine's identity to `BASE/pair` over HTTPS pinned to `PIN`, and
 //! stores the phone's Ed25519 public key in `paired.json`, which the listener checks every `auth` against.
 
@@ -208,7 +208,7 @@ pub fn request(base: &Base, pin: [u8; 32], body: &Value) -> Result<Phone, String
         .next()
         .ok_or_else(|| format!("cannot resolve {}", base.host))?;
     let mut tcp = TcpStream::connect_timeout(&address, TIMEOUT)
-        .map_err(|error| format!("cannot reach the phone at {address}: {error}"))?;
+        .map_err(|error| format!("cannot reach Golem at {address}: {error}"))?;
     tcp.set_read_timeout(Some(TIMEOUT)).map_err(|error| error.to_string())?;
     tcp.set_write_timeout(Some(TIMEOUT)).map_err(|error| error.to_string())?;
     let config = rustls::ClientConfig::builder_with_provider(tls::provider())
@@ -229,9 +229,9 @@ pub fn request(base: &Base, pin: [u8; 32], body: &Value) -> Result<Phone, String
                 .and_then(|inner| inner.downcast_ref::<rustls::Error>())
                 .is_some_and(|error| matches!(error, rustls::Error::InvalidCertificate(_)));
             return Err(if pinned {
-                "the phone's certificate does not match the pin; nothing was sent".into()
+                "Golem's certificate does not match the pin; nothing was sent".into()
             } else {
-                format!("TLS handshake with the phone failed: {error}")
+                format!("TLS handshake with Golem failed: {error}")
             });
         }
     }
@@ -260,24 +260,24 @@ pub fn request(base: &Base, pin: [u8; 32], body: &Value) -> Result<Phone, String
         200 => {}
         410 => {
             return Err(
-                "this pairing command was already used or has expired; tap Add machine on the phone again".into(),
+                "this pairing command was already used or has expired; click Add machine in Golem again".into(),
             );
         }
-        404 => return Err("the phone does not know this pairing link; tap Add machine on the phone again".into()),
-        400 => return Err(format!("the phone rejected the pairing request: {}", text.trim())),
-        _ => return Err(format!("the phone answered HTTP {status}: {}", text.trim())),
+        404 => return Err("Golem does not know this pairing link; click Add machine in Golem again".into()),
+        400 => return Err(format!("Golem rejected the pairing request: {}", text.trim())),
+        _ => return Err(format!("Golem answered HTTP {status}: {}", text.trim())),
     }
     let reply: Value =
-        serde_json::from_slice(&body).map_err(|error| format!("the phone's answer is not JSON: {error}"))?;
+        serde_json::from_slice(&body).map_err(|error| format!("Golem's answer is not JSON: {error}"))?;
     let name = reply["phoneName"]
         .as_str()
         .filter(|name| !name.trim().is_empty())
-        .ok_or("the phone's answer has no phoneName")?;
+        .ok_or("Golem's answer has no phoneName")?;
     let public_key = reply["publicKey"]
         .as_str()
         .and_then(tls::unbase64)
         .filter(|key| key.len() == 32)
-        .ok_or("the phone's answer has no valid publicKey (base64 of 32 bytes)")?;
+        .ok_or("Golem's answer has no valid publicKey (base64 of 32 bytes)")?;
     Ok(Phone {
         name: name.trim().to_string(),
         public_key,
@@ -320,7 +320,7 @@ fn read_response(stream: &mut impl Read) -> Result<(u16, Vec<u8>), String> {
                 .next()
                 .and_then(|line| line.split(' ').nth(1))
                 .and_then(|code| code.parse().ok())
-                .ok_or("the phone's answer is not HTTP")?;
+                .ok_or("Golem's answer is not HTTP")?;
             let header = |name: &str| {
                 head.split("\r\n").skip(1).find_map(|line| {
                     let (key, value) = line.split_once(':')?;
@@ -331,7 +331,7 @@ fn read_response(stream: &mut impl Read) -> Result<(u16, Vec<u8>), String> {
             if header("transfer-encoding").is_some_and(|value| value.eq_ignore_ascii_case("chunked")) {
                 match dechunk(rest) {
                     Some(body) => return Ok((status, body)),
-                    None if ended => return Err("the phone's answer ended early".into()),
+                    None if ended => return Err("Golem's answer ended early".into()),
                     None => {}
                 }
             } else if let Some(length) = header("content-length").and_then(|value| value.parse::<usize>().ok()) {
@@ -339,23 +339,23 @@ fn read_response(stream: &mut impl Read) -> Result<(u16, Vec<u8>), String> {
                     return Ok((status, rest[..length].to_vec()));
                 }
                 if ended {
-                    return Err("the phone's answer ended early".into());
+                    return Err("Golem's answer ended early".into());
                 }
             } else if ended {
                 return Ok((status, rest.to_vec()));
             }
         } else if ended {
-            return Err("the phone closed the connection without answering".into());
+            return Err("Golem closed the connection without answering".into());
         }
         if data.len() > MAX_RESPONSE {
-            return Err("the phone's answer is too large".into());
+            return Err("Golem's answer is too large".into());
         }
         match stream.read(&mut buffer) {
             Ok(0) => ended = true,
             Ok(count) => data.extend_from_slice(&buffer[..count]),
             // A peer that closes without close_notify.
             Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => ended = true,
-            Err(error) => return Err(format!("reading the phone's answer failed: {error}")),
+            Err(error) => return Err(format!("reading Golem's answer failed: {error}")),
         }
     }
 }
@@ -396,7 +396,7 @@ pub fn pair(base: &Base, pin: [u8; 32], binary: &Path, bind: Option<IpAddr>, gra
     let phone = request(base, pin, &body)?;
     add(&phone.name, &phone.public_key).map_err(|error| format!("saving paired.json: {error}"))?;
     let kind = if cfg!(target_os = "macos") { "Mac" } else { "machine" };
-    Ok(format!("Paired with {}. Mycroft can use this {kind} now.", phone.name))
+    Ok(format!("Paired with {}. Golem can use this {kind} now.", phone.name))
 }
 
 /// Parse `--with BASE --pin PIN [--bind ADDR]`-style options shared by `pair` and `install`.
@@ -404,9 +404,9 @@ pub fn parse_bind(text: &str) -> Result<IpAddr, String> {
     text.parse().map_err(|_| format!("{text} is not an IP address"))
 }
 
-/// `hands pair --with BASE --pin PIN [--bind ADDR]`.
+/// `golem-hands pair --with BASE --pin PIN [--bind ADDR]`.
 pub fn main(args: &[String]) -> i32 {
-    const USAGE: &str = "usage: hands pair --with <BASE> --pin <PIN> [--bind <ADDR>]";
+    const USAGE: &str = "usage: golem-hands pair --with <BASE> --pin <PIN> [--bind <ADDR>]";
     let (mut base, mut pin, mut bind) = (None, None, None);
     let mut args = args.iter();
     while let Some(arg) = args.next() {
@@ -433,14 +433,14 @@ pub fn main(args: &[String]) -> i32 {
     let (base, pin, bind) = match parsed {
         Ok(parsed) => parsed,
         Err(error) => {
-            eprintln!("hands pair: {error}");
+            eprintln!("golem-hands pair: {error}");
             return 2;
         }
     };
     let binary = match std::env::current_exe() {
         Ok(binary) => binary,
         Err(error) => {
-            eprintln!("hands pair: {error}");
+            eprintln!("golem-hands pair: {error}");
             return 1;
         }
     };
@@ -450,7 +450,7 @@ pub fn main(args: &[String]) -> i32 {
             0
         }
         Err(error) => {
-            eprintln!("hands pair: {error}");
+            eprintln!("golem-hands pair: {error}");
             1
         }
     }
@@ -479,7 +479,7 @@ mod tests {
         let machine = Machine { name: "box".into(), hostname: "box".into() };
         let lan = "192.168.1.5".parse().ok();
         let expected = if cfg!(target_os = "linux") { "box.local" } else { "box" };
-        if std::env::var_os("HANDS_MDNS").is_none() {
+        if std::env::var_os("GOLEM_HANDS_MDNS").is_none() {
             assert_eq!(reported_hostname(&machine, lan), expected);
             assert_eq!(reported_hostname(&machine, None), expected);
             // Bound to loopback, nothing is advertised.

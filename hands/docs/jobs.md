@@ -2,8 +2,8 @@
 
 `hands` adds supervised jobs to protocol 1 ([protocol.md](protocol.md)). An `exec` dies with its connection: the
 daemon kills every command it started when stdin ends or after 30 seconds of silence. A job does not. It belongs to
-the **supervisor** (`hands supervise`), a long-lived process per user, and keeps running while the phone sleeps,
-loses its network, or reconnects through a new `hands __serve`.
+the **supervisor** (`golem-hands supervise`), a long-lived process per user, and keeps running while the phone sleeps,
+loses its network, or reconnects through a new `golem-hands __serve`.
 
 The operations are listed in `hello.features`. A client checks for them there, as it checks for `listFiles`.
 
@@ -17,8 +17,8 @@ The operations are listed in `hello.features`. A client checks for them there, a
   a new session, so all its processes form one process group. stdin is `/dev/null`. stdout and stderr go together,
   in arrival order, to one **output log** that the job writes directly. The log is stored as raw bytes and is not
   decoded.
-- The job's environment is the one `exec` would give it: the environment of `hands __serve` (the service's, with
-  the `PATH` `hands install` captured from the user's shell), then `env`. With `inheritEnv: false`, only `env` is used. The environment is never written to disk.
+- The job's environment is the one `exec` would give it: the environment of `golem-hands __serve` (the service's, with
+  the `PATH` `golem-hands install` captured from the user's shell), then `env`. With `inheritEnv: false`, only `env` is used. The environment is never written to disk.
 - States: `running`, then one of these:
   - `exited`: the command ended by itself. `exitCode` is its code, or 128 + the signal number if a signal killed it.
   - `cancelled`: `job.cancel` signalled it and it then ended. `exitCode` is as for `exited` (e.g. 143 for SIGTERM).
@@ -55,7 +55,7 @@ All requests are request frames (`type 1`) with `json.op` set. Results and error
 | `argv` | | program and arguments. The program is looked up in `PATH` of the job's environment. |
 | `cwd` | the user's home | absolute working directory, which must exist |
 | `env` | `{}` | variables added on top of the inherited environment |
-| `inheritEnv` | `true` | start from `hands __serve`'s environment |
+| `inheritEnv` | `true` | start from `golem-hands __serve`'s environment |
 | `shellPath` | | shell for `command`. It must exist. |
 
 → the status record plus `created: boolean`. A new job is returned as `running`. A program that cannot be executed
@@ -86,7 +86,7 @@ follow a running job, alternate `job.wait` with a short timeout and `job.output`
 
 Waits until the job ends or `timeoutMs` (default 30 000) passes. The job keeps running either way. → the status
 record plus `timedOut: boolean` (true when it is still running). Cancelling the request with a cancel frame stops
-the wait with `aborted` and leaves the job alone. `hands __serve` waits in slices of at most 500 ms, so the
+the wait with `aborted` and leaves the job alone. `golem-hands __serve` waits in slices of at most 500 ms, so the
 request stops promptly.
 
 ### `job.cancel { key, [signal] }`
@@ -111,7 +111,7 @@ that doesn't move the user's pointer or switch apps, `run_steps` batches, `verif
 `cua: { version }`, the linked driver's release.
 
 The driver runs in the supervisor that launchd started (the service), because macOS gives Accessibility and Screen
-Recording to that process: "hands". `hands __serve` forwards both operations to it over `supervisor.sock`, as it does
+Recording to that process: "hands". `golem-hands __serve` forwards both operations to it over `supervisor.sock`, as it does
 `job.*`.
 
 #### `cua.tools {}`
@@ -143,7 +143,7 @@ normal result with `isError: true`; the error codes below are for calls that don
 
 The supervisor's own `hello` (its socket's operation for the CLI, not the client's `hello`, which `serve` answers) reports
 `desktop: { version }` while the driver runs, or `desktop: { off: why }`.
-`hands doctor` shows it in its `desktop` row.
+`golem-hands doctor` shows it in its `desktop` row.
 
 ## Errors
 
@@ -156,9 +156,9 @@ Errors have the protocol's shape `{ code, message, ... }`. Only `code` is part o
 | `spawn_error` | `cwd` does not exist, `argv` is empty, or the runner could not be started. No job is recorded, so the key stays free. |
 | `shell_unavailable` | `shellPath` does not exist |
 | `aborted` | a `job.wait` or `cua.call` was cancelled by the client |
-| `supervisor_unavailable` | `hands __serve` could not reach or start the supervisor |
+| `supervisor_unavailable` | `golem-hands __serve` could not reach or start the supervisor |
 | `not_supported` | `cua.*` on Linux |
-| `not_service` | `cua.*` when the supervisor wasn't started by launchd (it was started on demand by `serve`): `hands install` sets the service up |
+| `not_service` | `cua.*` when the supervisor wasn't started by launchd (it was started on demand by `serve`): `golem-hands install` sets the service up |
 | `unavailable` | Cua Driver could not start in the supervisor |
 | `EINVAL` | also: `cua.call` without `name`, with `arguments` that aren't an object, with an unknown tool or one `hands` leaves out, or with arguments Cua finds invalid |
 | `interrupted` | Cua interrupted the action (its `ActionInterrupted`) |
@@ -167,15 +167,15 @@ Errors have the protocol's shape `{ code, message, ... }`. Only `code` is part o
 
 ## The supervisor
 
-- `hands __serve` reaches the supervisor over the Unix socket `supervisor.sock` in the **state dir**. The state dir
-  is `~/Library/Application Support/hands` on macOS, and `$XDG_STATE_HOME/hands` or `~/.local/state/hands` on
-  Linux. `HANDS_STATE_DIR` overrides it, and the tests use that. The state dir is mode 0700, and the socket is
+- `golem-hands __serve` reaches the supervisor over the Unix socket `supervisor.sock` in the **state dir**. The state dir
+  is `~/Library/Application Support/golem-hands` on macOS, and `$XDG_STATE_HOME/golem-hands` or `~/.local/state/golem-hands` on
+  Linux. `GOLEM_HANDS_STATE_DIR` overrides it, and the tests use that. The state dir is mode 0700, and the socket is
   created user-only. On the socket, each connection carries one request frame and gets one result or error frame
   back. The socket has its own operations: the `job.*` and `cua.*` that `serve` forwards, plus `cua.cancel`, and
   for the CLI `hello` (pid, version, jobs, whether launchd or systemd started it, desktop), `access`
   (permissions.rs) and `shutdown`.
-- If no supervisor answers, `serve` starts `hands supervise --detached` in a new session (`setsid`), with its
-  stdio on `/dev/null` and `supervisor.log`, so it outlives the connection. `hands install` runs it as a systemd
+- If no supervisor answers, `serve` starts `golem-hands supervise --detached` in a new session (`setsid`), with its
+  stdio on `/dev/null` and `supervisor.log`, so it outlives the connection. `golem-hands install` runs it as a systemd
   user unit or LaunchAgent instead. Only one supervisor runs per state dir, because it holds `supervisor.lock`. A
   service-managed supervisor waits for that lock and takes over when an on-demand one exits.
 - Each job has a directory `jobs/<readable key>-<hash>/` containing `job.json` (the status record, without the
@@ -183,7 +183,7 @@ Errors have the protocol's shape `{ code, message, ... }`. Only `code` is part o
 - The supervisor starts the job through `hands __job-runner`. The runner leads the job's process group, holds
   `runner.lock` while it lives, ignores SIGHUP, SIGINT, SIGTERM and SIGQUIT (the command gets the defaults back),
   and writes the exit status to `exit.json`. Because of this, a job survives a supervisor restart (an upgrade, a
-  crash, `hands install`) and keeps its exit code. A new supervisor adopts running jobs by watching their lock.
+  crash, `golem-hands install`) and keeps its exit code. A new supervisor adopts running jobs by watching their lock.
   Jobs that ended while no supervisor was watching and left no `exit.json` (for example, after a reboot) become
   `failed`.
 - **Retention:** a finished job is deleted 7 days after it ended, or earlier once more than 200 jobs have finished

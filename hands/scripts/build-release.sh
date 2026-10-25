@@ -2,7 +2,7 @@
 # Build the release binaries of hands into dist/ as hands-<os>-<arch>, the names the phone serves and install.sh
 # looks for, with SHA256SUMS. Publishes nothing.
 #
-#   darwin-arm64, darwin-x86_64     cargo build, on macOS (they need the macOS SDK), signed as dev.mycroft.hands
+#   darwin-arm64, darwin-x86_64     cargo build, on macOS (they need the macOS SDK), signed as dev.golem.hands
 #                                   with an Apple Development identity (or CODESIGN_IDENTITY), so macOS keeps the
 #                                   permissions granted to hands (Accessibility, Screen Recording, folders, Local
 #                                   Network, Full Disk Access) across updates. Ad hoc when there is none: those are
@@ -36,21 +36,21 @@ has_target() {
 }
 
 place() { # target name
-	cp "target/$1/release/hands" "$dist/hands-$2"
+	cp "target/$1/release/golem-hands" "$dist/hands-$2"
 	chmod 755 "$dist/hands-$2"
 }
 
 signed_with=""
-# sign FILE: as dev.mycroft.hands, with CODESIGN_IDENTITY or the first Apple Development identity that isn't revoked.
+# sign FILE: as dev.golem.hands, with CODESIGN_IDENTITY or the first Apple Development identity that isn't revoked.
 sign() {
 	if [ -n "${CODESIGN_IDENTITY:-}" ] && [ "$CODESIGN_IDENTITY" != - ]; then
-		codesign --force --sign "$CODESIGN_IDENTITY" --identifier dev.mycroft.hands "$1"
+		codesign --force --sign "$CODESIGN_IDENTITY" --identifier dev.golem.hands "$1"
 		signed_with="$CODESIGN_IDENTITY (CODESIGN_IDENTITY)"
 		return
 	fi
 	if [ "${CODESIGN_IDENTITY:-}" != - ]; then
 		for hash in $(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: / { print $2 }'); do
-			codesign --force --sign "$hash" --identifier dev.mycroft.hands "$1" 2>/dev/null || continue
+			codesign --force --sign "$hash" --identifier dev.golem.hands "$1" 2>/dev/null || continue
 			case $(spctl --assess -vv "$1" 2>&1 || true) in
 			*REVOKED*) continue ;;
 			esac
@@ -58,7 +58,7 @@ sign() {
 			return
 		done
 	fi
-	codesign --force --sign - --identifier dev.mycroft.hands "$1"
+	codesign --force --sign - --identifier dev.golem.hands "$1"
 	signed_with="ad hoc (macOS asks for hands' permissions again after each update)"
 }
 

@@ -1,11 +1,11 @@
-//! `hands supervise --listen`: the supervisor plus a WebSocket-over-TLS-1.3 listener for the phone (docs/pairing.md
+//! `golem-hands supervise --listen`: the supervisor plus a WebSocket-over-TLS-1.3 listener for the phone (docs/pairing.md
 //! §2). A connection authenticates with the phone's paired Ed25519 key (`hello`, `auth`, `ready`); after that every
-//! binary message is one protocol frame (docs/protocol.md), proxied to and from a `hands __serve` child of its own, so
+//! binary message is one protocol frame (docs/protocol.md), proxied to and from a `golem-hands __serve` child of its own, so
 //! a crash in one connection's requests ends only that connection.
 //!
 //! One thread per connection, as everywhere else in hands. One listener runs per state dir: it holds
 //! `listener.lock` and writes its pid there. Started by the service it waits for the lock; started detached (by
-//! `hands pair`) it exits if another listener holds it.
+//! `golem-hands pair`) it exits if another listener holds it.
 
 use crate::frame::MAX_FRAME;
 use crate::serve::VERSION;
@@ -83,7 +83,7 @@ pub struct Identity {
     pub cert: tls::Certificate,
 }
 
-/// Load or create the listener's port (`listener.json`) and certificate. Serialised by a lock, so `hands pair` and
+/// Load or create the listener's port (`listener.json`) and certificate. Serialised by a lock, so `golem-hands pair` and
 /// a starting listener agree on them.
 pub fn identity() -> io::Result<Identity> {
     let dir = state::ensure()?;
@@ -203,7 +203,7 @@ fn start_detached(binary: &Path, bind: Option<IpAddr>) -> io::Result<()> {
     Ok(())
 }
 
-/// Stop a running listener (SIGTERM, then SIGKILL), for `hands install`. Jobs keep running.
+/// Stop a running listener (SIGTERM, then SIGKILL), for `golem-hands install`. Jobs keep running.
 pub fn stop() -> Result<&'static str, String> {
     let Some(pid) = running() else {
         return Ok("none running");
@@ -234,7 +234,7 @@ struct Context {
     handshaking: AtomicUsize,
 }
 
-/// `hands supervise --listen [--bind ADDR] [--detached]`.
+/// `golem-hands supervise --listen [--bind ADDR] [--detached]`.
 pub fn run(bind: Option<IpAddr>, detached: bool) -> io::Result<()> {
     state::ensure()?;
     let lock = OpenOptions::new()
@@ -283,7 +283,7 @@ pub fn run(bind: Option<IpAddr>, detached: bool) -> io::Result<()> {
         }
     });
     // The supervisor in the same process. Waits while another supervisor (one `serve` started) holds its lock;
-    // `hands __serve` children reach whichever runs.
+    // `golem-hands __serve` children reach whichever runs.
     let result = supervisor::run(false);
     drop(lock);
     result
@@ -312,13 +312,13 @@ fn connection(context: &Context, tcp: TcpStream) {
     context.handshaking.fetch_sub(1, Ordering::SeqCst);
     match result {
         Ok((socket, phone)) => {
-            eprintln!("hands: {peer} authenticated as {phone}");
+            eprintln!("golem-hands: {peer} authenticated as {phone}");
             match proxy(socket, &phone) {
-                Ok(()) => eprintln!("hands: {peer} ({phone}) disconnected"),
-                Err(error) => eprintln!("hands: {peer} ({phone}) disconnected: {error}"),
+                Ok(()) => eprintln!("golem-hands: {peer} ({phone}) disconnected"),
+                Err(error) => eprintln!("golem-hands: {peer} ({phone}) disconnected: {error}"),
             }
         }
-        Err(error) => eprintln!("hands: {peer} refused: {error}"),
+        Err(error) => eprintln!("golem-hands: {peer} refused: {error}"),
     }
     if let Ok(closer) = closer {
         let _ = closer.shutdown(Shutdown::Both);
@@ -427,7 +427,7 @@ fn authenticate(context: &Context, nonce: &str, text: &str) -> Result<String, St
     Ok(phone)
 }
 
-/// Start `hands __serve` for this connection, naming the phone it serves (cua.rs keys its desktop session by it).
+/// Start `golem-hands __serve` for this connection, naming the phone it serves (cua.rs keys its desktop session by it).
 fn start_serve(phone: &str) -> io::Result<Child> {
     Command::new(std::env::current_exe()?)
         .arg("__serve")

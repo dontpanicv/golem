@@ -1,8 +1,8 @@
 //! Where hands keeps its state: the supervisor's socket, lock and log, one directory per job (docs/jobs.md), and the
 //! listener's port, certificate and paired phones (docs/pairing.md).
 //!
-//! `HANDS_STATE_DIR` overrides the location (tests use it). Otherwise it is `~/Library/Application Support/hands` on
-//! macOS and `$XDG_STATE_HOME/hands` or `~/.local/state/hands` on Linux. The directory is user-only (0700).
+//! `GOLEM_HANDS_STATE_DIR` overrides the location (tests use it). Otherwise it is `~/Library/Application Support/golem-hands` on
+//! macOS and `$XDG_STATE_HOME/golem-hands` or `~/.local/state/golem-hands` on Linux. The directory is user-only (0700).
 
 use crate::sys;
 use std::fs::{self, File};
@@ -13,16 +13,16 @@ use std::path::PathBuf;
 
 pub fn dir() -> PathBuf {
     let set = |key: &str| std::env::var_os(key).filter(|value| !value.is_empty());
-    if let Some(dir) = set("HANDS_STATE_DIR") {
+    if let Some(dir) = set("GOLEM_HANDS_STATE_DIR") {
         return PathBuf::from(dir);
     }
     let home = PathBuf::from(sys::home());
     if cfg!(target_os = "macos") {
-        return home.join("Library/Application Support/hands");
+        return home.join("Library/Application Support/golem-hands");
     }
     match set("XDG_STATE_HOME").map(PathBuf::from) {
-        Some(state) if state.is_absolute() => state.join("hands"),
-        _ => home.join(".local/state/hands"),
+        Some(state) if state.is_absolute() => state.join("golem-hands"),
+        _ => home.join(".local/state/golem-hands"),
     }
 }
 

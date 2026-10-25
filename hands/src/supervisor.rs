@@ -1,10 +1,10 @@
-//! `hands supervise`: the long-lived process that owns supervised jobs (jobs.rs), so they outlive `serve` and the
+//! `golem-hands supervise`: the long-lived process that owns supervised jobs (jobs.rs), so they outlive `serve` and the
 //! phone's connection. `serve` reaches it over the Unix socket `supervisor.sock` in the user-only state dir
 //! (state.rs), one request per connection, in the frames of docs/protocol.md: a request frame `{ op, ... }`,
 //! answered by one result or error frame. Its operations ([`SupervisorOp`]) are its own: `serve` forwards `job.*` and `cua.*`
 //! here, and the CLI asks for `hello` (the supervisor's own, not `serve`'s), `access` and `shutdown`.
 //!
-//! One supervisor runs per state dir: it holds `supervisor.lock`. Started by launchd or systemd (`hands install`),
+//! One supervisor runs per state dir: it holds `supervisor.lock`. Started by launchd or systemd (`golem-hands install`),
 //! it waits for the lock, taking over when an earlier supervisor exits. Started on demand by `serve` (`--detached`),
 //! it exits at once if another supervisor holds the lock.
 //!
@@ -82,8 +82,8 @@ pub fn run(detached: bool) -> io::Result<()> {
 /// `serve`, the rest come from the CLI.
 #[derive(Clone, Copy, PartialEq)]
 enum SupervisorOp {
-    /// The supervisor's own state (pid, jobs, service, desktop), for `hands doctor`, `hands install` and
-    /// `hands permissions`. Not serve's `hello`: the client's `hello` never reaches the supervisor, `serve` answers
+    /// The supervisor's own state (pid, jobs, service, desktop), for `golem-hands doctor`, `golem-hands install` and
+    /// `golem-hands permissions`. Not serve's `hello`: the client's `hello` never reaches the supervisor, `serve` answers
     /// it itself.
     Hello,
     /// Ask macOS for a permission on behalf of hands (permissions.rs).
@@ -221,7 +221,7 @@ fn connect(start: bool) -> Result<UnixStream, Failure> {
     }
 }
 
-/// Start `hands supervise --detached` in a new session, so it outlives this process.
+/// Start `golem-hands supervise --detached` in a new session, so it outlives this process.
 fn start_detached() -> io::Result<()> {
     state::ensure()?;
     let log = OpenOptions::new()

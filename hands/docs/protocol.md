@@ -5,7 +5,7 @@
 > [jobs.md](jobs.md): `job.*`, and on macOS `cua.tools` and `cua.call` (Cua Driver's tools).
 
 Version 1. The phone reaches `hands` through the paired listener ([pairing.md](pairing.md)): each binary WebSocket
-message is one frame, and the listener passes frames to and from a `hands __serve` process it starts for that
+message is one frame, and the listener passes frames to and from a `golem-hands __serve` process it starts for that
 connection, over the process's stdin and stdout. stderr is diagnostic text for the log only. From its first byte,
 stdout carries only frames.
 

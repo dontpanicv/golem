@@ -1,5 +1,5 @@
 //! Desktop control on macOS: Cua Driver (github.com/trycua/cua, MIT), linked in. `cua.tools` and `cua.call` carry
-//! Cua's own MCP tool list and tool results unchanged (docs/jobs.md), so Mycroft offers Cua's tools as Cua describes
+//! Cua's own MCP tool list and tool results unchanged (docs/jobs.md), so Golem offers Cua's tools as Cua describes
 //! them.
 //!
 //! macOS grants Accessibility and Screen Recording to the responsible process. Started by launchd, the supervisor is
@@ -54,7 +54,7 @@ pub fn status() -> Value {
     }
 }
 
-/// `hands doctor`'s line, from the running supervisor.
+/// `golem-hands doctor`'s line, from the running supervisor.
 pub fn describe() -> String {
     if !cfg!(target_os = "macos") {
         return "not supported on this OS (cua.* answer not_supported)".into();
@@ -63,7 +63,7 @@ pub fn describe() -> String {
         Ok((hello, _)) => match (hello["desktop"]["version"].as_str(), hello["desktop"]["off"].as_str()) {
             (Some(version), _) => format!("Cua Driver {version}, in the supervisor"),
             (None, Some(why)) => format!("off: {why}"),
-            _ => "unknown (the running supervisor is older; `hands install` restarts it)".into(),
+            _ => "unknown (the running supervisor is older; `golem-hands install` restarts it)".into(),
         },
         Err(_) => "off: the supervisor isn't running (the service runs it)".into(),
     }
@@ -220,7 +220,7 @@ mod host {
         match HOST.get_or_init(create) {
             Ok(_) => true,
             Err(failure) => {
-                eprintln!("hands: desktop control is off: {}", failure.message);
+                eprintln!("golem-hands: desktop control is off: {}", failure.message);
                 false
             }
         }
@@ -232,7 +232,7 @@ mod host {
             Some(Err(failure)) => Err(Failure::new(&failure.code, failure.message.clone())),
             None => Err(Failure::new(
                 "not_service",
-                "desktop control runs in the hands service, the process macOS lets use the screen; `hands install` \
+                "desktop control runs in the hands service, the process macOS lets use the screen; `golem-hands install` \
                  sets it up",
             )),
         }
@@ -249,7 +249,7 @@ mod host {
             .build()
             .map_err(|error| Failure::new("unavailable", format!("starting the desktop runtime: {error}")))?;
         let context = runtime.enter();
-        // As Cua's own service creates it; hands asks for the permissions itself (`hands permissions`).
+        // As Cua's own service creates it; hands asks for the permissions itself (`golem-hands permissions`).
         let driver = CuaDriver::try_create_service_for_host(DriverHostOptions {
             cursor: cursor_overlay::CursorConfig::default(),
             host_owns_permission_ux: true,

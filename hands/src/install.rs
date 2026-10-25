@@ -1,4 +1,4 @@
-//! `hands install [--pair BASE --pin PIN] [--no-service] [--bind ADDR] [--dry-run] [--uninstall]`: put this binary at `~/.local/bin/hands` and run `hands supervise --listen` as a user service, a
+//! `golem-hands install [--pair BASE --pin PIN] [--no-service] [--bind ADDR] [--dry-run] [--uninstall]`: put this binary at `~/.local/bin/golem-hands` and run `golem-hands supervise --listen` as a user service, a
 //! systemd user unit on Linux or a LaunchAgent on macOS, so jobs have a supervisor and the phone a listener that
 //! start with the user. The service gets the `PATH` of the shell `install` runs in, so commands find what the user's
 //! terminal finds. Running it again converges to the same state. `--dry-run` only prints the steps; `--uninstall`
@@ -8,10 +8,9 @@
 //! the result. If the service cannot start (no GUI login on a Mac, no user systemd), or with `--no-service`, the
 //! listener runs detached until the machine restarts.
 //!
-//! On macOS the service also runs desktop control (cua.rs). Install and uninstall remove the separate desktop helper
-//! earlier versions installed (`~/Applications/Mycroft Hands.app` and its LaunchAgent).
+//! On macOS the service also runs desktop control (cua.rs).
 //!
-//! Then, on macOS, it walks through the permissions Mycroft needs, one at a time, when it has a terminal to talk to
+//! Then, on macOS, it walks through the permissions Golem needs, one at a time, when it has a terminal to talk to
 //! (permissions.rs); otherwise it prints how to get to that walkthrough.
 
 use crate::{listener, pairing, state, supervisor, sys};
@@ -24,11 +23,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const LABEL: &str = "dev.mycroft.hands";
-const UNIT: &str = "hands.service";
-/// The desktop helper earlier versions installed, and its LaunchAgent.
-const OLD_HELPER: &str = "Applications/Mycroft Hands.app";
-const OLD_HELPER_LABEL: &str = "dev.mycroft.hands-desktop";
+pub const LABEL: &str = "dev.golem.hands";
+const UNIT: &str = "golem-hands.service";
 
 enum Step {
     StateDir,
@@ -45,7 +41,7 @@ enum Step {
     /// Ask a running supervisor (perhaps one `serve` started) to exit, so the service's own takes over. Jobs keep
     /// running and are adopted.
     StopSupervisor,
-    /// Stop a running listener (perhaps one `hands pair` started detached), so the service's own takes over.
+    /// Stop a running listener (perhaps one `golem-hands pair` started detached), so the service's own takes over.
     StopListener,
     RemoveDir(PathBuf),
 }
@@ -151,7 +147,7 @@ fn copy_binary(from: &Path, to: &Path) -> std::io::Result<&'static str> {
     Ok("copied")
 }
 
-/// The version an installed `hands` reports (`hands version` prints "hands X.Y.Z").
+/// The version an installed `hands` reports (`golem-hands version` prints "hands X.Y.Z").
 fn installed_version(binary: &Path) -> Option<String> {
     let output = std::process::Command::new(binary).arg("version").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
@@ -190,7 +186,7 @@ fn home() -> PathBuf {
 }
 
 pub fn binary_path() -> PathBuf {
-    home().join(".local/bin/hands")
+    home().join(".local/bin/golem-hands")
 }
 
 /// The service definition `install` writes.
@@ -207,9 +203,9 @@ pub fn service_path() -> PathBuf {
 
 /// What the service's environment carries over from the shell `install` runs in: its `PATH`, since launchd and
 /// systemd start services with a minimal one (no Homebrew, no `~/.cargo/bin`, no version managers), so `npm` or
-/// `cargo` would not be found by commands and jobs; and a state dir chosen with `HANDS_STATE_DIR`.
+/// `cargo` would not be found by commands and jobs; and a state dir chosen with `GOLEM_HANDS_STATE_DIR`.
 fn service_environment() -> Vec<(&'static str, String)> {
-    ["PATH", "HANDS_STATE_DIR"]
+    ["PATH", "GOLEM_HANDS_STATE_DIR"]
         .into_iter()
         .filter_map(|key| Some((key, std::env::var(key).ok().filter(|value| !value.is_empty())?)))
         .collect()
@@ -286,8 +282,8 @@ pub fn systemd_unit(binary: &Path, bind: Option<IpAddr>, environment: &[(&str, S
         .collect();
     format!(
         "[Unit]
-Description=hands for Mycroft: the supervisor of jobs and the paired phone's listener
-Documentation=https://github.com/dontpanicv/mycroft/tree/main/hands
+Description=hands for Golem: the supervisor of jobs and the paired phone's listener
+Documentation=https://github.com/dontpanicv/golem/tree/main/hands
 
 [Service]
 ExecStart={binary} {arguments}
@@ -321,15 +317,6 @@ fn start(argv: &[&str], optional: bool) -> Step {
     }
 }
 
-/// Stop and remove the desktop helper earlier versions installed; desktop control now runs in the service.
-fn old_helper_steps(domain: &str) -> Vec<Step> {
-    vec![
-        run(&["launchctl", "bootout", &format!("{domain}/{OLD_HELPER_LABEL}")], true),
-        Step::Remove(home().join(format!("Library/LaunchAgents/{OLD_HELPER_LABEL}.plist"))),
-        Step::RemoveDir(home().join(OLD_HELPER)),
-    ]
-}
-
 fn install_steps(with_service: bool, bind: Option<IpAddr>) -> Result<Vec<Step>, String> {
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
     let binary = binary_path();
@@ -347,7 +334,6 @@ fn install_steps(with_service: bool, bind: Option<IpAddr>) -> Result<Vec<Step>, 
     } else if cfg!(target_os = "macos") {
         // SAFETY: getuid cannot fail.
         let domain = format!("gui/{}", unsafe { libc::getuid() });
-        steps.extend(old_helper_steps(&domain));
         steps.push(Step::Write {
             path: service.clone(),
             contents: launch_agent(&binary, bind, &service_environment()),
@@ -385,7 +371,6 @@ fn uninstall_steps() -> Vec<Step> {
     if cfg!(target_os = "macos") {
         // SAFETY: getuid cannot fail.
         let domain = format!("gui/{}", unsafe { libc::getuid() });
-        steps.extend(old_helper_steps(&domain));
         let target = format!("{domain}/{LABEL}");
         steps.push(run(&["launchctl", "bootout", &target], true));
         steps.push(Step::Remove(service_path()));
@@ -401,7 +386,7 @@ fn uninstall_steps() -> Vec<Step> {
 }
 
 const USAGE: &str =
-    "usage: hands install [--pair <BASE> --pin <PIN>] [--no-service] [--bind <ADDR>] [--dry-run] [--uninstall]";
+    "usage: golem-hands install [--pair <BASE> --pin <PIN>] [--no-service] [--bind <ADDR>] [--dry-run] [--uninstall]";
 
 struct Options {
     dry_run: bool,
@@ -449,7 +434,7 @@ pub fn main(args: &[String]) -> i32 {
         Ok(options) => options,
         Err(error) => {
             if !error.is_empty() {
-                eprintln!("hands install: {error}");
+                eprintln!("golem-hands install: {error}");
             }
             eprintln!("{USAGE}");
             return 2;
@@ -464,7 +449,7 @@ pub fn main(args: &[String]) -> i32 {
         match install_steps(options.service, options.bind) {
             Ok(steps) => steps,
             Err(error) => {
-                eprintln!("hands install: {error}");
+                eprintln!("golem-hands install: {error}");
                 return 1;
             }
         }
@@ -501,7 +486,7 @@ pub fn main(args: &[String]) -> i32 {
                 }
             }
             Err(error) => {
-                eprintln!("hands install: {}: {error}", step.describe());
+                eprintln!("golem-hands install: {}: {error}", step.describe());
                 return 1;
             }
         }
@@ -517,14 +502,14 @@ pub fn main(args: &[String]) -> i32 {
     if let Some((base, pin)) = &options.pair {
         let host = &base.host;
         if dry_run {
-            println!("would start the listener if the service has not, and pair with the phone at {host}");
+            println!("would start the listener if the service has not, and pair with Golem at {host}");
             return 0;
         }
         // launchd and systemd start the service at once; its listener only has to load its certificate.
         let grace = if service_started { Duration::from_secs(10) } else { Duration::ZERO };
         let result = pairing::pair(base, *pin, &binary_path(), options.bind, grace);
         if let (Ok(_), Some(failure)) = (&result, &service_failure) {
-            eprintln!("hands: the service did not start ({failure}); the listener runs until this machine restarts");
+            eprintln!("golem-hands: the service did not start ({failure}); the listener runs until this machine restarts");
         }
         return match result {
             Ok(line) => {
@@ -533,7 +518,7 @@ pub fn main(args: &[String]) -> i32 {
                 0
             }
             Err(error) => {
-                eprintln!("hands install: {error}");
+                eprintln!("golem-hands install: {error}");
                 1
             }
         };
@@ -542,7 +527,7 @@ pub fn main(args: &[String]) -> i32 {
         println!("installed; check with: {} doctor", binary_path().display());
         crate::permissions::after_install();
     } else if cfg!(target_os = "macos") {
-        println!("would walk through the permissions Mycroft needs on this Mac, one at a time (hands permissions)");
+        println!("would walk through the permissions Golem needs on this Mac, one at a time (golem-hands permissions)");
     }
     0
 }
@@ -554,14 +539,14 @@ mod tests {
     #[test]
     fn launch_agent_is_a_valid_plist() {
         let environment = [("PATH", "/opt/homebrew/bin:/Users/a & b/<bin>".to_string())];
-        let plist = launch_agent(Path::new("/Users/a & b/.local/bin/hands"), "10.0.0.2".parse().ok(), &environment);
+        let plist = launch_agent(Path::new("/Users/a & b/.local/bin/golem-hands"), "10.0.0.2".parse().ok(), &environment);
         assert!(plist.contains(
             "\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>PATH</key>\n\t\t\
              <string>/opt/homebrew/bin:/Users/a &amp; b/&lt;bin&gt;</string>\n\t</dict>\n"
         ));
         assert!(!launch_agent(Path::new("/h"), None, &[]).contains("EnvironmentVariables"));
-        assert!(plist.contains("<string>dev.mycroft.hands</string>"));
-        assert!(plist.contains("<string>/Users/a &amp; b/.local/bin/hands</string>"));
+        assert!(plist.contains("<string>dev.golem.hands</string>"));
+        assert!(plist.contains("<string>/Users/a &amp; b/.local/bin/golem-hands</string>"));
         assert!(plist.contains("<key>AbandonProcessGroup</key>"));
         assert!(plist.contains(
             "<string>supervise</string>\n\t\t<string>--listen</string>\n\t\t<string>--bind</string>\n\t\t<string>10.0.0.2</string>\n\t</array>"
@@ -580,12 +565,12 @@ mod tests {
     fn systemd_unit_quotes_the_binary_and_spares_jobs() {
         let environment = [
             ("PATH", "/home/a b/.cargo/bin:/usr/bin".to_string()),
-            ("HANDS_STATE_DIR", "/srv/50%\"\\x".to_string()),
+            ("GOLEM_HANDS_STATE_DIR", "/srv/50%\"\\x".to_string()),
         ];
-        let unit = systemd_unit(Path::new("/home/a b/.local/bin/hands%1"), None, &environment);
-        assert!(unit.contains("ExecStart=\"/home/a b/.local/bin/hands%%1\" supervise --listen\n"));
+        let unit = systemd_unit(Path::new("/home/a b/.local/bin/golem-hands%1"), None, &environment);
+        assert!(unit.contains("ExecStart=\"/home/a b/.local/bin/golem-hands%%1\" supervise --listen\n"));
         assert!(unit.contains(
-            "Environment=\"PATH=/home/a b/.cargo/bin:/usr/bin\"\nEnvironment=\"HANDS_STATE_DIR=/srv/50%%\\\"\\\\x\"\n"
+            "Environment=\"PATH=/home/a b/.cargo/bin:/usr/bin\"\nEnvironment=\"GOLEM_HANDS_STATE_DIR=/srv/50%%\\\"\\\\x\"\n"
         ));
         assert!(!systemd_unit(Path::new("/h"), None, &[]).contains("Environment="));
         assert!(unit.contains("KillMode=process\n"));

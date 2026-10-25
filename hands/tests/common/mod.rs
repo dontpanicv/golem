@@ -1,5 +1,5 @@
-//! A minimal protocol client for the integration tests: it starts `hands __serve`, as the listener does for each
-//! connection, with a temporary state dir (`HANDS_STATE_DIR`, never the real one) and speaks the framed protocol of
+//! A minimal protocol client for the integration tests: it starts `golem-hands __serve`, as the listener does for each
+//! connection, with a temporary state dir (`GOLEM_HANDS_STATE_DIR`, never the real one) and speaks the framed protocol of
 //! docs/protocol.md.
 
 #![allow(dead_code)]
@@ -14,7 +14,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-pub const HANDS: &str = env!("CARGO_BIN_EXE_hands");
+pub const HANDS: &str = env!("CARGO_BIN_EXE_golem-hands");
 const REQUEST: u8 = 1;
 const RESULT: u8 = 2;
 const ERROR: u8 = 3;
@@ -82,7 +82,7 @@ impl StateDir {
     pub fn hands(&self, args: &[&str]) -> std::process::Output {
         Command::new(HANDS)
             .args(args)
-            .env("HANDS_STATE_DIR", &self.path)
+            .env("GOLEM_HANDS_STATE_DIR", &self.path)
             .stdin(Stdio::null())
             .output()
             .unwrap()
@@ -99,7 +99,7 @@ impl Drop for StateDir {
             }
             self.supervisor(json!({ "op": "shutdown" }));
         }
-        // A listener `hands pair` started detached outlives the test otherwise, when its supervisor was not up yet
+        // A listener `golem-hands pair` started detached outlives the test otherwise, when its supervisor was not up yet
         // to take the shutdown (a pairing that failed at once). Only while it still holds its lock: the pid may be
         // gone, and reused.
         if let Ok(lock) = std::fs::File::open(self.path.join("listener.lock")) {
@@ -115,7 +115,7 @@ impl Drop for StateDir {
     }
 }
 
-/// A `hands __serve` process and its connection.
+/// A `golem-hands __serve` process and its connection.
 pub struct Serve {
     child: Child,
     stdin: Option<ChildStdin>,
@@ -127,7 +127,7 @@ impl Serve {
     pub fn start(state: &Path) -> Serve {
         let mut child = Command::new(HANDS)
             .arg("__serve")
-            .env("HANDS_STATE_DIR", state)
+            .env("GOLEM_HANDS_STATE_DIR", state)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

@@ -1,4 +1,4 @@
-//! `cua.tools` and `cua.call` through `hands __serve`, which forwards them to the supervisor, against a fake supervisor
+//! `cua.tools` and `cua.call` through `golem-hands __serve`, which forwards them to the supervisor, against a fake supervisor
 //! listening on `supervisor.sock` in a temporary state dir; and a real supervisor that launchd did not start, which
 //! has no desktop. Nothing here touches the real desktop or Cua Driver.
 

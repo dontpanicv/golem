@@ -1,5 +1,5 @@
 //! TLS and the small amount of cryptography around it (docs/pairing.md): the listener's long-lived self-signed
-//! certificate, the SPKI pin `hands pair` checks the phone's certificate against, and the encodings both use.
+//! certificate, the SPKI pin `golem-hands pair` checks the phone's certificate against, and the encodings both use.
 //!
 //! ring is the only crypto provider: TLS (through rustls), SHA-256, random bytes and Ed25519 verification.
 
@@ -105,7 +105,7 @@ pub fn certificate(name: &str) -> io::Result<Certificate> {
     params.distinguished_name = rcgen::DistinguishedName::new();
     params
         .distinguished_name
-        .push(rcgen::DnType::CommonName, format!("Mycroft hands on {name}"));
+        .push(rcgen::DnType::CommonName, format!("Golem hands on {name}"));
     let cert = params.self_signed(&key).map_err(failed)?;
     // The key first: a certificate without its key would be reloaded and fail.
     write_private(&key_path, key.serialize_pem().as_bytes())?;

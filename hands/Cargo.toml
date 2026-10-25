@@ -9,7 +9,7 @@ repository = "https://github.com/dontpanicv/golem"
 publish = false
 
 [[bin]]
-name = "hands"
+name = "golem-hands"
 path = "src/main.rs"
 
 [dependencies]

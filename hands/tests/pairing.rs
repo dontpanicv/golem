@@ -1,4 +1,4 @@
-//! Pairing and the listener (docs/pairing.md), end to end: a fake phone's HTTPS pairing server, `hands pair`, and a
+//! Pairing and the listener (docs/pairing.md), end to end: a fake phone's HTTPS pairing server, `golem-hands pair`, and a
 //! WebSocket client with the phone's key talking to `serve` through the listener. Every test uses its own temporary
 //! state dir and binds the listener to 127.0.0.1 only.
 
@@ -54,7 +54,7 @@ fn ok(socket: &mut Socket, id: u32, request: Value) -> Value {
 fn pair(state: &StateDir, base: &str, pin: &str) -> std::process::Output {
     Command::new(HANDS)
         .args(["pair", "--with", base, "--pin", pin, "--bind", "127.0.0.1"])
-        .env("HANDS_STATE_DIR", &state.path)
+        .env("GOLEM_HANDS_STATE_DIR", &state.path)
         .stdin(Stdio::null())
         .output()
         .unwrap()
@@ -76,7 +76,7 @@ fn pair_then_authenticate_and_use_serve_through_the_listener() {
     let kind = if cfg!(target_os = "macos") { "Mac" } else { "machine" };
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        format!("Paired with Test iPhone. Mycroft can use this {kind} now.\n")
+        format!("Paired with Test iPhone. Golem can use this {kind} now.\n")
     );
 
     // What the phone received.
@@ -174,7 +174,7 @@ fn pair_then_authenticate_and_use_serve_through_the_listener() {
     assert_eq!(answer, json!({ "type": "error", "code": "unauthorized" }));
 }
 
-/// A `hands supervise --listen` for one test, with `paired` written first.
+/// A `golem-hands supervise --listen` for one test, with `paired` written first.
 struct Listener {
     child: Child,
     port: u16,
@@ -191,7 +191,7 @@ impl Listener {
         let log = state.path.join("test-listener.stderr");
         let mut child = Command::new(HANDS)
             .args(["supervise", "--listen", "--bind", "127.0.0.1"])
-            .env("HANDS_STATE_DIR", &state.path)
+            .env("GOLEM_HANDS_STATE_DIR", &state.path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(fs::File::create(&log).unwrap())

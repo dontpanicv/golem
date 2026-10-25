@@ -1,4 +1,4 @@
-//! `hands __serve`: one connection's daemon (docs/protocol.md) on stdin/stdout. The listener (listener.rs) starts one
+//! `golem-hands __serve`: one connection's daemon (docs/protocol.md) on stdin/stdout. The listener (listener.rs) starts one
 //! per authenticated phone connection and proxies its frames, so a crash takes down only that connection. Requests
 //! run in this process, except the `job.*` operations, which go to the supervisor (supervisor.rs) so jobs outlive the
 //! connection, and on macOS `cua.*`, which go to Cua Driver in the supervisor (cua.rs).
@@ -254,7 +254,7 @@ impl Server {
     }
 }
 
-/// A job gets the environment `exec` would give a command: this daemon's (the service's, which `hands install` gave
+/// A job gets the environment `exec` would give a command: this daemon's (the service's, which `golem-hands install` gave
 /// the user's `PATH`), then `env`, unless `inheritEnv` is false. The supervisor's own environment is not used.
 fn job_start_request(json: &Value) -> Value {
     let mut request = json.clone();

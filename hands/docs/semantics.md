@@ -30,7 +30,7 @@
   directly, searched on `PATH` like `execvp`.
 - The working directory must exist (`spawn_error`).
 - Environment: with `inheritEnv` (default), the daemon's environment, then `env`; without it, only `env`. The daemon's
-  environment is the service's, which `hands install` gives the `PATH` of the shell it ran in.
+  environment is the service's, which `golem-hands install` gives the `PATH` of the shell it ran in.
 - Each command gets a new session (process group), default signal dispositions and an empty signal mask. Timeout,
   abort and a `kill` cancel kill the group with `SIGKILL`.
 - After the process exits, output is still collected until both pipes end, or 100 ms pass without output; the timeout

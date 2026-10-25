@@ -148,7 +148,7 @@ impl Job {
         let saved = fs::write(&temporary, self.to_json().to_string())
             .and_then(|()| fs::rename(&temporary, self.dir.join("job.json")));
         if let Err(error) = saved {
-            eprintln!("hands: cannot save job {}: {error}", self.key);
+            eprintln!("golem-hands: cannot save job {}: {error}", self.key);
         }
     }
 }
@@ -626,7 +626,7 @@ pub fn runner(args: &[String]) -> i32 {
             code as i32
         }
         Err(error) => {
-            eprintln!("hands: cannot start {program}: {error}");
+            eprintln!("golem-hands: cannot start {program}: {error}");
             record(json!({ "error": format!("spawn_error: {error}"), "endedAt": now_ms() }));
             127
         }

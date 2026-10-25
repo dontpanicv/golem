@@ -1,4 +1,4 @@
-//! `hands permissions` on Linux: nothing to approve, so it reports what keeps hands running, the service and
+//! `golem-hands permissions` on Linux: nothing to approve, so it reports what keeps hands running, the service and
 //! lingering.
 
 use super::output;
@@ -11,7 +11,7 @@ pub fn linger() -> Option<String> {
     output("loginctl", &["show-user", &user, "-p", "Linger", "--value"]).map(|text| text.trim().to_string())
 }
 
-/// `hands permissions [--json]` on Linux.
+/// `golem-hands permissions [--json]` on Linux.
 pub fn report(json_output: bool) -> i32 {
     let service = listener::running().is_some();
     let linger = linger();
@@ -23,7 +23,7 @@ pub fn report(json_output: bool) -> i32 {
         println!(
             "{:<10} {}",
             "service",
-            if service { "running" } else { "not running (`hands install` sets it up)" }
+            if service { "running" } else { "not running (`golem-hands install` sets it up)" }
         );
         println!(
             "{:<10} {}",

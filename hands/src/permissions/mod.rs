@@ -1,15 +1,15 @@
-//! `hands permissions [--check] [--json]`: what macOS must approve so Mycroft can work on this Mac, asked one at a
-//! time in the terminal. `hands install` runs the same walkthrough after pairing.
+//! `golem-hands permissions [--check] [--json]`: what macOS must approve so Golem can work on this Mac, asked one at a
+//! time in the terminal. `golem-hands install` runs the same walkthrough after pairing.
 //!
 //! macOS gives a permission to the process that asks for it, or rather to its *responsible* process. Run from
 //! Terminal, that is Terminal. So the terminal only drives and reports, and every permission belongs to the service's
-//! supervisor: Started by launchd, it is its own responsible process, so macOS asks about "hands", and the answer
+//! supervisor: Started by launchd, it is its own responsible process, so macOS asks about "golem-hands", and the answer
 //! covers the desktop control it runs (cua.rs) and every command it runs later. The walkthrough asks the supervisor
 //! (the `access` op) to ask macOS for Accessibility or Screen Recording, open a folder, send one packet to the router,
 //! or read a protected file. A supervisor started from a terminal refuses: macOS would ask about the terminal instead.
 //!
 //! macOS tells a process about a new Screen Recording grant only once it restarts. So the supervisor checks both
-//! desktop permissions in a fresh child (`hands permissions --probe <item>`), which macOS also counts as hands, and
+//! desktop permissions in a fresh child (`golem-hands permissions --probe <item>`), which macOS also counts as hands, and
 //! says whether it sees the grant itself (`applied`). When it doesn't, the walkthrough restarts the service, whether
 //! the grant is new or older than the service.
 //!
@@ -17,7 +17,7 @@
 //! walkthrough has asked about before (`permissions.json` in the state dir) and reports the rest as not asked yet.
 //!
 //! The walkthrough itself, one item at a time on the terminal, is in walkthrough.rs. On Linux there is nothing to
-//! approve: hands runs as the user. `hands permissions` reports what keeps it running instead: the service and
+//! approve: hands runs as the user. `golem-hands permissions` reports what keeps it running instead: the service and
 //! lingering (linux.rs).
 
 mod linux;
@@ -68,10 +68,10 @@ struct ItemSpec {
     pane: &'static str,
 }
 
-const FOLDER_PURPOSE: &str = "commands Mycroft runs can read and change files there";
-const FOLDER_HOW: &str = "Click Allow when macOS asks whether \"hands\" may access it.";
+const FOLDER_PURPOSE: &str = "commands Golem runs can read and change files there";
+const FOLDER_HOW: &str = "Click Allow when macOS asks whether \"golem-hands\" may access it.";
 const FOLDER_FALLBACK: Option<&str> = Some(
-    "No prompt? It was answered before: turn on \"hands\" under Files and Folders in System Settings, which is open \
+    "No prompt? It was answered before: turn on \"golem-hands\" under Files and Folders in System Settings, which is open \
      now.",
 );
 
@@ -83,10 +83,10 @@ const SPECS: [ItemSpec; 7] = [
         title: "Accessibility",
         purpose: "read and use apps' buttons, menus and fields",
         prompts: false,
-        how: "When macOS asks, click Open System Settings and turn on \"hands\" under Accessibility.",
+        how: "When macOS asks, click Open System Settings and turn on \"golem-hands\" under Accessibility.",
         fallback: Some(
-            "No prompt? It was answered before: turn on \"hands\" under Accessibility in System Settings, which is \
-             open now. Already on? That was an older hands: remove it with −, then run `hands permissions` again.",
+            "No prompt? It was answered before: turn on \"golem-hands\" under Accessibility in System Settings, which is \
+             open now. Already on? That was an older hands: remove it with −, then run `golem-hands permissions` again.",
         ),
         pane: "Privacy_Accessibility",
     },
@@ -94,14 +94,14 @@ const SPECS: [ItemSpec; 7] = [
         item: Item::ScreenRecording,
         key: "screenRecording",
         title: "Screen Recording",
-        purpose: "see app windows when Mycroft looks at them",
+        purpose: "see app windows when Golem looks at them",
         prompts: false,
-        how: "When macOS asks, click Open System Settings and turn on \"hands\" under Screen & System Audio \
+        how: "When macOS asks, click Open System Settings and turn on \"golem-hands\" under Screen & System Audio \
               Recording. hands restarts by itself afterwards.",
         fallback: Some(
-            "No prompt? It was answered before: turn on \"hands\" under Screen & System Audio Recording in System \
+            "No prompt? It was answered before: turn on \"golem-hands\" under Screen & System Audio Recording in System \
              Settings, which is open now. Already on? That was an older hands: remove it with −, then run \
-             `hands permissions` again.",
+             `golem-hands permissions` again.",
         ),
         pane: "Privacy_ScreenCapture",
     },
@@ -141,9 +141,9 @@ const SPECS: [ItemSpec; 7] = [
         title: "Local Network",
         purpose: "commands can reach other devices on your network",
         prompts: true,
-        how: "Click Allow when macOS asks whether \"hands\" may find devices on your local network.",
+        how: "Click Allow when macOS asks whether \"golem-hands\" may find devices on your local network.",
         fallback: Some(
-            "No prompt? It was answered before: turn on \"hands\" under Local Network in System Settings, which is \
+            "No prompt? It was answered before: turn on \"golem-hands\" under Local Network in System Settings, which is \
              open now.",
         ),
         pane: "Privacy_LocalNetwork",
@@ -154,7 +154,7 @@ const SPECS: [ItemSpec; 7] = [
         title: "Full Disk Access",
         purpose: "everything else: iCloud Drive, external disks, other apps' data",
         prompts: false,
-        how: "macOS has no prompt for this one. Drag \"hands\" from the Finder window into the list in System \
+        how: "macOS has no prompt for this one. Drag \"golem-hands\" from the Finder window into the list in System \
               Settings, then turn it on.",
         fallback: None,
         pane: "Privacy_AllFiles",
@@ -271,7 +271,7 @@ pub fn access(json: &Value) -> Result<Value, Failure> {
         return Err(Failure::new(
             "not_service",
             "this supervisor was started from a terminal, so macOS would ask about the terminal instead of hands; \
-             `hands install` sets up the service that should run it",
+             `golem-hands install` sets up the service that should run it",
         ));
     }
     let home = PathBuf::from(crate::sys::home());
@@ -299,7 +299,7 @@ pub fn access(json: &Value) -> Result<Value, Failure> {
     })
 }
 
-/// Whether hands has Accessibility or Screen Recording, as a fresh `hands permissions --probe` sees it.
+/// Whether hands has Accessibility or Screen Recording, as a fresh `golem-hands permissions --probe` sees it.
 fn probe(item: Item) -> Result<bool, String> {
     let binary = std::env::current_exe().map_err(|error| error.to_string())?;
     let output = Command::new(binary)
@@ -518,10 +518,10 @@ fn access_status(reply: Result<(Value, Vec<u8>), Failure>) -> Status {
             _ => Status::Unknown(format!("the service answered {reply}")),
         },
         Err(failure) if failure.code == "supervisor_unavailable" => {
-            Status::Unknown("the hands service isn't running (`hands install` sets it up)".into())
+            Status::Unknown("the hands service isn't running (`golem-hands install` sets it up)".into())
         }
         Err(failure) if failure.code == "EINVAL" => {
-            Status::Unknown("the running hands service is older; restart it with `hands install`".into())
+            Status::Unknown("the running hands service is older; restart it with `golem-hands install`".into())
         }
         Err(failure) => Status::Unknown(failure.message),
     }
@@ -584,7 +584,7 @@ pub fn report(mac: &dyn Mac) -> Vec<(Item, Status)> {
         .collect()
 }
 
-/// After `hands install`: the walkthrough on macOS when there's a terminal to talk to, otherwise one line saying how
+/// After `golem-hands install`: the walkthrough on macOS when there's a terminal to talk to, otherwise one line saying how
 /// to get to it. On Linux, one line when hands would stop at logout.
 pub fn after_install() {
     if cfg!(target_os = "macos") {
@@ -593,16 +593,16 @@ pub fn after_install() {
                 tty.line("");
                 walkthrough::walkthrough(&mut tty);
             }
-            None => println!("Mycroft needs a few permissions on this Mac: run `hands permissions` here to approve them."),
+            None => println!("Golem needs a few permissions on this Mac: run `golem-hands permissions` here to approve them."),
         }
     } else if linger().is_some_and(|linger| linger != "yes") {
         println!("hands stops when you log out. To keep it running, run: sudo loginctl enable-linger $USER");
     }
 }
 
-const USAGE: &str = "usage: hands permissions [--check] [--json]";
+const USAGE: &str = "usage: golem-hands permissions [--check] [--json]";
 
-/// `hands permissions [--check] [--json]`.
+/// `golem-hands permissions [--check] [--json]`.
 pub fn main(args: &[String]) -> i32 {
     // The supervisor's fresh look at a desktop permission (`probe`).
     if let [flag, key] = args
@@ -651,7 +651,7 @@ pub fn main(args: &[String]) -> i32 {
         .iter()
         .any(|(item, status)| !item.optional() && matches!(status, Status::Missing | Status::NotAsked));
     if missing && !json_output {
-        println!("Approve them with: hands permissions");
+        println!("Approve them with: golem-hands permissions");
     }
     if missing { 1 } else { 0 }
 }

@@ -1,4 +1,4 @@
-//! Supervised jobs through `hands __serve` (docs/jobs.md). Every test uses its own temporary state dir, so its own
+//! Supervised jobs through `golem-hands __serve` (docs/jobs.md). Every test uses its own temporary state dir, so its own
 //! supervisor.
 
 mod common;
@@ -232,7 +232,7 @@ fn output_ranges_argv_and_errors() {
         assert_eq!(serve.error(request.clone())["code"], code, "{request}");
     }
 
-    // `hands jobs` reads the same supervisor.
+    // `golem-hands jobs` reads the same supervisor.
     let listed = state.hands(&["jobs", "--json"]);
     let listed: serde_json::Value = serde_json::from_slice(&listed.stdout).unwrap();
     assert_eq!(listed["jobs"].as_array().unwrap().len(), 3);
