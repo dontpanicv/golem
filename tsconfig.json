@@ -26,5 +26,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // The web app runs in the browser: web/tsconfig.json checks it with the DOM types
+  "exclude": ["web", "dist", "node_modules"]
 }

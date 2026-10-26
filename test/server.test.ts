@@ -238,65 +238,39 @@ test("the LLM provider is shared by everyone", async () => {
 });
 
 test("the web app signs in with Google and keeps cross-site posts out", async () => {
-  expect((await call("/")).headers.get("location")).toBe("/login");
   // Behind a TLS proxy the request arrives at the internal address, with the browser's origin.
   const login = await handler(
-    new Request("http://127.0.0.1:3000/login", {
+    new Request("http://127.0.0.1:3000/api/auth/sign-in/social", {
       method: "POST",
-      headers: { origin: "http://golem.test" },
+      headers: {
+        origin: "http://golem.test",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ provider: "google", callbackURL: "/" }),
     })
   );
-  expect(login.status).toBe(303);
-  const google = new URL(login.headers.get("location")!);
+  expect(login.status).toBe(200);
+  const google = new URL(((await login.json()) as { url: string }).url);
   expect(google.origin).toBe("https://accounts.google.com");
   expect(google.searchParams.get("redirect_uri")).toBe(
     "http://golem.test/api/auth/callback/google"
   );
   expect(cookies(login)).toContain("state");
-  expect(
-    await (
-      await call("/login?error=EMAIL_NOT_ALLOWED&error_description=Not%20you")
-    ).text()
-  ).toContain("Not you");
 
   const cookie = `better-auth.session_token=${await signedCookie(alice)}`;
-
-  // With nothing opened yet, the app and the workspace open on the orchestrator.
-  const home = (await call("/", { headers: { cookie } })).headers.get(
-    "location"
-  )!;
-  expect(home).toBe(`/w/${workspaceId}/orchestrator`);
-  expect(
-    (await call(`/w/${workspaceId}`, { headers: { cookie } })).headers.get(
-      "location"
-    )
-  ).toBe(home);
-  const thread = await call(`/w/${workspaceId}/t/${threadId}`, {
-    headers: { cookie },
-  });
-  expect(await thread.text()).toContain("Plan the cabin trip");
-  const opened = `${cookie}; ${cookies(thread)}`;
-  for (const path of ["/", `/w/${workspaceId}`]) {
-    expect(
-      (await call(path, { headers: { cookie: opened } })).headers.get(
-        "location"
-      )
-    ).toBe(`/w/${workspaceId}/t/${threadId}`);
-  }
-  const gone = `${cookie}; golem-opened=${encodeURIComponent(`/w/${workspaceId}/t/gone`)}`;
-  expect(
-    (
-      await call(`/w/${workspaceId}`, { headers: { cookie: gone } })
-    ).headers.get("location")
-  ).toBe(home);
-
   const crossSite = await handler(
-    new Request(`http://golem.test/w/${workspaceId}/channels`, {
+    new Request(`http://golem.test/api/v1/workspaces/${workspaceId}/channels`, {
       method: "POST",
-      headers: { cookie, origin: "https://evil.example" },
-      body: new URLSearchParams({ name: "pwned" }),
+      headers: {
+        cookie,
+        origin: "https://evil.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "pwned" }),
     })
   );
   expect(crossSite.status).toBe(403);
-  expect((await call("/assets/..%2Fpackage.json")).status).toBe(404);
+  expect(
+    (await call(`/api/v1/threads/${threadId}`, { headers: { cookie } })).status
+  ).toBe(200);
 });

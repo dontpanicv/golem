@@ -33,22 +33,33 @@ addresses, or code and data from employers or clients.
 
 ## Web and iOS
 
-- The web app and the iOS app have the same functionality. Every feature is a web page or Datastar endpoint in
-  `src/<module>/web.ts` and a JSON endpoint in `src/<module>/api.ts`, documented in `docs/api.md`, and both call the
-  module's service in `src/<module>/<module>.ts`.
+- The web app and the iOS app have the same functionality. Every feature is a JSON endpoint in `src/<module>/api.ts`,
+  documented in `docs/api.md`, that calls the module's service in `src/<module>/<module>.ts`; both apps use it. The web
+  app is a React single-page app in `web/`; the server sends it for every app path and has no other pages.
 - Reminders are agent-only: their create, list, change, and cancel operations are tools, with no user routes.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
 - Serve HTML that an agent or a person wrote only from `/a/:id/content`, with its `sandbox` content policy; never run
   it on Golem's origin.
 
+## Web app
+
+- Data that changes keeps its rows in a TanStack DB collection (`web/<module>/data.ts`), whose `onInsert`, `onUpdate`,
+  and `onDelete` call the API, so a change shows at once and rolls back if the server refuses it. Other data uses
+  TanStack Query. The Query cache is saved in IndexedDB, so the app opens on what it showed last.
+- The event streams of `docs/api.md` keep open threads and the working threads current; do not poll what they send.
+- `bun start` builds the app into `dist/web/` first; `bun run dev` rebuilds it on every change.
+
 ## Modules
 
 - `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `artifacts`,
-  `browser`, `threads`, `search`, `routines`, `reminders`, `settings`) holds one domain: its service, routes, pages, and tests. `src/platform/`
+  `browser`, `threads`, `search`, `routines`, `reminders`) holds one domain: its service, routes, and tests. `src/platform/`
   is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
-- A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` and
-  `workspaces/shell.ts` from routes and pages. A module reads only the tables it owns. `test/architecture.test.ts`
-  enforces these rules; `docs/modular-monolith.md` explains them.
+- A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` from
+  routes. A module reads only the tables it owns. `test/architecture.test.ts` enforces these rules;
+  `docs/modular-monolith.md` explains them.
+- `web/` has the same modules, and `settings`; each uses only `web/app/`, `web/ui/`, and the modules before it. It never
+  imports from `src/`: `web/app/types.ts` holds the types of `docs/api.md`, and `test/web-types.test.ts` checks them
+  against the server's.
 - Register new route tables in `src/app/routes.ts` and new services in `createApp` in `src/app/app.ts`.
 
 ## Design System
@@ -56,10 +67,10 @@ addresses, or code and data from employers or clients.
 - Change colors, type, spacing, radii, sizes, and shadows only in `design/tokens.json`, then run `bun run tokens`.
   Never edit `public/tokens.css` or `ios/Golem/Design/Tokens.swift` by hand.
 - A component change on one platform needs the same change in function on the other: `public/styles.css` and
-  `src/platform/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Each platform keeps the look of
+  `web/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Each platform keeps the look of
   Linear's app on it.
 - `design/components.md` is the spec for every component, measured from Linear's web and iOS apps. The web never uses a
-  native select, picker, menu, toggle, or alert; its behaviors live in `public/ui.js`. iOS follows Linear's iOS app:
+  native select, picker, menu, toggle, or alert; menus, selects, and tooltips are Radix primitives in `web/ui/`. iOS follows Linear's iOS app:
   native menus, the system glass, and the `mobile` tokens.
 - iOS controls keep 44 pt touch targets where the web uses 28 px rows.
 

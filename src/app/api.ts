@@ -1,6 +1,6 @@
 import { HttpError } from "../platform/errors.ts";
 import { type AuthedInput, type Handler, json, signedIn } from "./http.ts";
-import { readForm } from "./web.ts";
+import { readForm, rejectCrossOrigin } from "./web.ts";
 
 export type ApiInput = AuthedInput & {
   readonly body: Record<string, unknown>;
@@ -8,9 +8,11 @@ export type ApiInput = AuthedInput & {
   readonly files: readonly File[];
 };
 
+/** A JSON route for a signed-in person: the iOS app with its bearer token, or the web app with its session cookie. */
 export function api(handler: (input: ApiInput) => Promise<Response>): Handler {
   return signedIn(
     async (input) => {
+      rejectCrossOrigin(input);
       const { method, headers } = input.request;
       if (headers.get("content-type")?.startsWith("multipart/form-data")) {
         const { fields, files } = await readForm(input.request);

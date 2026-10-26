@@ -231,15 +231,6 @@ test("search covers one workspace and never another, also through the agent's re
       (result) => result.title
     )
   ).toEqual(["Payroll"]);
-
-  const page = await handler(
-    new Request(`http://golem.test/w/${family.id}/search?q=dentist`, {
-      headers: { authorization: `Bearer ${anna.token}` },
-    })
-  );
-  const html = await page.text();
-  expect(html).toContain("Dentist");
-  expect(html).not.toContain("Payroll");
 });
 
 function mediaWord(input: object): string {

@@ -1,17 +1,15 @@
-import { ServerSentEventGenerator } from "@starfederation/datastar-sdk/web";
 import {
-  type AuthedInput,
   type Handler,
   json,
   onShareHost,
   type Route,
   type RouteInput,
 } from "../app/http.ts";
-import { html, page, redirect, rejectCrossOrigin } from "../app/web.ts";
+import { html, redirect, rejectCrossOrigin } from "../app/web.ts";
 import { currentUser } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import type { Viewer } from "./artifacts.ts";
-import { artifactList, artifactPage, artifactPreview } from "./pages.ts";
+import { artifactPage } from "./pages.ts";
 
 const VISITOR_COOKIE = "golem-visitor";
 /** The largest runtime call: a 64 KB value with its key, and room for JSON escapes. */
@@ -81,8 +79,8 @@ const SHARE = { share: true } as const;
 
 /**
  * The link of an artifact, which anyone may open when it is public, and the runtime its page calls: `/a/<name>` on
- * Golem's own address, and `/<name>` on the public host of `share_url`. The Artifacts panel and preview of its place
- * open, change, and delete it: its channel and the channel's threads, or the orchestrator for the workspace's own.
+ * Golem's own address, and `/<name>` on the public host of `share_url`. The web app's Artifacts panel shows the page
+ * in a frame, and changes and deletes the artifact through the JSON API.
  */
 export const artifactWebRoutes: readonly Route[] = [
   ["GET", "/a/:artifact", linkPage],
@@ -91,69 +89,6 @@ export const artifactWebRoutes: readonly Route[] = [
   ["GET", "/:artifact", linkPage, SHARE],
   ["GET", "/:artifact/content", linkContent, SHARE],
   ["POST", "/:artifact/rpc", linkCall, SHARE],
-  [
-    "GET",
-    "/w/:workspace/artifacts/:artifact",
-    page(async (input) => {
-      const artifact = artifactIn(input);
-      const records = input.app.artifacts.dataFor(artifact.id, input.user);
-      return ServerSentEventGenerator.stream((stream) => {
-        stream.patchElements(
-          artifactPreview(input.params.workspace!, artifact, records)
-        );
-        stream.patchSignals(
-          JSON.stringify({ tab: "preview", artifactData: false })
-        );
-      });
-    }),
-  ],
-  [
-    "POST",
-    "/w/:workspace/artifacts/:artifact/visibility/:visibility",
-    page(async (input) => {
-      rejectCrossOrigin(input);
-      const artifact = input.app.artifacts.setVisibility(
-        artifactIn(input).id,
-        input.user,
-        input.params.visibility
-      );
-      return panel(input, artifact.channelId, artifact.id);
-    }),
-  ],
-  [
-    "DELETE",
-    "/w/:workspace/artifacts/:artifact",
-    page(async (input) => {
-      rejectCrossOrigin(input);
-      const artifact = artifactIn(input);
-      input.app.artifacts.delete(artifact.id, input.user);
-      return panel(input, artifact.channelId, null);
-    }),
-  ],
-  [
-    "DELETE",
-    "/w/:workspace/artifacts/:artifact/data",
-    page(async (input) => {
-      rejectCrossOrigin(input);
-      const artifact = artifactIn(input);
-      input.app.artifacts.clearData(artifact.id, input.user);
-      return panel(input, artifact.channelId, artifact.id);
-    }),
-  ],
-  [
-    "DELETE",
-    "/w/:workspace/artifacts/:artifact/records/:record",
-    page(async (input) => {
-      rejectCrossOrigin(input);
-      const artifact = artifactIn(input);
-      input.app.artifacts.deleteRecordFor(
-        artifact.id,
-        input.user,
-        input.params.record!
-      );
-      return panel(input, artifact.channelId, artifact.id);
-    }),
-  ],
 ];
 
 /**
@@ -267,43 +202,4 @@ async function readCall(
     throw new HttpError(400, "Send a JSON object");
   }
   return body;
-}
-
-/** An artifact of the workspace in the path, for a member. */
-function artifactIn(input: AuthedInput) {
-  const { app, user, params } = input;
-  const artifact = app.artifacts.get(params.artifact!, user);
-  const place = app.artifacts.inPlace(
-    params.workspace!,
-    artifact.channelId,
-    user
-  );
-  if (!place.some((candidate) => candidate.id === artifact.id)) {
-    throw notFound();
-  }
-  return artifact;
-}
-
-/** The Artifacts list of a place and the preview, with `artifactId` open or empty. */
-function panel(
-  input: AuthedInput,
-  channelId: string | null,
-  artifactId: string | null
-): Response {
-  const { app, user, params } = input;
-  const artifacts = app.artifacts.inPlace(params.workspace!, channelId, user);
-  const artifact = artifacts.find((candidate) => candidate.id === artifactId);
-  return ServerSentEventGenerator.stream((stream) => {
-    stream.patchElements(artifactList(params.workspace!, artifacts));
-    stream.patchElements(
-      artifactPreview(
-        params.workspace!,
-        artifact ?? null,
-        artifact ? app.artifacts.dataFor(artifact.id, user) : []
-      )
-    );
-    if (!artifact) {
-      stream.patchSignals(JSON.stringify({ tab: "artifacts" }));
-    }
-  });
 }

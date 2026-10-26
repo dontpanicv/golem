@@ -16,12 +16,11 @@ const MODULES = [
   "search",
   "routines",
   "reminders",
-  "settings",
 ];
 /** The files of a module that route or render; the other files are its service. */
-const UI_FILES = new Set(["web.ts", "api.ts", "pages.ts", "shell.ts"]);
+const UI_FILES = new Set(["web.ts", "api.ts", "pages.ts"]);
 /** What other modules may render from a module, next to its entry file. */
-const SHARED_UI_FILES = new Set(["pages.ts", "shell.ts"]);
+const SHARED_UI_FILES = new Set(["pages.ts"]);
 /** The route helpers that module routes and pages use. */
 const ROUTE_KIT = new Set(["app/http.ts", "app/web.ts", "app/api.ts"]);
 
@@ -85,10 +84,76 @@ test("the rules catch a module that reaches past its neighbours", () => {
   expect(allowed("workspaces/workspaces.ts", "threads/threads.ts")).toBe(false);
   expect(allowed("threads/threads.ts", "workspaces/workspaces.ts")).toBe(true);
   expect(allowed("search/search.ts", "threads/pages.ts")).toBe(false);
-  expect(allowed("search/web.ts", "workspaces/shell.ts")).toBe(true);
-  expect(allowed("settings/pages.ts", "llm/web.ts")).toBe(false);
+  expect(allowed("artifacts/web.ts", "workspaces/pages.ts")).toBe(true);
+  expect(allowed("routines/api.ts", "llm/web.ts")).toBe(false);
   expect(allowed("llm/llm.ts", "app/web.ts")).toBe(false);
   expect(allowed("platform/auth.ts", "workspaces/workspaces.ts")).toBe(false);
   expect(allowed("app/app.ts", "search/embedder.ts")).toBe(true);
   expect(allowed("app/app.ts", "search/web.ts")).toBe(false);
+});
+
+const WEB = join(import.meta.dir, "../web");
+/**
+ * The web app's modules, in the same order as the server's, and `settings`, which shows sections of several. `app/`
+ * holds the API client, the browser's copy of the data, and the router; `ui/` the design system.
+ */
+const WEB_MODULES = [
+  "accounts",
+  "workspaces",
+  "llm",
+  "hands",
+  "integrations",
+  "artifacts",
+  "threads",
+  "search",
+  "routines",
+  "settings",
+];
+
+test("the web app's modules import only the modules before them, app/, and ui/", async () => {
+  const violations: string[] = [];
+  for await (const file of new Glob("**/*.{ts,tsx}").scan(WEB)) {
+    const text = await Bun.file(join(WEB, file)).text();
+    for (const [, specifier] of text.matchAll(/from "(\.[^"]+)"/g)) {
+      const target = relative(WEB, join(WEB, dirname(file), specifier!));
+      if (!webAllowed(file, target)) {
+        violations.push(`${file} imports ${target}`);
+      }
+    }
+  }
+  expect(violations).toEqual([]);
+});
+
+function webAllowed(file: string, target: string): boolean {
+  // The web app never imports the server's code; it knows the server through the JSON API.
+  if (target.startsWith("..")) {
+    return false;
+  }
+  const [area] = file.split("/") as [string];
+  const [targetArea] = target.split("/") as [string];
+  if (
+    file === "main.tsx" ||
+    file === "app/router.tsx" ||
+    area === targetArea ||
+    targetArea === "ui"
+  ) {
+    return true;
+  }
+  if (area === "ui" || area === "app") {
+    return false;
+  }
+  return (
+    targetArea === "app" ||
+    WEB_MODULES.indexOf(targetArea) < WEB_MODULES.indexOf(area)
+  );
+}
+
+test("the web rules catch a module that reaches past its neighbours", () => {
+  expect(webAllowed("threads/pages.tsx", "workspaces/shell.tsx")).toBe(true);
+  expect(webAllowed("workspaces/shell.tsx", "threads/data.ts")).toBe(false);
+  expect(webAllowed("ui/components.tsx", "app/api.ts")).toBe(false);
+  expect(webAllowed("app/query.ts", "ui/toast.tsx")).toBe(true);
+  expect(webAllowed("threads/data.ts", "../src/threads/threads.ts")).toBe(
+    false
+  );
 });

@@ -1,24 +1,26 @@
 # Golem API
 
-The web app and the iOS app have the same functionality. The web app renders HTML on the server with Datastar; the
-iOS app uses this JSON API. Both call the same server code.
+The web app and the iOS app have the same functionality, and both use this JSON API. The iOS app sends a bearer token;
+the web app sends its session cookie, and a request that names another origin than `base_url` gets `403`.
 
 ## Authentication
 
 Accounts are managed by [better-auth](https://www.better-auth.com). People sign in only with Google, and only with
 an email in `allowed_emails` in `config/golem.toml`. There is no sign-up and no password. Native clients use bearer
-tokens. The routes are in `src/accounts/`.
+tokens; the web app uses better-auth's session cookie. The routes are in `src/accounts/`.
 
 | Request | Response |
 | --- | --- |
 | `GET /api/v1/sign-in/google` | Redirect to Google. Open it in a web authentication session that waits for the `golem` scheme. |
 | `GET /api/v1/sign-in/google/done` | Redirect to `golem://signed-in?token=<token>`, or `golem://signed-in?error=<message>` |
+| `POST /api/auth/sign-in/social` | `{ provider: "google", callbackURL }` → `{ url }`: the web app opens `url`, and Google sends the person back to `callbackURL` with a session cookie. A failed sign-in comes back to `/login?error=…&error_description=…`. |
 | `POST /api/auth/sign-out` | `{ success }` |
 
 `done` hands over a token only to a sign-in that `GET /api/v1/sign-in/google` started in the same browser session,
 and Google always asks which account to use. This keeps another app that claims `golem://` from getting a token.
 
-Send `Authorization: Bearer <token>` on every `/api/v1` request. A `401` response means the token is missing or expired.
+Send `Authorization: Bearer <token>`, or the session cookie, on every `/api/v1` request. A `401` response means the
+token or the session is missing or expired.
 
 ## Types
 

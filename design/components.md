@@ -2,7 +2,7 @@
 
 Every value is measured from Linear's light and dark themes (Inter 4.1, the same font file) and lives in
 `tokens.json`.
-Every component exists on the web (`public/styles.css`, `public/ui.js`, `src/platform/ui/`) and on iOS
+Every component exists on the web (`public/styles.css`, `web/ui/`) and on iOS
 (`ios/Golem/Design/`) with the same behavior. The web looks like Linear's web app: native selects and pickers are never
 used there; menus, selects, switches, and checkboxes are our own. iOS looks like Linear's iOS app; see [iOS](#ios).
 

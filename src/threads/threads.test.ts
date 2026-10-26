@@ -16,7 +16,6 @@ import type { Conversation } from "@earendil-works/pi-durable";
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import type { ThreadRef } from "../workspaces/workspaces.ts";
-import { transcript } from "./pages.ts";
 import {
   type ThreadBrowser,
   type ThreadHands,
@@ -380,11 +379,12 @@ test("files attach to a new thread, a message, and the channel; every thread of 
   const message = new FormData();
   message.set("text", "");
   message.append("files", new File(["a photo"], "beach.png"));
-  const sent = await postForm(`/w/${home.id}/t/${id}/messages`, message, {
+  // The web app sends a message with its session cookie, from Golem's own origin.
+  const sent = await postForm(`/api/v1/threads/${id}/messages`, message, {
     cookie: await golem.sessionCookie(token),
     origin: "http://golem.test",
   });
-  expect(sent.status).toBe(200);
+  expect(sent.status).toBe(204);
 
   const { files } = (await uploaded.json()) as {
     files: { id: string; name: string }[];
@@ -501,7 +501,7 @@ test("a composer with no file chosen starts a thread and sends a message", async
   const general = golem.app.workspaces.channels(home.id, alice)[0]!;
   const cookie = await golem.sessionCookie(token);
   // What a browser posts for the composer: its empty file field is a part with `filename=""`.
-  const post = (path: string, text: string) =>
+  const post = (path: string, text: string, channelId?: string) =>
     golem.handler(
       new Request(`http://golem.test${path}`, {
         method: "POST",
@@ -510,19 +510,23 @@ test("a composer with no file chosen starts a thread and sends a message", async
           origin: "http://golem.test",
           "content-type": "multipart/form-data; boundary=X",
         },
-        body: `--X\r\nContent-Disposition: form-data; name="text"\r\n\r\n${text}\r\n--X\r\nContent-Disposition: form-data; name="files"; filename=""\r\nContent-Type: application/octet-stream\r\n\r\n\r\n--X--\r\n`,
+        body: `${channelId ? `--X\r\nContent-Disposition: form-data; name="channelId"\r\n\r\n${channelId}\r\n` : ""}--X\r\nContent-Disposition: form-data; name="text"\r\n\r\n${text}\r\n--X\r\nContent-Disposition: form-data; name="files"; filename=""\r\nContent-Type: application/octet-stream\r\n\r\n\r\n--X--\r\n`,
       })
     );
 
-  const created = await post(`/w/${home.id}/c/${general.id}/threads`, "Hello");
-  expect(created.status).toBe(303);
-  const id = created.headers.get("location")!.split("/t/")[1]!;
+  const created = await post(
+    `/api/v1/workspaces/${home.id}/threads`,
+    "Hello",
+    general.id
+  );
+  expect(created.status).toBe(200);
+  const { id } = (await created.json()) as { id: string };
   await until(
     () => golem.app.threads.messages(golem.app.workspaces.thread(id, alice)),
     (state) => !state.running && state.messages.length === 2
   );
-  const sent = await post(`/w/${home.id}/t/${id}/messages`, "Thanks");
-  expect(sent.status).toBe(200);
+  const sent = await post(`/api/v1/threads/${id}/messages`, "Thanks");
+  expect(sent.status).toBe(204);
 
   const { messages } = await golem.app.threads.messages(
     golem.app.workspaces.thread(id, alice)
@@ -559,32 +563,6 @@ test("a spoken message asks the agent for an answer to read aloud, and the trans
     "Turn on the lights",
     "Done.",
   ]);
-});
-
-test("the web shows each thread link in an answer as a link into the workspace, and its Markdown and HTML", () => {
-  const html = transcript(
-    {
-      running: false,
-      messages: [
-        {
-          id: "1",
-          authorId: null,
-          author: "Golem",
-          agent: true,
-          text: 'Started [Dinner <b>plan</b>](thread:abc-1) and [not a link](thread:"x) <i>*soon*',
-          time: 0,
-          failed: false,
-          files: [],
-          streaming: false,
-          work: null,
-        },
-      ],
-    },
-    { id: "dinner", workspaceId: "family" }
-  );
-  expect(html).toContain(
-    '<p>Started <a href="/w/family/t/abc-1" class="thread-link">Dinner <b>plan</b></a><span class="working-spinner" data-show="$working.tabc1" style="display: none" role="img" aria-label="Working"></span> and <a>not a link</a> <i><em>soon</em></i></p>'
-  );
 });
 
 test("an answer carries the work before it: open while the agent works, folded once it answers", () => {
@@ -639,11 +617,6 @@ test("an answer carries the work before it: open while the agent works, folded o
       ],
     },
   });
-  const html = transcript(working, { id: "t", workspaceId: "w" });
-  expect(html).toContain(
-    'class="work working" data-preserve-attr="open" open>'
-  );
-  expect(html).toContain('Working for <span data-elapsed-since="1000">');
 
   const done = threadMessages(
     view({}, [
@@ -684,11 +657,6 @@ test("an answer carries the work before it: open while the agent works, folded o
     false,
     false,
   ]);
-  const folded = transcript(done, { id: "t", workspaceId: "w" });
-  expect(folded).toContain(
-    '<details id="work-2" class="work" data-preserve-attr="open">'
-  );
-  expect(folded).toContain("Worked for 8s");
   expect(done.messages[1]!.work!.steps[2]).toMatchObject({
     input: '{\n  "query": "Prague weather"\n}',
     output: "Sunny, 21 °C",
@@ -763,14 +731,7 @@ test("a stopped turn says so, calls of one tool in a row fold into one row, and 
     "[Dinner](thread:d-1)",
     "[Trip](thread:t-2)",
   ]);
-  const html = transcript(threadMessages(view), { id: "t", workspaceId: "w" });
-  expect(html).toContain("Stopped after 3s");
-  expect(html).toContain(
-    '<span class="work-tool-name">Start thread</span><span class="work-tool-detail">2 times</span>'
-  );
-  expect(html).toContain(
-    '<a class="thread-link" href="/w/w/t/d-1">Dinner</a><span class="working-spinner" data-show="$working.td1"'
-  );
+  expect(answer.work!.endedAt! - answer.work!.startedAt).toBe(3000);
 });
 
 test("the workspace's working stream shows a thread while its agent works, and people stop it", async () => {

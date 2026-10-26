@@ -4,7 +4,7 @@
 
 @font-face {
   font-family: "Inter Variable";
-  src: url("/assets/fonts/InterVariable.woff2") format("woff2");
+  src: url("./fonts/InterVariable.woff2") format("woff2");
   font-weight: 100 900;
   /* The font is cached for good, so text never paints in a fallback font and then jumps. */
   font-display: block;
@@ -382,8 +382,9 @@ a {
 
 /* Menus open and close at once, as Linear's do. Action menus have a border; select menus a ring. */
 
+/* Radix places menus and selects in a fixed frame of their own and gives it the menu's z-index. */
 .menu {
-  position: fixed;
+  position: relative;
   z-index: 20;
   min-width: var(--size-menu-min-width);
   max-height: min(400px, calc(100dvh - 16px));
@@ -489,7 +490,7 @@ a {
   position: absolute;
   right: var(--space-lg);
 }
-.menu[role="listbox"] [aria-selected="true"] .check {
+.menu[role="listbox"] [data-state="checked"] .check {
   display: flex;
 }
 
@@ -610,7 +611,7 @@ a {
 /* Tooltip: Linear's spring, measured. It fades in over 40 ms from 98 %, and fades out over 180 ms after a short hold. */
 
 .tooltip {
-  position: fixed;
+  position: relative;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -658,7 +659,7 @@ a {
 .tooltip[data-side="top"] {
   transform-origin: 50% 100%;
 }
-.tooltip[data-state="open"] {
+.tooltip:is([data-state="delayed-open"], [data-state="instant-open"]) {
   opacity: 1;
   scale: 1;
   transition:
@@ -666,7 +667,7 @@ a {
     scale 48ms linear;
 }
 @starting-style {
-  .tooltip[data-state="open"] {
+  .tooltip:is([data-state="delayed-open"], [data-state="instant-open"]) {
     opacity: 0;
     scale: 0.98;
   }

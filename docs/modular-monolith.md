@@ -1,7 +1,7 @@
 # Modular monolith
 
 The server is one process with one `golem.sqlite`, split into modules. A module is a vertical slice of one domain:
-its service, its tests, and its routes and pages when people use them directly. Modules talk to each other only through their
+its service, its tests, and its JSON routes when people use them directly. Modules talk to each other only through their
 entry file. `test/architecture.test.ts` enforces the rules on this page.
 
 ## Why
@@ -18,26 +18,24 @@ src/
 ├── main.ts                  The process: config, embedder, server
 ├── app/                     Composition and route helpers
 │   ├── app.ts               createApp: makes each service and connects the ports
-│   ├── routes.ts            Every route table, plus /assets
+│   ├── routes.ts            Every route table, the web app's paths, and /assets
 │   ├── http.ts              Route, routes(), signedIn, json, withCookies, error responses
-│   ├── web.ts               page, action, form, html, redirect, toasts, the cross-origin check, assets
+│   ├── web.ts               The web app's page and files, assets, html, redirect, readForm, the cross-origin check
 │   └── api.ts               api, readBody, eventStream
 ├── platform/                Shared code that knows no domain
 │   ├── config.ts, secrets.ts, database.ts, auth.ts, errors.ts, requirements.ts
-│   └── ui/                  The design system: components and icons
 ├── accounts/                Sign-in and sign-out (better-auth is in platform/auth.ts)
-├── workspaces/              Workspaces, members, channels, the thread registry, and the app shell
+├── workspaces/              Workspaces, members, channels, and the thread registry
 ├── llm/                     The shared LLM provider, its stored login, and the agents' web search
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── integrations/            The connectors, their tools, and the credentials of each workspace
-├── artifacts/               The pages and small apps agents make for a channel, their links, and the data they keep
+├── artifacts/               The pages and small apps agents make for a channel, their link pages, and their data
 ├── browser/                 The headless Chrome of each thread, which agents visit websites with
 ├── threads/                 One Pi Durable session per workspace, a conversation per thread, the agent tools, and the
-│                            channel page with the files of each channel
-├── search/                  Extraction, embeddings, the index of each workspace, and the search page
-├── routines/                Scheduled scripts and instructions of each channel, their runs, and the channel details page
+│                            files of each channel
+├── search/                  Extraction, embeddings, and the index of each workspace
+├── routines/                Scheduled scripts and instructions of each channel, and their runs
 ├── reminders/               One-time workspace reminders and their agent tools; no user routes
-└── settings/                The settings pages, which show sections of several modules
 ```
 
 Each module has the same files, when it needs them:
@@ -45,21 +43,28 @@ Each module has the same files, when it needs them:
 | File | Holds |
 | --- | --- |
 | `<module>.ts` | The entry file: the service class and its types |
-| `api.ts` | The JSON routes for the iOS app, documented in `docs/api.md` |
-| `web.ts` | The web routes: pages and Datastar endpoints |
-| `pages.ts` | The HTML of the module's pages and the sections other modules show |
+| `api.ts` | The JSON routes for the web app and the iOS app, documented in `docs/api.md` |
+| `web.ts` | Routes that serve HTML themselves; only `artifacts` has them, for its link pages |
+| `pages.ts` | The HTML of those pages |
 | `*.test.ts` | The tests of the module |
 
-`workspaces/shell.ts` is the app frame (sidebar, workspace switcher, dialogs) that every signed-in page uses.
 `search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`; `hands/` has
 `connection.ts` and `tools.ts`; `llm/` has `search.ts` and `tools.ts`; `artifacts/`, `browser/`, and `routines/` have `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
+
+## The web app
+
+`web/` is a React single-page app that `bun run build` bundles into `dist/web/`. It has the same modules as `src/`, in
+the same order, and `settings`, which shows sections of several. Each module has `data.ts`, its collections and
+queries, and its screens. `web/app/` holds the API client (`api.ts`), the types of `docs/api.md` (`types.ts`), the
+Query cache that IndexedDB keeps (`query.ts`), and the routes (`router.tsx`); `web/ui/` is the design system. A
+module uses only `app/`, `ui/`, and the modules before it, and never the server's code.
 
 ## Rules
 
 1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
-   `artifacts`, `browser`, `threads`, `search`, `routines`, `reminders`, `settings`. A module uses only the modules before it. `platform/` uses no module.
+   `artifacts`, `browser`, `threads`, `search`, `routines`, `reminders`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
-   use another module's `pages.ts` and `workspaces/shell.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
+   use another module's `pages.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.
 3. **Services do not know HTTP routes.** A service throws `HttpError` from `platform/errors.ts` for bad input or
    missing access, and never imports from `app/`. `app/app.ts` makes the services; routes get them from `input.app`.
@@ -82,12 +87,15 @@ per module would need a bookkeeping table and an upgrade step on every machine, 
 
 - Module tests are next to their code, for example `src/search/indexer.test.ts`.
 - `test/` holds the end-to-end tests that drive the whole server as a person would (`server`, `api`, and `web`),
-  the shared test server in `test/harness.ts`, the design token check, and the architecture test.
+  the shared test server in `test/harness.ts`, the design token check, the architecture test, and the check that the
+  web app's API types fit the server's (`web-types`).
+- Web tests are next to their code too, for example `web/threads/message.test.tsx`.
 
 ## Add a feature
 
 1. Put the logic in the module's service, with a membership check if it reads or writes a workspace.
-2. Add the JSON route to `api.ts` and the web route to `web.ts`, and the HTML to `pages.ts`.
+2. Add the JSON route to `api.ts`, and the screen to the module's folder in `web/`: its data in `data.ts`, as a
+   TanStack DB collection when people change it, and its components next to it.
 3. Document the JSON route in `docs/api.md`, and add the same screen to the iOS app.
 4. A new module needs a place in the module order in `test/architecture.test.ts` and in `AGENTS.md`, its route
    tables in `app/routes.ts`, and its service in `createApp`.
@@ -95,5 +103,5 @@ per module would need a bookkeeping table and an upgrade step on every machine, 
 ## Not done
 
 - iOS still groups its code by kind (`ios/Golem/Views/`, `ios/Golem/API/`). Grouping it by the same modules is
-  possible later; `ios/Golem/Design/` would stay shared, as `src/platform/ui/` does.
+  possible later; `ios/Golem/Design/` would stay shared, as `web/ui/` does.
 - No microservices, message bus, DI container, or Effect layer per module.
