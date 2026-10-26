@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type {
   Context,
   Message,
@@ -11,8 +12,10 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import type { Conversation } from "@earendil-works/pi-durable";
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
+import type { ThreadRef } from "../workspaces/workspaces.ts";
 import { transcript } from "./pages.ts";
 import {
   type ThreadBrowser,
@@ -879,6 +882,50 @@ test("a workspace has one orchestrator thread, which stays open and out of the c
   expect(
     (await golem.call(`${base}/orchestrator`, { token: outsider })).status
   ).toBe(404);
+});
+
+test("the orchestrator gets its own instructions, also after they change, and a channel thread gets none of them", async () => {
+  const home = await golem.app.workspaces.create(alice, "Delegating");
+  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  // An older version of Golem stored other orchestrator instructions.
+  const threads = golem.app.threads as unknown as {
+    conversation: (thread: ThreadRef) => Promise<Conversation>;
+  };
+  await (await threads.conversation(orchestrator)).configure(
+    { instructions: "Outdated orchestrator" },
+    BACKGROUND_CONTEXT
+  );
+  const promptOf = async (thread: ThreadRef, text: string) => {
+    const before = systemPrompts.length;
+    const { messages } = await golem.app.threads.messages(thread);
+    await golem.app.threads.send(thread.id, alice, text);
+    await until(
+      () => golem.app.threads.messages(thread),
+      (state) => !state.running && state.messages.length === messages.length + 2
+    );
+    return systemPrompts.slice(before).join("\n");
+  };
+  expect(await promptOf(orchestrator, "Plan our trip")).toContain(
+    "This thread is the orchestrator of the workspace"
+  );
+
+  const [channel] = golem.app.workspaces.channels(home.id, alice);
+  const created = await golem.app.threads.create(
+    home.id,
+    alice,
+    channel!.id,
+    "Hi"
+  );
+  const channelThread = golem.app.workspaces
+    .threadsIn(home.id)
+    .find((candidate) => candidate.id === created.id)!;
+  await until(
+    () => golem.app.threads.messages(channelThread),
+    (state) => !state.running && state.messages.length === 2
+  );
+  expect(await promptOf(channelThread, "Plan our trip")).not.toContain(
+    "orchestrator of the workspace"
+  );
 });
 
 test("the orchestrator compacts into a view of its memory, and its agent zooms into a message", async () => {
