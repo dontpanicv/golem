@@ -66,7 +66,10 @@ addresses, or code and data from employers or clients.
 - Every integration works in both places, with one connector and no code for either place: a person connects it in
   Workspace settings for every member's turns there, or in their own Settings for their own turns in each of their
   workspaces. A tool call uses the credential of its turn's person first, else the workspace's
-  (`src/integrations/integrations.ts`).
+  (`src/integrations/integrations.ts`). A person can connect several accounts of one integration; each tool takes an
+  `account`.
+- Agents only draft mail and messages as a person: a connector never gives them a tool that sends, and hides such
+  tools of an MCP server with `hiddenTools`.
 - The model calls only the core tools of channels, threads, files, and web search directly. Every other tool is
   script-only (`callers: ["tools"]`) and its name starts with its codemode namespace: `NAMESPACES` in
   `src/threads/threads.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.

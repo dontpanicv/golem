@@ -20,7 +20,12 @@ export interface Config {
   /** The only people who may sign in. */
   readonly allowedEmails: readonly string[];
   /** The Google OAuth client for sign-in; see google-sign-in.md. */
-  readonly google: { readonly clientId: string; readonly clientSecret: string };
+  readonly google: OAuthClient;
+  /**
+   * Golem's own OAuth clients of the integrations whose servers do not register clients, by integration id; see
+   * docs/integrations.md. Golem offers such an integration only with its client.
+   */
+  readonly integrations: Readonly<Record<string, OAuthClient>>;
   /** The APNs key that sends pushes to the iOS app, kept in `config/apns.p8`; `null` sends none. */
   readonly apns: {
     readonly keyId: string;
@@ -28,6 +33,11 @@ export interface Config {
     /** The iOS app's bundle id. */
     readonly topic: string;
   } | null;
+}
+
+export interface OAuthClient {
+  readonly clientId: string;
+  readonly clientSecret: string;
 }
 
 const TEMPLATE = `# Golem configuration. Golem created this file on first start; edit it and restart Golem.
@@ -52,6 +62,15 @@ allowed_emails = []
 client_id = ""
 client_secret = ""
 
+# The OAuth clients of Google (Gmail, Calendar, Drive) and Slack, which people sign in to in Settings.
+# docs/integrations.md shows how to create them.
+# [integrations.google]
+# client_id = ""
+# client_secret = ""
+# [integrations.slack]
+# client_id = ""
+# client_secret = ""
+
 # The Apple Push Notification service key that sends notifications to the iOS app. Put the key in config/apns.p8.
 # [apns]
 # key_id = "ABC123DEFG"
@@ -73,6 +92,10 @@ export async function readConfig(
   }
   const values = Bun.TOML.parse(await file.text()) as Record<string, unknown>;
   const google = (values.google ?? {}) as Record<string, unknown>;
+  const integrations = (values.integrations ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
   const apns = values.apns as Record<string, unknown> | undefined;
   return {
     configDirectory,
@@ -91,6 +114,18 @@ export async function readConfig(
       clientId: text(google.client_id, "google.client_id"),
       clientSecret: text(google.client_secret, "google.client_secret"),
     },
+    integrations: Object.fromEntries(
+      Object.entries(integrations).map(([id, client]) => [
+        id,
+        {
+          clientId: text(client.client_id, `integrations.${id}.client_id`),
+          clientSecret: text(
+            client.client_secret,
+            `integrations.${id}.client_secret`
+          ),
+        },
+      ])
+    ),
     apns: apns
       ? {
           keyId: text(apns.key_id, "apns.key_id"),

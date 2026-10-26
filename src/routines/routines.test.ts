@@ -75,7 +75,7 @@ beforeAll(async () => {
     golem.app.database,
     Secrets.forTests(),
     golem.app.workspaces,
-    { catalog: [connector] }
+    { directory: golem.app.config.dataDirectory, catalog: [connector] }
   );
   routines = new Routines(
     golem.app.database,
@@ -286,6 +286,7 @@ test("a connector without a credential fails the script", async () => {
     Secrets.forTests(),
     golem.app.workspaces,
     {
+      directory: golem.app.config.dataDirectory,
       catalog: [{ ...connector, id: "school-2", name: "School 2" }],
     }
   );

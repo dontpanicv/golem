@@ -130,7 +130,9 @@ export interface Credential {
 export interface Integration {
   readonly id: string;
   readonly name: string;
-  /** `null`: people connect it by signing in. */
+  /** With a secret, by signing in on its page, or by linking a phone number with a code. */
+  readonly connect: "secret" | "sign-in" | "phone";
+  /** The name of the secret, for `connect: "secret"`. */
   readonly secretLabel: string | null;
   readonly credentials: readonly Credential[];
 }

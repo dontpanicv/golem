@@ -51,6 +51,7 @@ export async function startTestApp() {
         clientId: "test-client.apps.googleusercontent.com",
         clientSecret: "test-secret",
       },
+      integrations: {},
       apns: null,
     },
     { provider: faux.provider, name: "Test model", defaultModel: model.id },

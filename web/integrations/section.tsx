@@ -38,6 +38,11 @@ export function IntegrationsSection({
     integration: Integration;
     url: string;
   } | null>(null);
+  // A phone number links with a code that the person enters on their phone.
+  const [linking, setLinking] = useState<{
+    integration: Integration;
+    code: string | null;
+  } | null>(null);
   const add = useMutation({
     mutationFn: (input: { integrationId: string; form: FormData }) =>
       request(`${base}/integrations/${input.integrationId}/credentials`, {
@@ -61,6 +66,26 @@ export function IntegrationsSection({
         { method: "POST", body: {} }
       ),
     onSuccess: ({ url }, integration) => setSigningIn({ integration, url }),
+  });
+  const getCode = useMutation({
+    mutationFn: (input: { integration: Integration; form: FormData }) =>
+      request<{ code: string }>(
+        `${base}/integrations/${input.integration.id}/connect`,
+        { method: "POST", body: { phone: String(input.form.get("phone")) } }
+      ),
+    onSuccess: ({ code }, { integration }) => setLinking({ integration, code }),
+  });
+  const link = useMutation({
+    mutationFn: (integration: Integration) =>
+      request(`${base}/integrations/${integration.id}/sign-in`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: (_, integration) => {
+      setLinking(null);
+      showToast("success", `${integration.name} connected`);
+      return queryClient.invalidateQueries({ queryKey });
+    },
   });
   const signIn = useMutation({
     mutationFn: (input: { integration: Integration; form: FormData }) =>
@@ -91,8 +116,8 @@ export function IntegrationsSection({
           <SettingsRow
             description={
               integration.secretLabel === null
-                ? credentialCount(integration.credentials.length)
-                : `${credentialCount(integration.credentials.length)} · ${integration.secretLabel}`
+                ? accountCount(integration.credentials.length)
+                : `${accountCount(integration.credentials.length)} · ${integration.secretLabel}`
             }
             label={integration.name}
           />
@@ -114,7 +139,7 @@ export function IntegrationsSection({
             </SettingsRow>
           ))}
           <div className="settings-row compact">
-            {integration.secretLabel === null ? (
+            {integration.connect === "sign-in" && (
               <Button
                 disabled={connect.isPending}
                 icon="link"
@@ -122,7 +147,16 @@ export function IntegrationsSection({
                 onClick={() => connect.mutate(integration)}
                 size="small"
               />
-            ) : (
+            )}
+            {integration.connect === "phone" && (
+              <Button
+                icon="link"
+                label="Link number"
+                onClick={() => setLinking({ integration, code: null })}
+                size="small"
+              />
+            )}
+            {integration.connect === "secret" && (
               <Button
                 icon="plus"
                 label="Add credential"
@@ -185,13 +219,48 @@ export function IntegrationsSection({
           required
         />
       </Dialog>
+      <Dialog
+        busy={getCode.isPending || link.isPending}
+        onClose={() => setLinking(null)}
+        onSubmit={(form) => {
+          if (!linking) {
+            return;
+          }
+          if (linking.code === null) {
+            getCode.mutate({ integration: linking.integration, form });
+          } else {
+            link.mutate(linking.integration);
+          }
+        }}
+        open={linking !== null}
+        submit={linking?.code ? "Done" : "Get code"}
+        title={`Link ${linking?.integration.name ?? ""}`}
+      >
+        {linking?.code ? (
+          <TextField
+            label="Enter in Linked devices › Link with phone number"
+            large
+            readOnly
+            value={linking.code}
+          />
+        ) : (
+          <TextField
+            autoComplete="tel"
+            label="Phone number"
+            name="phone"
+            placeholder="+420 123 456 789"
+            required
+            type="tel"
+          />
+        )}
+      </Dialog>
     </>
   );
 }
 
-function credentialCount(count: number): string {
+function accountCount(count: number): string {
   if (count === 0) {
-    return "No credentials";
+    return "Not connected";
   }
-  return count === 1 ? "1 credential" : `${count} credentials`;
+  return count === 1 ? "1 account" : `${count} accounts`;
 }

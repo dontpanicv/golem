@@ -32,12 +32,13 @@ export const integrationApiRoutes: readonly Route[] = (
   [
     "POST",
     `${base}/integrations/:integration/connect`,
-    api(async ({ app, user, params }) =>
+    api(async ({ app, user, params, body }) =>
       json(
         await app.integrations.connect(
           params.workspace ?? null,
           user,
-          params.integration!
+          params.integration!,
+          body.phone as string | undefined
         )
       )
     ),
@@ -51,7 +52,7 @@ export const integrationApiRoutes: readonly Route[] = (
           params.workspace ?? null,
           user,
           params.integration!,
-          body.address as string
+          body.address as string | undefined
         )
       )
     ),

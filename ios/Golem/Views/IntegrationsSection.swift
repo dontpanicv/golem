@@ -8,6 +8,7 @@ struct IntegrationsSection: View {
     @State private var integrations: [Integration] = []
     @State private var addingTo: Integration?
     @State private var signingIn: SignIn?
+    @State private var linking: Integration?
 
     var body: some View {
         Group {
@@ -26,10 +27,14 @@ struct IntegrationsSection: View {
                         }
                     }
                     HStack {
-                        if integration.secretLabel == nil {
+                        switch integration.connect {
+                        case .signIn:
                             Button("Connect", systemImage: "link") { connect(integration) }
                                 .buttonStyle(.golem(.ghost, .small))
-                        } else {
+                        case .phone:
+                            Button("Link number", systemImage: "link") { linking = integration }
+                                .buttonStyle(.golem(.ghost, .small))
+                        case .secret:
                             Button("Add credential", systemImage: "plus") { addingTo = integration }
                                 .buttonStyle(.golem(.ghost, .small))
                         }
@@ -44,6 +49,13 @@ struct IntegrationsSection: View {
         .sheet(item: $signingIn) { signIn in
             SignInForm(workspaceID: workspaceID, signIn: signIn) { credential in
                 if let index = integrations.firstIndex(where: { $0.id == signIn.integration.id }) {
+                    integrations[index].credentials.append(credential)
+                }
+            }
+        }
+        .sheet(item: $linking) { integration in
+            LinkForm(workspaceID: workspaceID, integration: integration) { credential in
+                if let index = integrations.firstIndex(where: { $0.id == integration.id }) {
                     integrations[index].credentials.append(credential)
                 }
             }
@@ -167,6 +179,53 @@ private struct SignInForm: View {
                 ))
                 session.show("\(signIn.integration.name) connected", .success)
                 dismiss()
+            }
+            busy = false
+        }
+    }
+}
+
+/// Links a phone number with a code that the person enters on their phone, in Linked devices.
+private struct LinkForm: View {
+    let workspaceID: String?
+    let integration: Integration
+    let added: (Credential) -> Void
+    @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var phone = ""
+    @State private var code: String?
+    @State private var busy = false
+
+    var body: some View {
+        Dialog(title: "Link \(integration.name)") {
+            if let code {
+                GolemTextField("Enter in Linked devices › Link with phone number", text: .constant(code))
+            } else {
+                GolemTextField("Phone number", placeholder: "+420 123 456 789", text: $phone, autofocus: true)
+                    .keyboardType(.phonePad)
+                    .textContentType(.telephoneNumber)
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
+            Button(code == nil ? "Get code" : "Done", action: next)
+                .buttonStyle(.golem(.primary, .large))
+                .disabled(busy || phone.isEmpty)
+        }
+    }
+
+    private func next() {
+        busy = true
+        Task {
+            await session.run {
+                if code == nil {
+                    code = try await session.api.linkIntegration(
+                        workspaceID: workspaceID, integrationID: integration.id, phone: phone
+                    ).code
+                } else {
+                    added(try await session.api.finishLink(workspaceID: workspaceID, integrationID: integration.id))
+                    session.show("\(integration.name) connected", .success)
+                    dismiss()
+                }
             }
             busy = false
         }

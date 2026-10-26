@@ -354,6 +354,17 @@ extension APIClient {
         )
     }
 
+    /// The code that the person enters on the phone of `phone`; `finishLink` waits until they did.
+    func linkIntegration(workspaceID: String?, integrationID: String, phone: String) async throws -> LinkCode {
+        try await post(
+            "\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/connect", ["phone": phone]
+        )
+    }
+
+    func finishLink(workspaceID: String?, integrationID: String) async throws -> Credential {
+        try await post("\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/sign-in", [:])
+    }
+
     func addCredential(
         workspaceID: String?, integrationID: String, label: String, secret: String
     ) async throws -> Credential {

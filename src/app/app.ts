@@ -81,6 +81,8 @@ export async function createApp(
   };
   const workspaces = new Workspaces(database, auth, reloadTools);
   const integrations = new Integrations(database, resolvedSecrets, workspaces, {
+    directory: join(config.dataDirectory, "integrations"),
+    clients: config.integrations,
     changed: reloadTools,
   });
   const hands = new Hands(database, resolvedSecrets, workspaces, {

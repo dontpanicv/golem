@@ -35,6 +35,10 @@ data/
 │       ├── tables/                  Structured history as Parquet, append-only, read with DuckDB.
 │       │   └── <dataset>/date=<yyyy-mm-dd>/<uuidv7>.parquet
 │       └── index.sqlite             The search index of this workspace (derived, rebuildable).
+├── integrations/
+│   ├── <credential-id>/             A device linked to a person's number, such as WhatsApp's: its keys and its
+│   │                                copy of the person's chats, kept by wacli.
+│   └── deleted/                     The folders of deleted credentials, kept as they were.
 ├── models/                          Downloaded models, shared because they hold no data.
 │   └── embeddinggemma-2-Q8_0.gguf
 └── logs/

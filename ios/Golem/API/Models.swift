@@ -207,14 +207,23 @@ struct Credential: Codable, Hashable, Identifiable {
 struct Integration: Codable, Hashable, Identifiable {
     let id: String
     let name: String
-    /// `nil`: people connect it by signing in, not with a secret.
+    /// How people connect it: with a secret, by signing in on its page, or by linking a phone number with a code.
+    let connect: Connection
+    /// The name of the secret, for `.secret`.
     let secretLabel: String?
     var credentials: [Credential]
+
+    enum Connection: String, Codable { case secret, signIn = "sign-in", phone }
 }
 
 /// The sign-in page of an integration's MCP server.
 struct ConnectPage: Decodable {
     let url: URL
+}
+
+/// The code that links a phone number, which the person enters on their phone.
+struct LinkCode: Decodable {
+    let code: String
 }
 
 struct RoutineRun: Codable, Hashable, Identifiable {

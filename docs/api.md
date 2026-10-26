@@ -96,7 +96,7 @@ type SearchResult = {
 };
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; ownerName: string; createdAt: number };
-type Integration = { id: string; name: string; secretLabel: string | null; credentials: Credential[] }; // null: connect by signing in
+type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; credentials: Credential[] }; // secretLabel: for "secret"
 type RoutineRun = {
 	id: string;
 	routineId: string;
@@ -305,23 +305,29 @@ Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the works
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET …/integrations` | | `Integration[]` |
-| `POST …/integrations/:integrationId/credentials` | `{ label, secret }` | `Credential`; `400` for one with `secretLabel: null` |
-| `POST …/integrations/:integrationId/connect` | | `{ url }`: the integration's sign-in page |
-| `POST …/integrations/:integrationId/sign-in` | `{ address }` | `Credential`; `400` when the address is not of the person's own sign-in of this place, or the sign-in did not finish |
+| `POST …/integrations/:integrationId/credentials` | `{ label, secret }` | `Credential`; `400` unless `connect` is `"secret"` |
+| `POST …/integrations/:integrationId/connect` | `{ phone }` for `"phone"` | `{ url }`: the integration's sign-in page; `{ code }` for `"phone"` |
+| `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`; `400` when the address is not of the person's own sign-in of this place, the sign-in did not finish, or the number did not link within a minute |
 | `DELETE …/credentials/:credentialId` | | `204` |
 
 Where a person connects an integration says whose turns use it. A workspace's credentials serve the turns of every
 member there; every member sees and deletes them. A person's own serve only their turns, in each of their workspaces;
 only they see and delete them. A turn is for the author of the message it answers, the person whose request another
 thread passes on, the creator of a routine, or the recipient of a reminder. Each tool call uses the newest credential
-of that person, else the workspace's newest; the agents of a workspace get the tools of each integration that the
+of that person, else the workspace's newest, unless the call names another of their accounts in its `account`
+argument; `<integrationId>_accounts` lists them. The agents of a workspace get the tools of each integration that the
 workspace or one of its members connected. Secrets never leave the server.
 
-An integration with `secretLabel: null` is an MCP server, such as Rohlík's. The app shows a link to the `url` of
-`connect`; the person signs in there. Rohlík lets self-registered clients return only to loopback addresses, so the
-sign-in ends on an error page at `http://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and
-`sign-in` keeps the tokens as a credential. The agents then get the server's tools as `<integrationId>_<tool>`, in the
-codemode namespace of the integration.
+An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's, Google's, or Slack's. The app
+shows a link to the `url` of `connect`; the person signs in there. Rohlík lets self-registered clients return only to
+loopback addresses, and Slack only to https ones, so the sign-in ends on an error page at
+`https://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and `sign-in` keeps the tokens as a
+credential, labeled with the account's email when the server gives it. The agents then get the servers' tools as
+`<integrationId>_<tool>`, in the codemode namespace of the integration. Google and Slack need Golem's own OAuth client;
+`docs/integrations.md` shows how to set them up.
+
+An integration with `connect: "phone"`, WhatsApp, links the person's number as a device. `connect` gives the code that
+the person enters on their phone, in Linked devices; then `sign-in` waits up to a minute for the link.
 
 ### Routines (`src/routines/`)
 
