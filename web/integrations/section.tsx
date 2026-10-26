@@ -42,6 +42,15 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
       return queryClient.invalidateQueries({ queryKey });
     },
   });
+  // Signing in happens on the integration's own page, which sends the person back to these settings.
+  const connect = useMutation({
+    mutationFn: (integrationId: string) =>
+      request<{ url: string }>(
+        `/workspaces/${workspaceId}/integrations/${integrationId}/connect`,
+        { method: "POST", body: {} }
+      ),
+    onSuccess: ({ url }) => window.location.assign(url),
+  });
   const remove = useMutation({
     mutationFn: (credentialId: string) =>
       request(`/workspaces/${workspaceId}/credentials/${credentialId}`, {
@@ -57,7 +66,11 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
       {integrations.map((integration) => (
         <SettingsCard key={integration.id}>
           <SettingsRow
-            description={`${credentialCount(integration.credentials.length)} · ${integration.secretLabel}`}
+            description={
+              integration.secretLabel === null
+                ? credentialCount(integration.credentials.length)
+                : `${credentialCount(integration.credentials.length)} · ${integration.secretLabel}`
+            }
             label={integration.name}
           />
           {integration.credentials.map((credential) => (
@@ -78,12 +91,22 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
             </SettingsRow>
           ))}
           <div className="settings-row compact">
-            <Button
-              icon="plus"
-              label="Add credential"
-              onClick={() => setAdding(integration)}
-              size="small"
-            />
+            {integration.secretLabel === null ? (
+              <Button
+                disabled={connect.isPending}
+                icon="link"
+                label="Connect"
+                onClick={() => connect.mutate(integration.id)}
+                size="small"
+              />
+            ) : (
+              <Button
+                icon="plus"
+                label="Add credential"
+                onClick={() => setAdding(integration)}
+                size="small"
+              />
+            )}
           </div>
         </SettingsCard>
       ))}

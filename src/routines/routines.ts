@@ -285,13 +285,18 @@ export class Routines {
   }
 
   /** The TypeScript declarations of the tools that scripts of a workspace can call. */
-  declarations(workspaceId: string): string {
-    return renderDeclarations({ tools: this.scriptTools(workspaceId) });
+  async declarations(workspaceId: string): Promise<string> {
+    return renderDeclarations({ tools: await this.scriptTools(workspaceId) });
   }
 
   /** The agent tools that create, change, test, and delete routines. */
-  tools(workspaceId: string) {
-    return routineTools(this, this.workspaces, workspaceId);
+  async tools(workspaceId: string) {
+    return routineTools(
+      this,
+      this.workspaces,
+      workspaceId,
+      await this.declarations(workspaceId)
+    );
   }
 
   private async run(routine: RoutineRow, now: number): Promise<RoutineRun> {
@@ -389,7 +394,7 @@ export class Routines {
     store: Record<string, unknown>
   ): Promise<ScriptResult> {
     const sandbox = new CodemodeSandbox({
-      tools: this.scriptTools(workspaceId),
+      tools: await this.scriptTools(workspaceId),
       timeoutMs: SCRIPT_TIMEOUT,
       memoryLimitBytes: 256 * 1024 * 1024,
     });
@@ -428,8 +433,8 @@ export class Routines {
   }
 
   /** What scripts call: the connectors' tools, and reading the workspace's channels, threads, and search. */
-  private scriptTools(workspaceId: string): CodemodeTool[] {
-    const connectors = this.integrations.tools(workspaceId).map(
+  private async scriptTools(workspaceId: string): Promise<CodemodeTool[]> {
+    const connectors = (await this.integrations.tools(workspaceId)).map(
       (tool): CodemodeTool => ({
         name: tool.name,
         description: tool.description,

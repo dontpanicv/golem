@@ -1530,7 +1530,7 @@ function savingThreads(
       recall: async () => ({ results: [] }),
       read: async () => null,
       picture: async () => null,
-      tools: () => [],
+      tools: async () => [],
     }
   );
 }

@@ -50,6 +50,13 @@
       }
     },
     {
+      // TypeScript checks imports; Biome cannot read the `./*` exports of the MCP SDK
+      "includes": ["src/integrations/**"],
+      "linter": {
+        "rules": { "correctness": { "noUnresolvedImports": "off" } }
+      }
+    },
+    {
       // The React rules are for the web app; the server's `use…` methods are not hooks
       "includes": ["src/**", "test/**", "scripts/**"],
       "linter": {

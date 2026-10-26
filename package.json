@@ -19,6 +19,7 @@
     "@earendil-works/pi-codemode": "^1.4.0",
     "@earendil-works/pi-durable": "^1.4.0",
     "@effect/platform-bun": "^4.0.6",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@tanstack/query-async-storage-persister": "^5.105.0",
     "@tanstack/query-db-collection": "^1.4.8",
     "@tanstack/query-persist-client-core": "^5.105.0",

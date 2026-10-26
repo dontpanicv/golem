@@ -220,7 +220,7 @@ export interface ThreadHooks {
     limit: number
   ) => Promise<{ readonly results: readonly RecallResult[] }>;
   /** Tools of the modules after threads, such as routines, for the agents of a workspace. */
-  readonly tools: (workspaceId: string) => readonly ToolRegistration[];
+  readonly tools: (workspaceId: string) => Promise<readonly ToolRegistration[]>;
   /** The text of a document or PDF for read_file; `null` for a kind of file without text. */
   readonly read: (path: string) => Promise<string | null>;
   /** A JPEG of a picture that read_file cannot open as it is, such as HEIC; `null` when it cannot convert it. */
@@ -268,7 +268,7 @@ export interface FilePlace {
 export type ThreadHands = Pick<Hands, "file" | "put" | "section" | "tools">;
 
 /** The connectors of a workspace, which its agents use through their tools. */
-export type ThreadIntegrations = Pick<Integrations, "tools">;
+export type ThreadIntegrations = Pick<Integrations, "tools" | "namespaces">;
 
 /** The artifacts of a workspace, which its agents make with their tools. */
 export type ThreadArtifacts = Pick<
@@ -1321,7 +1321,7 @@ export class Threads {
     const golem = await this.golemExtension(workspaceId);
     const codemode = createCodemodeExtension({
       sandbox: this.sandbox,
-      namespaces: NAMESPACES,
+      namespaces: [...NAMESPACES, ...this.integrations.namespaces()],
     });
     const registry = createRegistry();
     this.registries.set(workspaceId, registry);
@@ -1369,7 +1369,10 @@ export class Threads {
    * which find them by namespace, so the model's own tools stay few however many integrations a workspace has.
    */
   private async golemExtension(workspaceId: string) {
-    const connectors = await this.integrations.tools(workspaceId);
+    const [connectors, hooked] = await Promise.all([
+      this.integrations.tools(workspaceId),
+      this.hooks.tools(workspaceId),
+    ]);
     return defineExtension({
       name: "golem",
       tools: [
@@ -1392,7 +1395,7 @@ export class Threads {
           ...connectors.map(connectorTool),
           ...this.artifacts.tools(workspaceId),
           ...this.browser.tools(workspaceId),
-          ...this.hooks.tools(workspaceId),
+          ...hooked,
         ].map(scriptOnly),
       ],
       sections: [
@@ -2556,15 +2559,24 @@ function scriptOnly<Tool extends ToolRegistration>(tool: Tool): Tool {
   return { ...tool, callers: ["tools"] };
 }
 
+/** A connector tool; one that declares its value gives scripts that value, not its text. */
 function connectorTool(tool: WorkspaceTool) {
   return defineTool({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
+    ...(tool.outputSchema ? { structuredOutputSchema: tool.outputSchema } : {}),
     execute: async (args, _api, context) => {
       const result = await tool.execute(args, context.abortSignal);
+      const text =
+        typeof result === "string"
+          ? result
+          : (JSON.stringify(result) ?? "null");
       return {
-        output: [{ type: "text", text: JSON.stringify(result) ?? "null" }],
+        output: [{ type: "text", text }],
+        ...(tool.outputSchema
+          ? { structuredOutput: result as JsonObject }
+          : {}),
       };
     },
   });

@@ -46,6 +46,7 @@ const schoolMessages: ConnectorTool<typeof sinceParameters> = {
 const connector: Connector = {
   id: "school",
   name: "School",
+  description: "The school system.",
   secretLabel: "Password",
   tools: [schoolMessages],
 };
@@ -74,7 +75,7 @@ beforeAll(async () => {
     golem.app.database,
     Secrets.forTests(),
     golem.app.workspaces,
-    [connector]
+    { baseUrl: "http://golem.test", catalog: [connector] }
   );
   routines = new Routines(
     golem.app.database,
@@ -284,7 +285,10 @@ test("a connector without a credential fails the script", async () => {
     golem.app.database,
     Secrets.forTests(),
     golem.app.workspaces,
-    [{ ...connector, id: "school-2", name: "School 2" }]
+    {
+      baseUrl: "http://golem.test",
+      catalog: [{ ...connector, id: "school-2", name: "School 2" }],
+    }
   );
   const scripts = new Routines(
     golem.app.database,

@@ -1,8 +1,10 @@
+import AuthenticationServices
 import SwiftUI
 
 /// The name, members, machines, and integrations of the open workspace; only an owner renames or deletes it.
 struct WorkspaceSettingsView: View {
     @Environment(Session.self) private var session
+    @Environment(\.webAuthenticationSession) private var browser
     @State private var members: [Member] = []
     @State private var machines: [Machine] = []
     @State private var pairing: Pairing?
@@ -96,8 +98,13 @@ struct WorkspaceSettingsView: View {
                         }
                     }
                     HStack {
-                        Button("Add credential", systemImage: "plus") { addingTo = integration }
-                            .buttonStyle(.golem(.ghost, .small))
+                        if integration.secretLabel == nil {
+                            Button("Connect", systemImage: "link") { connect(integration) }
+                                .buttonStyle(.golem(.ghost, .small))
+                        } else {
+                            Button("Add credential", systemImage: "plus") { addingTo = integration }
+                                .buttonStyle(.golem(.ghost, .small))
+                        }
                         Spacer()
                     }
                     .padding(.horizontal, Tokens.Space.md)
@@ -190,6 +197,26 @@ struct WorkspaceSettingsView: View {
         }
     }
 
+    /// Signs in to the integration on its own page, then shows the new credential.
+    private func connect(_ integration: Integration) {
+        Task {
+            await session.run {
+                let page = try await session.api.connectIntegration(
+                    workspaceID: workspaceID, integrationID: integration.id
+                )
+                do {
+                    _ = try await browser.authenticate(
+                        using: page, callbackURLScheme: "golem", preferredBrowserSession: .shared
+                    )
+                } catch ASWebAuthenticationSessionError.canceledLogin {
+                    return
+                }
+                session.show("\(integration.name) connected", .success)
+            }
+            await load()
+        }
+    }
+
     private func delete(_ credential: Credential, from integration: Binding<Integration>) {
         Task {
             await session.run {
@@ -237,7 +264,7 @@ private struct CredentialForm: View {
     var body: some View {
         Dialog(title: "Add \(integration.name) credential") {
             GolemTextField("Label", text: $label, autofocus: true)
-            GolemTextField(integration.secretLabel, text: $secret, secure: true)
+            GolemTextField(integration.secretLabel ?? "Secret", text: $secret, secure: true)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         } actions: {

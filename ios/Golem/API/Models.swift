@@ -207,8 +207,14 @@ struct Credential: Codable, Hashable, Identifiable {
 struct Integration: Codable, Hashable, Identifiable {
     let id: String
     let name: String
-    let secretLabel: String
+    /// `nil`: people connect it by signing in, not with a secret.
+    let secretLabel: String?
     var credentials: [Credential]
+}
+
+/// The sign-in page of an integration's MCP server.
+struct ConnectPage: Decodable {
+    let url: URL
 }
 
 struct RoutineRun: Codable, Hashable, Identifiable {

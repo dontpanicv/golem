@@ -72,7 +72,17 @@ export async function createApp(
   migrate(database);
   const llm = new Llm(database, resolvedSecrets, llmProvider);
   const workspaces = new Workspaces(database, auth);
-  const integrations = new Integrations(database, resolvedSecrets, workspaces);
+  const integrations = new Integrations(database, resolvedSecrets, workspaces, {
+    baseUrl: config.baseUrl,
+    // New connector tools reach the agents' next runs.
+    changed: (workspaceId) => {
+      threads
+        .reloadTools(workspaceId)
+        .catch((error: unknown) =>
+          console.error("reloading the tools failed", error)
+        );
+    },
+  });
   const hands = new Hands(database, resolvedSecrets, workspaces, {
     baseUrl: config.baseUrl,
     binaryDirectory: HANDS_BINARIES,
@@ -110,8 +120,8 @@ export async function createApp(
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),
       changed: (workspaceId) => indexer.touch(workspaceId),
-      tools: (workspaceId) => [
-        ...routines.tools(workspaceId),
+      tools: async (workspaceId) => [
+        ...(await routines.tools(workspaceId)),
         ...reminders.tools(workspaceId),
       ],
       read: readText,
@@ -155,6 +165,7 @@ export async function closeApp(app: App): Promise<void> {
   app.routines.close();
   await app.indexer.close();
   await app.threads.closeAll();
+  await app.integrations.close();
   await app.hands.close();
   app.database.close();
 }

@@ -391,7 +391,7 @@ const hooks = {
   recall: async () => ({ results: [] }),
   read: async () => null,
   picture: async () => null,
-  tools: () => [],
+  tools: async () => [],
 };
 const noMachines = {
   file: () => Promise.reject(new Error("No machines are paired.")),
@@ -399,7 +399,7 @@ const noMachines = {
   tools: () => [],
   section: () => ({ key: "machines", render: () => undefined }),
 };
-const noIntegrations = { tools: () => [] };
+const noIntegrations = { tools: async () => [], namespaces: () => [] };
 const noArtifacts = {
   content: () => "",
   inWorkspace: () => [],
