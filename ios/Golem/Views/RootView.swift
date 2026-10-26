@@ -3,6 +3,7 @@ import SwiftUI
 /// Login, then the open workspace. Every screen reads the server through `Session`.
 struct RootView: View {
     @State private var session = Session()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -21,6 +22,11 @@ struct RootView: View {
         .tint(Tokens.Colors.accent)
         .task(id: session.signedIn) {
             if session.signedIn { await session.load() }
+        }
+        .task(id: "\(session.signedIn) \(Push.shared.token ?? "")") { await session.registerDevice() }
+        // Threads read on screen read their notifications, so the inbox and the app icon load again.
+        .onChange(of: scenePhase) {
+            if scenePhase != .inactive { Task { try? await session.loadInbox() } }
         }
     }
 }
@@ -53,6 +59,7 @@ enum Destination: Hashable {
     case artifact(channel: String?, artifact: String)
     case channelDetails(String)
     case thread(String)
+    case inbox
     case workspaceSettings
     case settings
 
@@ -116,6 +123,8 @@ private struct SplitView: View {
                     ChannelDetailsView(channelID: id, open: open).id(id)
                 case let .thread(id):
                     ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
+                case .inbox:
+                    InboxView(open: open).id(session.workspace?.id)
                 case .workspaceSettings:
                     WorkspaceSettingsView().id(session.workspace?.id)
                 case .settings:
@@ -129,8 +138,17 @@ private struct SplitView: View {
         .onAppear {
             showArtifacts = sizeClass == .regular
             openHome()
+            openTapped()
         }
-        .onChange(of: session.workspace?.id) { openHome() }
+        .onChange(of: session.workspace?.id) {
+            openHome()
+            openTapped()
+        }
+        .onChange(of: Push.shared.tapped) { openTapped() }
+    }
+
+    private func openTapped() {
+        if let destination = session.takeTapped() { open(destination) }
     }
 
     private func open(_ destination: Destination) {
@@ -177,6 +195,7 @@ private struct Sidebar: View {
                     row("Golem", systemImage: "tray", destination: .thread(orchestrator.id),
                         working: session.working.contains(orchestrator.id))
                 }
+                row("Inbox", systemImage: "bell", destination: .inbox, count: session.inbox?.unread)
                 row("Search", systemImage: "magnifyingglass", destination: .search)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels) { channel in
@@ -266,12 +285,15 @@ private struct Sidebar: View {
     }
 
     private func row(
-        _ title: String, systemImage: String, destination: Destination, working: Bool = false
+        _ title: String, systemImage: String, destination: Destination, working: Bool = false, count: Int? = nil
     ) -> some View {
         Button {
             open(destination)
         } label: {
-            NavRow(title: title, systemImage: systemImage, selected: selection == destination, working: working)
+            NavRow(
+                title: title, systemImage: systemImage, selected: selection == destination,
+                count: count == 0 ? nil : count, working: working
+            )
         }
         .buttonStyle(.plain)
     }

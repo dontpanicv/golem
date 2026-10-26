@@ -38,11 +38,20 @@ struct PhoneShell: View {
         // Linear's glass buttons and menus are plain white or black; fields keep the accent for their cursor.
         .tint(Tokens.Mobile.Colors.title)
         .animation(Tokens.Easing.ease(Tokens.Duration.fast), value: showMore)
-        .onAppear { bar.select = select }
+        .onAppear {
+            bar.select = select
+            openTapped()
+        }
         .onChange(of: session.workspace?.id) {
             paths = [:]
             bar.tab = .golem
+            openTapped()
         }
+        .onChange(of: Push.shared.tapped) { openTapped() }
+    }
+
+    private func openTapped() {
+        if let destination = session.takeTapped() { open(destination) }
     }
 
     /// A tap in the bar: More opens its menu, the round button talks, and a tap on the open tab goes back to its
@@ -90,10 +99,18 @@ struct PhoneShell: View {
             ChannelDetailsView(channelID: id, open: open).id(id)
         case let .thread(id):
             WithArtifacts { ConversationView(threadID: id, showArtifacts: $0, open: open) }.id(id)
-        case .workspaceSettings:
-            WorkspaceSettingsView().id(session.workspace?.id)
-        case .settings:
-            SettingsView()
+        case .inbox, .workspaceSettings, .settings:
+            moreScreen(destination)
+        }
+    }
+
+    /// A screen of the More menu.
+    @ViewBuilder
+    private func moreScreen(_ destination: Destination) -> some View {
+        switch destination {
+        case .inbox: InboxView(open: open).id(session.workspace?.id)
+        case .workspaceSettings: WorkspaceSettingsView().id(session.workspace?.id)
+        default: SettingsView()
         }
     }
 
@@ -107,7 +124,7 @@ struct PhoneShell: View {
             bar.tab = .golem
         case .search:
             bar.tab = .search
-        case .settings, .workspaceSettings:
+        case .inbox, .settings, .workspaceSettings:
             bar.more = destination
             paths[.more] = []
             bar.tab = .more
@@ -244,6 +261,7 @@ struct FloatingTabBar: View {
 extension Destination {
     var title: String {
         switch self {
+        case .inbox: "Inbox"
         case .workspaceSettings: "Workspace settings"
         case .settings: "Settings"
         case .search: "Search"
@@ -253,6 +271,7 @@ extension Destination {
 
     var systemImage: String {
         switch self {
+        case .inbox: "bell"
         case .workspaceSettings: "person.2"
         case .settings: "gearshape"
         default: "magnifyingglass"
@@ -283,9 +302,10 @@ private struct MoreMenu: View {
                     row("Search", systemImage: "magnifyingglass", selected: bar.tab == .search) {
                         bar.select(.tab(.search))
                     }
-                    ForEach([Destination.workspaceSettings, .settings], id: \.self) { destination in
+                    ForEach([Destination.inbox, .workspaceSettings, .settings], id: \.self) { destination in
                         row(destination.title, systemImage: destination.systemImage,
-                            selected: bar.tab == .more && bar.more == destination) { open(destination) }
+                            selected: bar.tab == .more && bar.more == destination,
+                            count: destination == .inbox ? session.inbox?.unread ?? 0 : 0) { open(destination) }
                     }
                 }
                 .padding(9)
@@ -335,7 +355,7 @@ private struct MoreMenu: View {
     }
 
     private func row(
-        _ title: String, systemImage: String, selected: Bool, action: @escaping () -> Void
+        _ title: String, systemImage: String, selected: Bool, count: Int = 0, action: @escaping () -> Void
     ) -> some View {
         Button {
             close()
@@ -347,6 +367,11 @@ private struct MoreMenu: View {
                     .frame(width: 21)
                 Text(title).font(.golem(Tokens.Mobile.FontSize.menu, Tokens.FontWeight.medium))
                 Spacer(minLength: 0)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
+                        .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+                }
             }
             .foregroundStyle(Tokens.Mobile.Colors.title)
             .padding(.horizontal, 12)

@@ -13,6 +13,7 @@ import {
   fauxProvider,
 } from "@earendil-works/pi-ai/providers/faux";
 import { until } from "../../test/harness.ts";
+import type { NotificationInput } from "../notifications/notifications.ts";
 import {
   migrate,
   openDatabase,
@@ -404,6 +405,14 @@ const noArtifacts = {
   inWorkspace: () => [],
   tools: () => [],
 };
+const noNotifications = {
+  notify: (input: NotificationInput) => ({
+    ...input,
+    id: "notification",
+    createdAt: 0,
+    readAt: null,
+  }),
+};
 const noBrowser = {
   pdf: () => Promise.reject(new Error("There is no browser.")),
   screenshot: async () => null,
@@ -468,6 +477,8 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     },
     setChannelSummary: () => undefined,
     touchThread: () => undefined,
+    agentMember: () => ({ id: "user-1", name: "Alice", email: "" }),
+    members: () => [],
   };
   const threads = new Threads(
     dataDirectory,
@@ -477,6 +488,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     noIntegrations,
     noArtifacts,
     noBrowser,
+    noNotifications,
     hooks
   );
   return { threads, registry, thread: (id: string) => registry.thread(id) };
@@ -599,6 +611,7 @@ describe("Threads with the Llm", () => {
         noIntegrations,
         noArtifacts,
         noBrowser,
+        noNotifications,
         hooks
       );
       try {

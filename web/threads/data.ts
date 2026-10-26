@@ -130,18 +130,32 @@ export function useThreadStream(
     () => streamed.get(threadId)?.running ?? false
   );
   useEffect(() => {
-    const source = new EventSource(`/api/v1/threads/${threadId}/events`);
-    source.addEventListener("thread", (event) => {
-      const state = JSON.parse(event.data) as ThreadState;
-      streamed.set(threadId, state);
-      write(threadId, state);
-      setRunning(state.running);
-      for (const listener of waiting.get(threadId) ?? []) {
-        listener(state);
-      }
-      onChange();
-    });
-    return () => source.close();
+    let source: EventSource | undefined;
+    // A hidden page closes the stream, so Golem sends this thread's notifications as pushes.
+    const follow = () => {
+      source?.close();
+      source = document.hidden ? undefined : open();
+    };
+    const open = () => {
+      const stream = new EventSource(`/api/v1/threads/${threadId}/events`);
+      stream.addEventListener("thread", (event) => {
+        const state = JSON.parse(event.data) as ThreadState;
+        streamed.set(threadId, state);
+        write(threadId, state);
+        setRunning(state.running);
+        for (const listener of waiting.get(threadId) ?? []) {
+          listener(state);
+        }
+        onChange();
+      });
+      return stream;
+    };
+    follow();
+    document.addEventListener("visibilitychange", follow);
+    return () => {
+      document.removeEventListener("visibilitychange", follow);
+      source?.close();
+    };
   }, [threadId, onChange]);
   return running;
 }

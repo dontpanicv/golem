@@ -1867,6 +1867,17 @@ a {
 .search-row .meta {
   white-space: nowrap;
 }
+.inbox-row .unread {
+  flex: none;
+  width: var(--size-dot);
+  height: var(--size-dot);
+  margin-top: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+}
+.inbox-row .unread.is-read {
+  visibility: hidden;
+}
 .search-mode {
   padding: 0 var(--space-md) var(--space-md);
   font-size: var(--font-size-sm);

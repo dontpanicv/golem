@@ -6,6 +6,7 @@ import { keyed } from "../app/collections.ts";
 import { queryClient } from "../app/query.ts";
 import type {
   Channel,
+  Inbox,
   Member,
   ThreadSummary,
   User,
@@ -93,6 +94,22 @@ export const threadsOf = keyed((workspaceId: string) =>
     })
   )
 );
+
+/** The person's notifications in a workspace, newest first; the sidebar shows how many are unread. */
+export function inboxQuery(workspaceId: string) {
+  return queryOptions({
+    queryKey: ["workspaces", workspaceId, "notifications"],
+    queryFn: ({ signal }) =>
+      request<Inbox>(`/workspaces/${workspaceId}/notifications`, { signal }),
+  });
+}
+
+/** Loads the inbox again: a run that ends or a thread that opens changes it. */
+export function refreshInbox(workspaceId: string): Promise<void> {
+  return queryClient.invalidateQueries({
+    queryKey: inboxQuery(workspaceId).queryKey,
+  });
+}
 
 /** The workspace's thread that never ends; the first request makes it. */
 export function orchestratorQuery(workspaceId: string) {

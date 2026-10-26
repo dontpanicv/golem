@@ -42,6 +42,7 @@ import type {
   WorkspaceTool,
 } from "../integrations/integrations.ts";
 import type { Llm } from "../llm/llm.ts";
+import type { Notifications } from "../notifications/notifications.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type {
@@ -205,8 +206,10 @@ export interface RecallResult {
 export type ThreadRegistry = Pick<
   Workspaces,
   | "addChannel"
+  | "agentMember"
   | "channel"
   | "channelsIn"
+  | "members"
   | "removeChannel"
   | "orchestratorOf"
   | "registerThread"
@@ -240,6 +243,9 @@ export type ThreadArtifacts = Pick<
 
 /** The browser that agents visit websites with. */
 export type ThreadBrowser = Pick<Browser, "pdf" | "screenshot" | "tools">;
+
+/** The inboxes of the workspace's people, which agents fill when something needs them. */
+export type ThreadNotifications = Pick<Notifications, "notify">;
 
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
@@ -279,6 +285,7 @@ export class Threads {
     private readonly integrations: ThreadIntegrations,
     private readonly artifacts: ThreadArtifacts,
     private readonly browser: ThreadBrowser,
+    private readonly notifications: ThreadNotifications,
     private readonly hooks: ThreadHooks
   ) {}
 
@@ -382,13 +389,14 @@ export class Threads {
 
   /**
    * Gives a thread's agent work that no person typed, and waits for its answer. The transcript shows only the answer,
-   * and not an answer of exactly `QUIET`. Returns the answer, or `null` for a quiet one. `requestId` makes a retry
-   * find the work it gave before.
+   * and not an answer of exactly `QUIET`, and the answer notifies the members `notify` names. Returns the answer, or
+   * `null` for a quiet one. `requestId` makes a retry find the work it gave before.
    */
   async instruct(
-    thread: ThreadRef,
+    thread: ThreadSummary & ThreadRef,
     text: string,
-    requestId: string
+    requestId: string,
+    notify: readonly string[] | "everyone"
   ): Promise<string | null> {
     const conversation = await this.conversation(thread);
     await this.useCurrentAgent(thread.workspaceId, conversation);
@@ -417,6 +425,13 @@ export class Threads {
     this.registry.touchThread(thread.id);
     if (answer.failed) {
       throw new Error(answer.text);
+    }
+    const userIds =
+      notify === "everyone"
+        ? this.members(thread.workspaceId).map((member) => member.userId)
+        : notify;
+    for (const userId of userIds) {
+      this.notifyAbout(thread, userId, answer.text);
     }
     return answer.text;
   }
@@ -627,7 +642,16 @@ export class Threads {
 
   /** The thread whose agent sent the message a thread works on, if another thread's agent sent it. */
   private async askedBy(thread: ThreadRef): Promise<string | undefined> {
-    const conversation = await this.conversation(thread);
+    const input = await this.latestInput(await this.conversation(thread));
+    return input?.kind === RELAYED
+      ? (input.data as unknown as Relay).fromThreadId
+      : undefined;
+  }
+
+  /** The newest message an agent works on: a person's, another thread's agent's, or work that no person typed. */
+  private async latestInput(
+    conversation: Conversation
+  ): Promise<EntryRecord | undefined> {
     let cursor: Awaited<ReturnType<Conversation["entries"]>>["next"];
     do {
       const page = await conversation.entries(
@@ -640,13 +664,68 @@ export class Threads {
         [AUTHORED, RELAYED, TASK].includes(entry.kind)
       );
       if (input) {
-        return input.kind === RELAYED
-          ? (input.data as unknown as Relay).fromThreadId
-          : undefined;
+        return input;
       }
       cursor = page.next;
     } while (cursor);
     return undefined;
+  }
+
+  /**
+   * Notifies the person whose message an agent answered, when its run ends. Work that no person typed notifies
+   * through `instruct`. Work that another thread's agent gave notifies only a person who also writes in this thread,
+   * such as in the orchestrator when a channel thread reports back to it.
+   */
+  private async notifyFinished(
+    workspaceId: string,
+    threadId: string
+  ): Promise<void> {
+    const thread = this.registry
+      .threadsIn(workspaceId)
+      .find((candidate) => candidate.id === threadId);
+    if (!thread) {
+      return;
+    }
+    const input = await this.latestInput(await this.conversation(thread));
+    const userId = input && requesterIdOf(input);
+    if (!(input && userId)) {
+      return;
+    }
+    const { messages } = await this.messages(thread);
+    const answer = messages.at(-1);
+    if (
+      answer?.agent &&
+      answer.id !== String(input.id) &&
+      !answer.streaming &&
+      !answer.work?.stopped &&
+      messages.some((message) => message.authorId === userId)
+    ) {
+      this.notifyAbout(thread, userId, answer.text);
+    }
+  }
+
+  /** A notification that opens the thread. */
+  private notifyAbout(
+    thread: ThreadSummary & ThreadRef,
+    userId: string,
+    text: string
+  ): void {
+    this.notifications.notify({
+      workspaceId: thread.workspaceId,
+      userId,
+      channelId: thread.channelId,
+      threadId: thread.id,
+      title: thread.title,
+      text,
+    });
+  }
+
+  /** The members of a workspace, for work that no person started. */
+  private members(workspaceId: string) {
+    return this.registry.members(
+      workspaceId,
+      this.registry.agentMember(workspaceId)
+    );
   }
 
   /**
@@ -1213,6 +1292,7 @@ export class Threads {
         this.readThreadTool(workspaceId),
         this.startThreadTool(workspaceId),
         this.sendToThreadTool(workspaceId),
+        this.notifyTool(workspaceId),
         this.listFilesTool(workspaceId),
         this.readFileTool(workspaceId),
         this.saveFileTool(workspaceId),
@@ -1248,9 +1328,17 @@ export class Threads {
       throw error;
     });
     const changes = await harness.watchTaskGraph(BACKGROUND_CONTEXT);
-    changes.start(async () => {
+    let working = this.workingIn(workspaceId, changes.value);
+    changes.start(async (graph) => {
       this.hooks.changed(workspaceId);
       this.catchUp(workspaceId);
+      const now = this.workingIn(workspaceId, graph);
+      for (const threadId of working.filter((id) => !now.includes(id))) {
+        this.notifyFinished(workspaceId, threadId).catch((error: unknown) =>
+          console.error("notifying a finished run failed", error)
+        );
+      }
+      working = now;
     });
     // Continue runs that a previous process left unfinished.
     harness.resume();
@@ -1569,6 +1657,72 @@ export class Threads {
         this.registry.touchThread(target.id);
         return {
           output: [{ type: "text", text: `Sent to ${threadLink(target)}.` }],
+        };
+      },
+    });
+  }
+
+  private notifyTool(workspaceId: string) {
+    return defineTool({
+      name: "notify",
+      description:
+        "Notify people of this workspace about something that needs their attention and that nobody waits for, such as what you found in work nobody asked for now. It goes to their inbox and their phone, and opens this thread or its channel. Do not notify about your answer to a person's message, or about the answer of a routine or a reminder: those notify already.",
+      parameters: Type.Object({
+        text: Type.String({
+          description: "What needs attention, in one or two sentences",
+        }),
+        to: Type.Optional(
+          Type.Array(
+            Type.String({ description: "Name of a member of this workspace" }),
+            {
+              description:
+                "Without it: the person who asked in this thread, or else every member",
+            }
+          )
+        ),
+        open: Type.Optional(
+          Type.Union([Type.Literal("thread"), Type.Literal("channel")], {
+            description: "What the notification opens; thread by default",
+          })
+        ),
+      }),
+      execute: async (args, api) => {
+        const thread = this.threadOf(workspaceId, api.conversationId);
+        const members = this.members(workspaceId);
+        const requester = await this.requester(workspaceId, api.conversationId);
+        const recipients = args.to?.length
+          ? args.to.map((name) => {
+              const member = members.find(
+                (candidate) =>
+                  candidate.name.toLowerCase() === name.trim().toLowerCase()
+              );
+              if (!member) {
+                throw new Error(
+                  `Nobody named ${name} is a member. Members: ${members.map((candidate) => candidate.name).join(", ")}.`
+                );
+              }
+              return member;
+            })
+          : members.filter(
+              (member) => !requester || member.userId === requester.id
+            );
+        for (const member of recipients) {
+          this.notifications.notify({
+            workspaceId,
+            userId: member.userId,
+            channelId: thread.channelId,
+            threadId: args.open === "channel" ? null : thread.id,
+            title: thread.title,
+            text: args.text,
+          });
+        }
+        return {
+          output: [
+            {
+              type: "text",
+              text: `Notified ${recipients.map((member) => member.name).join(", ")}.`,
+            },
+          ],
         };
       },
     });
@@ -2187,6 +2341,16 @@ interface Authored extends JsonObject {
   readonly authorId: string;
   readonly text: string;
   readonly files: FileRef[];
+}
+
+/** The person a message is for: its author, or the person whose request another thread's agent passes on. */
+function requesterIdOf(input: EntryRecord): string | null {
+  if (input.kind === AUTHORED) {
+    return (input.data as unknown as Authored).authorId;
+  }
+  return input.kind === RELAYED
+    ? (input.data as unknown as Relay).requesterId
+    : null;
 }
 
 /** The agent sees the attached files by name and id, which read_file takes. */

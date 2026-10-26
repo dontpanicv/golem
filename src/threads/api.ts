@@ -59,11 +59,17 @@ export const threadApiRoutes: readonly Route[] = [
     "/api/v1/threads/:thread/events",
     api(async ({ app, user, params }) => {
       const thread = app.workspaces.thread(params.thread!, user);
-      return eventStream((send) =>
-        app.threads.watch(thread, (state) =>
+      return eventStream(async (send) => {
+        const stop = await app.threads.watch(thread, (state) =>
           send("thread", { thread: summary(thread), ...state })
-        )
-      );
+        );
+        // While a screen follows the thread, its person sees what happens there and gets no notification for it.
+        const unwatch = app.notifications.watch(user, thread.id);
+        return async () => {
+          unwatch();
+          await stop();
+        };
+      });
     }),
   ],
   [

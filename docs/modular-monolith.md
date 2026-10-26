@@ -31,6 +31,7 @@ src/
 ├── integrations/            The connectors, their tools, and the credentials of each workspace
 ├── artifacts/               The pages and small apps agents make for a channel, their link pages, and their data
 ├── browser/                 The headless Chrome of each thread, which agents visit websites with
+├── notifications/           Each person's inbox, the devices that get pushes, and the APNs sender
 ├── threads/                 One Pi Durable session per workspace, a conversation per thread, the agent tools, and the
 │                            files of each channel
 ├── search/                  Extraction, embeddings, and the index of each workspace
@@ -49,7 +50,7 @@ Each module has the same files, when it needs them:
 | `*.test.ts` | The tests of the module |
 
 `search/` also has internal files: `extract.ts`, `embedder.ts`, and `workspace-index.ts`; `hands/` has
-`connection.ts` and `tools.ts`; `llm/` has `search.ts` and `tools.ts`; `artifacts/`, `browser/`, and `routines/` have `tools.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
+`connection.ts` and `tools.ts`; `llm/` has `search.ts` and `tools.ts`; `artifacts/`, `browser/`, and `routines/` have `tools.ts`; `notifications/` has `apns.ts`. The `hands` daemon itself, in Rust, is in the top-level `hands/` folder.
 
 ## The web app
 
@@ -62,7 +63,7 @@ module uses only `app/`, `ui/`, and the modules before it, and never the server'
 ## Rules
 
 1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
-   `artifacts`, `browser`, `threads`, `search`, `routines`, `reminders`. A module uses only the modules before it. `platform/` uses no module.
+   `artifacts`, `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.

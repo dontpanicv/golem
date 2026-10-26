@@ -10,8 +10,8 @@ import { dirname } from "node:path";
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential` and `integration_setting` (no longer read), `llm` owns `provider_credential` and its keys in `setting`,
  * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
- * `routines` owns `routine` and `routine_run`, and `reminders` owns `reminder`. Start a new migration with a comment
- * that names its owner.
+ * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, and `notifications` owns `notification` and
+ * `push_device`. Start a new migration with a comment that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (
@@ -189,6 +189,28 @@ const migrations = [
 	);
 	CREATE INDEX reminder_due ON reminder (next_attempt_at) WHERE delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL;
 	CREATE INDEX reminder_workspace ON reminder (workspace_id, due_at);`,
+  // notifications: what needs a person's attention, which opens a thread or a channel, and the devices that get pushes.
+  `CREATE TABLE notification (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		channel_id TEXT NOT NULL,
+		thread_id TEXT,
+		title TEXT NOT NULL,
+		text TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		read_at INTEGER
+	);
+	CREATE INDEX notification_inbox ON notification (user_id, workspace_id, created_at);
+	CREATE TABLE push_device (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		token TEXT NOT NULL,
+		environment TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		deleted_at INTEGER
+	);
+	CREATE INDEX push_device_user ON push_device (user_id) WHERE deleted_at IS NULL;`,
 ];
 
 export function openDatabase(path: string): Database {

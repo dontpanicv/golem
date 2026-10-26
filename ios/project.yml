@@ -30,6 +30,11 @@ targets:
       - path: Golem
     dependencies:
       - package: FluidAudio
+    entitlements:
+      path: Golem/Golem.entitlements
+      properties:
+        # Development-signed builds get their pushes from the APNs sandbox.
+        aps-environment: development
     info:
       path: Golem/Info.plist
       properties:

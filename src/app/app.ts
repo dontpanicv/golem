@@ -1,11 +1,13 @@
 import type { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Artifacts } from "../artifacts/artifacts.ts";
 import { Browser, browserRequirements } from "../browser/browser.ts";
 import { Hands, handsRequirements } from "../hands/hands.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
+import { apnsPush } from "../notifications/apns.ts";
+import { Notifications } from "../notifications/notifications.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
@@ -29,6 +31,7 @@ export interface App {
   readonly workspaces: Workspaces;
   readonly integrations: Integrations;
   readonly artifacts: Artifacts;
+  readonly notifications: Notifications;
   readonly indexer: Indexer;
   readonly routines: Routines;
   readonly reminders: Reminders;
@@ -79,6 +82,19 @@ export async function createApp(
     indexer.touch(workspaceId)
   );
   const browser = new Browser();
+  const notifications = new Notifications(
+    database,
+    workspaces,
+    config.apns
+      ? apnsPush({
+          ...config.apns,
+          privateKey: readFileSync(
+            join(config.configDirectory, "apns.p8"),
+            "utf8"
+          ),
+        })
+      : null
+  );
   // The recall port points at the indexer too; files read as search reads them.
   // The routine tools come from routines, which runs its work in threads.
   const threads: Threads = new Threads(
@@ -89,6 +105,7 @@ export async function createApp(
     integrations,
     artifacts,
     browser,
+    notifications,
     {
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),
@@ -126,6 +143,7 @@ export async function createApp(
     workspaces,
     integrations,
     artifacts,
+    notifications,
     indexer,
     routines,
     reminders,

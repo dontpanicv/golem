@@ -16,6 +16,7 @@ struct ConversationView: View {
     @State private var sending = false
     @State private var preview: URL?
     @Environment(\.phoneTabBar) private var tabBar
+    @Environment(\.scenePhase) private var scenePhase
 
     private var talk: VoiceChat { VoiceSession.shared.talk }
 
@@ -95,7 +96,10 @@ struct ConversationView: View {
         }
         .quickLookPreview($preview)
         .onAppear { if artifactID != nil { showArtifacts = true } }
-        .task { await follow() }
+        // In the background the stream closes, so Golem sends this thread's notifications as pushes.
+        .task(id: scenePhase == .background) {
+            if scenePhase != .background { await follow() }
+        }
         // Thread links in messages open the thread here instead of leaving the app.
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "thread" else { return .systemAction }

@@ -220,7 +220,8 @@ export class Reminders {
       const answer = await this.threads.instruct(
         thread,
         `One-time reminder ${reminder.id} was due at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}). It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. Answer in this thread.`,
-        `reminder:${reminder.id}:${reminder.attempts}`
+        `reminder:${reminder.id}:${reminder.attempts}`,
+        [reminder.recipientId]
       );
       if (!answer) {
         throw new Error("The agent gave no reminder.");

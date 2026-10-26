@@ -21,6 +21,13 @@ export interface Config {
   readonly allowedEmails: readonly string[];
   /** The Google OAuth client for sign-in; see google-sign-in.md. */
   readonly google: { readonly clientId: string; readonly clientSecret: string };
+  /** The APNs key that sends pushes to the iOS app, kept in `config/apns.p8`; `null` sends none. */
+  readonly apns: {
+    readonly keyId: string;
+    readonly teamId: string;
+    /** The iOS app's bundle id. */
+    readonly topic: string;
+  } | null;
 }
 
 const TEMPLATE = `# Golem configuration. Golem created this file on first start; edit it and restart Golem.
@@ -44,6 +51,12 @@ allowed_emails = []
 [google]
 client_id = ""
 client_secret = ""
+
+# The Apple Push Notification service key that sends notifications to the iOS app. Put the key in config/apns.p8.
+# [apns]
+# key_id = "ABC123DEFG"
+# team_id = "DEF123GHIJ"
+# topic = "dev.golem.app"
 `;
 
 /** Reads `config/golem.toml`, creating `config/` and `data/` with defaults on first start. */
@@ -60,6 +73,7 @@ export async function readConfig(
   }
   const values = Bun.TOML.parse(await file.text()) as Record<string, unknown>;
   const google = (values.google ?? {}) as Record<string, unknown>;
+  const apns = values.apns as Record<string, unknown> | undefined;
   return {
     configDirectory,
     dataDirectory,
@@ -77,6 +91,13 @@ export async function readConfig(
       clientId: text(google.client_id, "google.client_id"),
       clientSecret: text(google.client_secret, "google.client_secret"),
     },
+    apns: apns
+      ? {
+          keyId: text(apns.key_id, "apns.key_id"),
+          teamId: text(apns.team_id, "apns.team_id"),
+          topic: text(apns.topic, "apns.topic"),
+        }
+      : null,
   };
 }
 

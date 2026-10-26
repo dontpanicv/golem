@@ -180,6 +180,13 @@ Used by the workspace switcher and action menus.
   `medium` `text`, meta at the right in `fontSize.sm` `book` `textTertiary`. Rows that open something turn
   `fillSubtle` under the pointer at once.
 
+## Inbox
+
+- The sidebar's Inbox item, after Golem, shows the unread count. The page lists notifications newest first as search
+  rows: an icon (the thread's, or `hash` for a channel), the title, the text in `textTertiary`, the day, and a
+  `size.dot` `accent` dot while unread. A click reads it and opens its thread or channel. The header's check button
+  reads them all. iOS has the same screen in the More menu and the sidebar, with the count at the right of its row.
+
 ## Conversation
 
 - Message: avatar, then the author in `medium` `text` and the time in `fontSize.sm` `textQuaternary`; the text in
@@ -250,7 +257,7 @@ with Dynamic Type. iPad keeps the sidebar with the same screens.
   19 pt, `title`. The fourth slot is the More chevron, 54 wide; after a screen is picked from the menu it shows that
   screen's icon and a small chevron, 78 wide. A 48 pt glass circle 12 pt to its side starts a conversation with Golem.
 - More menu: a 320 wide glass card, radius 36, level with the bar: the workspace switcher (a native menu) on a 66 pt
-  row, a hairline, then Golem, Channels, Search, Workspace settings, and Settings as 45 pt rows with 17 pt `medium`
+  row, a hairline, then Golem, Channels, Search, Inbox, Workspace settings, and Settings as 45 pt rows with 17 pt `medium`
   text and 21 pt icons; the open screen sits on a `menuSelected` capsule. A tap outside closes it.
 - Screen title: in the navigation bar at its leading edge, 12 pt from the screen edge, level with the 44 pt glass
   buttons at the trailing edge; `fontSize.title` `semibold`. Pushed screens show the round glass back button and put

@@ -3,6 +3,7 @@ const paths = {
   hash: '<path d="M6 2.5 5 13.5M11 2.5l-1 11M2.5 6h11M2 10h11"/>', // number
   plus: '<path d="M8 3v10M3 8h10"/>', // plus
   search: '<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>', // magnifyingglass
+  bell: '<path d="M4.5 11V7a3.5 3.5 0 0 1 7 0v4l1 1.5h-9z"/><path d="M6.75 14h2.5"/>', // bell
   compose:
     '<path d="M13 8.5V13a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 13V4a.5.5 0 0 1 .5-.5H8"/><path d="m12 2.5 1.5 1.5L8 9.5 6 10l.5-2z"/>', // square.and.pencil
   sidebar:

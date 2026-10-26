@@ -34,6 +34,21 @@ type Channel = {
 	summary: string | null; // what the channel is for and what goes on in it, as the model last wrote it with the brief
 	threads: ThreadSummary[]; // newest first
 };
+type Notification = {
+	id: string;
+	workspaceId: string;
+	channelId: string;
+	threadId: string | null; // null: it opens the channel
+	title: string; // the thread's title
+	text: string; // plain text
+	createdAt: number;
+	readAt: number | null;
+};
+type Inbox = {
+	notifications: Notification[]; // the 100 newest, newest first
+	unread: number; // in this workspace
+	badge: number; // unread in all the person's workspaces, for the app icon
+};
 type Brief = {
 	text: string; // Markdown with thread links, [title](thread:<threadId>)
 	updatedAt: number;
@@ -203,8 +218,28 @@ Each channel has a brief, which the model writes again from the new messages of 
 quiet for 10 minutes or settled, and the channel's summary with it. Every thread of the channel reads the brief and the
 list of the channel's threads before each answer: see `src/threads/brief.ts`.
 
+The web app keeps a text message that it cannot send yet, such as without a connection, and sends it later with a
+`requestId`, so a message that reached Golem before its response was lost stays one message.
+
 `voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud, and
 the message steers a run at work instead of waiting for it to end.
+
+### Notifications (`src/notifications/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/notifications` | | `Inbox` |
+| `POST /api/v1/workspaces/:workspaceId/notifications/read` | `{ id? }` | `Inbox`; marks one notification read, or all of them without `id` |
+| `POST /api/v1/devices` | `{ token, environment: "sandbox" \| "production" }` | `204`; the device gets the person's pushes, and no more of another person's |
+| `DELETE /api/v1/devices/:token` | | `204`; the device gets no more of the person's pushes |
+
+A notification goes to a person's inbox when the agent answers their message, when a channel thread reports back to
+a thread they write in, for each answer of a routine (to every member) or a reminder (to its recipient) that is not
+`QUIET`, and when an agent calls its `notify` tool. While a screen of the person follows the thread's events stream,
+its notifications are read at once and send no push; opening the stream reads the thread's notifications. Others go
+to the person's devices through APNs, with the `Inbox.badge` and `workspaceId`, `channelId`, and `threadId` to open.
+Close the events stream when the screen goes to the background. Pushes need `[apns]` in `config/golem.toml` and the
+key in `config/apns.p8`.
 
 ### Artifacts (`src/artifacts/`)
 
@@ -218,9 +253,6 @@ the message steers a run at work instead of waiting for it to end.
 | `POST /api/v1/artifacts/:artifactId/rpc` | `{ op, args }` | `{ result }`: a call of the artifact's `golem` runtime, as the signed-in user |
 | `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes |
 | `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |
-The web app keeps a text message that it cannot send yet, such as without a connection, and sends it later with a
-`requestId`, so a message that reached Golem before its response was lost stays one message.
-
 
 An artifact is a page or a small app that an agent makes in a thread with its `create_artifact`, `update_artifact`,
 `edit_artifact`, `read_artifact`, `list_artifacts`, `artifact_data`, and `set_artifact_data` tools. It belongs to the

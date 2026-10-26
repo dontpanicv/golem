@@ -3,6 +3,8 @@ import UIKit
 
 @main
 struct GolemApp: App {
+    @UIApplicationDelegateAdaptor private var appDelegate: AppDelegate
+
     init() {
         // Navigation titles use Inter like the rest of the app.
         let appearance = UINavigationBar.appearance()

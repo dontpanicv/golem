@@ -218,3 +218,21 @@ export interface LlmStatus {
   } | null;
   readonly error: string | null;
 }
+
+/** Something that needs the person: it opens its thread, or its channel without one. */
+export interface Notification {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly channelId: string;
+  readonly threadId: string | null;
+  readonly title: string;
+  readonly text: string;
+  readonly createdAt: number;
+  readonly readAt: number | null;
+}
+
+export interface Inbox {
+  readonly notifications: readonly Notification[];
+  readonly unread: number;
+  readonly badge: number;
+}

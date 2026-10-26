@@ -177,6 +177,13 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (script) {
     return call("codemode", { code: script[1]! });
   }
+  const notify = /Notify (\w+): (.+)$/.exec(text);
+  if (notify) {
+    return fauxAssistantMessage(
+      [fauxToolCall("notify", { text: notify[2]!, to: [notify[1]!] })],
+      { stopReason: "toolUse" }
+    );
+  }
   const other = /Tell thread ([\w-]+) hi$/.exec(text);
   if (other) {
     return call("send_to_thread", { thread: other[1]!, message: "Hi" });
@@ -270,6 +277,70 @@ test("an agent starts a thread in another channel, gets the answer back, and can
       /^\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem from \[Ask #food what's for dinner\]\(thread:[\w-]+\): What's for dinner\?$/
     )
   );
+  // Alice hears back in her thread; the thread that worked for it asked her nothing.
+  const { notifications } = await until(
+    async () => golem.app.notifications.inbox(family.id, alice),
+    (inbox) => inbox.notifications.length > 0
+  );
+  expect(
+    notifications.every((notification) => notification.threadId === asked.id)
+  ).toBe(true);
+});
+
+test("an answer notifies the person who asked unless a screen of theirs shows the thread, and agents and background work notify too", async () => {
+  const home = await golem.app.workspaces.create(alice, "Notified");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const inboxOf = (member: User) =>
+    golem.app.notifications.inbox(home.id, member);
+  const asked = await golem.app.threads.create(
+    home.id,
+    alice,
+    general!.id,
+    "Hello"
+  );
+  const [answered] = (
+    await until(
+      async () => inboxOf(alice),
+      (state) => state.notifications.length === 1
+    )
+  ).notifications;
+  expect(answered).toMatchObject({
+    threadId: asked.id,
+    channelId: general!.id,
+    title: "Hello",
+    text: "Ok.",
+    readAt: null,
+  });
+
+  const unwatch = golem.app.notifications.watch(alice, asked.id);
+  expect(inboxOf(alice).unread).toBe(0);
+  await golem.app.threads.send(
+    asked.id,
+    alice,
+    "Notify Bob: The groceries came"
+  );
+  const seen = await until(
+    async () => inboxOf(alice),
+    (state) => state.notifications.length === 2
+  );
+  unwatch();
+  expect(seen.notifications[0]).toMatchObject({ text: "Done." });
+  expect(seen.unread).toBe(0);
+  expect(inboxOf(bob).notifications).toEqual([
+    expect.objectContaining({
+      threadId: asked.id,
+      text: "The groceries came",
+      readAt: null,
+    }),
+  ]);
+
+  const thread = golem.app.workspaces
+    .threadsIn(home.id)
+    .find((candidate) => candidate.id === asked.id)!;
+  await golem.app.threads.instruct(thread, "Check the mail", "mail", [bob.id]);
+  expect(inboxOf(bob).unread).toBe(2);
+  expect(inboxOf(alice).notifications).toHaveLength(2);
 });
 
 test("an agent lists the channels of its workspace and cannot reach a thread of another workspace", async () => {
@@ -1429,6 +1500,7 @@ function savingThreads(
       tools: () => [],
       ...browser,
     },
+    golem.app.notifications,
     {
       changed: () => undefined,
       recall: async () => ({ results: [] }),

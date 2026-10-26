@@ -54,7 +54,7 @@ addresses, or code and data from employers or clients.
 ## Modules
 
 - `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `artifacts`,
-  `browser`, `threads`, `search`, `routines`, `reminders`) holds one domain: its service, routes, and tests. `src/platform/`
+  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`) holds one domain: its service, routes, and tests. `src/platform/`
   is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
 - A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` from
   routes. A module reads only the tables it owns. `test/architecture.test.ts` enforces these rules;

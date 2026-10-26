@@ -380,7 +380,7 @@ export class Routines {
         .query("UPDATE routine SET thread_id = ? WHERE id = ?")
         .run(thread.id, routine.id);
     }
-    return this.threads.instruct(thread, text, `routine:${runId}`);
+    return this.threads.instruct(thread, text, `routine:${runId}`, "everyone");
   }
 
   private async execute(

@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import SwiftUI
 import Security
+import UserNotifications
 
 /// The signed-in user, their workspaces, and the open workspace with its channels.
 @Observable
@@ -23,6 +24,8 @@ final class Session {
     private(set) var orchestrator: ThreadSummary?
     /// The threads of the open workspace whose agent works.
     private(set) var working: Set<String> = []
+    /// The open workspace's notifications.
+    private(set) var inbox: Inbox?
     /// The last failure of `load()`, shown with a retry button while no user is loaded.
     private(set) var loadError: String?
     /// The toast at the top of the screen: the last failure of an action, or a confirmation.
@@ -58,8 +61,15 @@ final class Session {
     }
 
     func signOut() async {
+        if let token = Push.shared.token { try? await api.removeDevice(token: token) }
         try? await api.signOut()
         clear()
+    }
+
+    /// Sends this device's token to Golem, so the person's notifications come to it as pushes.
+    func registerDevice() async {
+        guard signedIn, let token = Push.shared.token else { return }
+        try? await api.addDevice(token: token, environment: Push.environment)
     }
 
     /// Loads the user and the workspaces, then opens the last workspace.
@@ -73,6 +83,7 @@ final class Session {
             if let workspace = profile.workspaces.first(where: { $0.id == last }) ?? profile.workspaces.first {
                 try await open(workspace)
             }
+            await Push.register()
         } catch {
             guard signedIn else { return }
             if user == nil { loadError = error.localizedDescription } else { show(error.localizedDescription, .error) }
@@ -88,6 +99,42 @@ final class Session {
         channels = detail.channels
         self.orchestrator = orchestrator
         UserDefaults.standard.set(workspace.id, forKey: Keys.workspaceID)
+        try? await loadInbox()
+    }
+
+    // MARK: Notifications
+
+    /// Loads the open workspace's notifications, and shows the unread ones of every workspace on the app icon.
+    func loadInbox() async throws {
+        guard let workspace else { return }
+        update(try await api.inbox(workspaceID: workspace.id))
+    }
+
+    /// Marks one notification read, or all of the open workspace's for a nil `id`.
+    func readNotifications(_ id: String?) async throws {
+        guard let workspace else { return }
+        update(try await api.readNotifications(workspaceID: workspace.id, id: id))
+    }
+
+    /// The screen of the push the person tapped, once its workspace is open; it opens that workspace first, and the
+    /// change of workspace asks again.
+    func takeTapped() -> Destination? {
+        guard let tapped = Push.shared.tapped, let workspace else { return nil }
+        if tapped.workspaceID == workspace.id {
+            Push.shared.tapped = nil
+            return tapped.destination
+        }
+        if let other = workspaces.first(where: { $0.id == tapped.workspaceID }) {
+            Task { await run { try await open(other) } }
+        } else {
+            Push.shared.tapped = nil
+        }
+        return nil
+    }
+
+    private func update(_ inbox: Inbox) {
+        self.inbox = inbox
+        UNUserNotificationCenter.current().setBadgeCount(inbox.badge)
     }
 
     func createWorkspace(name: String) async throws {
@@ -185,7 +232,9 @@ final class Session {
         workspace = nil
         channels = []
         orchestrator = nil
+        inbox = nil
         loadError = nil
+        UNUserNotificationCenter.current().setBadgeCount(0)
     }
 
     private enum Keys {

@@ -5,6 +5,7 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 import { LoginPage } from "../accounts/login.tsx";
+import { InboxPage } from "../notifications/page.tsx";
 import { ChannelDetailsPage } from "../routines/details.tsx";
 import { SearchPage } from "../search/page.tsx";
 import { SettingsPage, WorkspaceSettingsPage } from "../settings/pages.tsx";
@@ -114,6 +115,12 @@ const thread = createRoute({
   component: ThreadPage,
 });
 
+const inbox = createRoute({
+  getParentRoute: () => workspace,
+  path: "/inbox",
+  component: InboxPage,
+});
+
 const searchRoute = createRoute({
   getParentRoute: () => workspace,
   path: "/search",
@@ -140,6 +147,7 @@ export const router = createRouter({
         channel,
         channelDetails,
         thread,
+        inbox,
         searchRoute,
         workspaceSettings,
       ]),

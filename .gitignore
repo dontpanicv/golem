@@ -40,6 +40,7 @@ data
 # generated iOS project (run xcodegen in ios/)
 ios/Golem.xcodeproj
 ios/Golem/Info.plist
+ios/Golem/Golem.entitlements
 ios/build
 ios/Config/Local.xcconfig
 

@@ -31,8 +31,10 @@ import { Icon, type IconName } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
 import {
   channelsOf,
+  inboxQuery,
   meQuery,
   orchestratorQuery,
+  refreshInbox,
   refreshWorkspace,
   setSettled,
   threadsOf,
@@ -172,6 +174,8 @@ function useWorking(workspaceId: string | undefined): ReadonlySet<string> {
       const { threadIds } = JSON.parse(event.data) as { threadIds: string[] };
       setWorking(new Set(threadIds));
       refreshWorkspace(workspaceId);
+      // A run that ends notifies a moment later.
+      setTimeout(() => refreshInbox(workspaceId), 1000);
     });
     return () => {
       source.close();
@@ -296,6 +300,13 @@ function WorkspaceNav({
   onNewChannel: () => void;
 }) {
   const orchestrator = useQuery(orchestratorQuery(workspaceId)).data;
+  const unread = useQuery(inboxQuery(workspaceId)).data?.unread;
+  const { pathname } = useLocation();
+  // An open thread reads its notifications.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: it runs when the page changes
+  useEffect(() => {
+    refreshInbox(workspaceId);
+  }, [workspaceId, pathname]);
   const { data: channels = [] } = useLiveQuery({
     query: (q) =>
       q
@@ -333,6 +344,13 @@ function WorkspaceNav({
               />
             </Link>
           ) : null}
+          <Link
+            className="nav-item"
+            params={{ workspaceId }}
+            to="/w/$workspaceId/inbox"
+          >
+            <NavContent count={unread} icon="bell" label="Inbox" />
+          </Link>
           <Link
             className="nav-item"
             params={{ workspaceId }}
@@ -434,17 +452,21 @@ export function NavContent({
   icon,
   label,
   threadId,
+  count,
 }: {
   icon: IconName;
   label: string;
   /** A thread whose spinner shows while its agent works. */
   threadId?: string;
+  /** Shows when it is more than 0. */
+  count?: number;
 }) {
   return (
     <>
       <Icon name={icon} />
       <span className="label">{label}</span>
       {threadId ? <WorkingSpinner threadId={threadId} /> : null}
+      {count ? <span className="count">{count}</span> : null}
     </>
   );
 }

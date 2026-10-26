@@ -333,3 +333,23 @@ final class APIClient {
         try JSONDecoder().decode(Response.self, from: data)
     }
 }
+
+/// The inbox and the devices that get pushes.
+extension APIClient {
+    func inbox(workspaceID: String) async throws -> Inbox {
+        try await get("/api/v1/workspaces/\(workspaceID)/notifications")
+    }
+
+    /// Marks one notification read, or all of the workspace's for a nil `id`.
+    func readNotifications(workspaceID: String, id: String?) async throws -> Inbox {
+        try await post("/api/v1/workspaces/\(workspaceID)/notifications/read", id.map { ["id": $0] } ?? [:])
+    }
+
+    func addDevice(token: String, environment: String) async throws {
+        _ = try await send("POST", "/api/v1/devices", ["token": token, "environment": environment])
+    }
+
+    func removeDevice(token: String) async throws {
+        _ = try await send("DELETE", "/api/v1/devices/\(token)")
+    }
+}

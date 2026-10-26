@@ -69,6 +69,28 @@ struct WorkingThreads: Codable, Hashable {
     let threadIds: [String]
 }
 
+/// Something that needs the person: it opens its thread, or its channel without one.
+struct InboxNotification: Codable, Hashable, Identifiable {
+    let id: String
+    let workspaceId: String
+    let channelId: String
+    let threadId: String?
+    let title: String
+    let text: String
+    let createdAt: Double
+    let readAt: Double?
+
+    var destination: Destination { threadId.map { .thread($0) } ?? .channel(channelId) }
+}
+
+struct Inbox: Codable, Hashable {
+    let notifications: [InboxNotification]
+    /// Unread in this workspace.
+    let unread: Int
+    /// Unread in all the person's workspaces, which the app icon shows.
+    let badge: Int
+}
+
 struct FileRef: Codable, Hashable, Identifiable {
     let id: String
     let name: String

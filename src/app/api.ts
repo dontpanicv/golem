@@ -51,13 +51,24 @@ export function eventStream(
   const encoder = new TextEncoder();
   let stop: (() => Promise<void>) | undefined;
   let ping: ReturnType<typeof setInterval> | undefined;
+  // A watcher can still send while its stop runs, after the client has gone.
+  let cancelled = false;
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: string, data: unknown) =>
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        );
-      stop = await start(send);
+      const send = (event: string, data: unknown) => {
+        if (!cancelled) {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        }
+      };
+      const stopping = await start(send);
+      if (cancelled) {
+        // The client went before the watcher started, so nothing else stops it.
+        await stopping();
+        return;
+      }
+      stop = stopping;
       // Comments keep proxies and idle timers from closing a quiet stream.
       ping = setInterval(
         () => controller.enqueue(encoder.encode(": ping\n\n")),
@@ -65,6 +76,7 @@ export function eventStream(
       );
     },
     async cancel() {
+      cancelled = true;
       clearInterval(ping);
       await stop?.();
     },
