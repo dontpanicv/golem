@@ -131,7 +131,7 @@ const INSTRUCTIONS =
   "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. Your answers are the memory: the brief of the channel and the memory of the workspace keep only the messages of people and your answers, never what you gave to tools or what tools gave you. So say in your answer what will matter later: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as 'Rivalové: watched on 26 October', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as 'Pressure (2026).md', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, do not save it again; say the change in your answer. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread's channel, which the model writes again from its threads, and the channel's threads: use it first, then read_thread and recall for more. Your answers show as Markdown: use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. Show a picture with ![what it shows](file:<id>) for a file of this channel, or with its https address for a picture on the web. To show a screenshot or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file, use a machine: copy_to_machine puts a file there, and save_file brings the result back.";
 /** Added to `INSTRUCTIONS` for the orchestrator, the one thread of a workspace that never ends. */
 const ORCHESTRATOR =
-  "This thread is the orchestrator of the workspace: one thread that never ends, where the family talks to you first. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the family in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the family what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of every thread of the workspace, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
+  "This thread is the orchestrator of the workspace: one thread that never ends, where the family talks to you first. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the family in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the family what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of every thread of the workspace, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
 /** The largest file that save_file copies from a machine. */
 const MAX_MACHINE_FILE = 1024 ** 3;
 /** The largest file that save_file downloads from the web. */
@@ -170,6 +170,8 @@ interface Relay extends JsonObject {
   readonly fromTitle: string;
   readonly hops: number;
   readonly text: string;
+  readonly requesterId: string | null;
+  readonly requesterName: string | null;
 }
 
 export interface ThreadHooks {
@@ -415,6 +417,48 @@ export class Threads {
       throw new Error(answer.text);
     }
     return answer.text;
+  }
+
+  /** The person whose latest request reached an agent, also through a thread relay. */
+  async requester(
+    workspaceId: string,
+    conversationId: ConversationId
+  ): Promise<User | null> {
+    const thread = this.threadOf(workspaceId, conversationId);
+    const conversation = await this.conversation(thread);
+    let cursor: Parameters<Conversation["entries"]>[2];
+    do {
+      const page = await conversation.entries(
+        { order: "descending" },
+        50,
+        cursor,
+        BACKGROUND_CONTEXT
+      );
+      const input = page.items.find(
+        (entry) => entry.kind === AUTHORED || entry.kind === RELAYED
+      );
+      if (input?.kind === AUTHORED) {
+        const { authorId, author } = input.data as unknown as Authored;
+        const user = { id: authorId, name: author, email: "" };
+        this.registry.requireMember(workspaceId, user);
+        return user;
+      }
+      if (input?.kind === RELAYED) {
+        const relay = input.data as unknown as Relay;
+        if (relay.requesterId && relay.requesterName) {
+          const user = {
+            id: relay.requesterId,
+            name: relay.requesterName,
+            email: "",
+          };
+          this.registry.requireMember(workspaceId, user);
+          return user;
+        }
+        return null;
+      }
+      cursor = page.next;
+    } while (cursor);
+    return null;
   }
 
   /**
@@ -954,7 +998,7 @@ export class Threads {
       .map((message) => ({
         threadId: thread.id,
         messageId: Number(message.id),
-        text: `${where}${saidText(message)}`,
+        text: `${where}${minute(message.time)} UTC ${saidText(message)}`,
       }));
   }
 
@@ -1415,7 +1459,10 @@ export class Threads {
           messages
             .filter((message) => !message.streaming)
             .slice(-(args.limit ?? 20))
-            .map((message) => `${message.author}: ${message.text}`)
+            .map(
+              (message) =>
+                `${minute(message.time)} UTC ${message.author}: ${message.text}`
+            )
             .join("\n") || "The thread has no messages.";
         return { output: [{ type: "text", text }] };
       },
@@ -1445,6 +1492,7 @@ export class Threads {
           workspaceId,
           api.conversationId
         );
+        const requester = await this.requester(workspaceId, api.conversationId);
         const channels = this.registry.channelsIn(workspaceId);
         const name = args.channel?.replace(/^#/, "").toLowerCase();
         const channel = name
@@ -1476,7 +1524,7 @@ export class Threads {
         await this.deliver(
           workspaceId,
           await this.conversation(thread),
-          relayed(from, args.message, hops, `relay:${api.taskId}`)
+          relayed(from, args.message, hops, `relay:${api.taskId}`, requester)
         );
         return {
           output: [
@@ -1506,6 +1554,7 @@ export class Threads {
           workspaceId,
           api.conversationId
         );
+        const requester = await this.requester(workspaceId, api.conversationId);
         const target = this.threadIn(workspaceId, args.thread);
         if (target.id === from.id) {
           throw new Error("That is this thread. Answer here instead.");
@@ -1513,7 +1562,7 @@ export class Threads {
         await this.deliver(
           workspaceId,
           await this.conversation(target),
-          relayed(from, args.message, hops, `relay:${api.taskId}`)
+          relayed(from, args.message, hops, `relay:${api.taskId}`, requester)
         );
         this.registry.touchThread(target.id);
         return {
@@ -2150,7 +2199,7 @@ function authored(user: User, text: string, files: readonly FileRef[]) {
     ? `\nAttached: ${files.map((file) => `${file.name} (file ${file.id})`).join(", ")}`
     : "";
   return {
-    content: `${user.name}: ${text}${attached}`,
+    content: `${minute(Date.now())} UTC ${user.name}: ${text}${attached}`,
     entry: { kind: AUTHORED, data },
   };
 }
@@ -2259,16 +2308,19 @@ function relayed(
   from: ThreadSummary & ThreadRef,
   text: string,
   hops: number,
-  requestId: string
+  requestId: string,
+  requester: User | null
 ) {
   const data: Relay = {
     fromThreadId: from.id,
     fromTitle: from.title,
     hops: hops + 1,
     text,
+    requesterId: requester?.id ?? null,
+    requesterName: requester?.name ?? null,
   };
   return {
-    content: `Golem from ${threadLink(from)}: ${text}`,
+    content: `${minute(Date.now())} UTC Golem from ${threadLink(from)}: ${text}`,
     entry: { kind: RELAYED, data },
     requestId,
   };

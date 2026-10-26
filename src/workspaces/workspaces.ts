@@ -82,6 +82,20 @@ export class Workspaces {
     return workspace;
   }
 
+  /** A workspace member for agent work that no person started, such as a routine run. */
+  agentMember(workspaceId: string): User {
+    const member = this.database
+      .query(
+        "SELECT u.id, u.name, u.email FROM member m JOIN user u ON u.id = m.userId WHERE m.organizationId = ? ORDER BY CASE WHEN m.role = 'owner' THEN 0 ELSE 1 END, m.createdAt LIMIT 1"
+      )
+      .get(workspaceId) as User | null;
+    if (!member) {
+      throw notFound();
+    }
+    this.requireMember(workspaceId, member);
+    return member;
+  }
+
   /** The workspace if `user` owns it; a member who is not an owner gets `403`. */
   requireOwner(workspaceId: string, user: User): Workspace {
     const workspace = this.requireMember(workspaceId, user);

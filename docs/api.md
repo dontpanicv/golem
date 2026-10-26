@@ -281,6 +281,12 @@ each integration through the tools of its connector. Secrets never leave the ser
 People create and change routines by asking an agent in a thread: agents have the `create_routine`,
 `update_routine`, `delete_routine`, `list_routines`, and `test_script` tools.
 
+### One-time reminders (`src/reminders/`)
+
+Agents in every thread of a workspace, including its orchestrator, have `create_reminder`, `list_reminders`,
+`update_reminder`, and `cancel_reminder`. A reminder belongs to that workspace and its source thread. It runs once when
+its saved UTC time is due, or when Golem starts again after that time. Reminders have no user-facing web or JSON routes.
+
 ### Machines (`src/hands/`)
 
 | Request | Body | Response |

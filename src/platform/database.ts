@@ -9,8 +9,9 @@ import { dirname } from "node:path";
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential` and `integration_setting` (no longer read), `llm` owns `provider_credential` and its keys in `setting`,
- * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`, and
- * `routines` owns `routine` and `routine_run`. Start a new migration with a comment that names its owner.
+ * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
+ * `routines` owns `routine` and `routine_run`, and `reminders` owns `reminder`. Start a new migration with a comment
+ * that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (
@@ -168,6 +169,26 @@ const migrations = [
   `ALTER TABLE artifact ADD COLUMN channel_id TEXT;
 	UPDATE artifact SET channel_id = (SELECT CASE WHEN orchestrator = 1 THEN NULL ELSE channel_id END FROM thread WHERE thread.id = artifact.thread_id);
 	CREATE INDEX artifact_channel ON artifact (channel_id);`,
+  // reminders: one due time, tied to the person and thread that asked for it.
+  `CREATE TABLE reminder (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		thread_id TEXT NOT NULL,
+		recipient_id TEXT NOT NULL,
+		text TEXT NOT NULL,
+		due_at INTEGER NOT NULL,
+		time_zone TEXT NOT NULL,
+		attempts INTEGER NOT NULL DEFAULT 0,
+		next_attempt_at INTEGER NOT NULL,
+		last_error TEXT,
+		delivered_at INTEGER,
+		cancelled_at INTEGER,
+		deleted_at INTEGER,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE INDEX reminder_due ON reminder (next_attempt_at) WHERE delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL;
+	CREATE INDEX reminder_workspace ON reminder (workspace_id, due_at);`,
 ];
 
 export function openDatabase(path: string): Database {

@@ -33,6 +33,8 @@ const toolResults: string[] = [];
 const memoryViews: string[] = [];
 /** The system prompts of the agents' requests. */
 const systemPrompts: string[] = [];
+/** The user messages as the model receives them. */
+const agentInputs: string[] = [];
 
 beforeAll(async () => {
   golem = await startTestApp();
@@ -81,6 +83,9 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   systemPrompts.push(system);
   const last = context.messages.at(-1)!;
   const text = textOf(last);
+  if (last.role === "user") {
+    agentInputs.push(text);
+  }
   const asked = context.messages.find((message) => message.role === "user");
   if (asked && textOf(asked).endsWith("Delegate and wait")) {
     if (last.role === "user") {
@@ -139,9 +144,10 @@ function agent(context: Context, options?: SimpleStreamOptions) {
     // A third pass would let two agents talk forever.
     return call("send_to_thread", { thread: relay[1]!, message: "Thanks" });
   }
-  const file = /^Alice: Read the file\nAttached: .* \(file ([\w-]+)\)$/.exec(
-    text
-  );
+  const file =
+    /^\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: Read the file\nAttached: .* \(file ([\w-]+)\)$/.exec(
+      text
+    );
   if (file) {
     return call("read_file", { file: file[1]! });
   }
@@ -188,7 +194,11 @@ function agent(context: Context, options?: SimpleStreamOptions) {
       { stopReason: "toolUse" }
     );
   }
-  if (/^Alice: Turn on the lights\n\n\(Spoken in a conversation: /.test(text)) {
+  if (
+    /^\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: Turn on the lights\n\n\(Spoken in a conversation: /.test(
+      text
+    )
+  ) {
     return fauxAssistantMessage("Done.");
   }
   return fauxAssistantMessage("Ok.");
@@ -205,6 +215,7 @@ async function idle(workspaceId: string, threadId: string) {
 }
 
 test("an agent starts a thread in another channel, gets the answer back, and cannot keep the exchange going", async () => {
+  const inputCount = agentInputs.length;
   const family = await golem.app.workspaces.create(alice, "Family");
   const food = golem.app.workspaces.createChannel(family.id, alice, "food");
   const general = golem.app.workspaces
@@ -249,6 +260,16 @@ test("an agent starts a thread in another channel, gets the answer back, and can
   );
   expect(toolResults).toContainEqual(
     `Sent to [Ask #food what's for dinner](thread:${asked.id}).`
+  );
+  expect(agentInputs.slice(inputCount)).toContainEqual(
+    expect.stringMatching(
+      /^\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: Ask #food what's for dinner$/
+    )
+  );
+  expect(agentInputs.slice(inputCount)).toContainEqual(
+    expect.stringMatching(
+      /^\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem from \[Ask #food what's for dinner\]\(thread:[\w-]+\): What's for dinner\?$/
+    )
   );
 });
 
@@ -946,17 +967,17 @@ test("the orchestrator compacts into a view of its memory, and its agent zooms i
   await said(`Here is the manual: ${"word ".repeat(50_000)}`, 8);
   const zoomed = await said("Zoom 0", 10);
   const view = memoryViews;
-  expect(view[0]).toContain(
-    "0+1|Alice: The wifi password is on the fridge\n1+1|Golem: Ok.\n2+1|Alice: Bring the tent"
+  expect(view[0]).toMatch(
+    /0\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: The wifi password is on the fridge\n1\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem: Ok.\n2\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: Bring the tent/
   );
-  expect(view[0]).toContain("5+1|Golem: Ok.");
+  expect(view[0]).toMatch(/5\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem: Ok\./);
   expect(view[0]).not.toContain("Here is the manual");
   // The transcript keeps the messages that the compaction took out of the model's context.
   expect(zoomed.messages[0]!.text).toBe("The wifi password is on the fridge");
   expect(zoomed.messages.at(-1)!.text).toBe("Done.");
   expect(toolResults).toContainEqual(
     expect.stringMatching(
-      /^Message 0, \d{4}-\d\d-\d\d \d\d:\d\d UTC:\nAlice: The wifi password is on the fridge$/
+      /^Message 0, \d{4}-\d\d-\d\d \d\d:\d\d UTC:\n\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: The wifi password is on the fridge$/
     )
   );
 });

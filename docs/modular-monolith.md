@@ -1,7 +1,7 @@
 # Modular monolith
 
 The server is one process with one `golem.sqlite`, split into modules. A module is a vertical slice of one domain:
-its service, its JSON routes, its web routes and pages, and its tests. Modules talk to each other only through their
+its service, its tests, and its routes and pages when people use them directly. Modules talk to each other only through their
 entry file. `test/architecture.test.ts` enforces the rules on this page.
 
 ## Why
@@ -36,6 +36,7 @@ src/
 │                            channel page with the files of each channel
 ├── search/                  Extraction, embeddings, the index of each workspace, and the search page
 ├── routines/                Scheduled scripts and instructions of each channel, their runs, and the channel details page
+├── reminders/               One-time workspace reminders and their agent tools; no user routes
 └── settings/                The settings pages, which show sections of several modules
 ```
 
@@ -56,7 +57,7 @@ Each module has the same files, when it needs them:
 ## Rules
 
 1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
-   `artifacts`, `browser`, `threads`, `search`, `routines`, `settings`. A module uses only the modules before it. `platform/` uses no module.
+   `artifacts`, `browser`, `threads`, `search`, `routines`, `reminders`, `settings`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts` and `workspaces/shell.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.

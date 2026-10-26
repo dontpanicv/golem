@@ -35,6 +35,7 @@ const server = Layer.unwrap(
       const app = await createApp(config, chatGpt, undefined, embedder);
       app.indexer.start();
       app.routines.start();
+      app.reminders.start();
       return app;
     }),
     (app) =>

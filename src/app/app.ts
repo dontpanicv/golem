@@ -11,6 +11,7 @@ import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
 import type { Requirement } from "../platform/requirements.ts";
 import { Secrets } from "../platform/secrets.ts";
+import { Reminders } from "../reminders/reminders.ts";
 import { Routines } from "../routines/routines.ts";
 import { type Embedder, embedderRequirements } from "../search/embedder.ts";
 import { extractRequirements, jpeg, readText } from "../search/extract.ts";
@@ -30,6 +31,7 @@ export interface App {
   readonly artifacts: Artifacts;
   readonly indexer: Indexer;
   readonly routines: Routines;
+  readonly reminders: Reminders;
 }
 
 const HANDS_BINARIES = resolve(import.meta.dir, "../../hands/dist");
@@ -91,7 +93,10 @@ export async function createApp(
       recall: (workspaceId, query, limit) =>
         indexer.search(workspaceId, query, limit),
       changed: (workspaceId) => indexer.touch(workspaceId),
-      tools: (workspaceId) => routines.tools(workspaceId),
+      tools: (workspaceId) => [
+        ...routines.tools(workspaceId),
+        ...reminders.tools(workspaceId),
+      ],
       read: readText,
       picture: jpeg,
     }
@@ -110,6 +115,7 @@ export async function createApp(
     threads,
     indexer
   );
+  const reminders = new Reminders(database, workspaces, threads);
   return {
     config,
     database,
@@ -122,10 +128,12 @@ export async function createApp(
     artifacts,
     indexer,
     routines,
+    reminders,
   };
 }
 
 export async function closeApp(app: App): Promise<void> {
+  app.reminders.close();
   app.routines.close();
   await app.indexer.close();
   await app.threads.closeAll();

@@ -36,6 +36,7 @@ addresses, or code and data from employers or clients.
 - The web app and the iOS app have the same functionality. Every feature is a web page or Datastar endpoint in
   `src/<module>/web.ts` and a JSON endpoint in `src/<module>/api.ts`, documented in `docs/api.md`, and both call the
   module's service in `src/<module>/<module>.ts`.
+- Reminders are agent-only: their create, list, change, and cancel operations are tools, with no user routes.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
 - Serve HTML that an agent or a person wrote only from `/a/:id/content`, with its `sandbox` content policy; never run
   it on Golem's origin.
@@ -43,7 +44,7 @@ addresses, or code and data from employers or clients.
 ## Modules
 
 - `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `artifacts`,
-  `browser`, `threads`, `search`, `routines`, `settings`) holds one domain: its service, routes, pages, and tests. `src/platform/`
+  `browser`, `threads`, `search`, `routines`, `reminders`, `settings`) holds one domain: its service, routes, pages, and tests. `src/platform/`
   is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
 - A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` and
   `workspaces/shell.ts` from routes and pages. A module reads only the tables it owns. `test/architecture.test.ts`

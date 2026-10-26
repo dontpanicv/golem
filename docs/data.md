@@ -69,7 +69,7 @@ data/
 | Data | Where | Format |
 | --- | --- | --- |
 | People, sessions, workspaces, members | `golem.sqlite` (better-auth tables) | SQLite |
-| Channels, threads, credentials, routines and their runs | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
+| Channels, threads, credentials, routines and their runs, one-time reminders | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
 | The workspace's memory and the channel briefs: summaries of the messages of all threads, which the model wrote | `memory.sqlite` | SQLite; the table `node` is the orchestrator's memory before it read all threads, which nothing reads now |
