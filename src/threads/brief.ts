@@ -29,6 +29,8 @@ Answer in this form, and with nothing else:
 Rules for the brief:
 - At most ${BRIEF_BYTES} bytes of Markdown. Leave out a heading that has nothing under it.
 - One item per list line. End each item with the link of the thread it comes from, exactly as the messages give it: [title](thread:<id>).
+- Keep the links of files and artifacts exactly as the messages give them: [name](file:<id>), [title](artifact:<id>).
+- For a list of many things, such as movies or recipes, keep how many there are and the newest few; list_files and recall find the rest.
 - Give each decision its date. When a new message changes a decision, keep the old one as "replaced by … on <date>". Remove replaced items only when the brief is too long.
 - Keep the wishes of each person under their name. Never merge the wishes of two people.
 - Remove what is done or no longer true from "Now" and "Open questions".

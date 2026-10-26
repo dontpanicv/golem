@@ -68,7 +68,7 @@ export function artifactTools(
   return [
     defineTool({
       name: "create_artifact",
-      description: `Make an artifact and give its link to the people. It belongs to the channel of this thread, or to another channel you name, and stays there after the thread is settled; the orchestrator's belong to the workspace. Before you make one, look for an artifact to change with list_artifacts or recall. ${RUNTIME}`,
+      description: `Make an artifact and give its link to the people. It belongs to the channel of this thread, or to another channel you name, and stays there after the thread is settled; the orchestrator's belong to the workspace. Before you make one, look for an artifact to change with list_artifacts or recall. Never use an artifact to keep facts or a list; save files and say them in your answer. ${RUNTIME}`,
       parameters: Type.Object({
         title: Type.String({
           description: "A short title; link previews show it",
