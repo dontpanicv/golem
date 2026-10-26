@@ -60,8 +60,11 @@ describe("the web app", () => {
       const html = await page.text();
       expect(html).toContain('<div id="root"></div>');
       const script = /src="(\/app\/[^"]+\.js)"/.exec(html)![1]!;
-      const file = await golem.call(script);
+      const file = await golem.call(script, {
+        headers: { "accept-encoding": "gzip, br" },
+      });
       expect(file.headers.get("cache-control")).toContain("immutable");
+      expect(file.headers.get("content-encoding")).toBe("gzip");
     }
     expect((await golem.call("/nothing-here")).status).toBe(404);
     expect((await golem.call("/app/..%2F..%2Fpackage.json")).status).toBe(404);

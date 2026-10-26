@@ -49,13 +49,44 @@ async function fileIn(
   if (!(path.startsWith(directory + sep) && (await file.exists()))) {
     return new Response("Not found", { status: 404 });
   }
-  return new Response(file, {
-    headers: {
-      "cache-control": immutable
-        ? "public, max-age=31536000, immutable"
-        : "no-cache",
-    },
-  });
+  const headers = {
+    "cache-control": immutable
+      ? "public, max-age=31536000, immutable"
+      : "no-cache",
+  };
+  if (immutable && compressible(request, path)) {
+    return new Response(await gzipped(path), {
+      headers: {
+        ...headers,
+        "content-type": file.type,
+        "content-encoding": "gzip",
+        vary: "accept-encoding",
+      },
+    });
+  }
+  return new Response(file, { headers });
+}
+
+/** The app's scripts and styles shrink to a third with gzip, which matters most on a slow connection. */
+function compressible(request: Request, path: string): boolean {
+  return (
+    /\.(js|css)$/.test(path) &&
+    /\bgzip\b/.test(request.headers.get("accept-encoding") ?? "")
+  );
+}
+
+/** A built file never changes under its name, so it is compressed once. */
+const compressed = new Map<string, Promise<Uint8Array>>();
+
+function gzipped(path: string): Promise<Uint8Array> {
+  let bytes = compressed.get(path);
+  if (!bytes) {
+    bytes = Bun.file(path)
+      .bytes()
+      .then((content) => Bun.gzipSync(content));
+    compressed.set(path, bytes);
+  }
+  return bytes;
 }
 
 /**
