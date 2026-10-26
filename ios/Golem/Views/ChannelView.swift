@@ -92,7 +92,11 @@ struct ChannelView: View {
         .quickLookPreview($preview)
         .onAppear { if artifactID != nil { showArtifacts = true } }
         .sheet(isPresented: $confirmDelete) {
-            DeleteChannelDialog(name: channel?.name ?? "") {
+            DeleteDialog(
+                title: "Delete #\(channel?.name ?? "")?",
+                message: "Its threads, files, artifacts, and routines go with it.",
+                submit: "Delete channel"
+            ) {
                 try await session.deleteChannel(channelID: channelID)
                 if let orchestrator = session.orchestrator { open(.thread(orchestrator.id)) }
             }
@@ -135,37 +139,6 @@ struct ChannelView: View {
                 }
             }
             sending = false
-        }
-    }
-}
-
-/// Asks before a channel goes with its threads, files, artifacts, and routines. It stays open when deleting fails.
-private struct DeleteChannelDialog: View {
-    let name: String
-    let delete: () async throws -> Void
-    @Environment(Session.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    @State private var busy = false
-
-    var body: some View {
-        Dialog(title: "Delete #\(name)?") {
-            Text("Its threads, files, artifacts, and routines go with it.")
-                .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.regular))
-                .foregroundStyle(Tokens.Colors.textSecondary)
-        } actions: {
-            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
-            Button("Delete channel") {
-                busy = true
-                Task {
-                    await session.run {
-                        try await delete()
-                        dismiss()
-                    }
-                    busy = false
-                }
-            }
-            .buttonStyle(.golem(.danger, .large))
-            .disabled(busy)
         }
     }
 }

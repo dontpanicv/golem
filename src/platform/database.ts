@@ -7,10 +7,10 @@ import { dirname } from "node:path";
  * `member`, and `invitation`; it migrates them itself. Append a migration; never edit one that shipped.
  *
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
- * `organization` and `member`), `integrations` owns `credential` and `integration_setting` (no longer read), `llm` owns
- * `provider_credential` and its keys in `setting`, `hands` owns `machine`, `artifacts` owns `artifact`,
- * `artifact_name`, `artifact_visitor`, and `artifact_record`, and `routines` owns `routine` and `routine_run`. Start
- * a new migration with a comment that names its owner.
+ * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
+ * `credential` and `integration_setting` (no longer read), `llm` owns `provider_credential` and its keys in `setting`,
+ * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`, and
+ * `routines` owns `routine` and `routine_run`. Start a new migration with a comment that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (

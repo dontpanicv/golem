@@ -425,6 +425,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     requireMember: (workspaceId: string) => ({
       id: workspaceId,
       name: "Family",
+      role: "owner",
     }),
     registerThread: (
       workspaceId: string,

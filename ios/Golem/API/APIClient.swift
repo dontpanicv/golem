@@ -30,6 +30,12 @@ final class APIClient {
         try await post("/api/v1/workspaces", ["name": name])
     }
     func workspace(_ id: String) async throws -> WorkspaceDetail { try await get("/api/v1/workspaces/\(id)") }
+    func renameWorkspace(_ id: String, name: String) async throws -> Workspace {
+        try decode(try await send("PUT", "/api/v1/workspaces/\(id)", ["name": name]).data)
+    }
+    func deleteWorkspace(_ id: String) async throws {
+        _ = try await send("DELETE", "/api/v1/workspaces/\(id)")
+    }
 
     /// The workspace's thread that never ends; the first call makes it.
     func orchestrator(workspaceID: String) async throws -> ThreadSummary {

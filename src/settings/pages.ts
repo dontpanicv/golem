@@ -12,7 +12,7 @@ import {
   settingsCard,
   settingsRow,
 } from "../platform/ui/components.ts";
-import { membersSection } from "../workspaces/pages.ts";
+import { membersSection, workspaceSection } from "../workspaces/pages.ts";
 import { type ShellContext, shell } from "../workspaces/shell.ts";
 import type { Member } from "../workspaces/workspaces.ts";
 
@@ -26,7 +26,10 @@ export function workspaceSettingsPage(
 ): string {
   const main = pageContent(
     `${escapeHtml(context.workspace!.name)}`,
-    pageSection("Members", membersSection(context.workspace!.id, members)) +
+    (context.workspace!.role === "owner"
+      ? pageSection("Workspace", workspaceSection(context.workspace!))
+      : "") +
+      pageSection("Members", membersSection(context.workspace!.id, members)) +
       pageSection(
         "Machines",
         machinesSection(context.workspace!.id, hands.machines, hands.pairing)

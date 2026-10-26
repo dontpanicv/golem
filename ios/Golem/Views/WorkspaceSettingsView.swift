@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Members, machines, and integrations of the open workspace.
+/// The name, members, machines, and integrations of the open workspace; only an owner renames or deletes it.
 struct WorkspaceSettingsView: View {
     @Environment(Session.self) private var session
     @State private var members: [Member] = []
@@ -9,11 +9,33 @@ struct WorkspaceSettingsView: View {
     @State private var integrations: [Integration] = []
     @State private var email = ""
     @State private var addingTo: Integration?
+    @State private var name = ""
+    @State private var confirmDelete = false
 
     private var workspaceID: String { session.workspace?.id ?? "" }
+    private var renamed: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && name != session.workspace?.name
+    }
 
     var body: some View {
         SettingsList {
+            if session.workspace?.role == "owner" {
+                SettingsCard(title: "Workspace") {
+                    HStack(spacing: Tokens.Space.md) {
+                        GolemTextField(nil, placeholder: "Name", text: $name)
+                            .onSubmit(rename)
+                            .accessibilityLabel("Name")
+                        Button("Save", action: rename)
+                            .buttonStyle(.secondary)
+                            .disabled(!renamed)
+                    }
+                    .padding(Tokens.Space.xl)
+                    SettingsRow("Delete workspace") {
+                        Button("Delete") { confirmDelete = true }
+                            .buttonStyle(.golem(.danger, .small))
+                    }
+                }
+            }
             SettingsCard(title: "Members") {
                 ForEach(members) { member in
                     SettingsRow(label: member.name, description: member.email) {
@@ -86,12 +108,22 @@ struct WorkspaceSettingsView: View {
         .phoneTabBar()
         .screenTitle(session.workspace?.name ?? "")
         .task { await load() }
+        .onAppear { name = session.workspace?.name ?? "" }
         .refreshable { await load() }
         .task(id: pairing) {
             // While a pairing waits, look for the machine every 2 seconds.
             while pairing != nil, !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 await loadMachines()
+            }
+        }
+        .sheet(isPresented: $confirmDelete) {
+            DeleteDialog(
+                title: "Delete \(session.workspace?.name ?? "")?",
+                message: "Its channels, threads, files, artifacts, and routines go with it.",
+                submit: "Delete workspace"
+            ) {
+                try await session.deleteWorkspace()
             }
         }
         .sheet(item: $addingTo) { integration in
@@ -130,6 +162,17 @@ struct WorkspaceSettingsView: View {
             await session.run {
                 try await session.api.removeMachine(workspaceID: workspaceID, machineID: machine.id)
                 machines.removeAll { $0.id == machine.id }
+            }
+        }
+    }
+
+    private func rename() {
+        let name = name
+        guard renamed else { return }
+        Task {
+            await session.run {
+                try await session.renameWorkspace(name: name)
+                session.show("Saved", .success)
             }
         }
     }

@@ -46,7 +46,20 @@ export function createAuth(options: AuthOptions) {
     // Accounts made with a password before Google sign-in have unverified emails; Google verifies the email.
     account: { accountLinking: { requireLocalEmailVerified: false } },
     onAPIError: { errorURL: `${options.baseUrl}/login` },
-    plugins: [organization(), bearer()],
+    plugins: [
+      organization({
+        // Deletes are soft: `Workspaces.delete` sets `deletedAt`, and better-auth's own delete would remove the rows.
+        disableOrganizationDeletion: true,
+        schema: {
+          organization: {
+            additionalFields: {
+              deletedAt: { type: "number", required: false, input: false },
+            },
+          },
+        },
+      }),
+      bearer(),
+    ],
     databaseHooks: {
       user: { create: { before: async (user) => requireAllowed(user.email) } },
       // Also on every sign-in, so removing an email from the list locks that person out.

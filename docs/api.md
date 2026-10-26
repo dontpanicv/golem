@@ -24,7 +24,7 @@ Send `Authorization: Bearer <token>` on every `/api/v1` request. A `401` respons
 
 ```ts
 type User = { id: string; name: string; email: string };
-type Workspace = { id: string; name: string };
+type Workspace = { id: string; name: string; role: "owner" | "member" }; // `role` is the person's
 type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: number; settledAt: number | null }; // times are Unix milliseconds
 type Channel = {
 	id: string;
@@ -158,6 +158,8 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[] }` |
 | `POST /api/v1/workspaces` | `{ name }` | `Workspace`; the creator becomes owner, and the workspace gets a `general` channel |
 | `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }` |
+| `PUT /api/v1/workspaces/:workspaceId` | `{ name }` | `Workspace`; `403` for a member who is not an owner |
+| `DELETE /api/v1/workspaces/:workspaceId` | | `204`; its channels, threads, files, artifacts, and routines go with it; `403` for a member who is not an owner |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
 | `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrator moves to the next channel; `409` for the last channel |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |

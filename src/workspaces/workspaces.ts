@@ -12,6 +12,8 @@ export interface ThreadRef {
 export interface Workspace {
   readonly id: string;
   readonly name: string;
+  /** The person's role: `owner` can rename and delete the workspace, `member` cannot. */
+  readonly role: string;
 }
 export interface ThreadSummary {
   readonly channelId: string;
@@ -34,6 +36,10 @@ export interface Member {
   readonly userId: string;
 }
 
+/** Leaves out the rows of deleted workspaces. */
+const LIVE =
+  "workspace_id IN (SELECT id FROM organization WHERE deletedAt IS NULL)";
+
 /**
  * Workspaces are isolated: every read and write goes through a membership check, and nothing crosses
  * workspaces except the LLM provider.
@@ -47,7 +53,7 @@ export class Workspaces {
   list(user: User): Workspace[] {
     return this.database
       .query(
-        "SELECT o.id, o.name FROM organization o JOIN member m ON m.organizationId = o.id WHERE m.userId = ? ORDER BY o.createdAt"
+        "SELECT o.id, o.name, m.role FROM organization o JOIN member m ON m.organizationId = o.id WHERE m.userId = ? AND o.deletedAt IS NULL ORDER BY o.createdAt"
       )
       .all(user.id) as Workspace[];
   }
@@ -55,7 +61,9 @@ export class Workspaces {
   /** Every workspace, for background work such as indexing that acts for no person. */
   ids(): string[] {
     return (
-      this.database.query("SELECT id FROM organization").all() as {
+      this.database
+        .query("SELECT id FROM organization WHERE deletedAt IS NULL")
+        .all() as {
         id: string;
       }[]
     ).map((row) => row.id);
@@ -65,11 +73,20 @@ export class Workspaces {
   requireMember(workspaceId: string, user: User): Workspace {
     const workspace = this.database
       .query(
-        "SELECT o.id, o.name FROM organization o JOIN member m ON m.organizationId = o.id WHERE o.id = ? AND m.userId = ?"
+        "SELECT o.id, o.name, m.role FROM organization o JOIN member m ON m.organizationId = o.id WHERE o.id = ? AND m.userId = ? AND o.deletedAt IS NULL"
       )
       .get(workspaceId, user.id) as Workspace | null;
     if (!workspace) {
       throw notFound();
+    }
+    return workspace;
+  }
+
+  /** The workspace if `user` owns it; a member who is not an owner gets `403`. */
+  requireOwner(workspaceId: string, user: User): Workspace {
+    const workspace = this.requireMember(workspaceId, user);
+    if (workspace.role !== "owner") {
+      throw new HttpError(403, "Only an owner can do this");
     }
     return workspace;
   }
@@ -88,8 +105,29 @@ export class Workspaces {
     if (!created) {
       throw new HttpError(500, "Could not create the workspace");
     }
-    const workspace = { id: created.id, name: created.name };
+    const workspace = { id: created.id, name: created.name, role: "owner" };
     this.createChannel(workspace.id, user, "general");
+    return workspace;
+  }
+
+  rename(workspaceId: string, user: User, name: string): Workspace {
+    const workspace = this.requireOwner(workspaceId, user);
+    const trimmed = required(name, "Name");
+    this.database
+      .query("UPDATE organization SET name = ? WHERE id = ?")
+      .run(trimmed, workspaceId);
+    return { ...workspace, name: trimmed };
+  }
+
+  /**
+   * Deletes a workspace that `user` owns. Nothing is removed: its rows and its folder stay, and every read leaves
+   * them out, so its channels, threads, files, artifacts, and routines go with it.
+   */
+  delete(workspaceId: string, user: User): Workspace {
+    const workspace = this.requireOwner(workspaceId, user);
+    this.database
+      .query("UPDATE organization SET deletedAt = ? WHERE id = ?")
+      .run(Date.now(), workspaceId);
     return workspace;
   }
 
@@ -113,7 +151,7 @@ export class Workspaces {
   channelsIn(workspaceId: string): Channel[] {
     const channels = this.database
       .query(
-        "SELECT id, name, summary FROM channel WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid"
+        `SELECT id, name, summary FROM channel WHERE workspace_id = ? AND deleted_at IS NULL AND ${LIVE} ORDER BY created_at, rowid`
       )
       .all(workspaceId) as Omit<Channel, "threads">[];
     const threads = this.database
@@ -259,7 +297,7 @@ export class Workspaces {
   thread(threadId: string, user: User): ThreadSummary & ThreadRef {
     const thread = this.database
       .query(
-        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.id = ? AND m.userId = ?"
+        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.id = ? AND m.userId = ? AND t.${LIVE}`
       )
       .get(threadId, user.id) as (ThreadSummary & ThreadRef) | null;
     if (!thread) {
@@ -272,7 +310,7 @@ export class Workspaces {
   threadsIn(workspaceId: string): (ThreadSummary & ThreadRef)[] {
     return this.database
       .query(
-        "SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ?"
+        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ? AND t.${LIVE}`
       )
       .all(workspaceId) as (ThreadSummary & ThreadRef)[];
   }

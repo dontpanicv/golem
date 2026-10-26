@@ -55,6 +55,26 @@ export const workspaceWebRoutes: readonly Route[] = [
   ],
   [
     "POST",
+    "/w/:workspace/rename",
+    action(settingsOf, async ({ app, user, params, fields }) => {
+      app.workspaces.rename(params.workspace!, user, fields.name!);
+      return withNotice(settingsOf({ params }), "Saved");
+    }),
+  ],
+  [
+    "POST",
+    "/w/:workspace/delete",
+    action(settingsOf, async ({ app, user, params }) => {
+      const deleted = app.workspaces.delete(params.workspace!, user);
+      const [next] = app.workspaces.list(user);
+      return withNotice(
+        next ? `/w/${next.id}/orchestrator` : "/workspaces/new",
+        `Deleted ${deleted.name}`
+      );
+    }),
+  ],
+  [
+    "POST",
     "/w/:workspace/channels",
     action(
       ({ params }) => `/w/${params.workspace}`,

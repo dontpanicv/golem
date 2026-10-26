@@ -512,3 +512,74 @@ function threadEvents(response: Response) {
     stop: () => reader.cancel(),
   };
 }
+
+test("only an owner renames and deletes a workspace, and a deleted workspace stays in the database, hidden", async () => {
+  const trip = await body(
+    await golem.call("/api/v1/workspaces", {
+      token: alice,
+      body: { name: "Trip" },
+    })
+  );
+  const path = `/api/v1/workspaces/${trip.id}`;
+  expect(
+    (await golem.call(path, { token: bob, method: "PUT", body: { name: "X" } }))
+      .status
+  ).toBe(404);
+  await golem.call(`${path}/members`, {
+    token: alice,
+    body: { email: "bob@example.com" },
+  });
+  expect(
+    await failure(
+      await golem.call(path, { token: bob, method: "PUT", body: { name: "X" } })
+    )
+  ).toEqual({ status: 403, error: "Only an owner can do this" });
+  expect(
+    await failure(await golem.call(path, { token: bob, method: "DELETE" }))
+  ).toEqual({ status: 403, error: "Only an owner can do this" });
+  expect(
+    await failure(
+      await golem.call(path, {
+        token: alice,
+        method: "PUT",
+        body: { name: " " },
+      })
+    )
+  ).toEqual({ status: 400, error: "Name is required" });
+  expect(
+    await body(
+      await golem.call(path, {
+        token: alice,
+        method: "PUT",
+        body: { name: " Holiday " },
+      })
+    )
+  ).toEqual({ id: trip.id, name: "Holiday", role: "owner" });
+  expect(
+    (await body(await golem.call("/api/v1/me", { token: bob }))).workspaces
+  ).toContainEqual({ id: trip.id, name: "Holiday", role: "member" });
+
+  // better-auth's own delete would remove the rows.
+  await golem.call("/api/auth/organization/delete", {
+    token: alice,
+    body: { organizationId: trip.id },
+  });
+  expect((await golem.call(path, { token: alice })).status).toBe(200);
+
+  expect(
+    (await golem.call(path, { token: alice, method: "DELETE" })).status
+  ).toBe(204);
+  expect((await golem.call(path, { token: alice })).status).toBe(404);
+  expect(
+    (await body(await golem.call("/api/v1/me", { token: alice }))).workspaces
+  ).not.toContainEqual(expect.objectContaining({ id: trip.id }));
+  expect(golem.app.workspaces.ids()).not.toContain(trip.id);
+  expect(golem.app.workspaces.channelsIn(trip.id)).toEqual([]);
+  expect(
+    golem.app.database
+      .query(
+        "SELECT name, deletedAt IS NOT NULL AS deleted FROM organization WHERE id = ?"
+      )
+      .get(trip.id)
+  ).toEqual({ name: "Holiday", deleted: 1 });
+});

@@ -540,16 +540,25 @@ export class Artifacts {
     throw new HttpError(503, "Golem has no free artifact names");
   }
 
-  /** A live artifact: not deleted, and not in a deleted channel. The workspace's own artifacts have no channel. */
+  /**
+   * A live artifact: not deleted, and not in a deleted channel or workspace. The workspace's own artifacts have no
+   * channel; a live workspace keeps one channel at least, and a deleted one has none.
+   */
   private row(id: string): ArtifactRow | null {
     const row = this.database
       .query(
         `SELECT ${ARTIFACT_COLUMNS} FROM artifact WHERE id = ? AND deleted_at IS NULL`
       )
       .get(id) as ArtifactRow | null;
-    return row &&
-      (row.channelId === null ||
-        this.liveChannels(row.workspaceId).has(row.channelId))
+    if (!row) {
+      return null;
+    }
+    const channels = this.liveChannels(row.workspaceId);
+    return (
+      row.channelId === null
+        ? channels.size > 0
+        : channels.has(row.channelId)
+    )
       ? row
       : null;
   }

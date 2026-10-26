@@ -28,6 +28,21 @@ export const workspaceApiRoutes: readonly Route[] = [
     ),
   ],
   [
+    "PUT",
+    "/api/v1/workspaces/:workspace",
+    api(async ({ app, user, params, body }) =>
+      json(app.workspaces.rename(params.workspace!, user, body.name as string))
+    ),
+  ],
+  [
+    "DELETE",
+    "/api/v1/workspaces/:workspace",
+    api(async ({ app, user, params }) => {
+      app.workspaces.delete(params.workspace!, user);
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
     "POST",
     "/api/v1/workspaces/:workspace/channels",
     api(async ({ app, user, params, body }) =>

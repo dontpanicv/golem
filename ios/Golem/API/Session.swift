@@ -96,6 +96,27 @@ final class Session {
         try await open(workspace)
     }
 
+    func renameWorkspace(name: String) async throws {
+        guard let workspace else { return }
+        let renamed = try await api.renameWorkspace(workspace.id, name: name)
+        self.workspace = renamed
+        workspaces = workspaces.map { $0.id == renamed.id ? renamed : $0 }
+    }
+
+    /// Deletes the open workspace, which the server keeps, hidden, and opens the next one.
+    func deleteWorkspace() async throws {
+        guard let workspace else { return }
+        try await api.deleteWorkspace(workspace.id)
+        workspaces.removeAll { $0.id == workspace.id }
+        if let next = workspaces.first {
+            try await open(next)
+        } else {
+            self.workspace = nil
+            channels = []
+            orchestrator = nil
+        }
+    }
+
     /// Follows which threads of the open workspace work, reading the stream again after each error, until cancelled.
     /// The channels and threads load again when work starts or ends.
     func followWorking() async {

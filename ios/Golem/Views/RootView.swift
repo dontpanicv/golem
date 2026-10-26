@@ -333,3 +333,36 @@ struct NameDialog: View {
         }
     }
 }
+
+/// Asks before a channel or a workspace goes with what it holds. It stays open when deleting fails.
+struct DeleteDialog: View {
+    let title: String
+    let message: String
+    let submit: String
+    let delete: () async throws -> Void
+    @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var busy = false
+
+    var body: some View {
+        Dialog(title: title) {
+            Text(message)
+                .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.regular))
+                .foregroundStyle(Tokens.Colors.textSecondary)
+        } actions: {
+            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
+            Button(submit) {
+                busy = true
+                Task {
+                    await session.run {
+                        try await delete()
+                        dismiss()
+                    }
+                    busy = false
+                }
+            }
+            .buttonStyle(.golem(.danger, .large))
+            .disabled(busy)
+        }
+    }
+}

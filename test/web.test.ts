@@ -694,6 +694,32 @@ describe("the web app", () => {
     expect(github().credentials).toEqual([]);
   });
 
+  test("only an owner renames and deletes a workspace in its settings", async () => {
+    const rename = `action="/w/${workspaceId}/rename"`;
+    expect(
+      await (await alice.get(`/w/${workspaceId}/settings`)).text()
+    ).toContain(rename);
+    const bobsView = await (await bob.get(`/w/${workspaceId}/settings`)).text();
+    expect(bobsView).not.toContain(rename);
+    expect(bobsView).not.toContain("Delete workspace");
+    expect(location(await bob.post(`/w/${workspaceId}/delete`))).toBe(
+      `/w/${workspaceId}/settings?error=${encodeURIComponent("Only an owner can do this")}`
+    );
+
+    const trip = location(await alice.post("/workspaces", { name: "Trip" }))!;
+    const settings = `${trip}/settings`;
+    expect(
+      location(await alice.post(`${trip}/rename`, { name: "Holiday" }))
+    ).toBe(`${settings}?notice=Saved`);
+    expect(await (await alice.get(settings)).text()).toContain(
+      'value="Holiday"'
+    );
+    expect(location(await alice.post(`${trip}/delete`))).toBe(
+      `/w/${workspaceId}/orchestrator?notice=${encodeURIComponent("Deleted Holiday")}`
+    );
+    expect((await alice.get(settings)).status).toBe(404);
+  });
+
   test("the channel details page shows the summary and routines, and pauses, runs, and deletes them", async () => {
     const details = `/w/${workspaceId}/c/${generalId}/details`;
     const channel = await (
