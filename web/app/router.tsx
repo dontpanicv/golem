@@ -11,6 +11,7 @@ import { SearchPage } from "../search/page.tsx";
 import { SettingsPage, WorkspaceSettingsPage } from "../settings/pages.tsx";
 import { ChannelPage, ThreadPage } from "../threads/pages.tsx";
 import { TooltipProvider } from "../ui/components.tsx";
+import { FilePreview } from "../ui/file-preview.tsx";
 import { Toasts } from "../ui/toast.tsx";
 import {
   Home,
@@ -36,6 +37,7 @@ const root = createRootRoute({
   component: () => (
     <TooltipProvider>
       <Outlet />
+      <FilePreview />
       <Toasts />
     </TooltipProvider>
   ),

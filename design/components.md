@@ -227,11 +227,27 @@ Used by the workspace switcher and action menus.
 - A file attached to a message, or picked in the composer: 28 high (44 pt touch target on iOS), padding 0 × 10 × 0 × 8,
   `radius.md`, `fillSubtle`, a 0.5 px `ring`, a 14 px paperclip in `textTertiary`, the name in `fontSize.sm`
   `textSecondary`, cut with an ellipsis at 240 wide. Chips wrap with a 4 px gap.
-- In a message the chip opens the file; hover (web) turns it `fillHover` and the name `text`. Picked files show
+- In a message the chip opens the file preview; hover (web) turns it `fillHover` and the name `text`. Picked files show
   above the composer's buttons until the message is sent, each with a close icon in `textTertiary` (hover `text`)
   that takes the file out.
 - The composer and the Files tab take dropped files, and the composer takes pasted files. While a file is dragged
   over them they show a 1 px `accent` outline.
+
+## File preview
+
+- A click on a file (a Files row, a file chip, a file link in a message, a search result) shows it over the page, as
+  Quick Look does on a Mac. A click with a modifier key opens the file itself. Nothing downloads until Download.
+- The web: the window less 24 px (all of it below 720 px), `surfaceRaised`, 0.5 px `borderDialog`, `radius.xl`, shadow
+  `modal`, on the `overlay` backdrop. A 44 px header with a 0.5 px `border` below: the name in `fontSize.md` `medium`,
+  cut with an ellipsis, the size in `fontSize.sm` `textTertiary`, then ghost icon buttons on the right: previous and
+  next (when there is more than one file), Download, and Close.
+- Space on a focused file opens it; Space, Escape, or the backdrop close it; ← and → show the file before or after.
+- Pictures, video, and audio show centered at their size or smaller; PDFs in the browser's viewer; Markdown as prose
+  in a 760 px column; code and text in the mono font with colors; CSV and spreadsheets as a table with a sticky
+  header, with one tab per sheet; Word documents as their pages; slides one under the other on the background;
+  zip files as a list of their files. Any other file, or one over 20 MB that the preview must read whole, shows
+  "No preview" and a primary Download button.
+- iOS: Quick Look, which has its own share button that saves the file.
 
 ## Artifact preview
 

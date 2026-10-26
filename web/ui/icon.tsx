@@ -19,6 +19,9 @@ const paths = {
   preview:
     '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c-2 2.5-2 8.5 0 11M8 2.5c2 2.5 2 8.5 0 11"/>', // globe
   chevron: '<path d="m5 6.5 3 3 3-3"/>', // chevron.down
+  back: '<path d="M9.5 4 5.5 8l4 4"/>', // chevron.left
+  forward: '<path d="m6.5 4 4 4-4 4"/>', // chevron.right
+  download: '<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/>', // arrow.down.to.line
   disclosure:
     '<path d="M6.5 5.25v5.5L10.25 8z" fill="currentColor" stroke="none"/>', // arrowtriangle.right.fill
   inbox:

@@ -1670,6 +1670,162 @@ a {
   color: var(--color-text-secondary);
 }
 
+/* File preview: a file over the overlay, the window less 24 px, as Linear shows an attachment. */
+
+.file-preview {
+  inset: var(--space-xxl);
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0.5px solid var(--color-border-dialog);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-modal);
+  color: var(--color-text);
+}
+.file-preview[open] {
+  display: flex;
+  flex-direction: column;
+}
+.file-preview::backdrop {
+  background: var(--color-overlay);
+}
+.file-preview-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-xs);
+  height: var(--size-header);
+  padding: 0 var(--space-md) 0 var(--space-xl);
+  border-bottom: 0.5px solid var(--color-border);
+}
+.file-preview-header h2 {
+  overflow: hidden;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-preview-header .meta {
+  flex: none;
+  padding-left: var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+.file-preview-header > button:first-of-type {
+  margin-left: auto;
+}
+.file-preview-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
+.file-preview-body:has(> .file-preview-media, > audio) {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  overflow: hidden;
+}
+.file-preview-media {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  object-fit: contain;
+}
+.file-preview-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+}
+.file-preview-page {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-xxl) var(--space-xl);
+}
+.file-preview-code pre {
+  margin: 0;
+  padding: var(--space-xl);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+.file-preview-sheet {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.file-preview-sheet .tabs {
+  flex: none;
+  padding: var(--space-md) var(--space-xl);
+  overflow-x: auto;
+  border-bottom: 0.5px solid var(--color-border);
+}
+.file-preview-table {
+  flex: 1;
+  overflow: auto;
+}
+.file-preview-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+.file-preview-table :is(th, td) {
+  max-width: 320px;
+  padding: var(--space-xs) var(--space-md);
+  overflow: hidden;
+  border-right: 0.5px solid var(--color-border);
+  border-bottom: 0.5px solid var(--color-border);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-preview-table th {
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  font-weight: var(--font-weight-medium);
+}
+.file-preview-slides {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xl);
+  padding: var(--space-xxl);
+}
+.file-preview-slides canvas {
+  width: 100%;
+  max-width: 1200px;
+  height: auto;
+  border-radius: var(--radius-md);
+  box-shadow: var(--ring), var(--shadow-low);
+}
+.file-preview-none {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-lg);
+}
+.file-preview-none .empty {
+  flex: none;
+  padding: 0;
+}
+
 /* Settings pages: a 640 px column, sections 48 px apart, cards of rows split by inset hairlines. */
 
 .page {
@@ -1925,6 +2081,11 @@ a {
 }
 
 @media (max-width: 720px) {
+  .file-preview {
+    inset: 0;
+    border: 0;
+    border-radius: 0;
+  }
   .dialog {
     left: 0;
     width: min(var(--size-dialog), calc(100vw - 32px));

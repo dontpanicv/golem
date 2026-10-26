@@ -10,6 +10,7 @@ import {
 import { fileHref } from "../app/api.ts";
 import type { Message, Step, Work } from "../app/types.ts";
 import { Avatar } from "../ui/components.tsx";
+import { previewLink } from "../ui/file-preview.tsx";
 import { clockTime, duration } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { ThreadLink } from "./thread-link.tsx";
@@ -78,13 +79,17 @@ function MessageCard({
         ) : null}
         {message.files.length > 0 ? (
           <div className="file-chips">
-            {message.files.map((file) => (
+            {message.files.map((file, index, files) => (
               <a
                 className="file-chip"
-                href={fileHref(workspaceId, file.id)}
                 key={file.id}
-                rel="noopener"
-                target="_blank"
+                {...previewLink(
+                  files.map((each) => ({
+                    href: fileHref(workspaceId, each.id),
+                    name: each.name,
+                  })),
+                  index
+                )}
               >
                 <Icon name="attach" />
                 <span>{file.name}</span>

@@ -12,6 +12,7 @@ import {
   Tooltip,
   WorkingSpinner,
 } from "../ui/components.tsx";
+import { previewLink } from "../ui/file-preview.tsx";
 import { dayTime, size } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
@@ -489,6 +490,11 @@ function FileList({ place }: { place: Place }) {
     query: (q) =>
       q.from({ file: files }).orderBy(({ file }) => file.time, "desc"),
   });
+  const previews = rows.map((file) => ({
+    href: fileHref(place.workspaceId, file.id),
+    name: file.name,
+    size: file.size,
+  }));
   const [busy, setBusy] = useState(false);
   const [dropping, setDropping] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -548,14 +554,9 @@ function FileList({ place }: { place: Place }) {
       </form>
       {rows.length > 0 ? (
         <div className="list">
-          {rows.map((file) => (
+          {rows.map((file, index) => (
             <div className="file-row" key={file.id}>
-              <a
-                className="list-row"
-                href={fileHref(place.workspaceId, file.id)}
-                rel="noopener"
-                target="_blank"
-              >
+              <a className="list-row" {...previewLink(previews, index)}>
                 <Icon name="file" />
                 <span className="name">{file.name}</span>
                 <span className="meta">{size(file.size)}</span>

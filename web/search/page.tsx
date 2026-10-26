@@ -10,6 +10,7 @@ import type {
   SearchResult,
 } from "../app/types.ts";
 import { Empty } from "../ui/components.tsx";
+import { previewLink } from "../ui/file-preview.tsx";
 import { day } from "../ui/format.ts";
 import { Icon, type IconName } from "../ui/icon.tsx";
 import { channelsOf, useMe } from "../workspaces/data.ts";
@@ -154,9 +155,7 @@ function ResultRow({
     return (
       <a
         className="search-row list-row"
-        href={fileHref(workspaceId, target.id)}
-        rel="noopener"
-        target="_blank"
+        {...previewLink([{ href: fileHref(workspaceId, target.id) }], 0)}
       >
         {body}
       </a>

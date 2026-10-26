@@ -5,6 +5,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { fileHref } from "../app/api.ts";
+import { previewLink } from "../ui/file-preview.tsx";
 import { ThreadLink } from "./thread-link.tsx";
 
 /** Where the addresses that agents write go: `thread:<id>`, `file:<id>`, and `artifact:<id>`. */
@@ -93,7 +94,7 @@ function MarkdownLink({
   }
   if (scheme === "file") {
     return (
-      <a href={fileHref(workspaceId, id!)} rel="noopener" target="_blank">
+      <a {...previewLink([{ href: fileHref(workspaceId, id!) }], 0)}>
         {children}
       </a>
     );
