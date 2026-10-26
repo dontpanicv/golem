@@ -301,16 +301,18 @@ to put that host on the internet while the rest of Golem stays private.
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/integrations` | | `Integration[]` |
 | `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/credentials` | `{ label, secret }` | `Credential`; `400` for one with `secretLabel: null` |
-| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/connect` | `{ app? }` | `{ url }`: the integration's sign-in page |
-| `GET /api/v1/integrations/callback?state&code` | | `303` to the workspace settings, or to `golem://integration-connected` when `app` was true; no session, the one-time `state` names the sign-in |
+| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/connect` | | `{ url }`: the integration's sign-in page |
+| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/sign-in` | `{ address }` | `Credential`; `400` when the address is not of the person's own sign-in, or the sign-in did not finish |
 | `DELETE /api/v1/workspaces/:workspaceId/credentials/:credentialId` | | `204` |
 
 Credentials belong to the workspace: every member sees and deletes them, and the agents use the newest credential of
 each integration through the tools of its connector. Secrets never leave the server.
 
-An integration with `secretLabel: null` is an MCP server, such as Rohlík's. The app opens the `url` of `connect`; the
-person signs in there, and the server's sign-in page sends them to the callback, which keeps the tokens as a credential.
-The agents then get the server's tools as `<integrationId>_<tool>`, in the codemode namespace of the integration.
+An integration with `secretLabel: null` is an MCP server, such as Rohlík's. The app shows a link to the `url` of
+`connect`; the person signs in there. Rohlík lets self-registered clients return only to loopback addresses, so the
+sign-in ends on an error page at `http://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and
+`sign-in` keeps the tokens as a credential. The agents then get the server's tools as `<integrationId>_<tool>`, in the
+codemode namespace of the integration.
 
 ### Routines (`src/routines/`)
 

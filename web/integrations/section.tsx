@@ -24,6 +24,10 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
       }),
   });
   const [adding, setAdding] = useState<Integration | null>(null);
+  const [signingIn, setSigningIn] = useState<{
+    integration: Integration;
+    url: string;
+  } | null>(null);
   const add = useMutation({
     mutationFn: (input: { integrationId: string; form: FormData }) =>
       request(
@@ -42,14 +46,26 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
       return queryClient.invalidateQueries({ queryKey });
     },
   });
-  // Signing in happens on the integration's own page, which sends the person back to these settings.
+  // People sign in on the integration's own page, which ends at a localhost address that they paste here.
   const connect = useMutation({
-    mutationFn: (integrationId: string) =>
+    mutationFn: (integration: Integration) =>
       request<{ url: string }>(
-        `/workspaces/${workspaceId}/integrations/${integrationId}/connect`,
+        `/workspaces/${workspaceId}/integrations/${integration.id}/connect`,
         { method: "POST", body: {} }
       ),
-    onSuccess: ({ url }) => window.location.assign(url),
+    onSuccess: ({ url }, integration) => setSigningIn({ integration, url }),
+  });
+  const signIn = useMutation({
+    mutationFn: (input: { integration: Integration; form: FormData }) =>
+      request(
+        `/workspaces/${workspaceId}/integrations/${input.integration.id}/sign-in`,
+        { method: "POST", body: { address: String(input.form.get("address")) } }
+      ),
+    onSuccess: (_, { integration }) => {
+      setSigningIn(null);
+      showToast("success", `${integration.name} connected`);
+      return queryClient.invalidateQueries({ queryKey });
+    },
   });
   const remove = useMutation({
     mutationFn: (credentialId: string) =>
@@ -96,7 +112,7 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
                 disabled={connect.isPending}
                 icon="link"
                 label="Connect"
-                onClick={() => connect.mutate(integration.id)}
+                onClick={() => connect.mutate(integration)}
                 size="small"
               />
             ) : (
@@ -133,6 +149,33 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
           name="secret"
           required
           type="password"
+        />
+      </Dialog>
+      <Dialog
+        busy={signIn.isPending}
+        onClose={() => setSigningIn(null)}
+        onSubmit={(form) =>
+          signingIn &&
+          signIn.mutate({ integration: signingIn.integration, form })
+        }
+        open={signingIn !== null}
+        submit="Connect"
+        title={`Connect ${signingIn?.integration.name ?? ""}`}
+      >
+        <a
+          className="button primary"
+          href={signingIn?.url}
+          rel="noopener"
+          target="_blank"
+        >
+          Sign in to {signingIn?.integration.name}
+        </a>
+        <TextField
+          autoComplete="off"
+          label="Address after sign-in"
+          name="address"
+          placeholder="http://localhost/golem-sign-in?code=…"
+          required
         />
       </Dialog>
     </>

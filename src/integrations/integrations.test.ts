@@ -45,7 +45,6 @@ beforeAll(async () => {
     Secrets.forTests(),
     golem.app.workspaces,
     {
-      baseUrl: "http://golem.test",
       catalog: [shop],
       changed: (id) => changes.push(id),
       transport: (_url, provider) => {
@@ -163,26 +162,30 @@ test("people connect an MCP server by signing in, and agents get its tools", asy
     })
   ).toThrow("Connect it by signing in");
 
-  const { url } = await integrations.connect(workspaceId, alice, "shop", {});
+  const { url } = await integrations.connect(workspaceId, alice, "shop");
   const page = new URL(url);
   expect(page.pathname).toBe("/authorize");
   expect(page.searchParams.get("client_id")).toBe("golem-client");
   expect(page.searchParams.get("redirect_uri")).toBe(
-    "http://golem.test/api/v1/integrations/callback"
+    "http://localhost/golem-sign-in"
   );
   expect(page.searchParams.get("code_challenge_method")).toBe("S256");
   const state = page.searchParams.get("state")!;
+  // The sign-in page ends at the loopback address, which the person pastes.
+  const address = `http://localhost/golem-sign-in?code=code-1&state=${state}`;
 
-  expect(await integrations.finishConnect(state, "code-1")).toEqual({
-    workspaceId,
-    app: false,
-  });
+  await expect(
+    integrations.finishConnect(workspaceId, alice, "shop", "http://localhost/")
+  ).rejects.toThrow("This is not the address of your sign-in");
+  expect(
+    await integrations.finishConnect(workspaceId, alice, "shop", address)
+  ).toMatchObject({ label: "Shop", ownerName: "Alice" });
   expect(tokenRequests.at(-1)?.get("code")).toBe("code-1");
   expect(tokenRequests.at(-1)?.get("code_verifier")).toBeTruthy();
   expect(changes).toContain(workspaceId);
-  await expect(integrations.finishConnect(state, "code-1")).rejects.toThrow(
-    "Not found"
-  );
+  await expect(
+    integrations.finishConnect(workspaceId, alice, "shop", address)
+  ).rejects.toThrow("This is not the address of your sign-in");
   const [shop] = integrations.list(workspaceId, alice);
   expect(shop).toMatchObject({ secretLabel: null });
   expect(shop!.credentials).toMatchObject([
@@ -213,14 +216,16 @@ test("people connect an MCP server by signing in, and agents get its tools", asy
   expect(await integrations.tools(workspaceId)).toEqual([]);
 });
 
-test("a cancelled sign-in adds nothing", async () => {
-  const { url } = await integrations.connect(workspaceId, alice, "shop", {
-    app: true,
-  });
+test("a sign-in that did not finish adds nothing", async () => {
+  const { url } = await integrations.connect(workspaceId, alice, "shop");
   const state = new URL(url).searchParams.get("state")!;
-  expect(await integrations.finishConnect(state, null)).toEqual({
-    workspaceId,
-    app: true,
-  });
+  await expect(
+    integrations.finishConnect(
+      workspaceId,
+      alice,
+      "shop",
+      `http://localhost/golem-sign-in?error=access_denied&state=${state}`
+    )
+  ).rejects.toThrow("The sign-in did not finish");
   expect(integrations.list(workspaceId, alice)[0]!.credentials).toEqual([]);
 });

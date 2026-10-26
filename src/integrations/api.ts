@@ -27,33 +27,29 @@ export const integrationApiRoutes: readonly Route[] = [
   [
     "POST",
     "/api/v1/workspaces/:workspace/integrations/:integration/connect",
-    api(async ({ app, user, params, body }) =>
+    api(async ({ app, user, params }) =>
       json(
         await app.integrations.connect(
           params.workspace!,
           user,
-          params.integration!,
-          { app: body.app === true }
+          params.integration!
         )
       )
     ),
   ],
-  // No session: the sign-in page of an MCP server sends people here, and the one-time `state` says whose sign-in it is.
   [
-    "GET",
-    "/api/v1/integrations/callback",
-    async ({ app, request }) => {
-      const query = new URL(request.url).searchParams;
-      const { workspaceId, app: fromApp } =
+    "POST",
+    "/api/v1/workspaces/:workspace/integrations/:integration/sign-in",
+    api(async ({ app, user, params, body }) =>
+      json(
         await app.integrations.finishConnect(
-          query.get("state") ?? "",
-          query.get("code")
-        );
-      const location = fromApp
-        ? "golem://integration-connected"
-        : `/w/${workspaceId}/settings`;
-      return new Response(null, { status: 303, headers: { location } });
-    },
+          params.workspace!,
+          user,
+          params.integration!,
+          body.address as string
+        )
+      )
+    ),
   ],
   [
     "DELETE",

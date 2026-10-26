@@ -86,8 +86,6 @@ export interface ConnectorNamespace {
 }
 
 export interface IntegrationsOptions {
-  /** The address people open; MCP sign-ins come back to it. */
-  readonly baseUrl: string;
   /** Called when the connector tools of a workspace change: a credential was added, connected, or deleted. */
   readonly changed?: (workspaceId: string) => void;
   readonly catalog?: readonly Connector[];
@@ -107,12 +105,16 @@ interface PendingSignIn {
   readonly workspaceId: string;
   readonly user: User;
   readonly connector: Connector;
-  /** The iOS app started it, so the end goes back to the app. */
-  readonly app: boolean;
   readonly expiresAt: number;
 }
 
 const SIGN_IN_MS = 10 * 60 * 1000;
+/**
+ * Where an MCP server's sign-in page sends people. Rohlík registers only loopback addresses (and clients it knows) for
+ * clients that register themselves, so the browser ends on an error page at this address, and the person pastes the
+ * address into Golem, which reads the sign-in code from it.
+ */
+const SIGN_IN_ADDRESS = "http://localhost/golem-sign-in";
 
 /** The connectors that Golem has. Token-based for now; OAuth ones arrive with Google sign-in. */
 export const integrationCatalog: readonly Connector[] = [
@@ -205,14 +207,13 @@ export class Integrations {
   }
 
   /**
-   * Starts a sign-in to a connector's MCP server: registers Golem with its sign-in server when needed, and returns the
-   * page where the person signs in. That page sends them back to `finishConnect`.
+   * Starts a sign-in to a connector's MCP server: registers Golem with its sign-in server, and returns the page where
+   * the person signs in. That page ends at an address that the person gives to `finishConnect`.
    */
   async connect(
     workspaceId: string,
     user: User,
-    integrationId: string,
-    input: { app?: boolean }
+    integrationId: string
   ): Promise<{ url: string }> {
     this.workspaces.requireMember(workspaceId, user);
     const connector = this.connector(integrationId);
@@ -226,7 +227,7 @@ export class Integrations {
       }
     }
     const state = randomUUID();
-    const provider = new GrantProvider(this.redirectUrl(), {}, state);
+    const provider = new GrantProvider({}, state);
     await auth(provider, { serverUrl: connector.mcp });
     if (!provider.authorizationUrl) {
       throw new Error(`${connector.name} gave no sign-in page`);
@@ -236,40 +237,51 @@ export class Integrations {
       workspaceId,
       user,
       connector,
-      app: input.app === true,
       expiresAt: now + SIGN_IN_MS,
     });
     return { url: provider.authorizationUrl.href };
   }
 
   /**
-   * Ends a sign-in that the MCP server's sign-in page sent back: gets the tokens and keeps them as a credential of the
-   * workspace. Without `code` the person cancelled. Each `state` works once.
+   * Ends the person's own sign-in with the address where its page ended: gets the tokens and keeps them as a credential
+   * of the workspace. Each sign-in works once.
    */
   async finishConnect(
-    state: string,
-    code: string | null
-  ): Promise<{ workspaceId: string; app: boolean }> {
+    workspaceId: string,
+    user: User,
+    integrationId: string,
+    address: string
+  ): Promise<CredentialSummary> {
+    this.workspaces.requireMember(workspaceId, user);
+    const query = URL.parse(required(address, "Address"))?.searchParams;
+    const state = query?.get("state") ?? "";
     const pending = this.signIns.get(state);
+    if (
+      !pending ||
+      pending.workspaceId !== workspaceId ||
+      pending.user.id !== user.id ||
+      pending.connector.id !== integrationId ||
+      pending.expiresAt < Date.now()
+    ) {
+      throw new HttpError(400, "This is not the address of your sign-in");
+    }
     this.signIns.delete(state);
-    if (!pending || pending.expiresAt < Date.now()) {
-      throw notFound();
+    const code = query?.get("code");
+    if (!code) {
+      throw new HttpError(400, "The sign-in did not finish");
     }
-    const { provider, workspaceId, user, connector, app } = pending;
-    if (code) {
-      await auth(provider, {
-        serverUrl: connector.mcp!,
-        authorizationCode: code,
-      });
-      this.insertCredential(
-        workspaceId,
-        user,
-        connector.id,
-        connector.name,
-        JSON.stringify(provider.grant)
-      );
-    }
-    return { workspaceId, app };
+    const { provider, connector } = pending;
+    await auth(provider, {
+      serverUrl: connector.mcp!,
+      authorizationCode: code,
+    });
+    return this.insertCredential(
+      workspaceId,
+      user,
+      connector.id,
+      connector.name,
+      JSON.stringify(provider.grant)
+    );
   }
 
   private insertCredential(
@@ -444,14 +456,10 @@ export class Integrations {
     let client = this.clients.get(credential.id);
     if (!client) {
       // The SDK refreshes the tokens; each new grant replaces the stored one.
-      const provider = new GrantProvider(
-        this.redirectUrl(),
-        credential.grant,
-        undefined,
-        (grant) =>
-          this.database
-            .query("UPDATE credential SET secret = ? WHERE id = ?")
-            .run(this.secrets.encrypt(JSON.stringify(grant)), credential.id)
+      const provider = new GrantProvider(credential.grant, undefined, (grant) =>
+        this.database
+          .query("UPDATE credential SET secret = ? WHERE id = ?")
+          .run(this.secrets.encrypt(JSON.stringify(grant)), credential.id)
       );
       const url = new URL(connector.mcp!);
       const transport =
@@ -488,10 +496,6 @@ export class Integrations {
       : undefined;
   }
 
-  private redirectUrl(): string {
-    return new URL("/api/v1/integrations/callback", this.options.baseUrl).href;
-  }
-
   /** The newest secret of the workspace for a connector. */
   private secret(workspaceId: string, connector: Connector): string {
     const row = this.database
@@ -520,12 +524,12 @@ export class Integrations {
 
 /** The OAuth state of one grant, as the MCP SDK reads and writes it: the registered client, the tokens, and PKCE. */
 class GrantProvider implements OAuthClientProvider {
+  readonly redirectUrl = SIGN_IN_ADDRESS;
   /** The sign-in page, once the SDK wants the person to sign in. */
   authorizationUrl: URL | undefined;
   private verifier = "";
 
   constructor(
-    readonly redirectUrl: string,
     readonly grant: McpGrant,
     private readonly signInState?: string,
     private readonly saved: (grant: McpGrant) => void = () => undefined

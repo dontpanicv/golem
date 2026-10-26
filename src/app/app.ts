@@ -73,7 +73,6 @@ export async function createApp(
   const llm = new Llm(database, resolvedSecrets, llmProvider);
   const workspaces = new Workspaces(database, auth);
   const integrations = new Integrations(database, resolvedSecrets, workspaces, {
-    baseUrl: config.baseUrl,
     // New connector tools reach the agents' next runs.
     changed: (workspaceId) => {
       threads

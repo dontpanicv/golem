@@ -81,12 +81,15 @@ final class APIClient {
         try await get("/api/v1/workspaces/\(workspaceID)/integrations")
     }
 
-    /// The page where the person signs in to an integration; it ends at `golem://integration-connected`.
-    func connectIntegration(workspaceID: String, integrationID: String) async throws -> URL {
-        let page: ConnectPage = try await post(
-            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/connect", ["app": true]
+    /// The page where the person signs in to an integration; it ends at a localhost address that they paste.
+    func connectIntegration(workspaceID: String, integrationID: String) async throws -> ConnectPage {
+        try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/connect", [:])
+    }
+
+    func finishSignIn(workspaceID: String, integrationID: String, address: String) async throws -> Credential {
+        try await post(
+            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/sign-in", ["address": address]
         )
-        return page.url
     }
 
     func addCredential(
