@@ -77,34 +77,6 @@ final class APIClient {
         try await post("/api/v1/workspaces/\(workspaceID)/members", ["email": email])
     }
 
-    func integrations(workspaceID: String) async throws -> [Integration] {
-        try await get("/api/v1/workspaces/\(workspaceID)/integrations")
-    }
-
-    /// The page where the person signs in to an integration; it ends at a localhost address that they paste.
-    func connectIntegration(workspaceID: String, integrationID: String) async throws -> ConnectPage {
-        try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/connect", [:])
-    }
-
-    func finishSignIn(workspaceID: String, integrationID: String, address: String) async throws -> Credential {
-        try await post(
-            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/sign-in", ["address": address]
-        )
-    }
-
-    func addCredential(
-        workspaceID: String, integrationID: String, label: String, secret: String
-    ) async throws -> Credential {
-        try await post(
-            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/credentials",
-            ["label": label, "secret": secret]
-        )
-    }
-
-    func deleteCredential(workspaceID: String, credentialID: String) async throws {
-        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/credentials/\(credentialID)")
-    }
-
     // MARK: Routines
 
     func routines(workspaceID: String, channelID: String) async throws -> ChannelRoutines {
@@ -362,5 +334,41 @@ extension APIClient {
 
     func removeDevice(token: String) async throws {
         _ = try await send("DELETE", "/api/v1/devices/\(token)")
+    }
+}
+
+/// The integrations and credentials of a workspace, or the person's own for a nil `workspaceID`.
+extension APIClient {
+    func integrations(workspaceID: String?) async throws -> [Integration] {
+        try await get("\(Self.integrationsBase(workspaceID))/integrations")
+    }
+
+    /// The page where the person signs in to an integration; it ends at a localhost address that they paste.
+    func connectIntegration(workspaceID: String?, integrationID: String) async throws -> ConnectPage {
+        try await post("\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/connect", [:])
+    }
+
+    func finishSignIn(workspaceID: String?, integrationID: String, address: String) async throws -> Credential {
+        try await post(
+            "\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/sign-in", ["address": address]
+        )
+    }
+
+    func addCredential(
+        workspaceID: String?, integrationID: String, label: String, secret: String
+    ) async throws -> Credential {
+        try await post(
+            "\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/credentials",
+            ["label": label, "secret": secret]
+        )
+    }
+
+    func deleteCredential(workspaceID: String?, credentialID: String) async throws {
+        _ = try await send("DELETE", "\(Self.integrationsBase(workspaceID))/credentials/\(credentialID)")
+    }
+
+    /// A workspace's integrations, or the person's own for a nil `workspaceID`.
+    private static func integrationsBase(_ workspaceID: String?) -> String {
+        workspaceID.map { "/api/v1/workspaces/\($0)" } ?? "/api/v1"
     }
 }

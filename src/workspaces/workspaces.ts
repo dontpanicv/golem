@@ -47,7 +47,10 @@ const LIVE =
 export class Workspaces {
   constructor(
     private readonly database: Database,
-    private readonly auth: Auth
+    private readonly auth: Auth,
+    /** Called when someone joins a workspace, whose own integrations then reach its agents. */
+    private readonly memberAdded: (workspaceId: string) => void = () =>
+      undefined
   ) {}
 
   list(user: User): Workspace[] {
@@ -405,6 +408,7 @@ export class Workspaces {
     await this.auth.api.addMember({
       body: { userId: person.id, organizationId: workspaceId, role: "member" },
     });
+    this.memberAdded(workspaceId);
     return {
       userId: person.id,
       name: person.name,

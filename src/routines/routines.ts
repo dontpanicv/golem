@@ -63,7 +63,7 @@ export type RoutineWorkspaces = Pick<
 >;
 export type RoutineThreads = Pick<
   Threads,
-  "instruct" | "messages" | "startAgentThread"
+  "instruct" | "messages" | "requester" | "startAgentThread"
 >;
 export type RoutineSearch = Pick<Indexer, "search">;
 
@@ -88,10 +88,12 @@ interface RoutineRow {
   readonly enabled: number;
   readonly nextRunAt: number | null;
   readonly threadId: string | null;
+  /** The member who asked for it, whose turns its runs are; `golem` when nobody did. */
+  readonly createdBy: string;
 }
 
 const ROUTINE_COLUMNS =
-  "id, workspace_id AS workspaceId, channel_id AS channelId, name, schedule, instructions, script, store, enabled, next_run_at AS nextRunAt, thread_id AS threadId";
+  "id, workspace_id AS workspaceId, channel_id AS channelId, name, schedule, instructions, script, store, enabled, next_run_at AS nextRunAt, thread_id AS threadId, created_by AS createdBy";
 const RUN_COLUMNS =
   "r.id, r.routine_id AS routineId, t.name AS routineName, r.started_at AS startedAt, r.finished_at AS finishedAt, r.outcome, r.error";
 
@@ -272,21 +274,27 @@ export class Routines {
     return routine;
   }
 
-  /** Runs a script once, as a routine run would, with the values a routine stored; nothing is saved. */
+  /**
+   * Runs a script once, as a routine run would, with the values a routine stored and the integrations of the person
+   * who tests it; nothing is saved.
+   */
   async test(
     workspaceId: string,
     script: string,
-    routineId?: string
+    routineId: string | undefined,
+    userId: string | null
   ): Promise<ScriptResult> {
     const store = routineId
       ? JSON.parse(this.row(workspaceId, routineId).store)
       : {};
-    return this.execute(workspaceId, script, store);
+    return this.execute(workspaceId, script, store, userId);
   }
 
   /** The TypeScript declarations of the tools that scripts of a workspace can call. */
   async declarations(workspaceId: string): Promise<string> {
-    return renderDeclarations({ tools: await this.scriptTools(workspaceId) });
+    return renderDeclarations({
+      tools: await this.scriptTools(workspaceId, null),
+    });
   }
 
   /** The agent tools that create, change, test, and delete routines. */
@@ -294,6 +302,7 @@ export class Routines {
     return routineTools(
       this,
       this.workspaces,
+      this.threads,
       workspaceId,
       await this.declarations(workspaceId)
     );
@@ -349,7 +358,8 @@ export class Routines {
     const result = await this.execute(
       routine.workspaceId,
       routine.script,
-      JSON.parse(routine.store)
+      JSON.parse(routine.store),
+      routine.createdBy
     );
     if (!result.ok) {
       await this.tell(routine, runId, repairTask(routine, result));
@@ -385,16 +395,24 @@ export class Routines {
         .query("UPDATE routine SET thread_id = ? WHERE id = ?")
         .run(thread.id, routine.id);
     }
-    return this.threads.instruct(thread, text, `routine:${runId}`, "everyone");
+    return this.threads.instruct(
+      thread,
+      text,
+      `routine:${runId}`,
+      "everyone",
+      routine.createdBy
+    );
   }
 
+  /** Runs a script with the integrations of the person `userId`'s turns use. */
   private async execute(
     workspaceId: string,
     script: string,
-    store: Record<string, unknown>
+    store: Record<string, unknown>,
+    userId: string | null
   ): Promise<ScriptResult> {
     const sandbox = new CodemodeSandbox({
-      tools: await this.scriptTools(workspaceId),
+      tools: await this.scriptTools(workspaceId, userId),
       timeoutMs: SCRIPT_TIMEOUT,
       memoryLimitBytes: 256 * 1024 * 1024,
     });
@@ -433,14 +451,17 @@ export class Routines {
   }
 
   /** What scripts call: the connectors' tools, and reading the workspace's channels, threads, and search. */
-  private async scriptTools(workspaceId: string): Promise<CodemodeTool[]> {
+  private async scriptTools(
+    workspaceId: string,
+    userId: string | null
+  ): Promise<CodemodeTool[]> {
     const connectors = (await this.integrations.tools(workspaceId)).map(
       (tool): CodemodeTool => ({
         name: tool.name,
         description: tool.description,
         // A TypeBox schema is a JSON schema.
         inputSchema: { ...tool.parameters },
-        execute: (args, { signal }) => tool.execute(args, signal),
+        execute: (args, { signal }) => tool.execute(args, { userId, signal }),
       })
     );
     return [

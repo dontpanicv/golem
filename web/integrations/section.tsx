@@ -13,13 +13,23 @@ import {
 import { Icon } from "../ui/icon.tsx";
 import { showToast } from "../ui/toast.tsx";
 
-/** The integrations of a workspace and their credentials. Secrets go to the server and never come back. */
-export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
-  const queryKey = ["workspaces", workspaceId, "integrations"];
+/**
+ * The integrations and credentials of a workspace, for every member's turns there, or the person's own for a null
+ * `workspaceId`, for their turns in each of their workspaces. Secrets go to the server and never come back.
+ */
+export function IntegrationsSection({
+  workspaceId,
+}: {
+  workspaceId: string | null;
+}) {
+  const base = workspaceId ? `/workspaces/${workspaceId}` : "";
+  const queryKey = workspaceId
+    ? ["workspaces", workspaceId, "integrations"]
+    : ["integrations"];
   const { data: integrations = [] } = useQuery({
     queryKey,
     queryFn: ({ signal }) =>
-      request<Integration[]>(`/workspaces/${workspaceId}/integrations`, {
+      request<Integration[]>(`${base}/integrations`, {
         signal,
       }),
   });
@@ -30,16 +40,13 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
   } | null>(null);
   const add = useMutation({
     mutationFn: (input: { integrationId: string; form: FormData }) =>
-      request(
-        `/workspaces/${workspaceId}/integrations/${input.integrationId}/credentials`,
-        {
-          method: "POST",
-          body: {
-            label: String(input.form.get("label")),
-            secret: String(input.form.get("secret")),
-          },
-        }
-      ),
+      request(`${base}/integrations/${input.integrationId}/credentials`, {
+        method: "POST",
+        body: {
+          label: String(input.form.get("label")),
+          secret: String(input.form.get("secret")),
+        },
+      }),
     onSuccess: () => {
       setAdding(null);
       showToast("success", "Credential added");
@@ -50,17 +57,17 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
   const connect = useMutation({
     mutationFn: (integration: Integration) =>
       request<{ url: string }>(
-        `/workspaces/${workspaceId}/integrations/${integration.id}/connect`,
+        `${base}/integrations/${integration.id}/connect`,
         { method: "POST", body: {} }
       ),
     onSuccess: ({ url }, integration) => setSigningIn({ integration, url }),
   });
   const signIn = useMutation({
     mutationFn: (input: { integration: Integration; form: FormData }) =>
-      request(
-        `/workspaces/${workspaceId}/integrations/${input.integration.id}/sign-in`,
-        { method: "POST", body: { address: String(input.form.get("address")) } }
-      ),
+      request(`${base}/integrations/${input.integration.id}/sign-in`, {
+        method: "POST",
+        body: { address: String(input.form.get("address")) },
+      }),
     onSuccess: (_, { integration }) => {
       setSigningIn(null);
       showToast("success", `${integration.name} connected`);
@@ -69,7 +76,7 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
   });
   const remove = useMutation({
     mutationFn: (credentialId: string) =>
-      request(`/workspaces/${workspaceId}/credentials/${credentialId}`, {
+      request(`${base}/credentials/${credentialId}`, {
         method: "DELETE",
       }),
     onSuccess: () => {

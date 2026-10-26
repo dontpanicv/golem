@@ -68,14 +68,26 @@ export interface Connector {
   readonly mcp?: string;
 }
 
-/** A connector tool of one workspace, with its credential applied. */
+/**
+ * Where a credential belongs, which says whose turns use it: a workspace id, for the turns of every member there, or
+ * `null`, for a person's own, for their turns in each of their workspaces.
+ */
+export type Place = string | null;
+
+/** The turn a tool call is part of: the person it is for, whose own credentials come first. */
+export interface Turn {
+  readonly userId: string | null;
+  readonly signal?: AbortSignal;
+}
+
+/** A connector tool of one workspace; each call uses the credential of the turn it is part of. */
 export interface WorkspaceTool {
   readonly name: string;
   readonly description: string;
   readonly parameters: TSchema;
   /** The value that `execute` returns, when the tool declares it. */
   readonly outputSchema?: TSchema;
-  readonly execute: (args: unknown, signal?: AbortSignal) => Promise<unknown>;
+  readonly execute: (args: unknown, turn: Turn) => Promise<unknown>;
 }
 
 /** A codemode namespace of a connector's tools, which all start with `<id>_`. */
@@ -86,7 +98,7 @@ export interface ConnectorNamespace {
 }
 
 export interface IntegrationsOptions {
-  /** Called when the connector tools of a workspace change: a credential was added, connected, or deleted. */
+  /** Called when the connector tools of a workspace may change: a credential there or of a member changed. */
   readonly changed?: (workspaceId: string) => void;
   readonly catalog?: readonly Connector[];
   /** Connects to an MCP server; tests pass an in-memory one. */
@@ -102,7 +114,7 @@ interface McpGrant {
 /** A sign-in that someone started, until the MCP server's sign-in page sends them back. */
 interface PendingSignIn {
   readonly provider: GrantProvider;
-  readonly workspaceId: string;
+  readonly place: Place;
   readonly user: User;
   readonly connector: Connector;
   readonly expiresAt: number;
@@ -116,7 +128,7 @@ const SIGN_IN_MS = 10 * 60 * 1000;
  */
 const SIGN_IN_ADDRESS = "http://localhost/golem-sign-in";
 
-/** The connectors that Golem has. Token-based for now; OAuth ones arrive with Google sign-in. */
+/** The connectors that Golem has: ones with a secret, and MCP servers that people sign in to. */
 export const integrationCatalog: readonly Connector[] = [
   {
     id: "github",
@@ -151,8 +163,10 @@ export const integrationCatalog: readonly Connector[] = [
 ];
 
 /**
- * The outside systems the agents of a workspace use. Everything in a workspace is shared: any member adds or deletes
- * its credentials, and the agents use the newest one of each integration. Secrets never leave the server.
+ * The outside systems that agents use. A person connects an integration in a workspace, for every member's turns there,
+ * or for themselves, for their own turns in each of their workspaces; one connector serves both. A turn uses the
+ * newest credential of the person it is for, else the workspace's newest. Any member adds or deletes a workspace's
+ * credentials, and only their owner a person's own. Secrets never leave the server.
  */
 export class Integrations {
   private readonly catalog: readonly Connector[];
@@ -170,13 +184,13 @@ export class Integrations {
     this.catalog = options.catalog ?? integrationCatalog;
   }
 
-  list(workspaceId: string, user: User): Integration[] {
-    this.workspaces.requireMember(workspaceId, user);
+  list(place: Place, user: User): Integration[] {
+    this.requireAccess(place, user);
     const credentials = this.database
       .query(
-        "SELECT c.id, c.integration, c.label, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE c.workspace_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at"
+        "SELECT c.id, c.integration, c.label, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE (c.workspace_id = ?1 OR (?1 IS NULL AND c.workspace_id IS NULL AND c.owner_id = ?2)) AND c.deleted_at IS NULL ORDER BY c.created_at"
       )
-      .all(workspaceId) as (CredentialSummary & { integration: string })[];
+      .all(place, user.id) as (CredentialSummary & { integration: string })[];
     return this.catalog.map(({ id, name, secretLabel }) => ({
       id,
       name,
@@ -188,17 +202,17 @@ export class Integrations {
   }
 
   addCredential(
-    workspaceId: string,
+    place: Place,
     user: User,
     integrationId: string,
     input: { label: string; secret: string }
   ): CredentialSummary {
-    this.workspaces.requireMember(workspaceId, user);
+    this.requireAccess(place, user);
     if (this.connector(integrationId).mcp) {
       throw new HttpError(400, "Connect it by signing in");
     }
     return this.insertCredential(
-      workspaceId,
+      place,
       user,
       integrationId,
       required(input.label, "Label"),
@@ -211,11 +225,11 @@ export class Integrations {
    * the person signs in. That page ends at an address that the person gives to `finishConnect`.
    */
   async connect(
-    workspaceId: string,
+    place: Place,
     user: User,
     integrationId: string
   ): Promise<{ url: string }> {
-    this.workspaces.requireMember(workspaceId, user);
+    this.requireAccess(place, user);
     const connector = this.connector(integrationId);
     if (!connector.mcp) {
       throw notFound();
@@ -228,13 +242,13 @@ export class Integrations {
     }
     const state = randomUUID();
     const provider = new GrantProvider({}, state);
-    await auth(provider, { serverUrl: connector.mcp });
+    await signIn(connector, provider);
     if (!provider.authorizationUrl) {
-      throw new Error(`${connector.name} gave no sign-in page`);
+      throw new HttpError(502, `${connector.name} gave no sign-in page`);
     }
     this.signIns.set(state, {
       provider,
-      workspaceId,
+      place,
       user,
       connector,
       expiresAt: now + SIGN_IN_MS,
@@ -244,21 +258,21 @@ export class Integrations {
 
   /**
    * Ends the person's own sign-in with the address where its page ended: gets the tokens and keeps them as a credential
-   * of the workspace. Each sign-in works once.
+   * of the place where the sign-in started. Each sign-in works once.
    */
   async finishConnect(
-    workspaceId: string,
+    place: Place,
     user: User,
     integrationId: string,
     address: string
   ): Promise<CredentialSummary> {
-    this.workspaces.requireMember(workspaceId, user);
+    this.requireAccess(place, user);
     const query = URL.parse(required(address, "Address"))?.searchParams;
     const state = query?.get("state") ?? "";
     const pending = this.signIns.get(state);
     if (
       !pending ||
-      pending.workspaceId !== workspaceId ||
+      pending.place !== place ||
       pending.user.id !== user.id ||
       pending.connector.id !== integrationId ||
       pending.expiresAt < Date.now()
@@ -271,12 +285,9 @@ export class Integrations {
       throw new HttpError(400, "The sign-in did not finish");
     }
     const { provider, connector } = pending;
-    await auth(provider, {
-      serverUrl: connector.mcp!,
-      authorizationCode: code,
-    });
+    await signIn(connector, provider, code);
     return this.insertCredential(
-      workspaceId,
+      place,
       user,
       connector.id,
       connector.name,
@@ -285,7 +296,7 @@ export class Integrations {
   }
 
   private insertCredential(
-    workspaceId: string,
+    place: Place,
     user: User,
     integrationId: string,
     label: string,
@@ -304,37 +315,36 @@ export class Integrations {
       )
       .run(
         credential.id,
-        workspaceId,
+        place,
         integrationId,
         user.id,
         label,
         this.secrets.encrypt(secret),
         credential.createdAt
       );
-    this.options.changed?.(workspaceId);
+    this.changedFor(place, user);
     return credential;
   }
 
-  deleteCredential(
-    workspaceId: string,
-    user: User,
-    credentialId: string
-  ): void {
-    this.workspaces.requireMember(workspaceId, user);
+  deleteCredential(place: Place, user: User, credentialId: string): void {
+    this.requireAccess(place, user);
     // Nothing is removed: the credential stays encrypted, and no tool reads it again.
     const { changes } = this.database
       .query(
-        "UPDATE credential SET deleted_at = ? WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL"
+        "UPDATE credential SET deleted_at = ?1 WHERE id = ?2 AND (workspace_id = ?3 OR (?3 IS NULL AND workspace_id IS NULL AND owner_id = ?4)) AND deleted_at IS NULL"
       )
-      .run(Date.now(), credentialId, workspaceId);
+      .run(Date.now(), credentialId, place, user.id);
     if (changes === 0) {
       throw notFound();
     }
     this.closeClient(credentialId);
-    this.options.changed?.(workspaceId);
+    this.changedFor(place, user);
   }
 
-  /** The tools of every connector for the agents and routines of a workspace. */
+  /**
+   * The tools of every connector for the agents and routines of a workspace: of each connector that the workspace or
+   * one of its members connected. Each call uses the credential of its turn's person, else the workspace's.
+   */
   async tools(workspaceId: string): Promise<WorkspaceTool[]> {
     const tools = await Promise.all(
       this.catalog.map((connector) =>
@@ -344,11 +354,12 @@ export class Integrations {
               name: tool.name,
               description: tool.description,
               parameters: tool.parameters,
-              execute: async (args: unknown, signal?: AbortSignal) =>
+              execute: async (args: unknown, turn: Turn) =>
                 tool.execute(
                   args as never,
-                  this.secret(workspaceId, connector),
-                  signal
+                  this.credentialFor(workspaceId, connector, turn.userId)
+                    .secret,
+                  turn.signal
                 ),
             }))
       )
@@ -375,22 +386,26 @@ export class Integrations {
   }
 
   /**
-   * The tools of a connector's MCP server, named `<id>_<tool>`, with the workspace's newest sign-in. None without a
-   * sign-in, or when the server fails, so one shop that is down does not stop the agents.
+   * The tools of a connector's MCP server, named `<id>_<tool>`, as a sign-in of the workspace or of a member lists them.
+   * None without a sign-in, or when the server fails, so one shop that is down does not stop the agents.
    */
   private async mcpTools(
     workspaceId: string,
     connector: Connector
   ): Promise<WorkspaceTool[]> {
-    const credential = this.newestCredential(workspaceId, connector);
-    if (!credential) {
+    const lister = this.newestCredential(
+      workspaceId,
+      connector,
+      this.memberIds(workspaceId)
+    );
+    if (!lister) {
       return [];
     }
     try {
       const listed: Awaited<ReturnType<Client["listTools"]>>["tools"] = [];
       let cursor: string | undefined;
       do {
-        const page = await this.withClient(credential, connector, (client) =>
+        const page = await this.withClient(lister, connector, (client) =>
           client.listTools(cursor ? { cursor } : undefined)
         );
         listed.push(...page.tools);
@@ -403,15 +418,20 @@ export class Integrations {
         ...(tool.outputSchema
           ? { outputSchema: tool.outputSchema as TSchema }
           : {}),
-        execute: async (args: unknown, signal?: AbortSignal) => {
+        execute: async (args: unknown, turn: Turn) => {
+          const { id, secret } = this.credentialFor(
+            workspaceId,
+            connector,
+            turn.userId
+          );
           const result = await this.withClient(
-            credential,
+            { id, grant: JSON.parse(secret) },
             connector,
             (client) =>
               client.callTool(
                 { name: tool.name, arguments: args as Record<string, unknown> },
                 undefined,
-                { signal }
+                { signal: turn.signal }
               )
           );
           const text = (result.content as { type: string; text?: string }[])
@@ -479,36 +499,73 @@ export class Integrations {
     client?.then((connected) => connected.close()).catch(() => undefined);
   }
 
+  /** The credential that a turn of `userId` in a workspace uses for a connector. */
+  private credentialFor(
+    workspaceId: string,
+    connector: Connector,
+    userId: string | null
+  ): { id: string; secret: string } {
+    const people =
+      userId && this.memberIds(workspaceId).includes(userId) ? [userId] : [];
+    const row = this.newestRow(workspaceId, connector, people);
+    if (!row) {
+      throw new Error(
+        `${connector.name} is not connected. Connect it in your own Settings, or for everyone in Workspace settings.`
+      );
+    }
+    return { id: row.id, secret: this.secrets.decrypt(row.secret) };
+  }
+
+  /** The newest MCP grant of a workspace or of one of `people`, theirs first. */
   private newestCredential(
     workspaceId: string,
-    connector: Connector
+    connector: Connector,
+    people: readonly string[]
   ): { id: string; grant: McpGrant } | undefined {
-    const row = this.database
-      .query(
-        "SELECT id, secret FROM credential WHERE workspace_id = ? AND integration = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
-      )
-      .get(workspaceId, connector.id) as {
-      id: string;
-      secret: Uint8Array;
-    } | null;
+    const row = this.newestRow(workspaceId, connector, people);
     return row
       ? { id: row.id, grant: JSON.parse(this.secrets.decrypt(row.secret)) }
       : undefined;
   }
 
-  /** The newest secret of the workspace for a connector. */
-  private secret(workspaceId: string, connector: Connector): string {
-    const row = this.database
+  /** The newest credential of a connector that is the own of one of `people`, else the workspace's newest. */
+  private newestRow(
+    workspaceId: string,
+    connector: Connector,
+    people: readonly string[]
+  ): { id: string; secret: Uint8Array } | null {
+    return this.database
       .query(
-        "SELECT secret FROM credential WHERE workspace_id = ? AND integration = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
+        `SELECT id, secret FROM credential WHERE integration = ? AND deleted_at IS NULL AND (workspace_id = ? OR (workspace_id IS NULL AND owner_id IN (${people.map(() => "?").join(", ")}))) ORDER BY workspace_id IS NOT NULL, created_at DESC LIMIT 1`
       )
-      .get(workspaceId, connector.id) as { secret: Uint8Array } | null;
-    if (!row) {
-      throw new Error(
-        `${connector.name} is not connected. Someone must add a credential in Workspace settings, Integrations.`
-      );
+      .get(connector.id, workspaceId, ...people) as {
+      id: string;
+      secret: Uint8Array;
+    } | null;
+  }
+
+  private memberIds(workspaceId: string): string[] {
+    return this.workspaces
+      .members(workspaceId, this.workspaces.agentMember(workspaceId))
+      .map((member) => member.userId);
+  }
+
+  /** A workspace's credentials are for its members; a person's own only for them. */
+  private requireAccess(place: Place, user: User): void {
+    if (place !== null) {
+      this.workspaces.requireMember(place, user);
     }
-    return this.secrets.decrypt(row.secret);
+  }
+
+  /** Tells the workspaces whose tools a credential of `place` may change: the person's own reach all of theirs. */
+  private changedFor(place: Place, user: User): void {
+    const workspaceIds =
+      place === null
+        ? this.workspaces.list(user).map((workspace) => workspace.id)
+        : [place];
+    for (const workspaceId of workspaceIds) {
+      this.options.changed?.(workspaceId);
+    }
   }
 
   private connector(integrationId: string): Connector {
@@ -519,6 +576,27 @@ export class Integrations {
       throw notFound();
     }
     return connector;
+  }
+}
+
+/** Runs the MCP SDK's sign-in step; a refusal of the sign-in server reaches the person with its reason. */
+async function signIn(
+  connector: Connector,
+  provider: GrantProvider,
+  authorizationCode?: string
+): Promise<void> {
+  try {
+    await auth(provider, {
+      serverUrl: connector.mcp!,
+      ...(authorizationCode ? { authorizationCode } : {}),
+    });
+  } catch (error) {
+    // biome-ignore lint/style/useErrorCause: HttpError takes the cause as its third argument.
+    throw new HttpError(
+      502,
+      `${connector.name} refused the sign-in: ${(error as Error).message}`,
+      { cause: error }
+    );
   }
 }
 

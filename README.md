@@ -55,8 +55,9 @@ The machines connect over a WireGuard mesh VPN.
   machine** in the workspace settings gives a command to paste on the machine; it installs `hands` and pairs it with
   the workspace. Every agent in the workspace can use every machine of the workspace.
 - **Integrations.** A connector in `src/integrations/` gives agents the tools of an outside system, such as a school
-  information system. Its credentials belong to the workspace: any member adds them in the workspace settings, and
-  the agents use the newest one. Secrets never leave the server.
+  information system. A credential added in the workspace settings serves every member's turns there; one added in a
+  person's own settings serves only their turns, in each of their workspaces, and comes first. Secrets never leave
+  the server.
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread, driven by Vercel's
   [agent-browser](https://github.com/vercel-labs/agent-browser). They read pages, click, fill in forms, and see
   screenshots. They search the web with ChatGPT's own search, over the same ChatGPT login, because search engines

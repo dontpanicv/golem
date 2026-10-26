@@ -12,7 +12,7 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import type { Conversation } from "@earendil-works/pi-durable";
+import type { Conversation, ConversationId } from "@earendil-works/pi-durable";
 import {
   scriptCall,
   startTestApp,
@@ -362,9 +362,22 @@ test("an answer notifies the person who asked unless a screen of theirs shows th
   const thread = golem.app.workspaces
     .threadsIn(home.id)
     .find((candidate) => candidate.id === asked.id)!;
-  await golem.app.threads.instruct(thread, "Check the mail", "mail", [bob.id]);
+  await golem.app.threads.instruct(
+    thread,
+    "Check the mail",
+    "mail",
+    [bob.id],
+    bob.id
+  );
   expect(inboxOf(bob).unread).toBe(2);
   expect(inboxOf(alice).notifications).toHaveLength(2);
+  // The task's turn is Bob's, so it uses his own integrations.
+  expect(
+    await golem.app.threads.requester(
+      home.id,
+      thread.conversationId as ConversationId
+    )
+  ).toMatchObject({ id: bob.id, name: "Bob" });
 });
 
 test("an agent lists the channels of its workspace and cannot reach a thread of another workspace", async () => {

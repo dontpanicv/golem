@@ -211,6 +211,24 @@ const migrations = [
 		deleted_at INTEGER
 	);
 	CREATE INDEX push_device_user ON push_device (user_id) WHERE deleted_at IS NULL;`,
+  // integrations: a credential without a workspace is its owner's own, for their turns in each of their workspaces.
+  // SQLite cannot drop NOT NULL from a column, so the table is made again with the same rows.
+  `CREATE TABLE credential_next (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT,
+		integration TEXT NOT NULL,
+		owner_id TEXT NOT NULL,
+		label TEXT NOT NULL,
+		shared INTEGER NOT NULL,
+		secret BLOB NOT NULL,
+		created_at INTEGER NOT NULL,
+		deleted_at INTEGER
+	);
+	INSERT INTO credential_next SELECT id, workspace_id, integration, owner_id, label, shared, secret, created_at, deleted_at FROM credential;
+	DROP TABLE credential;
+	ALTER TABLE credential_next RENAME TO credential;
+	CREATE INDEX credential_workspace ON credential (workspace_id, integration);
+	CREATE INDEX credential_owner ON credential (owner_id, integration) WHERE workspace_id IS NULL;`,
 ];
 
 export function openDatabase(path: string): Database {

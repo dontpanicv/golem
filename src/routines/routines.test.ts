@@ -296,10 +296,10 @@ test("a connector without a credential fails the script", async () => {
     golem.app.threads,
     golem.app.indexer
   );
-  const result = await scripts.test(workspaceId, SCRIPT);
+  const result = await scripts.test(workspaceId, SCRIPT, undefined, null);
   expect(result).toMatchObject({ ok: false });
   expect(!result.ok && result.error).toContain(
-    "School 2 is not connected. Someone must add a credential"
+    "School 2 is not connected. Connect it in your own Settings"
   );
 });
 

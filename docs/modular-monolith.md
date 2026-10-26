@@ -28,7 +28,7 @@ src/
 ├── workspaces/              Workspaces, members, channels, and the thread registry
 ├── llm/                     The shared LLM provider, its stored login, and the agents' web search
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
-├── integrations/            The connectors, their tools, and the credentials of each workspace
+├── integrations/            The connectors, their tools, and the credentials of workspaces and people
 ├── artifacts/               The pages and small apps agents make for a channel, their link pages, and their data
 ├── browser/                 The headless Chrome of each thread, which agents visit websites with
 ├── notifications/           Each person's inbox, the devices that get pushes, and the APNs sender

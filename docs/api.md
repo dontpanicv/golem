@@ -299,14 +299,23 @@ to put that host on the internet while the rest of Golem stays private.
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET /api/v1/workspaces/:workspaceId/integrations` | | `Integration[]` |
-| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/credentials` | `{ label, secret }` | `Credential`; `400` for one with `secretLabel: null` |
-| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/connect` | | `{ url }`: the integration's sign-in page |
-| `POST /api/v1/workspaces/:workspaceId/integrations/:integrationId/sign-in` | `{ address }` | `Credential`; `400` when the address is not of the person's own sign-in, or the sign-in did not finish |
-| `DELETE /api/v1/workspaces/:workspaceId/credentials/:credentialId` | | `204` |
+Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the workspace's integrations, and under
+`/api/v1` for the person's own.
 
-Credentials belong to the workspace: every member sees and deletes them, and the agents use the newest credential of
-each integration through the tools of its connector. Secrets never leave the server.
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET …/integrations` | | `Integration[]` |
+| `POST …/integrations/:integrationId/credentials` | `{ label, secret }` | `Credential`; `400` for one with `secretLabel: null` |
+| `POST …/integrations/:integrationId/connect` | | `{ url }`: the integration's sign-in page |
+| `POST …/integrations/:integrationId/sign-in` | `{ address }` | `Credential`; `400` when the address is not of the person's own sign-in of this place, or the sign-in did not finish |
+| `DELETE …/credentials/:credentialId` | | `204` |
+
+Where a person connects an integration says whose turns use it. A workspace's credentials serve the turns of every
+member there; every member sees and deletes them. A person's own serve only their turns, in each of their workspaces;
+only they see and delete them. A turn is for the author of the message it answers, the person whose request another
+thread passes on, the creator of a routine, or the recipient of a reminder. Each tool call uses the newest credential
+of that person, else the workspace's newest; the agents of a workspace get the tools of each integration that the
+workspace or one of its members connected. Secrets never leave the server.
 
 An integration with `secretLabel: null` is an MCP server, such as Rohlík's. The app shows a link to the `url` of
 `connect`; the person signs in there. Rohlík lets self-registered clients return only to loopback addresses, so the
@@ -372,5 +381,5 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The
   machine trusts the workspace's own key, so pairing it with one workspace does not open it to another.
-- Integration settings belong to one user in one workspace. A credential is private to its owner, or shared with
-  every agent in the workspace when `shared` is true. Secrets never leave the server.
+- A credential belongs to a workspace, for the turns of every member there, or to one person, for their own turns in
+  each of their workspaces. A turn never uses another person's own credential. Secrets never leave the server.

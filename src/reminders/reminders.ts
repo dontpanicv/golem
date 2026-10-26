@@ -221,7 +221,9 @@ export class Reminders {
         thread,
         `One-time reminder ${reminder.id} was due at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}). It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. Answer in this thread.`,
         `reminder:${reminder.id}:${reminder.attempts}`,
-        [reminder.recipientId]
+        [reminder.recipientId],
+        // The turn is the recipient's, with their own integrations.
+        reminder.recipientId
       );
       if (!answer) {
         throw new Error("The agent gave no reminder.");

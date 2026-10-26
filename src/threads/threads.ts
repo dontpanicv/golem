@@ -201,6 +201,12 @@ interface SaveSource {
   readonly name?: string;
 }
 
+/** A task that Golem gives an agent, such as a routine run or a reminder, and the member the turn is for. */
+interface Task extends JsonObject {
+  readonly requesterId: string | null;
+  readonly requesterName: string | null;
+}
+
 interface Relay extends JsonObject {
   readonly fromThreadId: string;
   readonly fromTitle: string;
@@ -433,15 +439,24 @@ export class Threads {
     thread: ThreadSummary & ThreadRef,
     text: string,
     requestId: string,
-    notify: readonly string[] | "everyone"
+    notify: readonly string[] | "everyone",
+    requesterId: string | null
   ): Promise<string | null> {
     const conversation = await this.conversation(thread);
     await this.useCurrentAgent(thread.workspaceId, conversation);
+    // The turn is the member's, so it uses their own integrations; one who left gets the workspace's only.
+    const requester = this.members(thread.workspaceId).find(
+      (member) => member.userId === requesterId
+    );
+    const task: Task = {
+      requesterId: requester?.userId ?? null,
+      requesterName: requester?.name ?? null,
+    };
     const submission = await conversation.submit(
       {
         type: "input",
         content: text,
-        entry: { kind: TASK, data: {} },
+        entry: { kind: TASK, data: task },
         requestId,
       },
       BACKGROUND_CONTEXT
@@ -473,7 +488,10 @@ export class Threads {
     return answer.text;
   }
 
-  /** The person whose latest request reached an agent, also through a thread relay. */
+  /**
+   * The person whose latest request reached an agent, also through a thread relay or a task for them. A turn answers
+   * the latest input, as later ones wait in the inbox, so this is the person of the running turn.
+   */
   async requester(
     workspaceId: string,
     conversationId: ConversationId
@@ -489,8 +507,24 @@ export class Threads {
         BACKGROUND_CONTEXT
       );
       const input = page.items.find(
-        (entry) => entry.kind === AUTHORED || entry.kind === RELAYED
+        (entry) =>
+          entry.kind === AUTHORED ||
+          entry.kind === RELAYED ||
+          entry.kind === TASK
       );
+      if (input?.kind === TASK) {
+        const task = input.data as unknown as Task;
+        if (task.requesterId && task.requesterName) {
+          const user = {
+            id: task.requesterId,
+            name: task.requesterName,
+            email: "",
+          };
+          this.registry.requireMember(workspaceId, user);
+          return user;
+        }
+        return null;
+      }
       if (input?.kind === AUTHORED) {
         const { authorId, author } = input.data as unknown as Authored;
         const user = { id: authorId, name: author, email: "" };
@@ -1392,7 +1426,15 @@ export class Threads {
         ...[
           this.copyToMachineTool(workspaceId),
           ...this.hands.tools(workspaceId),
-          ...connectors.map(connectorTool),
+          ...connectors.map((tool) =>
+            connectorTool(tool, async (conversationId) => {
+              const requester = await this.requester(
+                workspaceId,
+                conversationId
+              );
+              return requester?.id ?? null;
+            })
+          ),
           ...this.artifacts.tools(workspaceId),
           ...this.browser.tools(workspaceId),
           ...hooked,
@@ -2553,21 +2595,29 @@ function relayed(
   };
 }
 
-/** A connector's tool for the agent; its JSON result is the text the agent reads. */
 /** The tool for codemode scripts only, so the model is not offered it. */
 function scriptOnly<Tool extends ToolRegistration>(tool: Tool): Tool {
   return { ...tool, callers: ["tools"] };
 }
 
-/** A connector tool; one that declares its value gives scripts that value, not its text. */
-function connectorTool(tool: WorkspaceTool) {
+/**
+ * A connector's tool for the agent, for the person of the turn that calls it. Its result is the text the agent reads;
+ * one that declares its value gives scripts that value.
+ */
+function connectorTool(
+  tool: WorkspaceTool,
+  requesterOf: (conversationId: ConversationId) => Promise<string | null>
+) {
   return defineTool({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
     ...(tool.outputSchema ? { structuredOutputSchema: tool.outputSchema } : {}),
-    execute: async (args, _api, context) => {
-      const result = await tool.execute(args, context.abortSignal);
+    execute: async (args, api, context) => {
+      const result = await tool.execute(args, {
+        userId: await requesterOf(api.conversationId),
+        signal: context.abortSignal,
+      });
       const text =
         typeof result === "string"
           ? result

@@ -6,10 +6,7 @@ struct WorkspaceSettingsView: View {
     @State private var members: [Member] = []
     @State private var machines: [Machine] = []
     @State private var pairing: Pairing?
-    @State private var integrations: [Integration] = []
     @State private var email = ""
-    @State private var addingTo: Integration?
-    @State private var signingIn: SignIn?
     @State private var name = ""
     @State private var confirmDelete = false
 
@@ -82,34 +79,7 @@ struct WorkspaceSettingsView: View {
                     .padding(.vertical, Tokens.Space.lg)
                 }
             }
-            ForEach($integrations) { $integration in
-                SettingsCard(title: integration.name) {
-                    ForEach(integration.credentials) { credential in
-                        SettingsRow(credential.label, description: "Added by \(credential.ownerName)") {
-                            GolemMenu {
-                                MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
-                                    delete(credential, from: $integration)
-                                }
-                            } label: {
-                                Label("Credential actions", systemImage: "ellipsis")
-                            }
-                            .buttonStyle(.golem(.ghost, .icon))
-                        }
-                    }
-                    HStack {
-                        if integration.secretLabel == nil {
-                            Button("Connect", systemImage: "link") { connect(integration) }
-                                .buttonStyle(.golem(.ghost, .small))
-                        } else {
-                            Button("Add credential", systemImage: "plus") { addingTo = integration }
-                                .buttonStyle(.golem(.ghost, .small))
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, Tokens.Space.md)
-                    .padding(.vertical, Tokens.Space.lg)
-                }
-            }
+            IntegrationsSection(workspaceID: workspaceID)
         }
         .phoneTabBar()
         .screenTitle(session.workspace?.name ?? "")
@@ -132,29 +102,14 @@ struct WorkspaceSettingsView: View {
                 try await session.deleteWorkspace()
             }
         }
-        .sheet(item: $signingIn) { signIn in
-            SignInForm(workspaceID: workspaceID, signIn: signIn) { credential in
-                if let index = integrations.firstIndex(where: { $0.id == signIn.integration.id }) {
-                    integrations[index].credentials.append(credential)
-                }
-            }
-        }
-        .sheet(item: $addingTo) { integration in
-            CredentialForm(workspaceID: workspaceID, integration: integration) { credential in
-                if let index = integrations.firstIndex(where: { $0.id == integration.id }) {
-                    integrations[index].credentials.append(credential)
-                }
-            }
-        }
     }
 
     private func load() async {
         await session.run {
             async let members = session.api.members(workspaceID: workspaceID)
             async let machines = session.api.machines(workspaceID: workspaceID)
-            async let integrations = session.api.integrations(workspaceID: workspaceID)
             let found: Machines
-            (self.members, found, self.integrations) = try await (members, machines, integrations)
+            (self.members, found) = try await (members, machines)
             (self.machines, self.pairing) = (found.machines, found.pairing)
         }
     }
@@ -202,27 +157,6 @@ struct WorkspaceSettingsView: View {
             }
         }
     }
-
-    /// Starts a sign-in on the integration's own page; `SignInForm` takes the address where it ends.
-    private func connect(_ integration: Integration) {
-        Task {
-            await session.run {
-                let page = try await session.api.connectIntegration(
-                    workspaceID: workspaceID, integrationID: integration.id
-                )
-                signingIn = SignIn(integration: integration, page: page.url)
-            }
-        }
-    }
-
-    private func delete(_ credential: Credential, from integration: Binding<Integration>) {
-        Task {
-            await session.run {
-                try await session.api.deleteCredential(workspaceID: workspaceID, credentialID: credential.id)
-                integration.wrappedValue.credentials.removeAll { $0.id == credential.id }
-            }
-        }
-    }
 }
 
 /// The command that installs hands on a machine and pairs it with the workspace.
@@ -246,93 +180,5 @@ private struct PairingCommand: View {
             .buttonStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct CredentialForm: View {
-    let workspaceID: String
-    let integration: Integration
-    let added: (Credential) -> Void
-    @Environment(Session.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    @State private var label = ""
-    @State private var secret = ""
-    @State private var busy = false
-
-    var body: some View {
-        Dialog(title: "Add \(integration.name) credential") {
-            GolemTextField("Label", text: $label, autofocus: true)
-            GolemTextField(integration.secretLabel ?? "Secret", text: $secret, secure: true)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-        } actions: {
-            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
-            Button("Add", action: save)
-                .buttonStyle(.golem(.primary, .large))
-                .disabled(busy || label.isEmpty || secret.isEmpty)
-        }
-    }
-
-    private func save() {
-        busy = true
-        Task {
-            await session.run {
-                added(try await session.api.addCredential(
-                    workspaceID: workspaceID, integrationID: integration.id,
-                    label: label, secret: secret
-                ))
-                session.show("Credential added", .success)
-                dismiss()
-            }
-            busy = false
-        }
-    }
-}
-
-/// A sign-in that someone started on an integration's own page.
-private struct SignIn: Identifiable {
-    let integration: Integration
-    let page: URL
-    var id: String { integration.id }
-}
-
-/// Signs in to an integration on its own page, which ends at a localhost address that the person pastes here.
-private struct SignInForm: View {
-    let workspaceID: String
-    let signIn: SignIn
-    let added: (Credential) -> Void
-    @Environment(Session.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    @State private var address = ""
-    @State private var busy = false
-
-    var body: some View {
-        Dialog(title: "Connect \(signIn.integration.name)") {
-            Link("Sign in to \(signIn.integration.name)", destination: signIn.page)
-                .buttonStyle(.golem(.secondary, .large))
-            GolemTextField("Address after sign-in", text: $address)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-        } actions: {
-            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
-            Button("Connect", action: save)
-                .buttonStyle(.golem(.primary, .large))
-                .disabled(busy || address.isEmpty)
-        }
-    }
-
-    private func save() {
-        busy = true
-        Task {
-            await session.run {
-                added(try await session.api.finishSignIn(
-                    workspaceID: workspaceID, integrationID: signIn.integration.id, address: address
-                ))
-                session.show("\(signIn.integration.name) connected", .success)
-                dismiss()
-            }
-            busy = false
-        }
     }
 }

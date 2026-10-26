@@ -61,6 +61,9 @@ export function SettingsPage() {
           <PageSection title="LLM provider">
             <LlmCard />
           </PageSection>
+          <PageSection title="Integrations">
+            <IntegrationsSection workspaceId={null} />
+          </PageSection>
           <PageSection title="Account">
             <SettingsCard>
               <SettingsRow

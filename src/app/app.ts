@@ -71,16 +71,17 @@ export async function createApp(
   await migrateAuth(auth);
   migrate(database);
   const llm = new Llm(database, resolvedSecrets, llmProvider);
-  const workspaces = new Workspaces(database, auth);
+  // New connector tools reach the agents' next runs.
+  const reloadTools = (workspaceId: string) => {
+    threads
+      .reloadTools(workspaceId)
+      .catch((error: unknown) =>
+        console.error("reloading the tools failed", error)
+      );
+  };
+  const workspaces = new Workspaces(database, auth, reloadTools);
   const integrations = new Integrations(database, resolvedSecrets, workspaces, {
-    // New connector tools reach the agents' next runs.
-    changed: (workspaceId) => {
-      threads
-        .reloadTools(workspaceId)
-        .catch((error: unknown) =>
-          console.error("reloading the tools failed", error)
-        );
-    },
+    changed: reloadTools,
   });
   const hands = new Hands(database, resolvedSecrets, workspaces, {
     baseUrl: config.baseUrl,

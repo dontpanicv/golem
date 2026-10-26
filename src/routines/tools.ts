@@ -1,7 +1,12 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { randomUUIDv5 } from "bun";
-import type { Routine, Routines, RoutineWorkspaces } from "./routines.ts";
+import type {
+  Routine,
+  Routines,
+  RoutineThreads,
+  RoutineWorkspaces,
+} from "./routines.ts";
 
 const routineParameter = Type.String({ description: "The routine id" });
 
@@ -12,6 +17,7 @@ const routineParameter = Type.String({ description: "The routine id" });
 export function routineTools(
   routines: Routines,
   workspaces: RoutineWorkspaces,
+  threads: RoutineThreads,
   workspaceId: string,
   declarations: string
 ) {
@@ -94,10 +100,15 @@ export function routineTools(
       replay: "safe",
       execute: async (args, api) => {
         const channel = channelOf(args.channel, api.conversationId);
+        // Its runs are the turns of the person who asked for it, with their own integrations.
+        const requester = await threads.requester(
+          workspaceId,
+          api.conversationId
+        );
         const routine = routines.create(workspaceId, channel.id, {
           ...args,
           id: randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url"),
-          createdBy: "golem",
+          createdBy: requester?.id ?? "golem",
         });
         return {
           output: [
@@ -163,11 +174,16 @@ export function routineTools(
           })
         ),
       }),
-      execute: async (args) => {
+      execute: async (args, api) => {
+        const requester = await threads.requester(
+          workspaceId,
+          api.conversationId
+        );
         const result = await routines.test(
           workspaceId,
           args.script,
-          args.routine
+          args.routine,
+          requester?.id ?? null
         );
         let text: string;
         if (!result.ok) {

@@ -61,6 +61,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            IntegrationsSection(workspaceID: nil)
             if let user = session.user {
                 SettingsCard(title: "Account") {
                     SettingsRow(label: user.name, description: user.email) {

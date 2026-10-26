@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { Type } from "@earendil-works/pi-ai";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -201,11 +202,12 @@ test("people connect an MCP server by signing in, and agents get its tools", asy
   expect(connectedWith.at(-1)).toBe("access-1");
   const [search, cart, checkout] = tools;
   expect(search!.outputSchema).toBeDefined();
-  expect(await search!.execute({ query: "milk" })).toEqual({
+  const turn = { userId: alice.id };
+  expect(await search!.execute({ query: "milk" }, turn)).toEqual({
     products: [{ name: "milk 1 l" }],
   });
-  expect(await cart!.execute({})).toBe("The cart is empty.");
-  await expect(checkout!.execute({})).rejects.toThrow(
+  expect(await cart!.execute({}, turn)).toBe("The cart is empty.");
+  await expect(checkout!.execute({}, turn)).rejects.toThrow(
     "Paying is not possible."
   );
   expect(integrations.namespaces()).toEqual([
@@ -228,4 +230,76 @@ test("a sign-in that did not finish adds nothing", async () => {
     )
   ).rejects.toThrow("The sign-in did not finish");
   expect(integrations.list(workspaceId, alice)[0]!.credentials).toEqual([]);
+});
+
+test("a turn uses its person's own credential, else the workspace's, in each of their workspaces", async () => {
+  await golem.signIn("Bob", "bob@example.com");
+  const { internalAdapter } = await golem.app.auth.$context;
+  const found = (await internalAdapter.findUserByEmail("bob@example.com"))!;
+  const bob = {
+    id: found.user.id,
+    name: found.user.name,
+    email: found.user.email,
+  };
+  await golem.app.workspaces.addMember(workspaceId, alice, bob.email);
+  const work = (await golem.app.workspaces.create(alice, "Work")).id;
+  const reached: string[] = [];
+  const notes = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      catalog: [
+        {
+          id: "notes",
+          name: "Notes",
+          description: "Notes.",
+          secretLabel: "Token",
+          tools: [
+            {
+              name: "notes_token",
+              description: "The token a call uses",
+              parameters: Type.Object({}),
+              execute: async (_args, secret) => secret,
+            },
+          ],
+        },
+      ],
+      changed: (id) => reached.push(id),
+    }
+  );
+  const token = async (place: string, userId: string | null) => {
+    const [tool] = await notes.tools(place);
+    return tool!.execute({}, { userId });
+  };
+  notes.addCredential(workspaceId, bob, "notes", {
+    label: "Family",
+    secret: "family",
+  });
+  const own = notes.addCredential(null, alice, "notes", {
+    label: "Mine",
+    secret: "alice",
+  });
+  expect(reached).toEqual([workspaceId, workspaceId, work]);
+
+  expect(await token(workspaceId, alice.id)).toBe("alice");
+  expect(await token(workspaceId, bob.id)).toBe("family");
+  expect(await token(workspaceId, null)).toBe("family");
+  expect(await token(work, alice.id)).toBe("alice");
+  // Bob is not a member of Work, and Work has no credential of its own.
+  await expect(token(work, bob.id)).rejects.toThrow("Notes is not connected");
+
+  expect(notes.list(null, alice)[0]!.credentials).toMatchObject([
+    { label: "Mine" },
+  ]);
+  expect(notes.list(null, bob)[0]!.credentials).toEqual([]);
+  expect(notes.list(workspaceId, bob)[0]!.credentials).toMatchObject([
+    { label: "Family" },
+  ]);
+  expect(() => notes.deleteCredential(null, bob, own.id)).toThrow("Not found");
+  expect(() => notes.deleteCredential(workspaceId, alice, own.id)).toThrow(
+    "Not found"
+  );
+  notes.deleteCredential(null, alice, own.id);
+  expect(await token(workspaceId, alice.id)).toBe("family");
 });

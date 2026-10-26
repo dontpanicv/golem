@@ -1,22 +1,27 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 
-/** The integrations and credentials of a workspace. */
-export const integrationApiRoutes: readonly Route[] = [
+/**
+ * The integrations and credentials of a place: a workspace's under `/workspaces/:workspace`, for every member's turns
+ * there, and the person's own without it, for their turns in each of their workspaces. One table serves both.
+ */
+export const integrationApiRoutes: readonly Route[] = (
+  ["/api/v1/workspaces/:workspace", "/api/v1"] as const
+).flatMap((base): Route[] => [
   [
     "GET",
-    "/api/v1/workspaces/:workspace/integrations",
+    `${base}/integrations`,
     api(async ({ app, user, params }) =>
-      json(app.integrations.list(params.workspace!, user))
+      json(app.integrations.list(params.workspace ?? null, user))
     ),
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/integrations/:integration/credentials",
+    `${base}/integrations/:integration/credentials`,
     api(async ({ app, user, params, body }) =>
       json(
         app.integrations.addCredential(
-          params.workspace!,
+          params.workspace ?? null,
           user,
           params.integration!,
           { label: body.label as string, secret: body.secret as string }
@@ -26,11 +31,11 @@ export const integrationApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/integrations/:integration/connect",
+    `${base}/integrations/:integration/connect`,
     api(async ({ app, user, params }) =>
       json(
         await app.integrations.connect(
-          params.workspace!,
+          params.workspace ?? null,
           user,
           params.integration!
         )
@@ -39,11 +44,11 @@ export const integrationApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/integrations/:integration/sign-in",
+    `${base}/integrations/:integration/sign-in`,
     api(async ({ app, user, params, body }) =>
       json(
         await app.integrations.finishConnect(
-          params.workspace!,
+          params.workspace ?? null,
           user,
           params.integration!,
           body.address as string
@@ -53,14 +58,14 @@ export const integrationApiRoutes: readonly Route[] = [
   ],
   [
     "DELETE",
-    "/api/v1/workspaces/:workspace/credentials/:credential",
+    `${base}/credentials/:credential`,
     api(async ({ app, user, params }) => {
       app.integrations.deleteCredential(
-        params.workspace!,
+        params.workspace ?? null,
         user,
         params.credential!
       );
       return new Response(null, { status: 204 });
     }),
   ],
-];
+]);

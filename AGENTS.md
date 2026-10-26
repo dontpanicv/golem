@@ -63,6 +63,10 @@ addresses, or code and data from employers or clients.
   imports from `src/`: `web/app/types.ts` holds the types of `docs/api.md`, and `test/web-types.test.ts` checks them
   against the server's.
 - Register new route tables in `src/app/routes.ts` and new services in `createApp` in `src/app/app.ts`.
+- Every integration works in both places, with one connector and no code for either place: a person connects it in
+  Workspace settings for every member's turns there, or in their own Settings for their own turns in each of their
+  workspaces. A tool call uses the credential of its turn's person first, else the workspace's
+  (`src/integrations/integrations.ts`).
 - The model calls only the core tools of channels, threads, files, and web search directly. Every other tool is
   script-only (`callers: ["tools"]`) and its name starts with its codemode namespace: `NAMESPACES` in
   `src/threads/threads.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.
