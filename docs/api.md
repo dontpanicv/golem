@@ -176,7 +176,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
 | `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
-| `POST /api/v1/threads/:threadId/messages` | `{ text, voice? }` | `204` |
+| `POST /api/v1/threads/:threadId/messages` | `{ text, voice?, requestId? }` | `204`; a retry with the same `requestId` sends nothing again |
 | `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
 | `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/brief` | | `{ brief: Brief \| null }`: what the channel is for, where it is now, its decisions, its open questions, and what each person wants; `null` before the first |
@@ -218,6 +218,9 @@ the message steers a run at work instead of waiting for it to end.
 | `POST /api/v1/artifacts/:artifactId/rpc` | `{ op, args }` | `{ result }`: a call of the artifact's `golem` runtime, as the signed-in user |
 | `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes |
 | `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |
+The web app keeps a text message that it cannot send yet, such as without a connection, and sends it later with a
+`requestId`, so a message that reached Golem before its response was lost stays one message.
+
 
 An artifact is a page or a small app that an agent makes in a thread with its `create_artifact`, `update_artifact`,
 `edit_artifact`, `read_artifact`, `list_artifacts`, `artifact_data`, and `set_artifact_data` tools. It belongs to the

@@ -318,12 +318,14 @@ export class Threads {
     user: User,
     text: string | undefined,
     files: readonly File[] = [],
-    voice = false
+    voice = false,
+    requestId?: string
   ): Promise<void> {
     const thread = this.registry.thread(threadId, user);
     const message = messageText(text, files);
     const attached = await this.save(this.placeOf(thread), files);
-    const input = authored(user, message, attached);
+    // A retry with the same `requestId` finds the first submission, so a message that reached Golem once stays one.
+    const input = { ...authored(user, message, attached), requestId };
     await this.deliver(
       thread.workspaceId,
       await this.conversation(thread),

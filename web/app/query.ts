@@ -42,6 +42,8 @@ export async function restoreCache(): Promise<void> {
 
 /** Forgets everything, as at sign-out: another person may use this browser next. */
 export async function clearCache(): Promise<void> {
+  // Also the outbox of messages not sent yet, and the page the app opens on.
+  localStorage.clear();
   queryClient.clear();
   await persister.removeClient();
 }

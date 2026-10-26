@@ -47,6 +47,8 @@ addresses, or code and data from employers or clients.
   and `onDelete` call the API, so a change shows at once and rolls back if the server refuses it. Other data uses
   TanStack Query. The Query cache is saved in IndexedDB, so the app opens on what it showed last.
 - The event streams of `docs/api.md` keep open threads and the working threads current; do not poll what they send.
+- Text messages go through the outbox (`web/threads/outbox.ts`), which keeps them in localStorage and sends them with a
+  `requestId` once Golem answers; a message with files needs a connection.
 - `bun start` builds the app into `dist/web/` first; `bun run dev` rebuilds it on every change.
 
 ## Modules

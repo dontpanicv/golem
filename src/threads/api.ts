@@ -96,7 +96,8 @@ export const threadApiRoutes: readonly Route[] = [
         user,
         body.text as string | undefined,
         files,
-        body.voice === true || body.voice === "true"
+        body.voice === true || body.voice === "true",
+        typeof body.requestId === "string" ? body.requestId : undefined
       );
       return new Response(null, { status: 204 });
     }),

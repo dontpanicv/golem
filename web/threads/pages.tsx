@@ -30,13 +30,13 @@ import {
   messagesOf,
   type Place,
   placeKey,
-  sendMessage,
   startThread,
   stopThread,
   uploadFiles,
   useThreadStream,
 } from "./data.ts";
 import { followEnd, MessageView } from "./message.tsx";
+import { followed, outbox, sendMessage } from "./outbox.ts";
 
 const threadRoute = getRouteApi("/signed-in/w/$workspaceId/t/$threadId");
 
@@ -81,7 +81,20 @@ export function ThreadPage() {
       [key]
     )
   );
+  const { data: waiting = [] } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ message: outbox })
+        .where(({ message }) => eq(message.threadId, threadId))
+        .orderBy(({ message }) => message.time),
+  });
   const running = useThreadStream(threadId, placeChanged);
+  useEffect(() => {
+    followed.add(threadId);
+    return () => {
+      followed.delete(threadId);
+    };
+  }, [threadId]);
   useEffect(
     () => rememberOpened(`/w/${workspaceId}/t/${threadId}`),
     [workspaceId, threadId]
@@ -126,7 +139,15 @@ export function ThreadPage() {
               workspaceId={workspaceId}
             />
           ))}
-          {messages.length === 0 ? (
+          {waiting.map((message) => (
+            <MessageView
+              key={message.id}
+              message={message}
+              pending
+              workspaceId={workspaceId}
+            />
+          ))}
+          {messages.length + waiting.length === 0 ? (
             <div className="empty">
               <strong>Ask Golem anything</strong>
             </div>
@@ -134,9 +155,7 @@ export function ThreadPage() {
         </section>
         <Composer
           clearAtOnce
-          onSend={(text, files) =>
-            sendMessage(threadId, text, files).isPersisted.promise
-          }
+          onSend={(text, files) => sendMessage(threadId, text, files)}
           onStop={() => stopThread(threadId).catch(showError)}
           placeholder={
             isOrchestrator ? "Message Golem" : `Message #${channel?.name ?? ""}`

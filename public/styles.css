@@ -1132,6 +1132,10 @@ a {
 .message.failed .message-text {
   color: var(--color-danger);
 }
+/* A message in the outbox, which Golem does not have yet. */
+.message.pending .message-body {
+  opacity: 0.6;
+}
 .prose {
   display: flex;
   flex-direction: column;

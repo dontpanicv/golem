@@ -38,12 +38,7 @@ export const messagesOf = keyed((threadId: string) =>
         let delivered = true;
         for (const mutation of transaction.mutations) {
           const { files } = mutation.metadata as { files: readonly File[] };
-          const userId = queryClient.getQueryData(meQuery.queryKey)?.user.id;
-          const mine = (state: ThreadState | undefined) =>
-            state?.messages.filter((message) => message.authorId === userId)
-              .length ?? 0;
-          const before = mine(streamed.get(threadId));
-          const arrived = nextState(threadId, (state) => mine(state) > before);
+          const arrived = delivery(threadId);
           await request(`/threads/${threadId}/messages`, {
             method: "POST",
             body: messageForm({ text: mutation.modified.text, files }),
@@ -56,31 +51,52 @@ export const messagesOf = keyed((threadId: string) =>
   )
 );
 
-/** Sends a message: it shows at once, with the names of its files. */
-export function sendMessage(
+/** Sends a message with files: it shows at once, with the names of its files, and needs a connection. */
+export function sendWithFiles(
   threadId: string,
   text: string,
   files: readonly File[]
 ) {
-  const me = queryClient.getQueryData(meQuery.queryKey);
   return messagesOf(threadId).insert(
     {
-      id: `local-${crypto.randomUUID()}`,
-      agent: false,
-      author: me?.user.name ?? "",
-      authorId: me?.user.id ?? null,
-      text,
-      time: Date.now(),
-      failed: false,
-      streaming: false,
+      ...ownMessage(`local-${crypto.randomUUID()}`, text),
       files: files.map((file, index) => ({
         id: `local-${index}`,
         name: file.name,
       })),
-      work: null,
     },
     { metadata: { files } }
   );
+}
+
+/** A message the signed-in person writes, as it shows before Golem has it. */
+export function ownMessage(id: string, text: string): Message {
+  const me = queryClient.getQueryData(meQuery.queryKey);
+  return {
+    id,
+    agent: false,
+    author: me?.user.name ?? "",
+    authorId: me?.user.id ?? null,
+    text,
+    time: Date.now(),
+    failed: false,
+    streaming: false,
+    files: [],
+    work: null,
+  };
+}
+
+/**
+ * Whether the thread's stream brings one more message of the signed-in person within 15 s. Start it before the
+ * request that sends the message, which the stream can bring before the response.
+ */
+export function delivery(threadId: string): Promise<boolean> {
+  const userId = queryClient.getQueryData(meQuery.queryKey)?.user.id;
+  const mine = (state: ThreadState | undefined) =>
+    state?.messages.filter((message) => message.authorId === userId).length ??
+    0;
+  const before = mine(streamed.get(threadId));
+  return nextState(threadId, (state) => mine(state) > before);
 }
 
 /** Starts a thread in a channel; its first message is its title. */

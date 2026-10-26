@@ -132,6 +132,36 @@ test("a long first line makes a short thread title", async () => {
   );
 });
 
+test("a message sent again with the same request id, as the web app's outbox retries, stays one message", async () => {
+  golem.faux.setResponses([
+    fauxAssistantMessage("Noted."),
+    fauxAssistantMessage("Got it."),
+  ]);
+  const thread = await body(
+    await golem.call(`/api/v1/workspaces/${workspaceId}/threads`, {
+      token: alice,
+      body: { channelId, text: "Groceries" },
+    })
+  );
+  const state = () =>
+    golem.call(`/api/v1/threads/${thread.id}`, { token: alice }).then(body);
+  await until(state, (now) => now.messages.length === 2 && !now.running);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const sent = await golem.call(`/api/v1/threads/${thread.id}/messages`, {
+      token: alice,
+      body: { text: "And milk", requestId: "outbox-1" },
+    });
+    expect(sent.status).toBe(204);
+  }
+  const done = await until(
+    state,
+    (now) => now.messages.length >= 4 && !now.running
+  );
+  expect(
+    done.messages.map((message: { text: string }) => message.text)
+  ).toEqual(["Groceries", "Noted.", "And milk", "Got it."]);
+});
+
 test("members are listed, and only people who signed in once can be added once", async () => {
   const members = `/api/v1/workspaces/${workspaceId}/members`;
   expect((await golem.call(members, { token: bob })).status).toBe(404);

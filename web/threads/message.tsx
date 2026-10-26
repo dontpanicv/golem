@@ -35,17 +35,21 @@ export function AgentText({
 /** A message; an agent's answer is Markdown, a person's message and an error show as they were written. */
 export const MessageView = memo(MessageCard);
 
+/** `pending`: a message in the outbox, which Golem does not have yet; it says so in place of its time. */
 function MessageCard({
   message,
   workspaceId,
+  pending = false,
 }: {
   message: Message;
   workspaceId: string;
+  pending?: boolean;
 }) {
   const classes = [
     "message",
     message.failed && "failed",
     message.streaming && "streaming",
+    pending && "pending",
   ]
     .filter(Boolean)
     .join(" ");
@@ -55,7 +59,9 @@ function MessageCard({
       <div className="message-body">
         <div className="message-meta">
           <span className="message-author">{message.author}</span>
-          <time className="message-time">{clockTime(message.time)}</time>
+          <time className="message-time">
+            {pending ? "Sending" : clockTime(message.time)}
+          </time>
         </div>
         {message.work ? (
           <WorkLog work={message.work} workspaceId={workspaceId} />
