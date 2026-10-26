@@ -1,5 +1,6 @@
 import type { Connector } from "./integrations.ts";
 import { whatsAppConnector } from "./whatsapp.ts";
+import { xConnector } from "./x.ts";
 
 /**
  * The connectors that Golem has: ones with a secret, MCP servers that people sign in to, and WhatsApp when this machine
@@ -116,6 +117,7 @@ export function integrationCatalog(
       // `chat:write` is for drafts; agents never send.
       hiddenTools: ["slack_send_message", "slack_schedule_message"],
     },
+    xConnector(),
     ...(wacli ? [whatsAppConnector(wacli)] : []),
   ];
 }

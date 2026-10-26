@@ -58,8 +58,8 @@ The machines connect over a WireGuard mesh VPN.
   information system. A credential added in the workspace settings serves every member's turns there; one added in a
   person's own settings serves only their turns, in each of their workspaces, and comes first. A person can connect
   several accounts of one integration, such as Google accounts for work and home. Google (Gmail, Calendar, Drive),
-  Slack, and Rohlík connect through their MCP servers, and WhatsApp through a device linked to the person's number;
-  agents only draft mail and messages. [docs/integrations.md](docs/integrations.md)
+  Slack, and Rohlík connect through their MCP servers, WhatsApp through a device linked to the person's number, and X
+  with a key of the person's session; agents only draft mail and messages. [docs/integrations.md](docs/integrations.md)
   shows the setup. Secrets never leave the server.
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread, driven by Vercel's
   [agent-browser](https://github.com/vercel-labs/agent-browser). They read pages, click, fill in forms, and see

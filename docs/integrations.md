@@ -90,3 +90,21 @@ runs. The copy and the device's keys are in `data/integrations/<credential-id>/`
 search them, and find contacts. For a message, they make a `wa.me` link that opens WhatsApp with the text; you send it.
 Deleting the credential removes the device from your number.
 
+## X
+
+Golem reads your X account through [Rettiwt-API](https://github.com/Rishikant181/Rettiwt-API), with a key made from the
+cookies of your X session. This is not X's paid API, and X can limit or ban an account that uses it. The key gives the
+same access as your login, so keep it secret, as Golem does.
+
+1. In Firefox, install the [Rettiwt Auth Helper](https://addons.mozilla.org/en-US/firefox/addon/rettiwt-auth-helper)
+   extension, and let it run in private windows.
+2. Open a private window, and sign in to X.
+3. Click the extension, click **Get API Key**, and copy the key. Close the window, but do not sign out: signing out
+   ends the key. The key works for about five years, or until you change your password.
+4. In Settings, click **Connect** on X, type your handle as the label, and paste the key.
+
+Without Firefox, copy the `auth_token`, `ct0`, and `twid` cookies of x.com from your browser's developer tools, and run
+`btoa("auth_token=…;ct0=…;twid=…;")` in its console. The result is the key; it ends when you sign out of that browser.
+
+Agents read your bookmarks, newest first, and posts with their replies and threads. They do not post, like, or change
+bookmarks.
