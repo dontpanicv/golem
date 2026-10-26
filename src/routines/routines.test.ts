@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Context, Message } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import {
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import { startTestApp, type TestApp, until } from "../../test/harness.ts";
+  scriptCall,
+  startTestApp,
+  type TestApp,
+  until,
+} from "../../test/harness.ts";
 import {
   type Connector,
   type ConnectorTool,
@@ -103,7 +105,7 @@ function agent(context: Context) {
     return fauxAssistantMessage("Done.");
   }
   const call = (name: string, args: Record<string, string>) =>
-    fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: "toolUse" });
+    fauxAssistantMessage([scriptCall(name, args)], { stopReason: "toolUse" });
   if (text.includes("What its script found") && text.includes("exam")) {
     return modelDown
       ? fauxAssistantMessage("", {
@@ -122,7 +124,7 @@ function agent(context: Context) {
     return fauxAssistantMessage("I cannot read the school system.");
   }
   if (text.endsWith("Check the school every morning")) {
-    return call("create_routine", {
+    return call("routines_create", {
       name: "School",
       schedule: "0 7 * * *",
       instructions: "Tell us about new messages.",
@@ -130,14 +132,16 @@ function agent(context: Context) {
     });
   }
   if (text.endsWith("Make a broken routine")) {
-    return call("create_routine", {
+    return call("routines_create", {
       name: "Broken",
       schedule: "every morning",
       instructions: "Nothing.",
     });
   }
   if (text.endsWith("Test a script")) {
-    return call("test_script", { script: 'text("hello"); return [1, 2];' });
+    return call("routines_test_script", {
+      script: 'text("hello"); return [1, 2];',
+    });
   }
   return fauxAssistantMessage("Ok.");
 }
@@ -330,7 +334,7 @@ test("agents create routines and test scripts", async () => {
       (state) => !state.running && state.messages.at(-1)?.text === "Done."
     );
   await idle();
-  expect(toolResults.at(-1)).toStartWith(
+  expect(toolResults.at(-1)).toContain(
     "Created the routine.\nSchool (routine "
   );
   expect(toolResults.at(-1)).toContain("in #school");
@@ -358,7 +362,7 @@ test("agents create routines and test scripts", async () => {
     () => golem.app.threads.messages(ref()),
     (state) => !state.running && state.messages.length === 6
   );
-  expect(toolResults.at(-1)).toBe(
+  expect(toolResults.at(-1)).toContain(
     "The agent would get:\nhello\n[\n  1,\n  2\n]"
   );
 });

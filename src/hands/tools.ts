@@ -34,7 +34,7 @@ export function handsSection(hands: Hands, workspaceId: string): PromptSection {
         "Machines paired with this workspace. Every hands_* tool takes `machine`: one of these names.",
         ...lines,
         '- People may say "the Mac" or "the server": pick the machine that matches; ask only if two match.',
-        "- You can use several machines in one turn. Calls in the same step run at the same time, so start independent work on different machines together.",
+        "- You can use several machines in one script: `await Promise.all([...])` runs calls on different machines at the same time.",
         "- For something that must keep running while you do other things (a server, a watcher, a build), use hands_job_start, and stop it with hands_job_cancel when you are done.",
         "- When one machine has to reach another, use the other machine's address from this list, not localhost.",
         "- On a Mac, script an app with osascript when it has a scripting dictionary (Music, Finder, Mail). Start an app that is not running with `open -ga <App>` first.",

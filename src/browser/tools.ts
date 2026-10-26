@@ -26,7 +26,7 @@ export function browserSession(
 export function browserTools(browser: Browser, workspaceId: string) {
   return [
     defineTool({
-      name: "browse",
+      name: "browser_run",
       description: GUIDE,
       parameters: Type.Object({
         commands: Type.Array(Type.Array(Type.String()), {

@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Context, Message } from "@earendil-works/pi-ai";
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import type { JsonObject } from "@earendil-works/pi-durable";
-import { startTestApp, type TestApp, until } from "../../test/harness.ts";
+import {
+  scriptCall,
+  startTestApp,
+  type TestApp,
+  until,
+} from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import type { ThreadRef, ThreadSummary } from "../workspaces/workspaces.ts";
 import type { Artifact } from "./artifacts.ts";
@@ -67,7 +69,7 @@ function agent(context: Context) {
   const call = nextCall;
   nextCall = null;
   return call
-    ? fauxAssistantMessage([fauxToolCall(call.name, call.args)], {
+    ? fauxAssistantMessage([scriptCall(call.name, call.args)], {
         stopReason: "toolUse",
       })
     : fauxAssistantMessage("Hello.");
@@ -101,7 +103,7 @@ function onlyArtifact(): Artifact {
 
 test("an agent makes an artifact in its thread, changes it, and reads and writes its data", async () => {
   expect(
-    await useTool("create_artifact", { title: "Trip dates", html: POLL })
+    await useTool("artifacts_create", { title: "Trip dates", html: POLL })
   ).toContain("Made the artifact.");
   const artifact = onlyArtifact();
   expect(artifact).toMatchObject({
@@ -116,38 +118,38 @@ test("an agent makes an artifact in its thread, changes it, and reads and writes
   expect(toolResults.at(-1)).toContain(artifact.url);
 
   expect(
-    await useTool("edit_artifact", {
+    await useTool("artifacts_edit", {
       id: artifact.id,
       find: "15 Dec",
       replace: "16 Dec",
     })
-  ).toBe("Changed the artifact.");
+  ).toContain("Changed the artifact.");
   expect(golem.app.artifacts.html(artifact.id)).toContain("16 Dec");
   expect(
-    await useTool("edit_artifact", {
+    await useTool("artifacts_edit", {
       id: artifact.id,
       find: "<",
       replace: "",
     })
   ).toContain("occurs");
   expect(
-    await useTool("update_artifact", { id: artifact.id, visibility: "public" })
+    await useTool("artifacts_update", { id: artifact.id, visibility: "public" })
   ).toContain("anyone with the link");
 
   expect(
-    await useTool("set_artifact_data", {
+    await useTool("artifacts_set_data", {
       id: artifact.id,
       key: "closed",
       value: false,
     })
-  ).toBe("Saved the record.");
+  ).toContain("Saved the record.");
   expect(
-    await useTool("artifact_data", { id: artifact.id, prefix: "clo" })
+    await useTool("artifacts_data", { id: artifact.id, prefix: "clo" })
   ).toContain('"key":"closed"');
-  expect(await useTool("list_artifacts", {})).toContain(
+  expect(await useTool("artifacts_list", {})).toContain(
     `[Plan the trip](thread:${thread.id})`
   );
-  expect(await useTool("read_artifact", { id: "missing" })).toContain(
+  expect(await useTool("artifacts_read", { id: "missing" })).toContain(
     "There is no artifact missing"
   );
 });
@@ -379,7 +381,7 @@ test("the orchestrator's artifacts belong to the workspace, and an agent puts on
   const { artifacts, threads } = golem.app;
   const orchestrator = await threads.orchestrator(thread.workspaceId, alice);
   await useTool(
-    "create_artifact",
+    "artifacts_create",
     { title: "Chores", html: "<p>Dishes</p>" },
     orchestrator.id
   );
@@ -392,7 +394,7 @@ test("the orchestrator's artifacts belong to the workspace, and an agent puts on
   expect(toolResults.at(-1)).toContain("Made the artifact.");
 
   const named = await useTool(
-    "create_artifact",
+    "artifacts_create",
     { title: "Packing list", html: "<p>Tent</p>", channel: "#trips" },
     orchestrator.id
   );
@@ -404,10 +406,10 @@ test("the orchestrator's artifacts belong to the workspace, and an agent puts on
   ).toContain("Packing list");
   expect(
     await useTool(
-      "create_artifact",
+      "artifacts_create",
       { title: "Lost", html: "<p>?</p>", channel: "nowhere" },
       orchestrator.id
     )
   ).toContain("There is no channel #nowhere.");
-  expect(await useTool("list_artifacts", {})).toContain("The workspace's");
+  expect(await useTool("artifacts_list", {})).toContain("The workspace's");
 });

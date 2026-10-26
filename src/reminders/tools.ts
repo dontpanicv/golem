@@ -30,7 +30,7 @@ export function reminderTools(
 
   return [
     defineTool({
-      name: "create_reminder",
+      name: "reminders_create",
       description:
         "Schedule one reminder for one exact future date and time. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time in your answer.",
       parameters: Type.Object({
@@ -76,7 +76,7 @@ export function reminderTools(
       },
     }),
     defineTool({
-      name: "list_reminders",
+      name: "reminders_list",
       description:
         "List the one-time reminders of this workspace, including delivered and cancelled ones.",
       parameters: Type.Object({}),
@@ -95,7 +95,7 @@ export function reminderTools(
       },
     }),
     defineTool({
-      name: "update_reminder",
+      name: "reminders_update",
       description: "Change a pending one-time reminder.",
       parameters: Type.Object({ reminder, text, at, timeZone }),
       replay: "safe",
@@ -112,7 +112,7 @@ export function reminderTools(
       },
     }),
     defineTool({
-      name: "cancel_reminder",
+      name: "reminders_cancel",
       description: "Cancel a one-time reminder before it is delivered.",
       parameters: Type.Object({ reminder }),
       replay: "safe",

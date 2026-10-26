@@ -44,7 +44,7 @@ export function routineTools(
 
   return [
     defineTool({
-      name: "list_routines",
+      name: "routines_list",
       description:
         "List the routines of this workspace: what runs on a schedule in each channel, and how its last run went.",
       parameters: Type.Object({}),
@@ -67,7 +67,7 @@ export function routineTools(
     }),
 
     defineTool({
-      name: "create_routine",
+      name: "routines_create",
       description: `Create a routine: work that runs on a schedule in a channel, such as checking a website every morning. Each run, the agent of the routine's own thread in the channel gets the instructions, and answers there or stays quiet. ${scriptHelp}`,
       parameters: Type.Object({
         name: Type.String({
@@ -79,7 +79,9 @@ export function routineTools(
             "What the agent does with each run, in plain words, and when it stays quiet",
         }),
         script: Type.Optional(
-          Type.String({ description: "Test it with test_script first" })
+          Type.String({
+            description: "Test it with routines_test_script first",
+          })
         ),
         channel: Type.Optional(
           Type.String({
@@ -108,7 +110,7 @@ export function routineTools(
     }),
 
     defineTool({
-      name: "update_routine",
+      name: "routines_update",
       description: `Change a routine: its name, schedule, instructions, or script, or pause it with enabled false. ${scheduleHelp}`,
       parameters: Type.Object({
         routine: routineParameter,
@@ -118,7 +120,7 @@ export function routineTools(
         script: Type.Optional(
           Type.String({
             description:
-              "The whole new script, tested with test_script; an empty string removes it",
+              "The whole new script, tested with routines_test_script; an empty string removes it",
           })
         ),
         enabled: Type.Optional(Type.Boolean()),
@@ -135,7 +137,7 @@ export function routineTools(
     }),
 
     defineTool({
-      name: "delete_routine",
+      name: "routines_delete",
       description: "Delete a routine. Its thread stays.",
       parameters: Type.Object({ routine: routineParameter }),
       replay: "safe",
@@ -148,7 +150,7 @@ export function routineTools(
     }),
 
     defineTool({
-      name: "test_script",
+      name: "routines_test_script",
       description:
         "Run a routine script once and see what a run would give the agent, or the error. Nothing is saved, and no agent is told.",
       parameters: Type.Object({

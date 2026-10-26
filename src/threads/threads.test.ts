@@ -13,7 +13,12 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import type { Conversation } from "@earendil-works/pi-durable";
-import { startTestApp, type TestApp, until } from "../../test/harness.ts";
+import {
+  scriptCall,
+  startTestApp,
+  type TestApp,
+  until,
+} from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import type { ThreadRef } from "../workspaces/workspaces.ts";
 import {
@@ -32,6 +37,8 @@ const toolResults: string[] = [];
 const memoryViews: string[] = [];
 /** The system prompts of the agents' requests. */
 const systemPrompts: string[] = [];
+/** The names of the tools offered to the model, for each request of an agent. */
+const offeredTools: string[][] = [];
 /** The user messages as the model receives them. */
 const agentInputs: string[] = [];
 
@@ -60,6 +67,23 @@ function textOf(message: Message): string {
         .join("");
 }
 
+/** The tools a request offers the model: its system messages add and remove them in order. */
+function offeredIn(context: Context): string[] {
+  const offered = new Set<string>();
+  for (const message of context.messages as {
+    toolsAdded?: { name: string }[];
+    toolsRemoved?: { name: string }[];
+  }[]) {
+    for (const tool of message.toolsAdded ?? []) {
+      offered.add(tool.name);
+    }
+    for (const tool of message.toolsRemoved ?? []) {
+      offered.delete(tool.name);
+    }
+  }
+  return [...offered];
+}
+
 /** A scripted agent: one tool call for each request it knows, then a short answer after the tool result. */
 function agent(context: Context, options?: SimpleStreamOptions) {
   const system = [
@@ -80,6 +104,7 @@ function agent(context: Context, options?: SimpleStreamOptions) {
     );
   }
   systemPrompts.push(system);
+  offeredTools.push(offeredIn(context));
   const last = context.messages.at(-1)!;
   const text = textOf(last);
   if (last.role === "user") {
@@ -192,10 +217,9 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (save) {
     return fauxAssistantMessage(
       [
-        fauxToolCall(
-          save[1] === "Save" ? "save_file" : "copy_to_machine",
-          JSON.parse(save[2]!)
-        ),
+        save[1] === "Save"
+          ? fauxToolCall("save_file", JSON.parse(save[2]!))
+          : scriptCall("hands_copy_file", JSON.parse(save[2]!)),
       ],
       { stopReason: "toolUse" }
     );
@@ -1383,7 +1407,7 @@ test("save_file refuses what is not an http file under 100 MB, stops reading a b
   }
 });
 
-test("save_file writes text and prints an artifact, and copy_to_machine puts a file on a machine", async () => {
+test("save_file writes text and prints an artifact, and hands_copy_file puts a file on a machine", async () => {
   const home = await golem.app.workspaces.create(alice, "Documents");
   const general = golem.app.workspaces.channels(home.id, alice)[0]!;
   const printed: string[] = [];
@@ -1455,7 +1479,7 @@ test("save_file writes text and prints an artifact, and copy_to_machine puts a f
       await ask(
         `Copy ${JSON.stringify({ file: files[0]!.id, machine: "glados", path: "Desktop/list.md" })}`
       )
-    ).toBe("Copied list.md to /home/alice/Desktop/list.md on glados.");
+    ).toContain("Copied list.md to /home/alice/Desktop/list.md on glados.");
     expect(copied).toEqual([
       [home.id, "glados", "# Shopping\n- milk", "Desktop/list.md"],
     ]);
@@ -1520,3 +1544,48 @@ function answeredIn(threads: Threads, workspaceId: string, threadId: string) {
     (state) => !state.running && state.messages.at(-1)?.text === "Done."
   );
 }
+
+test("the model calls the core tools itself, and every other tool from codemode scripts by namespace", async () => {
+  const workspace = await golem.app.workspaces.create(alice, "Namespaces");
+  const [channel] = golem.app.workspaces.channels(workspace.id, alice);
+  const before = systemPrompts.length;
+  const summary = await golem.app.threads.create(
+    workspace.id,
+    alice,
+    channel!.id,
+    "Hi"
+  );
+  const thread = golem.app.workspaces.thread(summary.id, alice);
+  await until(
+    () => golem.app.threads.messages(thread),
+    (state) => !state.running && state.messages.length === 2
+  );
+  const request = systemPrompts.findIndex(
+    (system, index) => index >= before && system.includes("You are Golem")
+  );
+  expect(offeredTools[request]!.toSorted()).toEqual([
+    "codemode",
+    "create_channel",
+    "delete_channel",
+    "list_channels",
+    "list_files",
+    "notify",
+    "read_file",
+    "read_thread",
+    "recall",
+    "save_file",
+    "search_channels",
+    "send_to_thread",
+    "start_thread",
+  ]);
+  const prompt = systemPrompts.slice(before).join("\n");
+  for (const namespace of [
+    "hands",
+    "artifacts",
+    "browser",
+    "routines",
+    "reminders",
+  ]) {
+    expect(prompt).toContain(`## ${namespace}`);
+  }
+});

@@ -4,7 +4,12 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import { startTestApp, type TestApp, until } from "../../test/harness.ts";
+import {
+  scriptCall,
+  startTestApp,
+  type TestApp,
+  until,
+} from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 
 let golem: TestApp;
@@ -44,7 +49,7 @@ function agent(context: Context) {
   if (textOf(last).endsWith("Remind me next year")) {
     return fauxAssistantMessage(
       [
-        fauxToolCall("create_reminder", {
+        scriptCall("reminders_create", {
           text: "Review the document",
           at: "2090-11-01T09:00:00+01:00",
           timeZone: "Europe/Prague",

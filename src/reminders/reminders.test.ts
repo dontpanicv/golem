@@ -127,10 +127,10 @@ test("a failed reminder retries and a cancelled reminder stays quiet", async () 
 test("reminders stay in their workspace and reject a wrong time-zone offset", () => {
   const { database, reminders } = setup();
   expect(reminders.tools("home").map((tool) => tool.name)).toEqual([
-    "create_reminder",
-    "list_reminders",
-    "update_reminder",
-    "cancel_reminder",
+    "reminders_create",
+    "reminders_list",
+    "reminders_update",
+    "reminders_cancel",
   ]);
   expect(() =>
     reminders.create("home", alice, "thread", alice.id, {
@@ -156,7 +156,7 @@ test("the agent tool creates a workspace reminder for the person who asked", asy
   const { database, reminders } = setup();
   const tool = reminders
     .tools("home")
-    .find((candidate) => candidate.name === "create_reminder")!;
+    .find((candidate) => candidate.name === "reminders_create")!;
   const result = await tool.execute(
     { text: "Review the document", ...time },
     { conversationId: 1, taskId: 3 } as never,
@@ -174,7 +174,7 @@ test("the agent tool creates a workspace reminder for the person who asked", asy
   });
   const update = reminders
     .tools("home")
-    .find((candidate) => candidate.name === "update_reminder")!;
+    .find((candidate) => candidate.name === "reminders_update")!;
   await update.execute(
     {
       reminder: reminder!.id,
@@ -187,7 +187,7 @@ test("the agent tool creates a workspace reminder for the person who asked", asy
   );
   const cancel = reminders
     .tools("home")
-    .find((candidate) => candidate.name === "cancel_reminder")!;
+    .find((candidate) => candidate.name === "reminders_cancel")!;
   await cancel.execute(
     { reminder: reminder!.id },
     { conversationId: 1, taskId: 5 } as never,
@@ -204,7 +204,7 @@ test("an agent without a current person can name a workspace recipient", async (
   const { database, reminders } = setup(() => "Done", null);
   const tool = reminders
     .tools("home")
-    .find((candidate) => candidate.name === "create_reminder")!;
+    .find((candidate) => candidate.name === "reminders_create")!;
   await expect(
     tool.execute(
       { text: "Review the document", ...time },

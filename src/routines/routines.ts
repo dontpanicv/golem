@@ -565,7 +565,7 @@ export class Routines {
     );
     if (!row) {
       throw new Error(
-        `There is no routine ${routineId}. list_routines shows the routines.`
+        `There is no routine ${routineId}. routines_list shows the routines.`
       );
     }
     return row;
@@ -620,7 +620,7 @@ function repairTask(
     `The script of the routine "${routine.name}" (routine ${routine.id}) failed at ${localTime(Date.now())}: ${result.error}`,
     result.text ? `It printed:\n${cut(result.text)}` : "",
     `The script:\n${routine.script}`,
-    "Find the cause. If the script is wrong, fix it: run the new script with test_script, then save it with update_routine. If something outside the script fails, such as a connector or a website, tell the people in this channel in plain words what does not work. If you fixed the script, answer with only QUIET.",
+    "Find the cause. If the script is wrong, fix it: run the new script with routines_test_script, then save it with routines_update. If something outside the script fails, such as a connector or a website, tell the people in this channel in plain words what does not work. If you fixed the script, answer with only QUIET.",
   ]
     .filter(Boolean)
     .join("\n\n");

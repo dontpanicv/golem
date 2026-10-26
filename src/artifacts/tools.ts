@@ -53,7 +53,7 @@ export function artifactTools(
       .find((candidate) => candidate.id === id);
     if (!artifact) {
       throw new Error(
-        `There is no artifact ${id}. list_artifacts shows the artifacts.`
+        `There is no artifact ${id}. artifacts_list shows the artifacts.`
       );
     }
     return artifact;
@@ -67,8 +67,8 @@ export function artifactTools(
 
   return [
     defineTool({
-      name: "create_artifact",
-      description: `Make an artifact and give its link to the people. It belongs to the channel of this thread, or to another channel you name, and stays there after the thread is settled; the orchestrator's belong to the workspace. Before you make one, look for an artifact to change with list_artifacts or recall. Never use an artifact to keep facts or a list; save files and say them in your answer. ${RUNTIME}`,
+      name: "artifacts_create",
+      description: `Make an artifact and give its link to the people. It belongs to the channel of this thread, or to another channel you name, and stays there after the thread is settled; the orchestrator's belong to the workspace. Before you make one, look for an artifact to change with artifacts_list or recall. Never use an artifact to keep facts or a list; save files and say them in your answer. ${RUNTIME}`,
       parameters: Type.Object({
         title: Type.String({
           description: "A short title; link previews show it",
@@ -97,9 +97,9 @@ export function artifactTools(
     }),
 
     defineTool({
-      name: "update_artifact",
+      name: "artifacts_update",
       description:
-        "Replace the HTML, title, or visibility of an artifact. Its data stays, so read it with artifact_data before you change how the page stores it.",
+        "Replace the HTML, title, or visibility of an artifact. Its data stays, so read it with artifacts_data before you change how the page stores it.",
       parameters: Type.Object({
         id: idParameter,
         title: Type.Optional(Type.String()),
@@ -116,9 +116,9 @@ export function artifactTools(
     }),
 
     defineTool({
-      name: "edit_artifact",
+      name: "artifacts_edit",
       description:
-        "Change part of an artifact's HTML: replace the one place where `find` occurs with `replace`. Cheaper than update_artifact for small changes. read_artifact shows the HTML.",
+        "Change part of an artifact's HTML: replace the one place where `find` occurs with `replace`. Cheaper than artifacts_update for small changes. artifacts_read shows the HTML.",
       parameters: Type.Object({
         id: idParameter,
         find: Type.String({ description: "Text that occurs exactly once" }),
@@ -140,7 +140,7 @@ export function artifactTools(
     }),
 
     defineTool({
-      name: "read_artifact",
+      name: "artifacts_read",
       description: "The HTML of an artifact.",
       parameters: Type.Object({ id: idParameter }),
       replay: "safe",
@@ -148,7 +148,7 @@ export function artifactTools(
     }),
 
     defineTool({
-      name: "list_artifacts",
+      name: "artifacts_list",
       description:
         "List the artifacts of this workspace, newest first, with their links, channels, and the threads that made them.",
       parameters: Type.Object({}),
@@ -173,7 +173,7 @@ export function artifactTools(
     }),
 
     defineTool({
-      name: "artifact_data",
+      name: "artifacts_data",
       description:
         "Read the data an artifact keeps: the shared records (visitor null) and each visitor's records, with their names.",
       parameters: Type.Object({
@@ -194,7 +194,7 @@ export function artifactTools(
     }),
 
     defineTool({
-      name: "set_artifact_data",
+      name: "artifacts_set_data",
       description:
         "Write or delete a shared record of an artifact, such as its settings, the levels of a game, or a flag that closes a poll.",
       parameters: Type.Object({

@@ -254,8 +254,8 @@ key in `config/apns.p8`.
 | `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes |
 | `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |
 
-An artifact is a page or a small app that an agent makes in a thread with its `create_artifact`, `update_artifact`,
-`edit_artifact`, `read_artifact`, `list_artifacts`, `artifact_data`, and `set_artifact_data` tools. It belongs to the
+An artifact is a page or a small app that an agent makes in a thread with its `artifacts_create`, `artifacts_update`,
+`artifacts_edit`, `artifacts_read`, `artifacts_list`, `artifacts_data`, and `artifacts_set_data` tools. It belongs to the
 thread's channel, or to a channel the agent names: every thread of the channel sees it, and it stays after the thread
 is settled. The orchestrator's belong to the workspace. `content` is the
 agent's HTML with Golem's `golem` runtime at the top of its head. The runtime sends each call as a message: to
@@ -315,13 +315,13 @@ each integration through the tools of its connector. Secrets never leave the ser
 | `POST /api/v1/routines/:routineId/runs` | | `202`; the run shows in the list; `409` while it runs |
 | `DELETE /api/v1/routines/:routineId` | | `204`; its thread stays |
 
-People create and change routines by asking an agent in a thread: agents have the `create_routine`,
-`update_routine`, `delete_routine`, `list_routines`, and `test_script` tools.
+People create and change routines by asking an agent in a thread: agents have the `routines_create`,
+`routines_update`, `routines_delete`, `routines_list`, and `routines_test_script` tools.
 
 ### One-time reminders (`src/reminders/`)
 
-Agents in every thread of a workspace, including its orchestrator, have `create_reminder`, `list_reminders`,
-`update_reminder`, and `cancel_reminder`. A reminder belongs to that workspace and its source thread. It runs once when
+Agents in every thread of a workspace, including its orchestrator, have `reminders_create`, `reminders_list`,
+`reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source thread. It runs once when
 its saved UTC time is due, or when Golem starts again after that time. Reminders have no user-facing web or JSON routes.
 
 ### Machines (`src/hands/`)

@@ -1,7 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import {
+  fauxProvider,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
 import { serializeSignedCookie } from "better-call";
 import { HttpRouter } from "effect/http";
 import { type App, closeApp, createApp } from "../src/app/app.ts";
@@ -136,4 +139,11 @@ export async function until<T>(
     await Bun.sleep(20);
   }
   throw new Error("Timed out");
+}
+
+/** A faux model's call of a namespaced tool, which the model reaches only through a codemode script. */
+export function scriptCall(name: string, args: object) {
+  return fauxToolCall("codemode", {
+    code: `text(await tools.${name}(${JSON.stringify(args)}));`,
+  });
 }
