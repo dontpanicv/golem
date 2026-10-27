@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Secrets } from "./secrets.ts";
@@ -16,6 +16,19 @@ test("first start creates a private key file; later starts read the same key", a
     const later = await Secrets.load(config);
     expect(later.decrypt(sealed)).toBe("family-secret");
     expect(later.authSecret).toBe(first.authSecret);
+  } finally {
+    await rm(config, { recursive: true, force: true });
+  }
+});
+
+test("a key that an older version left readable to others is made private", async () => {
+  const config = await mkdtemp(join(tmpdir(), "golem-secrets-"));
+  try {
+    const key = join(config, "secret.key");
+    await Bun.write(key, Buffer.alloc(32, 1));
+    await chmod(key, 0o644);
+    await Secrets.load(config);
+    expect((await stat(key)).mode % 0o1000).toBe(0o600);
   } finally {
     await rm(config, { recursive: true, force: true });
   }

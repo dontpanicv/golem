@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
@@ -84,8 +84,11 @@ export async function readConfig(
 ): Promise<Config> {
   const configDirectory = resolve(env.GOLEM_CONFIG ?? "config");
   const dataDirectory = resolve(env.GOLEM_DATA ?? "data");
-  mkdirSync(configDirectory, { recursive: true });
-  mkdirSync(dataDirectory, { recursive: true });
+  for (const directory of [configDirectory, dataDirectory]) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    // Only Golem's user reads the secrets and the family's data, also on an install that an older version made.
+    chmodSync(directory, 0o700);
+  }
   const file = Bun.file(join(configDirectory, "golem.toml"));
   if (!(await file.exists())) {
     await Bun.write(file, TEMPLATE);

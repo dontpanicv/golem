@@ -18,6 +18,8 @@ const chatGpt: LlmProvider = {
   fastModel: "gpt-6-luna",
 };
 
+// Every file and folder Golem makes is for its own user only: the database, the uploads, the keys.
+process.umask(0o077);
 const config = await readConfig();
 if (!reportRequirements(await checkRequirements())) {
   console.error(

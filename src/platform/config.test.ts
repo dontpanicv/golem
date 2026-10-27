@@ -1,9 +1,26 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig } from "./config.ts";
+
+test("config/ and data/ are for Golem's user only, also when an older version made them", async () => {
+  const root = await mkdtemp(join(tmpdir(), "golem-config-"));
+  const env = {
+    GOLEM_CONFIG: join(root, "config"),
+    GOLEM_DATA: join(root, "data"),
+  };
+  try {
+    await mkdir(env.GOLEM_DATA, { mode: 0o755 });
+    await chmod(env.GOLEM_DATA, 0o755);
+    await readConfig(env).catch(() => undefined);
+    expect((await stat(env.GOLEM_CONFIG)).mode % 0o1000).toBe(0o700);
+    expect((await stat(env.GOLEM_DATA)).mode % 0o1000).toBe(0o700);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("first start creates config/golem.toml and data/; later starts read it", async () => {
   const root = await mkdtemp(join(tmpdir(), "golem-config-"));

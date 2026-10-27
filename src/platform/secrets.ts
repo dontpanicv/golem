@@ -4,7 +4,7 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
-import { chmod } from "node:fs/promises";
+import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** Encrypts secrets at rest with a key kept in `config/`, apart from the data it protects. */
@@ -13,13 +13,16 @@ export class Secrets {
 
   /** Reads `config/secret.key`, creating it on first start. It stays out of the data backup on purpose. */
   static async load(configDirectory: string): Promise<Secrets> {
-    const file = Bun.file(join(configDirectory, "secret.key"));
+    const path = join(configDirectory, "secret.key");
+    const file = Bun.file(path);
     if (await file.exists()) {
+      // Also corrects a key that an older version left readable to others.
+      await chmod(path, 0o600);
       return new Secrets(Buffer.from(await file.arrayBuffer()));
     }
     const key = randomBytes(32);
-    await Bun.write(file, key);
-    await chmod(file.name!, 0o600);
+    // Bun.write ignores `mode`, so the file is made private when it is created, not after.
+    await writeFile(path, key, { mode: 0o600, flag: "wx" });
     return new Secrets(key);
   }
 
