@@ -369,7 +369,8 @@ People create and change routines by asking an agent in a thread: agents have th
 `routines_update`, `routines_delete`, `routines_list`, and `routines_test_script` tools. A routine runs as the person
 who last wrote its instructions or script; a change of only its name, schedule, or pause keeps that person. Only that
 person tests a script with the values the routine stored. When that person is no longer a member, each run fails until
-a member changes the routine.
+a member changes the routine. A run that a stop or a restart of Golem cuts off stays `running`, and ends when Golem
+starts again and its agent answers; the script does not run again.
 
 ### One-time reminders (`src/reminders/`)
 

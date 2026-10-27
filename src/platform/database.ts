@@ -257,6 +257,8 @@ const migrations = [
 	ALTER TABLE machine_next RENAME TO machine;
 	CREATE UNIQUE INDEX machine_own_cert ON machine (paired_by, cert_sha256) WHERE workspace_id IS NULL;
 	CREATE UNIQUE INDEX machine_own_name ON machine (paired_by, name) WHERE workspace_id IS NULL;`,
+  // routines: what a run's script found, kept until the run ends, so a run that a stop cuts off goes on with it.
+  "ALTER TABLE routine_run ADD COLUMN result TEXT;",
 ];
 
 export function openDatabase(path: string): Database {

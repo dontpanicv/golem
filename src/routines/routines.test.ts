@@ -15,7 +15,7 @@ import {
 } from "../integrations/integrations.ts";
 import type { User } from "../platform/auth.ts";
 import { Secrets } from "../platform/secrets.ts";
-import { Routines } from "./routines.ts";
+import { Routines, type RoutineThreads } from "./routines.ts";
 
 let golem: TestApp;
 let alice: User;
@@ -399,6 +399,149 @@ test("a routine runs at most every 15 minutes, whatever its schedule says", asyn
   expect(routines.get(routine.id, alice).nextRunAt).toBe(ranAt + 16 * 60_000);
   routines.delete(routine.id, alice);
 });
+
+test("a run that a stop cuts off goes on at the next start, and the agent does its work once", async () => {
+  const { threads } = golem.app;
+  let answered: Promise<string | null> | undefined;
+  // As Golem stops: the agent got the task, then its harness closes while the run waits for the answer.
+  const stopping: RoutineThreads = {
+    messages: (thread) => threads.messages(thread),
+    requester: (workspace, conversation) =>
+      threads.requester(workspace, conversation),
+    startAgentThread: (workspace, channel, title) =>
+      threads.startAgentThread(workspace, channel, title),
+    instruct: (...args) => {
+      answered = threads.instruct(...args);
+      beforeStop.close();
+      return Promise.reject(new Error("Harness is closed"));
+    },
+  };
+  const beforeStop = new Routines(
+    golem.app.database,
+    golem.app.workspaces,
+    integrations,
+    stopping,
+    golem.app.indexer
+  );
+  const routine = beforeStop.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Backfill",
+    schedule: "0 7 * * *",
+    instructions: "Copy the next page.",
+    createdBy: alice.id,
+  });
+  const cutOff = await beforeStop.tick(routine.nextRunAt!)[0]!;
+  expect(cutOff).toMatchObject({ outcome: "running", finishedAt: null });
+  await answered;
+
+  const afterStart = restart();
+  try {
+    expect(await outcomeOf(cutOff.id)).toEqual({
+      outcome: "posted",
+      error: null,
+      result: null,
+    });
+    const thread = threadOf(routines.get(routine.id, alice).threadId);
+    expect(
+      (await threads.messages(thread)).messages.map((message) => message.text)
+    ).toEqual(["Ok."]);
+  } finally {
+    afterStart.close();
+    routines.delete(routine.id, alice);
+  }
+});
+
+test("a script run that a stop cut off goes on with what the script found, and one of a deleted routine fails", async () => {
+  const routine = routines.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Exams later",
+    schedule: "0 7 * * *",
+    instructions: "Tell us about exams.",
+    script: SCRIPT,
+    createdBy: alice.id,
+  });
+  const deleted = routines.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Gone",
+    schedule: "0 7 * * *",
+    instructions: "Nothing.",
+    createdBy: alice.id,
+  });
+  routines.delete(deleted.id, alice);
+  const found = {
+    ok: true,
+    text: "Anna has an exam on Monday.",
+    store: { since: 99 },
+  };
+  const cutOff = (routineId: string, result: string | null) => {
+    const id = crypto.randomUUID();
+    golem.app.database
+      .query(
+        "INSERT INTO routine_run (id, routine_id, started_at, outcome, result) VALUES (?, ?, ?, 'running', ?)"
+      )
+      .run(id, routineId, Date.now(), result);
+    return id;
+  };
+  const withResult = cutOff(routine.id, JSON.stringify(found));
+  const ofDeleted = cutOff(deleted.id, null);
+  const seen = secretsSeen.length;
+
+  const afterStart = restart();
+  try {
+    expect(await outcomeOf(withResult)).toEqual({
+      outcome: "posted",
+      error: null,
+      result: null,
+    });
+    expect(await outcomeOf(ofDeleted)).toEqual({
+      outcome: "failed",
+      error: "Golem stopped during the run",
+      result: null,
+    });
+    // The script did not run again, and what it stored is saved once the agent has its result.
+    expect(secretsSeen).toHaveLength(seen);
+    expect(
+      golem.app.database
+        .query("SELECT store FROM routine WHERE id = ?")
+        .get(routine.id)
+    ).toEqual({ store: JSON.stringify(found.store) });
+    const thread = threadOf(routines.get(routine.id, alice).threadId);
+    expect(
+      (await golem.app.threads.messages(thread)).messages.at(-1)?.text
+    ).toBe("Anna has an exam on Monday.");
+  } finally {
+    afterStart.close();
+    routines.delete(routine.id, alice);
+  }
+});
+
+/** The routines of a Golem that starts again. */
+function restart(): Routines {
+  const started = new Routines(
+    golem.app.database,
+    golem.app.workspaces,
+    integrations,
+    golem.app.threads,
+    golem.app.indexer
+  );
+  started.start();
+  return started;
+}
+
+/** A run's outcome once it ends. */
+function outcomeOf(runId: string) {
+  return until(
+    async () =>
+      golem.app.database
+        .query("SELECT outcome, error, result FROM routine_run WHERE id = ?")
+        .get(runId) as {
+        outcome: string;
+        error: string | null;
+        result: string | null;
+      },
+    (run) => run.outcome !== "running"
+  );
+}
 
 test("agents create routines and test scripts", async () => {
   const thread = await golem.app.threads.create(

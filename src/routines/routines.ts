@@ -108,6 +108,7 @@ const RUN_COLUMNS =
 export class Routines {
   private readonly running = new Set<string>();
   private timer: ReturnType<typeof setInterval> | undefined;
+  private closed = false;
 
   constructor(
     private readonly database: Database,
@@ -117,17 +118,52 @@ export class Routines {
     private readonly search: RoutineSearch
   ) {}
 
-  /** Starts the scheduler. A run that a stop cut off counts as failed. */
+  /**
+   * Starts the scheduler, and finishes the runs that a stop cut off. Their agent goes on with its turn after the stop,
+   * and a run waits for that turn's answer again, under the same request id, so the agent never does the work twice.
+   */
   start(): void {
-    this.database
+    const cutOff = this.database
       .query(
-        "UPDATE routine_run SET outcome = 'failed', finished_at = ?, error = 'Golem stopped during the run' WHERE outcome = 'running'"
+        "SELECT id, routine_id AS routineId, started_at AS startedAt, result FROM routine_run WHERE outcome = 'running'"
       )
-      .run(Date.now());
+      .all() as {
+      id: string;
+      routineId: string;
+      startedAt: number;
+      result: string | null;
+    }[];
+    for (const run of cutOff) {
+      const [routine] = this.live(
+        this.database
+          .query(
+            `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE id = ? AND deleted_at IS NULL`
+          )
+          .all(run.routineId) as RoutineRow[]
+      );
+      if (routine) {
+        this.finish(
+          routine,
+          run.id,
+          run.startedAt,
+          run.result === null ? null : JSON.parse(run.result)
+        ).catch(() => {
+          // The run records its own failure; this one is a database closed while it ran.
+        });
+      } else {
+        this.database
+          .query(
+            "UPDATE routine_run SET outcome = 'failed', finished_at = ?, error = 'Golem stopped during the run' WHERE id = ?"
+          )
+          .run(Date.now(), run.id);
+      }
+    }
     this.timer = setInterval(() => this.tick(), TICK);
   }
 
+  /** Stops the scheduler. A run that fails from now on, as the agents stop, stays running for the next start. */
   close(): void {
+    this.closed = true;
     clearInterval(this.timer);
   }
 
@@ -323,8 +359,7 @@ export class Routines {
     );
   }
 
-  private async run(routine: RoutineRow, now: number): Promise<RoutineRun> {
-    this.running.add(routine.id);
+  private run(routine: RoutineRow, now: number): Promise<RoutineRun> {
     const id = randomUUID();
     const startedAt = Date.now();
     this.database
@@ -335,11 +370,33 @@ export class Routines {
     this.database
       .query("UPDATE routine SET next_run_at = ? WHERE id = ?")
       .run(nextRun(routine.schedule, now + MIN_ROUTINE_GAP), routine.id);
+    return this.finish(routine, id, startedAt, null);
+  }
+
+  /** Performs a run, with what its script found when a stop cut it off after the script, and records its outcome. */
+  private async finish(
+    routine: RoutineRow,
+    id: string,
+    startedAt: number,
+    found: ScriptResult | null
+  ): Promise<RoutineRun> {
+    this.running.add(routine.id);
     let outcome: RoutineOutcome;
     let error: string | null = null;
     try {
-      outcome = await this.perform(routine, id);
+      outcome = await this.perform(routine, id, found);
     } catch (failure) {
+      if (this.closed) {
+        return {
+          id,
+          routineId: routine.id,
+          routineName: routine.name,
+          startedAt,
+          finishedAt: null,
+          outcome: "running",
+          error: null,
+        };
+      }
       outcome = "failed";
       error = (failure as Error).message;
     } finally {
@@ -348,7 +405,7 @@ export class Routines {
     const finishedAt = Date.now();
     this.database
       .query(
-        "UPDATE routine_run SET outcome = ?, error = ?, finished_at = ? WHERE id = ?"
+        "UPDATE routine_run SET outcome = ?, error = ?, finished_at = ?, result = NULL WHERE id = ?"
       )
       .run(outcome, error, finishedAt, id);
     return {
@@ -364,7 +421,8 @@ export class Routines {
 
   private async perform(
     routine: RoutineRow,
-    runId: string
+    runId: string,
+    found: ScriptResult | null
   ): Promise<"quiet" | "posted"> {
     if (routine.createdBy !== "golem") {
       try {
@@ -384,12 +442,18 @@ export class Routines {
       const answer = await this.tell(routine, runId, runTask(routine, null));
       return answer === null ? "quiet" : "posted";
     }
-    const result = await this.execute(
-      routine.workspaceId,
-      routine.script,
-      JSON.parse(routine.store),
-      routine.createdBy
-    );
+    const result =
+      found ??
+      (await this.execute(
+        routine.workspaceId,
+        routine.script,
+        JSON.parse(routine.store),
+        routine.createdBy
+      ));
+    // A run that a stop cuts off goes on with this result: a new script run could find other things.
+    this.database
+      .query("UPDATE routine_run SET result = ? WHERE id = ?")
+      .run(JSON.stringify(result), runId);
     if (!result.ok) {
       await this.tell(routine, runId, repairTask(routine, result));
       throw new Error(result.error);
