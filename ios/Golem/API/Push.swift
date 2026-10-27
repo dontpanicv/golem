@@ -55,14 +55,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         [.banner, .list, .sound]
     }
 
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
-    ) async {
+    /// Not the async form: it calls UIKit's completion handler off the main thread, and UIKit then stops the app.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer { completionHandler() }
         let info = response.notification.request.content.userInfo
         guard let workspaceID = info["workspaceId"] as? String, let channelID = info["channelId"] as? String else {
             return
         }
         let destination = (info["threadId"] as? String).map { Destination.thread($0) } ?? .channel(channelID)
-        await MainActor.run { Push.shared.tapped = .init(workspaceID: workspaceID, destination: destination) }
+        Push.shared.tapped = .init(workspaceID: workspaceID, destination: destination)
     }
 }
