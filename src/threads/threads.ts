@@ -361,7 +361,8 @@ export class Threads {
 
   /**
    * Sends a family member's message and files to a thread of their workspace; the agent answers in the background. A
-   * `voice` message is spoken in a conversation: the agent's answer is read aloud, and it steers a run at work.
+   * `voice` message is spoken in a conversation: the agent's answer is read aloud, and it steers a run at work for
+   * the same person.
    */
   async send(
     threadId: string,
@@ -376,14 +377,23 @@ export class Threads {
     const attached = await this.save(this.placeOf(thread), files);
     // A retry with the same `requestId` finds the first submission, so a message that reached Golem once stays one.
     const input = { ...authored(user, message, attached), requestId };
+    const conversation = await this.conversation(thread);
+    // A steer joins the running turn, whose later tool calls then act for its author; so only that turn's person steers.
+    const steer =
+      voice &&
+      (
+        await this.requester(thread.workspaceId, conversation.id).catch(
+          () => null
+        )
+      )?.id === user.id;
     await this.deliver(
       thread.workspaceId,
-      await this.conversation(thread),
+      conversation,
       voice
         ? {
             ...input,
             content: `${input.content}\n\n${VOICE}`,
-            whenBusy: "steer",
+            ...(steer ? { whenBusy: "steer" as const } : {}),
           }
         : input
     );

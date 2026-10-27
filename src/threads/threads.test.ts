@@ -41,6 +41,13 @@ const systemPrompts: string[] = [];
 const offeredTools: string[][] = [];
 /** The user messages as the model receives them. */
 const agentInputs: string[] = [];
+/** A turn that waits in a tool call until `release`, then records whose turn it is. */
+const held = {
+  release: undefined as (() => void) | undefined,
+  workspaceId: "",
+  conversationId: undefined as ConversationId | undefined,
+  requesters: [] as (string | undefined)[],
+};
 
 beforeAll(async () => {
   golem = await startTestApp();
@@ -130,6 +137,26 @@ function agent(context: Context, options?: SimpleStreamOptions) {
         reject(new Error("Stopped"))
       )
     );
+  }
+  if (asked && textOf(asked).endsWith("Hold for a voice")) {
+    if (last.role === "user" && text.endsWith("Hold for a voice")) {
+      return new Promise<ReturnType<typeof fauxAssistantMessage>>((resolve) => {
+        held.release = () =>
+          resolve(
+            fauxAssistantMessage([fauxToolCall("list_channels", {})], {
+              stopReason: "toolUse",
+            })
+          );
+      });
+    }
+    if (last.role === "toolResult") {
+      return golem.app.threads
+        .requester(held.workspaceId, held.conversationId!)
+        .then((requester) => {
+          held.requesters.push(requester?.id);
+          return fauxAssistantMessage("Done.");
+        });
+    }
   }
   if (text.endsWith("Take your time")) {
     // Works until someone stops it.
@@ -671,6 +698,38 @@ test("a spoken message asks the agent for an answer to read aloud, and the trans
     "Turn on the lights",
     "Done.",
   ]);
+});
+
+test("a voice message steers only its author's running turn; another member's waits for the answer", async () => {
+  const home = await golem.app.workspaces.create(alice, "Shared voice");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const thread = await golem.app.threads.create(
+    home.id,
+    alice,
+    general.id,
+    "Hold for a voice"
+  );
+  held.workspaceId = home.id;
+  held.conversationId = golem.app.workspaces.thread(thread.id, alice)
+    .conversationId as ConversationId;
+  await until(async () => held.release, Boolean);
+  await golem.app.threads.send(thread.id, bob, "Read my mail", [], true);
+  held.release!();
+  await until(
+    () =>
+      golem.app.threads.messages(golem.app.workspaces.thread(thread.id, alice)),
+    (state) => !state.running && state.messages.length === 4
+  );
+  // Alice's turn stays hers to its end, and Bob's message gets its own turn.
+  expect(held.requesters).toEqual([alice.id]);
+  expect(
+    (
+      await golem.app.threads.messages(
+        golem.app.workspaces.thread(thread.id, alice)
+      )
+    ).messages.map((message) => message.text)
+  ).toEqual(["Hold for a voice", "Done.", "Read my mail", "Ok."]);
 });
 
 test("an answer carries the work before it: open while the agent works, folded once it answers", () => {
