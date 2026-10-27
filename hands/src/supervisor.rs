@@ -17,18 +17,25 @@ use crate::jobs::Jobs;
 use crate::serve::{PROTOCOL, VERSION};
 use crate::{cua, state};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io;
+use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 /// How long `serve` waits for a supervisor it started to listen.
 const START_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The pids of the `golem-hands __serve` children of this process's listener (listener.rs). In service mode only they
+/// may ask for `job.*` and `cua.*`: the service holds the permissions macOS gave hands, and another program of the same
+/// user must not use them through this socket.
+pub static SERVE_PIDS: Mutex<BTreeSet<u32>> = Mutex::new(BTreeSet::new());
 
 pub fn run(detached: bool) -> io::Result<()> {
     let dir = state::ensure()?;
@@ -128,6 +135,10 @@ fn handle(jobs: &Arc<Jobs>, mut stream: UnixStream) {
     let name = request.json["op"].as_str().unwrap_or_default();
     let op = SupervisorOp::parse(name);
     let reply = match op {
+        Some(op) if !allowed(op, crate::permissions::in_service(), peer_pid(&stream)) => Err(Failure::new(
+            "EPERM",
+            format!("{name} is only for the connections of this service's listener"),
+        )),
         Some(op) => dispatch(jobs, op, name, &request.json),
         None => Err(Failure::new("EINVAL", format!("unknown operation {name}"))),
     };
@@ -139,6 +150,53 @@ fn handle(jobs: &Arc<Jobs>, mut stream: UnixStream) {
     if op == Some(SupervisorOp::Shutdown) {
         jobs.exit();
     }
+}
+
+/// Whether a peer may ask for `op`. The CLI's operations stay open: `job.list` shows only what the state dir holds.
+fn allowed(op: SupervisorOp, in_service: bool, peer: Option<u32>) -> bool {
+    match op {
+        SupervisorOp::Hello | SupervisorOp::Access | SupervisorOp::Shutdown | SupervisorOp::JobList => true,
+        _ => {
+            !in_service
+                || peer.is_some_and(|pid| SERVE_PIDS.lock().unwrap_or_else(|error| error.into_inner()).contains(&pid))
+        }
+    }
+}
+
+/// The pid of the process at the other end of a Unix socket.
+#[cfg(target_os = "macos")]
+fn peer_pid(stream: &UnixStream) -> Option<u32> {
+    let mut pid: libc::pid_t = 0;
+    let mut length = size_of::<libc::pid_t>() as libc::socklen_t;
+    // SAFETY: `pid` is writable for `length` bytes for the duration of the call.
+    let result = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_LOCAL,
+            libc::LOCAL_PEERPID,
+            (&raw mut pid).cast(),
+            &mut length,
+        )
+    };
+    (result == 0).then_some(pid).and_then(|pid| u32::try_from(pid).ok()).filter(|pid| *pid != 0)
+}
+
+/// The pid of the process at the other end of a Unix socket.
+#[cfg(not(target_os = "macos"))]
+fn peer_pid(stream: &UnixStream) -> Option<u32> {
+    let mut credentials = libc::ucred { pid: 0, uid: 0, gid: 0 };
+    let mut length = size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: `credentials` is writable for `length` bytes for the duration of the call.
+    let result = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&raw mut credentials).cast(),
+            &mut length,
+        )
+    };
+    (result == 0).then_some(credentials.pid).and_then(|pid| u32::try_from(pid).ok()).filter(|pid| *pid != 0)
 }
 
 fn dispatch(jobs: &Arc<Jobs>, op: SupervisorOp, name: &str, json: &Value) -> Result<(Value, Vec<u8>), Failure> {
@@ -248,4 +306,29 @@ fn start_detached() -> io::Result<()> {
         let _ = child.wait();
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn in_service_only_serve_children_use_jobs_and_the_desktop() {
+        let (ours, _theirs) = UnixStream::pair().unwrap();
+        let me = peer_pid(&ours);
+        assert_eq!(me, Some(std::process::id()));
+        for op in [SupervisorOp::JobStart, SupervisorOp::JobOutput, SupervisorOp::CuaCall, SupervisorOp::CuaCancel] {
+            assert!(allowed(op, false, None), "outside the service everything stays open");
+            assert!(!allowed(op, true, None));
+            assert!(!allowed(op, true, me));
+        }
+        for op in [SupervisorOp::Hello, SupervisorOp::Access, SupervisorOp::Shutdown, SupervisorOp::JobList] {
+            assert!(allowed(op, true, None), "the CLI's operations stay open");
+        }
+        SERVE_PIDS.lock().unwrap().insert(std::process::id());
+        assert!(allowed(SupervisorOp::JobStart, true, me));
+        assert!(allowed(SupervisorOp::CuaCall, true, me));
+        SERVE_PIDS.lock().unwrap().remove(&std::process::id());
+        assert!(!allowed(SupervisorOp::JobStart, true, me));
+    }
 }

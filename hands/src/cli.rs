@@ -131,7 +131,7 @@ pub fn unpair(args: &[String]) -> i32 {
         }
         Ok(count) => {
             let what = if count == 1 { "phone".to_string() } else { format!("{count} phones") };
-            println!("unpaired {what} named {name}; connections already open stay until they end");
+            println!("unpaired {what} named {name}; open connections close at their next request");
             0
         }
         Err(error) => {

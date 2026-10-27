@@ -22,7 +22,8 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError, sync_channel};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -37,6 +38,8 @@ const HANDSHAKE: Duration = Duration::from_secs(10);
 const IDLE: Duration = Duration::from_secs(60);
 /// Connections still in their handshake; more are refused.
 const MAX_HANDSHAKING: usize = 32;
+/// Connections of one peer address still in their handshake, so one peer cannot take every slot.
+const MAX_HANDSHAKING_PER_ADDRESS: usize = 4;
 /// Frames read from `serve` and not yet handed to the WebSocket.
 const QUEUED_FRAMES: usize = 16;
 
@@ -232,6 +235,35 @@ struct Context {
     cert_sha256: String,
     name: String,
     handshaking: AtomicUsize,
+    handshaking_by_address: Mutex<HashMap<IpAddr, usize>>,
+}
+
+impl Context {
+    /// Count a handshake of `address`; `false`, and nothing counted, when too many run.
+    fn start_handshake(&self, address: IpAddr) -> bool {
+        let mut by_address = self.handshaking_by_address.lock().unwrap_or_else(|error| error.into_inner());
+        if self.handshaking.load(Ordering::SeqCst) >= MAX_HANDSHAKING {
+            return false;
+        }
+        let count = by_address.entry(address).or_insert(0);
+        if *count >= MAX_HANDSHAKING_PER_ADDRESS {
+            return false;
+        }
+        *count += 1;
+        self.handshaking.fetch_add(1, Ordering::SeqCst);
+        true
+    }
+
+    fn end_handshake(&self, address: IpAddr) {
+        let mut by_address = self.handshaking_by_address.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(count) = by_address.get_mut(&address) {
+            *count -= 1;
+            if *count == 0 {
+                by_address.remove(&address);
+            }
+        }
+        self.handshaking.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// `golem-hands supervise --listen [--bind ADDR] [--detached]`.
@@ -270,16 +302,17 @@ pub fn run(bind: Option<IpAddr>, detached: bool) -> io::Result<()> {
         cert_sha256: identity.cert.sha256.clone(),
         name,
         handshaking: AtomicUsize::new(0),
+        handshaking_by_address: Mutex::new(HashMap::new()),
     });
     thread::spawn(move || {
         for stream in socket.incoming() {
             let Ok(stream) = stream else { continue };
-            if context.handshaking.load(Ordering::SeqCst) >= MAX_HANDSHAKING {
+            let Ok(address) = stream.peer_addr().map(|peer| peer.ip()) else { continue };
+            if !context.start_handshake(address) {
                 continue;
             }
-            context.handshaking.fetch_add(1, Ordering::SeqCst);
             let context = context.clone();
-            thread::spawn(move || connection(&context, stream));
+            thread::spawn(move || connection(&context, stream, address));
         }
     });
     // The supervisor in the same process. Waits while another supervisor (one `serve` started) holds its lock;
@@ -300,7 +333,7 @@ fn send_json(socket: &mut Socket, value: Value) -> tungstenite::Result<()> {
     socket.send(Message::text(value.to_string()))
 }
 
-fn connection(context: &Context, tcp: TcpStream) {
+fn connection(context: &Context, tcp: TcpStream, address: IpAddr) {
     let peer = tcp
         .peer_addr()
         .map(|address| address.to_string())
@@ -309,11 +342,11 @@ fn connection(context: &Context, tcp: TcpStream) {
     // The handshake watchdog holds a duplicate of the socket, so dropping the stream alone would not close it.
     let closer = tcp.try_clone();
     let result = handshake(context, tcp, &authenticated);
-    context.handshaking.fetch_sub(1, Ordering::SeqCst);
+    context.end_handshake(address);
     match result {
-        Ok((socket, phone)) => {
+        Ok((socket, phone, key)) => {
             eprintln!("golem-hands: {peer} authenticated as {phone}");
-            match proxy(socket, &phone) {
+            match proxy(socket, &phone, &key) {
                 Ok(()) => eprintln!("golem-hands: {peer} ({phone}) disconnected"),
                 Err(error) => eprintln!("golem-hands: {peer} ({phone}) disconnected: {error}"),
             }
@@ -325,12 +358,12 @@ fn connection(context: &Context, tcp: TcpStream) {
     }
 }
 
-/// TLS, the WebSocket upgrade on `/v1`, `hello`, `auth`, `ready`: the authenticated socket and the phone's name.
+/// TLS, the WebSocket upgrade on `/v1`, `hello`, `auth`, `ready`: the authenticated socket, the phone's name and key.
 fn handshake(
     context: &Context,
     tcp: TcpStream,
     authenticated: &Arc<AtomicBool>,
-) -> Result<(Socket, String), String> {
+) -> Result<(Socket, String, Vec<u8>), String> {
     // A connection that has not authenticated within the limit is cut, however slowly it trickles bytes.
     if let Ok(watched) = tcp.try_clone() {
         let authenticated = authenticated.clone();
@@ -382,11 +415,11 @@ fn handshake(
         }
     };
     match verdict {
-        Ok(phone) => {
+        Ok((phone, key)) => {
             authenticated.store(true, Ordering::SeqCst);
             socket.get_mut().left = None;
             send_json(&mut socket, json!({ "type": "ready" })).map_err(|e| text(&e))?;
-            Ok((socket, phone))
+            Ok((socket, phone, key))
         }
         Err(reason) => {
             let _ = send_json(&mut socket, json!({ "type": "error", "code": "unauthorized" }));
@@ -403,8 +436,8 @@ fn handshake(
     }
 }
 
-/// Check an `auth` message; the name of the paired phone it proves to be.
-fn authenticate(context: &Context, nonce: &str, text: &str) -> Result<String, String> {
+/// Check an `auth` message; the name and key of the paired phone it proves to be.
+fn authenticate(context: &Context, nonce: &str, text: &str) -> Result<(String, Vec<u8>), String> {
     let message: Value = serde_json::from_str(text).map_err(|_| "auth is not JSON".to_string())?;
     if message["type"] != "auth" {
         return Err(format!("expected auth, got {}", message["type"]));
@@ -424,7 +457,7 @@ fn authenticate(context: &Context, nonce: &str, text: &str) -> Result<String, St
     if !tls::ed25519_verify(&public_key, signed.as_bytes(), &signature) {
         return Err(format!("bad signature for {phone}"));
     }
-    Ok(phone)
+    Ok((phone, public_key))
 }
 
 /// Start `golem-hands __serve` for this connection, naming the phone it serves (cua.rs keys its desktop session by it).
@@ -464,8 +497,10 @@ fn read_frames(stdout: impl Read, frames: std::sync::mpsc::SyncSender<Vec<u8>>, 
 }
 
 /// Proxy frames between the authenticated socket and a `serve` child until either side ends.
-fn proxy(mut socket: Socket, phone: &str) -> Result<(), String> {
+fn proxy(mut socket: Socket, phone: &str, key: &[u8]) -> Result<(), String> {
     let mut child = start_serve(phone).map_err(|error| format!("starting serve: {error}"))?;
+    let pid = child.id();
+    supervisor::SERVE_PIDS.lock().unwrap_or_else(|error| error.into_inner()).insert(pid);
     let stdin = child.stdin.take();
     let stdout = child.stdout.take().expect("piped stdout");
     let (wake_sender, mut wake) = UnixStream::pair().map_err(|error| error.to_string())?;
@@ -473,7 +508,7 @@ fn proxy(mut socket: Socket, phone: &str) -> Result<(), String> {
     let _ = wake.set_nonblocking(true);
     let (sender, frames) = sync_channel(QUEUED_FRAMES);
     let reader = thread::spawn(move || read_frames(stdout, sender, wake_sender));
-    let result = pump(&mut socket, stdin, &frames, &mut wake);
+    let result = pump(&mut socket, stdin, &frames, &mut wake, key);
     // Closing stdin (pump has dropped it) ends `serve`: it kills the commands it started, not jobs, and exits. Kill
     // it if it lingers.
     drop(frames);
@@ -483,6 +518,8 @@ fn proxy(mut socket: Socket, phone: &str) -> Result<(), String> {
     }
     let _ = child.kill();
     let _ = child.wait();
+    // Waited for, so the pid is free again: another process may get it.
+    supervisor::SERVE_PIDS.lock().unwrap_or_else(|error| error.into_inner()).remove(&pid);
     let _ = reader.join();
     result
 }
@@ -504,6 +541,7 @@ fn pump(
     stdin: Option<ChildStdin>,
     frames: &Receiver<Vec<u8>>,
     wake: &mut UnixStream,
+    key: &[u8],
 ) -> Result<(), String> {
     let mut stdin = stdin.ok_or("serve has no stdin")?;
     let tcp = socket.get_ref().inner.get_ref();
@@ -530,6 +568,15 @@ fn pump(
                         }));
                         let _ = socket.flush();
                         return Err("a binary message that is not one frame".into());
+                    }
+                    // `golem-hands unpair` also ends a connection that is open.
+                    if pairing::phone_with_key(key).is_none() {
+                        let _ = socket.close(Some(CloseFrame {
+                            code: CloseCode::Policy,
+                            reason: "unpaired".into(),
+                        }));
+                        let _ = socket.flush();
+                        return Err("unpaired".into());
                     }
                     stdin
                         .write_all(&frame)

@@ -243,10 +243,11 @@ These record how `hands` 0.2.0 reads the parts the sections above leave open. Th
   - WebSocket ping and pong control frames are allowed before `ready`.
   - Anything else that is not a valid, verifying `auth` gets `{ "type": "error", "code": "unauthorized" }` and a close frame with code 1008. This covers a binary message, another `type`, malformed JSON, a malformed key or signature, an unpaired key, and a bad signature.
   - The 10 s limit covers TCP accept to `ready`, TLS and the upgrade included. A watchdog shuts the socket at the deadline.
-  - At most 32 connections may be in their handshake at once. Further ones are dropped at accept.
+  - At most 32 connections may be in their handshake at once, and at most 4 of one peer address. Further ones are dropped at accept.
   - Before `ready`, a peer may send at most 64 KiB in total (the upgrade request and `auth`). Beyond that the connection is closed.
 - **After `ready`.**
   - Text messages are ignored.
+  - Before each binary message goes to `serve`, the listener checks that the phone's key is still in `paired.json`. If not, it closes the connection with code 1008 and the reason `unpaired`.
   - A binary message that is not exactly one frame closes the connection with code 1002. That is a message under 13 bytes, or one whose length prefix differs from the message length minus 4.
   - The largest accepted message is 16 MiB + 4 bytes.
   - "Silent" means no message of any kind, pings included, for 60 s. Such a connection is closed with code 1001.

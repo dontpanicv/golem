@@ -303,6 +303,74 @@ fn an_unknown_key_is_unauthorized() {
 }
 
 #[test]
+fn unpair_closes_an_open_connection_at_its_next_frame() {
+    let state = StateDir::new();
+    let key = PhoneKey::from_seed(4);
+    let listener = Listener::start(&state, &[("Phone", &key)]);
+    let cert = listener.cert_sha256.clone();
+    let mut socket = connect(listener.port, &cert, "/v1").unwrap();
+    assert_eq!(
+        authenticate(&mut socket, &key, |nonce| auth_message(&cert, nonce)),
+        json!({ "type": "ready" })
+    );
+    ok(&mut socket, 1, json!({ "op": "hello", "protocol": 1 }));
+
+    assert!(state.hands(&["unpair", "Phone"]).status.success());
+    let mut frame = Vec::new();
+    write_frame(&mut frame, REQUEST, 2, &json!({ "op": "hello", "protocol": 1 }), &[]);
+    socket.send(Message::binary(frame)).unwrap();
+    loop {
+        match socket.read() {
+            Ok(Message::Close(Some(close))) => {
+                assert_eq!(close.code, tungstenite::protocol::frame::coding::CloseCode::Policy);
+                assert_eq!(close.reason, "unpaired");
+                break;
+            }
+            Ok(Message::Binary(message)) => {
+                let (kind, id, json, _) = read_frame(&mut &message[..]).unwrap();
+                assert!(id != 2, "an unpaired phone got an answer: {kind} {json}");
+            }
+            Ok(_) => {}
+            Err(error) => panic!("expected a close frame, got {error}"),
+        }
+    }
+}
+
+#[test]
+fn one_address_holds_at_most_4_handshakes() {
+    let state = StateDir::new();
+    let key = PhoneKey::from_seed(5);
+    let listener = Listener::start(&state, &[("Phone", &key)]);
+    let address = ("127.0.0.1", listener.port);
+    // Connections that never start TLS, each holding a handshake slot.
+    let idle: Vec<_> = (0..4).map(|_| std::net::TcpStream::connect(address).unwrap()).collect();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let mut fifth = std::net::TcpStream::connect(address).unwrap();
+    fifth.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+    let mut byte = [0u8; 1];
+    assert_eq!(
+        std::io::Read::read(&mut fifth, &mut byte).unwrap(),
+        0,
+        "the fifth connection was not closed"
+    );
+
+    // Once they end, the address gets its slots back.
+    drop(idle);
+    let cert = listener.cert_sha256.clone();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let ready = connect(listener.port, &cert, "/v1")
+            .ok()
+            .map(|mut socket| authenticate(&mut socket, &key, |nonce| auth_message(&cert, nonce)));
+        if ready == Some(json!({ "type": "ready" })) {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "the slots were not given back");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[test]
 fn a_wrong_pin_fails_pairing_without_sending_the_request() {
     let state = StateDir::new();
     let key = PhoneKey::from_seed(3);
