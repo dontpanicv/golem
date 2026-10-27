@@ -313,10 +313,11 @@ Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the works
 Where a person connects an integration says whose turns use it. A workspace's credentials serve the turns of every
 member there; every member sees and deletes them. A person's own serve only their turns, in each of their workspaces;
 only they see and delete them. A turn is for the author of the message it answers, the person whose request another
-thread passes on, the creator of a routine, or the person who asked for a reminder or last changed it. Each tool call uses the newest credential
-of that person, else the workspace's newest, unless the call names another of their accounts in its `account`
-argument; `<integrationId>_accounts` lists them. The agents of a workspace get the tools of each integration that the
-workspace or one of its members connected. Secrets never leave the server.
+thread passes on, the person who last wrote a routine's instructions or script, or the person who asked for a
+reminder or last changed it. Each tool call uses the newest credential of that person, else the workspace's newest,
+unless the call names another of their accounts in its `account` argument; `<integrationId>_accounts` lists them. The
+agents of a workspace get the tools of each integration that the workspace or one of its members connected. Secrets
+never leave the server.
 
 An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's, Google's, or Slack's. The app
 shows a link to the `url` of `connect`; the person signs in there. Rohlík lets self-registered clients return only to
@@ -339,7 +340,10 @@ the person enters on their phone, in Linked devices; then `sign-in` waits up to 
 | `DELETE /api/v1/routines/:routineId` | | `204`; its thread stays |
 
 People create and change routines by asking an agent in a thread: agents have the `routines_create`,
-`routines_update`, `routines_delete`, `routines_list`, and `routines_test_script` tools.
+`routines_update`, `routines_delete`, `routines_list`, and `routines_test_script` tools. A routine runs as the person
+who last wrote its instructions or script; a change of only its name, schedule, or pause keeps that person. Only that
+person tests a script with the values the routine stored. When that person is no longer a member, each run fails until
+a member changes the routine.
 
 ### One-time reminders (`src/reminders/`)
 

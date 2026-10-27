@@ -88,7 +88,7 @@ interface RoutineRow {
   readonly enabled: number;
   readonly nextRunAt: number | null;
   readonly threadId: string | null;
-  /** The member who asked for it, whose turns its runs are; `golem` when nobody did. */
+  /** The member who last wrote its instructions or script, whose turns its runs are; `golem` when nobody did. */
   readonly createdBy: string;
 }
 
@@ -236,13 +236,18 @@ export class Routines {
     return this.routineIn(workspaceId, input.id);
   }
 
-  /** Changes a routine for an agent of the workspace. A new schedule moves the next run. */
+  /**
+   * Changes a routine for an agent of the workspace. A new schedule moves the next run. The person who writes new
+   * instructions or a new script, `changedBy`, becomes the person its runs are for.
+   */
   update(
     workspaceId: string,
     routineId: string,
-    changes: Partial<RoutineInput> & { readonly enabled?: boolean }
+    changes: Partial<RoutineInput> & { readonly enabled?: boolean },
+    changedBy: string
   ): Routine {
-    const routine = this.routineIn(workspaceId, routineId);
+    const row = this.row(workspaceId, routineId);
+    const routine = this.routineOf(row);
     const schedule = changes.schedule ?? routine.schedule;
     const enabled = changes.enabled ?? routine.enabled;
     const script =
@@ -251,7 +256,7 @@ export class Routines {
         : changes.script?.trim() || null;
     this.database
       .query(
-        "UPDATE routine SET name = ?, schedule = ?, instructions = ?, script = ?, enabled = ?, next_run_at = ? WHERE id = ?"
+        "UPDATE routine SET name = ?, schedule = ?, instructions = ?, script = ?, enabled = ?, next_run_at = ?, created_by = ? WHERE id = ?"
       )
       .run(
         required(changes.name ?? routine.name, "Name"),
@@ -262,6 +267,9 @@ export class Routines {
         changes.schedule === undefined && changes.enabled === undefined
           ? routine.nextRunAt
           : nextRun(schedule, Date.now()),
+        changes.script === undefined && changes.instructions === undefined
+          ? row.createdBy
+          : changedBy,
         routineId
       );
     return this.routineIn(workspaceId, routineId);
@@ -276,7 +284,8 @@ export class Routines {
 
   /**
    * Runs a script once, as a routine run would, with the values a routine stored and the integrations of the person
-   * who tests it; nothing is saved.
+   * who tests it; nothing is saved. Only the routine's own person tests with its stored values, which their
+   * integrations filled.
    */
   async test(
     workspaceId: string,
@@ -284,9 +293,13 @@ export class Routines {
     routineId: string | undefined,
     userId: string | null
   ): Promise<ScriptResult> {
-    const store = routineId
-      ? JSON.parse(this.row(workspaceId, routineId).store)
-      : {};
+    const routine = routineId ? this.row(workspaceId, routineId) : undefined;
+    if (routine && routine.createdBy !== (userId ?? "golem")) {
+      throw new Error(
+        "Only the person who last wrote this routine can test with its stored values. Test without the routine."
+      );
+    }
+    const store = routine ? JSON.parse(routine.store) : {};
     return this.execute(workspaceId, script, store, userId);
   }
 
@@ -351,6 +364,20 @@ export class Routines {
     routine: RoutineRow,
     runId: string
   ): Promise<"quiet" | "posted"> {
+    if (routine.createdBy !== "golem") {
+      try {
+        this.workspaces.requireMember(routine.workspaceId, {
+          id: routine.createdBy,
+          name: "",
+          email: "",
+        });
+      } catch (error) {
+        throw new Error(
+          "Its person is no longer a member; change it to run it as yourself.",
+          { cause: error }
+        );
+      }
+    }
     if (!routine.script) {
       const answer = await this.tell(routine, runId, runTask(routine, null));
       return answer === null ? "quiet" : "posted";

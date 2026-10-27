@@ -138,8 +138,17 @@ export function routineTools(
         enabled: Type.Optional(Type.Boolean()),
       }),
       replay: "safe",
-      execute: async ({ routine: routineId, ...changes }) => {
-        const routine = routines.update(workspaceId, routineId, changes);
+      execute: async ({ routine: routineId, ...changes }, api) => {
+        const requester = await threads.requester(
+          workspaceId,
+          api.conversationId
+        );
+        const routine = routines.update(
+          workspaceId,
+          routineId,
+          changes,
+          requester?.id ?? "golem"
+        );
         return {
           output: [
             { type: "text", text: `Saved.\n${describe(routine, undefined)}` },
