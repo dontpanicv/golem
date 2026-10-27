@@ -26,6 +26,8 @@ const CALLS = 4;
 const TRIES = 3;
 const MAX_RETRY_MS = 5 * 60_000;
 const WAIT = "(not summarized yet: zoom it)";
+/** The line of a message whose channel was deleted. */
+const DELETED = "(deleted)";
 
 const SYSTEM = `You write the memory of Golem, a family assistant: one step of a tree of summaries of every message in every thread of a workspace. You compress one message into one line, or merge two adjacent lines into one line. Your line stands in for its messages for months or years. Golem opens it only when its words show that what it needs is inside: what your line leaves out is lost for good.
 
@@ -89,6 +91,8 @@ export class Memory {
   private readonly database: Database;
   private readonly running = new Set<string>();
   private readonly abort = new AbortController();
+  /** Grows with each `keep` that takes text out, so a summary that started before it does not bring the text back. */
+  private generation = 0;
 
   /**
    * `catchUp` adds the orchestrator's newest messages before a compaction, which can come in the middle of its turn,
@@ -167,6 +171,44 @@ export class Memory {
     this.build();
   }
 
+  /**
+   * Takes out the text of every message of a thread that is not in `live`, such as a thread of a deleted channel:
+   * its line becomes "(deleted)", and the summaries over it are written again without it. Nothing is removed.
+   */
+  keep(live: ReadonlySet<string>): void {
+    const gone = (
+      this.database
+        .query(
+          "SELECT position, thread_id AS threadId FROM line WHERE level = 0 AND text IS NOT ?"
+        )
+        .all(DELETED) as { position: number; threadId: string }[]
+    ).filter((line) => !live.has(line.threadId));
+    if (gone.length === 0) {
+      return;
+    }
+    const levels = (
+      this.database.query("SELECT max(level) AS top FROM line").get() as {
+        top: number;
+      }
+    ).top;
+    const leaf = this.database.query(
+      "UPDATE line SET text = ? WHERE level = 0 AND position = ?"
+    );
+    const parent = this.database.query(
+      "UPDATE line SET text = NULL WHERE level = ? AND position = ?"
+    );
+    this.database.transaction(() => {
+      for (const { position } of gone) {
+        leaf.run(DELETED, position);
+        for (let level = 1; level <= levels; level += 1) {
+          parent.run(level, Math.floor(position / 2 ** level));
+        }
+      }
+    })();
+    this.generation += 1;
+    this.build();
+  }
+
   /** How many messages the memory has. */
   count(): number {
     return (
@@ -201,8 +243,11 @@ export class Memory {
       ;
       spread /= 2
     ) {
-      lines = cover(end, spread, (level, position) =>
-        texts.has(`${level}:${position}`)
+      lines = cover(
+        end,
+        spread,
+        (level, position) =>
+          (texts.get(`${level}:${position}`) ?? null) !== null
       ).map(
         ({ level, position }) =>
           `${position * 2 ** level}+${2 ** level}|${texts.get(`${level}:${position}`) ?? WAIT}`
@@ -315,14 +360,14 @@ export class Memory {
     }
   }
 
-  /** Neighbouring lines that are both written and have no parent yet, oldest first. */
+  /** Neighbouring lines that are both written and have no written parent yet, oldest first. */
   private pairs(): Job[] {
     return this.database
       .query(
         `SELECT a.level + 1 AS level, a.position / 2 AS position, a.text AS left, b.text AS right
 				FROM line a JOIN line b ON b.level = a.level AND b.position = a.position + 1
 				WHERE a.position % 2 = 0 AND a.text IS NOT NULL AND b.text IS NOT NULL
-					AND NOT EXISTS (SELECT 1 FROM line p WHERE p.level = a.level + 1 AND p.position = a.position / 2)
+					AND NOT EXISTS (SELECT 1 FROM line p WHERE p.level = a.level + 1 AND p.position = a.position / 2 AND p.text IS NOT NULL)
 				ORDER BY a.position << a.level, a.level LIMIT ?`
       )
       .all(CALLS * 2) as Job[];
@@ -330,6 +375,7 @@ export class Memory {
 
   /** Writes one line with the model: a leaf from its message, or a node from its two lines. */
   private async write(job: Job): Promise<void> {
+    const { generation } = this;
     const size = 2 ** job.level;
     const first = job.position * size;
     let source: string;
@@ -350,7 +396,7 @@ export class Memory {
         `${prompt}\n\nYour line had ${bytes(line)} bytes. Write it again in at most ${LINE_BYTES} bytes.`
       );
     }
-    if (!this.abort.signal.aborted) {
+    if (!this.abort.signal.aborted && generation === this.generation) {
       // An empty answer, such as a refusal, leaves the source cut to size.
       this.store(job, clip(line || oneLine(source)));
     }

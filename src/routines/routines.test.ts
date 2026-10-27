@@ -324,6 +324,67 @@ test("a paused routine does not run, and a routine runs once however many runs i
   routines.delete(routine.id, alice);
 });
 
+test("a routine runs as the person who last wrote its script, and not after its person leaves", async () => {
+  await golem.signIn("Bob", "bob@example.com");
+  await golem.app.workspaces.addMember(workspaceId, alice, "bob@example.com");
+  const bob = golem.app.workspaces
+    .members(workspaceId, alice)
+    .find((member) => member.email === "bob@example.com")!;
+  const bobUser: User = { id: bob.userId, name: bob.name, email: bob.email };
+  integrations.addCredential(null, bobUser, "school", {
+    label: "Bob",
+    secret: "bob-password",
+  });
+  const routine = routines.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Taken over",
+    schedule: "0 7 * * *",
+    instructions: "Tell us about new messages.",
+    script: SCRIPT,
+    createdBy: alice.id,
+  });
+  const runOnce = async () => {
+    const next = routines.get(routine.id, alice).nextRunAt!;
+    const [run] = routines.tick(next);
+    return await run!;
+  };
+  secretsSeen.length = 0;
+  routines.update(
+    workspaceId,
+    routine.id,
+    { schedule: "0 8 * * *" },
+    bob.userId
+  );
+  await runOnce();
+  expect(secretsSeen).toEqual(["school-password"]);
+  // Only the routine's own person tests with the values its runs stored.
+  await expect(
+    routines.test(workspaceId, SCRIPT, routine.id, bob.userId)
+  ).rejects.toThrow("Only the person who last wrote this routine");
+  routines.update(
+    workspaceId,
+    routine.id,
+    { script: `${SCRIPT}\n` },
+    bob.userId
+  );
+  await runOnce();
+  expect(secretsSeen).toEqual(["school-password", "bob-password"]);
+  expect(
+    (await routines.test(workspaceId, SCRIPT, routine.id, bob.userId)).ok
+  ).toBe(true);
+
+  golem.app.database
+    .query("DELETE FROM member WHERE organizationId = ? AND userId = ?")
+    .run(workspaceId, bob.userId);
+  secretsSeen.length = 0;
+  expect(await runOnce()).toMatchObject({
+    outcome: "failed",
+    error: "Its person is no longer a member; change it to run it as yourself.",
+  });
+  expect(secretsSeen).toEqual([]);
+  routines.delete(routine.id, alice);
+});
+
 test("agents create routines and test scripts", async () => {
   const thread = await golem.app.threads.create(
     workspaceId,

@@ -33,7 +33,7 @@ export function WorkspaceSettingsPage() {
           </PageSection>
         ) : null}
         <PageSection title="Members">
-          <MembersSection workspaceId={workspaceId} />
+          <MembersSection workspace={workspace} />
         </PageSection>
         <PageSection title="Machines">
           <MachinesSection workspaceId={workspaceId} />

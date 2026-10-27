@@ -12,16 +12,23 @@ tokens; the web app uses better-auth's session cookie. The routes are in `src/ac
 
 | Request | Response |
 | --- | --- |
-| `GET /api/v1/sign-in/google` | Redirect to Google. Open it in a web authentication session that waits for the `golem` scheme. |
-| `GET /api/v1/sign-in/google/done` | Redirect to `golem://signed-in?token=<token>`, or `golem://signed-in?error=<message>` |
+| `GET /api/v1/sign-in/google?challenge=<challenge>` | Redirect to Google. The iOS app opens it in a web authentication session that waits for `https://<server>/api/v1/sign-in/google/signed-in`. `challenge` is the base64url SHA-256 of a random verifier (PKCE, RFC 7636); `400` without one. |
+| `GET /api/v1/sign-in/google/done` | Redirect to `/api/v1/sign-in/google/signed-in?code=<code>`, or `?error=<message>` |
+| `GET /api/v1/sign-in/google/signed-in` | A page that asks a browser without the app to open the app |
+| `POST /api/v1/sign-in/google/token` | `{ code, verifier }` → `{ token }`; `400` when the code is unknown, used, older than 60 seconds, or not of that verifier |
+| `GET /.well-known/apple-app-site-association` | `{ webcredentials: { apps: [ios_app_id] } }`; `404` without `ios_app_id` in `config/golem.toml` |
 | `POST /api/auth/sign-in/social` | `{ provider: "google", callbackURL }` → `{ url }`: the web app opens `url`, and Google sends the person back to `callbackURL` with a session cookie. A failed sign-in comes back to `/login?error=…&error_description=…`. |
 | `POST /api/auth/sign-out` | `{ success }` |
 
-`done` hands over a token only to a sign-in that `GET /api/v1/sign-in/google` started in the same browser session,
-and Google always asks which account to use. This keeps another app that claims `golem://` from getting a token.
+`done` gives a code only to a sign-in that `GET /api/v1/sign-in/google` started in the same browser session, and only
+for the session that the Google step of that sign-in made; Google always asks which account to use. The code gives the
+token once, only with the verifier of the sign-in's challenge. The web authentication session gives the `signed-in`
+address only to the app that the server's apple-app-site-association file names, so the iOS app needs https.
 
 Send `Authorization: Bearer <token>`, or the session cookie, on every `/api/v1` request. A `401` response means the
-token or the session is missing or expired.
+token or the session is missing or expired. Golem checks `allowed_emails` on every request: after a restart without
+their email, a person gets `401`, also from every `/api/auth` route except sign-out. A person who leaves a workspace
+stops getting its event streams.
 
 ## Types
 
@@ -154,11 +161,12 @@ type Pairing = { command: string; expiresAt: number }; // run `command` on the m
 type Effort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 type Llm = {
 	connected: boolean;
+	owner: boolean; // whether the person is the server's owner, the first email in `allowed_emails`
 	provider: string; // "ChatGPT"
 	model: string; // a model id
 	effort: Effort; // the chosen effort, moved to the nearest level the model supports
 	models: { id: string; name: string; efforts: Effort[] }[]; // from the provider's model catalog
-	login: { userCode: string; verificationUri: string; expiresAt: number } | null; // set while a device login waits
+	login: { userCode: string; verificationUri: string; expiresAt: number } | null; // set for the owner while a device login waits
 	error: string | null; // the last login error
 };
 ```
@@ -181,7 +189,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
 | `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrator moves to the next channel; `409` for the last channel |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
-| `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once |
+| `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once; `403` for a member who is not an owner |
 
 ### Threads (`src/threads/`)
 
@@ -223,7 +231,8 @@ The web app keeps a text message that it cannot send yet, such as without a conn
 `requestId`, so a message that reached Golem before its response was lost stays one message.
 
 `voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud, and
-the message steers a run at work instead of waiting for it to end.
+the message steers a run at work for its author instead of waiting for it to end. A voice message waits for a run at
+work for another person, so that run keeps the credentials of its own person.
 
 ### Notifications (`src/notifications/`)
 
@@ -318,17 +327,20 @@ Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the works
 Where a person connects an integration says whose turns use it. A workspace's credentials serve the turns of every
 member there; every member sees and deletes them. A person's own serve only their turns, in each of their workspaces;
 only they see and delete them. A turn is for the author of the message it answers, the person whose request another
-thread passes on, the creator of a routine, or the recipient of a reminder. Each tool call uses the newest credential
-of that person, else the workspace's newest, unless the call names another of their accounts in its `account`
-argument; `<integrationId>_accounts` lists them. The agents of a workspace get the tools of each integration that the
-workspace or one of its members connected. Secrets never leave the server.
+thread passes on, the person who last wrote a routine's instructions or script, or the person who asked for a
+reminder or last changed it. Each tool call uses the newest credential of that person, else the workspace's newest,
+unless the call names another of their accounts in its `account` argument; `<integrationId>_accounts` lists them. The
+agents of a workspace get the tools of each integration that the workspace or one of its members connected. Secrets
+never leave the server.
 
 An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's, Google's, or Slack's. The app
 shows a link to the `url` of `connect`; the person signs in there. Rohlík lets self-registered clients return only to
 loopback addresses, and Slack only to https ones, so the sign-in ends on an error page at
 `https://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and `sign-in` keeps the tokens as a
 credential, labeled with the account's email when the server gives it. The agents then get the servers' tools as
-`<integrationId>_<tool>`, in the codemode namespace of the integration. Google and Slack need Golem's own OAuth client;
+`<integrationId>_<tool>`, in the codemode namespace of the integration. Golem lists a server's tools with the
+workspace's sign-in, else with a member's own; the list has only tool names and schemas. Google and Slack need Golem's
+own OAuth client;
 `docs/integrations.md` shows how to set them up.
 
 An integration with `connect: "phone"`, WhatsApp, links the person's number as a device. `connect` gives the code that
@@ -344,13 +356,18 @@ the person enters on their phone, in Linked devices; then `sign-in` waits up to 
 | `DELETE /api/v1/routines/:routineId` | | `204`; its thread stays |
 
 People create and change routines by asking an agent in a thread: agents have the `routines_create`,
-`routines_update`, `routines_delete`, `routines_list`, and `routines_test_script` tools.
+`routines_update`, `routines_delete`, `routines_list`, and `routines_test_script` tools. A routine runs as the person
+who last wrote its instructions or script; a change of only its name, schedule, or pause keeps that person. Only that
+person tests a script with the values the routine stored. When that person is no longer a member, each run fails until
+a member changes the routine.
 
 ### One-time reminders (`src/reminders/`)
 
 Agents in every thread of a workspace, including its orchestrator, have `reminders_create`, `reminders_list`,
 `reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source thread. It runs once when
-its saved UTC time is due, or when Golem starts again after that time. Reminders have no user-facing web or JSON routes.
+its saved UTC time is due, or when Golem starts again after that time. Its turn is for the person who asked for it or
+last changed it, not for its recipient; a reminder from before this rule uses only the workspace's credentials.
+Reminders have no user-facing web or JSON routes.
 
 ### Machines (`src/hands/`)
 
@@ -379,11 +396,15 @@ the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 | `PUT /api/v1/llm/model` | `{ model }` | `Llm` |
 | `PUT /api/v1/llm/effort` | `{ effort }` | `Llm`; `400` when the model does not support it |
 
+Only the server's owner, the first email in `allowed_emails`, logs in, logs out, and chooses the model and the effort;
+these routes answer `403` to other people.
+
 Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 ## Isolation
 
-- Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
+- Workspaces share nothing except the LLM provider, which the server's owner, the first email in `allowed_emails`,
+  connects once in `/settings`.
 - A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
   keep. Its name is four words that people can remember, about 1.6e8 names; names from before have two words and can
   be guessed, so make such an artifact again. A client that opens 20 artifact links in 10 minutes that do not exist,

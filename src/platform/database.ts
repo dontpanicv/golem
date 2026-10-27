@@ -229,6 +229,8 @@ const migrations = [
 	ALTER TABLE credential_next RENAME TO credential;
 	CREATE INDEX credential_workspace ON credential (workspace_id, integration);
 	CREATE INDEX credential_owner ON credential (owner_id, integration) WHERE workspace_id IS NULL;`,
+  // reminders: the person who asked for a reminder or last changed it; its turn runs as them. Null for older rows.
+  "ALTER TABLE reminder ADD COLUMN created_by TEXT;",
 ];
 
 export function openDatabase(path: string): Database {

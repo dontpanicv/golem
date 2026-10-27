@@ -190,7 +190,7 @@ function evictClients(now: number): void {
 
 /** A signed-in person, or a public visitor with the token of their browser. */
 async function viewerOf({ app, request }: RouteInput): Promise<Viewer> {
-  const user = await currentUser(app.auth, request);
+  const user = await currentUser(app.auth, request, app.config.allowedEmails);
   if (user) {
     return { user };
   }

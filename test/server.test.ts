@@ -34,6 +34,21 @@ test("only allowed emails sign in, and only with Google", async () => {
   await expect(signIn("Old", "old@example.com")).rejects.toThrow(
     "cannot sign in"
   );
+  // A session made before the email left the list signs in nobody, and better-auth's routes refuse it.
+  const now = new Date().toISOString();
+  const later = new Date(Date.now() + 60 * 60_000).toISOString();
+  app.database
+    .query(
+      "INSERT INTO session (id, token, userId, expiresAt, createdAt, updatedAt) VALUES ('old-session', 'old-token', 'old', ?, ?, ?)"
+    )
+    .run(later, now, now);
+  expect((await call("/api/v1/me", { token: "old-token" })).status).toBe(401);
+  expect(
+    (await call("/api/auth/get-session", { token: "old-token" })).status
+  ).toBe(401);
+  expect(
+    (await call("/api/auth/organization/list", { token: "old-token" })).status
+  ).toBe(401);
 
   const body = {
     name: "Mallory",
@@ -50,31 +65,89 @@ test("only allowed emails sign in, and only with Google", async () => {
   expect((await call("/api/v1/me", { token: alice })).status).toBe(200);
 });
 
-test("the iOS app gets a token only from a Google sign-in it started", async () => {
-  const start = await call("/api/v1/sign-in/google");
-  expect(
-    new URL(start.headers.get("location")!).searchParams.get("prompt")
-  ).toBe("select_account");
-  expect(cookies(start)).toContain("golem_app_sign_in=1");
+test("the iOS app gets a token only for a Google sign-in it started, with its verifier, once", async () => {
+  const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+  // RFC 7636, appendix B.
+  const challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+  expect((await call("/api/v1/sign-in/google")).status).toBe(400);
+  const begin = async () => {
+    const start = await call(`/api/v1/sign-in/google?challenge=${challenge}`);
+    expect(
+      new URL(start.headers.get("location")!).searchParams.get("prompt")
+    ).toBe("select_account");
+    const flow = /golem_app_sign_in=([\w-]+)/.exec(cookies(start))![1]!;
+    return `golem_app_sign_in=${flow}`;
+  };
+  const done = async (cookie: string, query = "") => {
+    const response = await call(`/api/v1/sign-in/google/done${query}`, {
+      headers: { cookie },
+    });
+    expect(response.status).toBe(303);
+    const location = new URL(response.headers.get("location")!, "http://x");
+    expect(location.pathname).toBe("/api/v1/sign-in/google/signed-in");
+    return location.searchParams;
+  };
+  const swap = async (
+    given: string | null,
+    withVerifier = verifier
+  ): Promise<Record<string, unknown>> => {
+    const response = await call("/api/v1/sign-in/google/token", {
+      body: { code: given, verifier: withVerifier },
+    });
+    return {
+      status: response.status,
+      ...((await response.json()) as Record<string, unknown>),
+    };
+  };
+  const session = async (token: string) =>
+    `better-auth.session_token=${await signedCookie(token)}`;
 
-  const session = `better-auth.session_token=${await signedCookie(alice)}`;
-  const started = await call("/api/v1/sign-in/google/done", {
-    headers: { cookie: `${session}; golem_app_sign_in=1` },
-  });
+  // A session that the browser had before the sign-in started gets nothing.
+  const older = await done(`${await session(alice)}; ${await begin()}`);
+  expect(older.get("code")).toBeNull();
+  expect(older.get("error")).toBe("Sign-in failed");
+  // Nor does a session without a sign-in that started here.
+  expect((await done(await session(alice))).get("code")).toBeNull();
+
+  // The session that the sign-in's Google step made gives a code, which gives its token once, for the verifier.
+  const flow = await begin();
+  const fresh = await signIn("Alice", "alice@example.com");
+  const code = (await done(`${await session(fresh)}; ${flow}`)).get("code");
+  expect(code).toBeString();
+  expect(await swap(code)).toEqual({ status: 200, token: fresh });
+  expect(await swap(code)).toEqual({ status: 400, error: "Sign in again" });
+  // The flow ended with its code.
   expect(
-    new URL(started.headers.get("location")!).searchParams.get("token")
-  ).toBe(alice);
-  const notStarted = await call("/api/v1/sign-in/google/done", {
-    headers: { cookie: session },
-  });
-  expect(
-    new URL(notStarted.headers.get("location")!).searchParams.get("token")
+    (await done(`${await session(fresh)}; ${flow}`)).get("code")
   ).toBeNull();
-  const failed = await call(
-    "/api/v1/sign-in/google/done?error=EMAIL_NOT_ALLOWED&error_description=No",
-    { headers: { cookie: "golem_app_sign_in=1" } }
+
+  // Another app that catches a code has no verifier, and the code is gone after one try.
+  const caught = await begin();
+  const other = await signIn("Alice", "alice@example.com");
+  const stolen = (await done(`${await session(other)}; ${caught}`)).get("code");
+  expect(await swap(stolen, "x".repeat(43))).toEqual({
+    status: 400,
+    error: "Sign in again",
+  });
+  expect(await swap(stolen)).toEqual({ status: 400, error: "Sign in again" });
+
+  const failed = await done(
+    await begin(),
+    "?error=EMAIL_NOT_ALLOWED&error_description=No"
   );
-  expect(failed.headers.get("location")).toBe("golem://signed-in?error=No");
+  expect(failed.toString()).toBe("error=No");
+
+  // A browser without the app shows a page at the address where the sign-in ends.
+  const page = await call("/api/v1/sign-in/google/signed-in?code=x");
+  expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
+  expect(await page.text()).toContain("Open the Golem app");
+  const association = await call("/.well-known/apple-app-site-association");
+  expect(association.headers.get("content-type")).toStartWith(
+    "application/json"
+  );
+  expect(await association.json()).toEqual({
+    webcredentials: { apps: ["ABCDE12345.dev.golem.test"] },
+  });
 });
 
 test("a new workspace has a general channel", async () => {
@@ -198,7 +271,7 @@ test("credentials belong to the workspace, and secrets never leave the server", 
   ).toEqual({ deleted: 1 });
 });
 
-test("the LLM provider is shared by everyone", async () => {
+test("everyone uses the one LLM provider, and only the server's owner changes it", async () => {
   const llm = (await (await call("/api/v1/llm", { token: bob })).json()) as any;
   // The faux model has no reasoning, so the default effort moves to the one level it supports.
   expect(llm).toMatchObject({
@@ -207,12 +280,29 @@ test("the LLM provider is shared by everyone", async () => {
     effort: "off",
     models: [{ id: golem.model.id, name: golem.model.name, efforts: ["off"] }],
     login: null,
+    owner: false,
   });
+  for (const [path, method, body] of [
+    ["/api/v1/llm/model", "PUT", { model: golem.model.id }],
+    ["/api/v1/llm/effort", "PUT", { effort: "off" }],
+    ["/api/v1/llm/login", "POST", {}],
+    ["/api/v1/llm/logout", "POST", {}],
+  ] as const) {
+    const refused = await call(path, { method, token: bob, body });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({
+      error: "Only the server's owner changes this",
+    });
+  }
+  // Alice's email is the first in allowed_emails.
+  expect(
+    await (await call("/api/v1/llm", { token: alice })).json()
+  ).toMatchObject({ owner: true });
   expect(
     (
       await call("/api/v1/llm/model", {
         method: "PUT",
-        token: bob,
+        token: alice,
         body: { model: "nope" },
       })
     ).status
@@ -221,7 +311,7 @@ test("the LLM provider is shared by everyone", async () => {
     (
       await call("/api/v1/llm/effort", {
         method: "PUT",
-        token: bob,
+        token: alice,
         body: { effort: "high" },
       })
     ).status
@@ -230,11 +320,11 @@ test("the LLM provider is shared by everyone", async () => {
     await (
       await call("/api/v1/llm/effort", {
         method: "PUT",
-        token: bob,
+        token: alice,
         body: { effort: "off" },
       })
     ).json()
-  ).toMatchObject({ effort: "off" });
+  ).toMatchObject({ effort: "off", owner: true });
 });
 
 test("the web app signs in with Google and keeps cross-site posts out", async () => {

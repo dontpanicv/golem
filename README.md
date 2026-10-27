@@ -158,8 +158,12 @@ xcodegen generate
 open Golem.xcodeproj
 ```
 
-Put machine-specific values in `ios/Config/Local.xcconfig` (gitignored): `DEVELOPMENT_TEAM`, `GOLEM_BUNDLE_ID`, and
-`GOLEM_SERVER_URL`, the server the app opens by default.
+Put machine-specific values in `ios/Config/Local.xcconfig` (gitignored): `DEVELOPMENT_TEAM`, `GOLEM_BUNDLE_ID`,
+`GOLEM_SERVER_URL`, the server the app opens by default, and `GOLEM_ASSOCIATED_DOMAIN`, the host of that server.
+Google sign-in returns to the server's https address, so the server's `config/golem.toml` sets `ios_app_id` to
+`<DEVELOPMENT_TEAM>.<GOLEM_BUNDLE_ID>`. When Apple's CDN cannot reach the server, as on a VPN, write
+`GOLEM_ASSOCIATED_DOMAIN = <host>?mode=developer` and turn on Associated Domains Development in the iPhone's Settings >
+Developer.
 
 `ios/scripts/fetch-fluid-speech.sh` (~240 MB) and `ios/scripts/fetch-phonon.sh` (~150 MB) download the voice models
 into `ios/Models` (gitignored), and the build puts them in the app. Without them, the app has no dictation and no

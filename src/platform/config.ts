@@ -26,6 +26,11 @@ export interface Config {
    * docs/integrations.md. Golem offers such an integration only with its client.
    */
   readonly integrations: Readonly<Record<string, OAuthClient>>;
+  /**
+   * The iOS app, as `<team id>.<bundle id>`, which `/.well-known/apple-app-site-association` names so that its Google
+   * sign-in can return to this server's https address; `null` serves no such file.
+   */
+  readonly iosAppId: string | null;
   /** The APNs key that sends pushes to the iOS app, kept in `config/apns.p8`; `null` sends none. */
   readonly apns: {
     readonly keyId: string;
@@ -54,7 +59,8 @@ host = "127.0.0.1"
 # That address answers only artifact links; docs/artifacts-sharing.md shows how to set it up.
 # share_url = "https://a.example.com"
 
-# The Google accounts that may sign in, for example ["anna@gmail.com"]. Nobody else can.
+# The Google accounts that may sign in, for example ["anna@gmail.com"]. Nobody else can. The first is the server's
+# owner, who alone connects the LLM provider and chooses its model.
 allowed_emails = []
 
 # The Google OAuth client for sign-in. google-sign-in.md shows how to create it.
@@ -70,6 +76,10 @@ client_secret = ""
 # [integrations.slack]
 # client_id = ""
 # client_secret = ""
+
+# The iOS app, as <team id>.<bundle id>, for example "ABCDE12345.dev.golem.app". Its Google sign-in returns to the
+# https address of base_url, so that address must name the app; leave it empty without the iOS app.
+ios_app_id = ""
 
 # The Apple Push Notification service key that sends notifications to the iOS app. Put the key in config/apns.p8.
 # [apns]
@@ -129,6 +139,7 @@ export async function readConfig(
         },
       ])
     ),
+    iosAppId: values.ios_app_id ? text(values.ios_app_id, "ios_app_id") : null,
     apns: apns
       ? {
           keyId: text(apns.key_id, "apns.key_id"),

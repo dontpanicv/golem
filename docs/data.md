@@ -48,7 +48,9 @@ data/
 ## Rules
 
 - **Nothing is ever removed.** A delete marks the row with `deleted_at`, and reads leave it out; a deleted thread file
-  moves to `channels/<id>/deleted/`. A deleted channel hides its threads, files, artifacts, and routines; a deleted
+  moves to `channels/<id>/deleted/`. A deleted channel hides its threads, files, artifacts, and routines, and search
+  leaves them out at once; in the workspace's memory, the lines of its messages become `(deleted)`, and the model writes
+  the summaries over them again without them; `session.sqlite` keeps the messages. A deleted
   workspace (`organization.deletedAt`) hides all of it, and its folder stays. Only an owner deletes a workspace. Deleted
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
   Artifact records that were deleted still count toward the artifact's limits, until a member clears the data, which

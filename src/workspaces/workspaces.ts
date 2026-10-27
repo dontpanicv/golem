@@ -50,6 +50,9 @@ export class Workspaces {
     private readonly auth: Auth,
     /** Called when someone joins a workspace, whose own integrations then reach its agents. */
     private readonly memberAdded: (workspaceId: string) => void = () =>
+      undefined,
+    /** Called when a channel is deleted, whose threads then leave the workspace's memory. */
+    private readonly channelRemoved: (workspaceId: string) => void = () =>
       undefined
   ) {}
 
@@ -250,6 +253,7 @@ export class Workspaces {
         )
         .run(Date.now(), channelId);
     })();
+    this.channelRemoved(workspaceId);
     return channel;
   }
 
@@ -381,13 +385,13 @@ export class Workspaces {
       .all(workspaceId) as Member[];
   }
 
-  /** Adds someone who already has an account. */
+  /** Adds someone who already has an account, for an owner of the workspace. */
   async addMember(
     workspaceId: string,
     user: User,
     email: string
   ): Promise<Member> {
-    this.requireMember(workspaceId, user);
+    this.requireOwner(workspaceId, user);
     const person = this.database
       .query("SELECT id, name, email FROM user WHERE lower(email) = lower(?)")
       .get(required(email, "Email")) as {

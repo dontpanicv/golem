@@ -52,6 +52,7 @@ export async function startTestApp() {
         clientSecret: "test-secret",
       },
       integrations: {},
+      iosAppId: "ABCDE12345.dev.golem.test",
       apns: null,
     },
     { provider: faux.provider, name: "Test model", defaultModel: model.id },

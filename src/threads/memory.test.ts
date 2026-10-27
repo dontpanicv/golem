@@ -128,6 +128,31 @@ test("the messages of all threads come in the order they came, and each thread a
   memory.close();
 });
 
+test("the messages of a deleted thread leave the memory, and the lines over them are written again", async () => {
+  const dinner = (id: number, text: string): Said => ({
+    threadId: "dinner",
+    messageId: id,
+    text: `[Dinner](thread:dinner) Bob: ${text}`,
+  });
+  const said = [
+    dinner(1, "The safe code is 4711"),
+    dinner(2, "Keep it secret"),
+    message(3, "user", "Hello"),
+    message(5, "assistant", "Hi"),
+  ];
+  const { memory } = await memoryOf(said, () => "unused");
+  memory.add(said);
+  expect(await memory.zoom(0, 4)).toContain("4711");
+
+  memory.keep(new Set(["orchestrator"]));
+  expect(memory.view(4)).not.toContain("4711");
+  expect(await memory.zoom(0, 4)).toBe(
+    ["0+2|(deleted) (deleted)", "2+2|Alice: Hello Golem: Hi"].join("\n")
+  );
+  expect(await memory.zoom(0, 2)).toBe("0+1|(deleted)\n1+1|(deleted)");
+  memory.close();
+});
+
 test("the model summarizes long messages and merges long lines, and the view fades older messages to fit", async () => {
   const said = Array.from({ length: 16 }, (_, index) =>
     message(

@@ -45,11 +45,15 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
-/** A server-sent events response that runs until the client disconnects. */
+/**
+ * A server-sent events response that runs until the client disconnects, or until `recheck` throws before an event or
+ * a ping, as when the person is no longer a member.
+ */
 export function eventStream(
   start: (
     send: (event: string, data: unknown) => void
-  ) => Promise<() => Promise<void>>
+  ) => Promise<() => Promise<void>>,
+  recheck: () => unknown
 ): Response {
   const encoder = new TextEncoder();
   let stop: (() => Promise<void>) | undefined;
@@ -58,8 +62,20 @@ export function eventStream(
   let cancelled = false;
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const allowed = () => {
+        try {
+          recheck();
+          return true;
+        } catch {
+          cancelled = true;
+          clearInterval(ping);
+          controller.close();
+          stop?.().catch(() => undefined);
+          return false;
+        }
+      };
       const send = (event: string, data: unknown) => {
-        if (!cancelled) {
+        if (!cancelled && allowed()) {
           controller.enqueue(
             encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
           );
@@ -73,10 +89,11 @@ export function eventStream(
       }
       stop = stopping;
       // Comments keep proxies and idle timers from closing a quiet stream.
-      ping = setInterval(
-        () => controller.enqueue(encoder.encode(": ping\n\n")),
-        15_000
-      );
+      ping = setInterval(() => {
+        if (allowed()) {
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        }
+      }, 15_000);
     },
     async cancel() {
       cancelled = true;

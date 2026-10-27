@@ -1,4 +1,5 @@
 import AuthenticationServices
+import CryptoKit
 import Foundation
 import Observation
 import SwiftUI
@@ -47,17 +48,48 @@ final class Session {
     // MARK: Session
 
     /// Signs in with Google in `browser`, a web authentication session. `RootView` then calls `load()`.
+    ///
+    /// The session ends on the server's https address, which only this app gets (associated domains), with a one-time
+    /// code that gives the token only with this sign-in's verifier (PKCE).
     func signIn(_ browser: WebAuthenticationSession) async throws {
+        let verifier = Self.newVerifier()
+        let url = try api.googleSignInURL(challenge: Self.challenge(for: verifier))
+        guard url.scheme == "https", let host = url.host() else {
+            throw APIError(status: 0, message: "Sign-in needs the server's https address.")
+        }
         let callback = try await browser.authenticate(
-            using: api.googleSignInURL(), callbackURLScheme: "golem", preferredBrowserSession: .ephemeral
+            using: url,
+            callback: .https(host: host, path: APIClient.signedInPath),
+            preferredBrowserSession: .ephemeral,
+            additionalHeaderFields: [:]
         )
         let query = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        guard let token = query.first(where: { $0.name == "token" })?.value else {
+        guard let code = query.first(where: { $0.name == "code" })?.value else {
             throw APIError(status: 0, message: query.first(where: { $0.name == "error" })?.value ?? "Sign-in failed")
         }
+        let token = try await api.signInToken(code: code, verifier: verifier)
         Keychain.token = token
         api.token = token
         signedIn = true
+    }
+
+    /// The base64url SHA-256 of a verifier, as RFC 7636 makes the challenge.
+    static func challenge(for verifier: String) -> String {
+        base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
+    }
+
+    /// 32 random bytes, as base64url: the secret that only this sign-in knows.
+    private static func newVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return base64URL(Data(bytes))
+    }
+
+    private static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 
     func signOut() async {

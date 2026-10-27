@@ -69,6 +69,7 @@ export function reminderTools(
           matches[0]!.userId,
           {
             ...args,
+            createdBy: asker?.id ?? null,
             id: randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url"),
           }
         );
@@ -100,12 +101,17 @@ export function reminderTools(
       parameters: Type.Object({ reminder, text, at, timeZone }),
       replay: "safe",
       execute: async ({ reminder: id, ...input }, api) => {
-        const { actor } = await actorFor(api.conversationId);
+        const { actor, asker } = await actorFor(api.conversationId);
         return {
           output: [
             {
               type: "text",
-              text: describe(reminders.update(workspaceId, actor, id, input)),
+              text: describe(
+                reminders.update(workspaceId, actor, id, {
+                  ...input,
+                  createdBy: asker?.id ?? null,
+                })
+              ),
             },
           ],
         };

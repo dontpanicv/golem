@@ -25,6 +25,9 @@ import { Secrets } from "../platform/secrets.ts";
 import { Threads } from "../threads/threads.ts";
 import { Llm, SqliteCredentialStore } from "./llm.ts";
 
+/** The server's owner, who alone changes the login, the model, and the effort. */
+const OWNER = { id: "owner", name: "Owner", email: "owner@example.com" };
+
 function database() {
   const opened = openDatabase(":memory:");
   migrate(opened);
@@ -72,11 +75,16 @@ function oauthLlm(script: LoginScript) {
       },
     },
   };
-  const llm = new Llm(db, secrets, {
-    provider,
-    name: "ChatGPT",
-    defaultModel: "fast",
-  });
+  const llm = new Llm(
+    db,
+    secrets,
+    {
+      provider,
+      name: "ChatGPT",
+      defaultModel: "fast",
+    },
+    OWNER.email
+  );
   return { llm, db, secrets, logins: () => logins };
 }
 
@@ -98,16 +106,21 @@ function oauthCredential(access: string): OAuthCredential {
 describe("Llm settings", () => {
   test("the model is the default until someone picks a model the provider offers", () => {
     const db = database();
-    const llm = new Llm(db, Secrets.forTests(), {
-      provider: twoModels().provider,
-      name: "Test",
-      defaultModel: "fast",
-    });
+    const llm = new Llm(
+      db,
+      Secrets.forTests(),
+      {
+        provider: twoModels().provider,
+        name: "Test",
+        defaultModel: "fast",
+      },
+      OWNER.email
+    );
     expect(llm.model()).toBe("fast");
-    expect(() => llm.setModel("gone")).toThrow(
+    expect(() => llm.setModel(OWNER, "gone")).toThrow(
       new HttpError(400, "Unknown model: gone")
     );
-    llm.setModel("deep");
+    llm.setModel(OWNER, "deep");
     expect(llm.model()).toBe("deep");
     expect(setting(db, "llm.model")).toBe("deep");
     // A model that the provider stopped offering falls back to the default.
@@ -116,32 +129,44 @@ describe("Llm settings", () => {
   });
 
   test("the effort moves to the nearest level the current model supports", () => {
-    const llm = new Llm(database(), Secrets.forTests(), {
-      provider: twoModels().provider,
-      name: "Test",
-      defaultModel: "fast",
-    });
+    const llm = new Llm(
+      database(),
+      Secrets.forTests(),
+      {
+        provider: twoModels().provider,
+        name: "Test",
+        defaultModel: "fast",
+      },
+      OWNER.email
+    );
     expect(llm.effort()).toBe("off");
-    expect(() => llm.setEffort("high")).toThrow("Unknown effort: high");
-    llm.setModel("deep");
+    expect(() => llm.setEffort(OWNER, "high")).toThrow("Unknown effort: high");
+    llm.setModel(OWNER, "deep");
     expect(llm.effort()).toBe("medium");
-    expect(() => llm.setEffort("extreme")).toThrow("Unknown effort: extreme");
-    llm.setEffort("high");
+    expect(() => llm.setEffort(OWNER, "extreme")).toThrow(
+      "Unknown effort: extreme"
+    );
+    llm.setEffort(OWNER, "high");
     expect(llm.effort()).toBe("high");
-    llm.setModel("fast");
+    llm.setModel(OWNER, "fast");
     expect(llm.effort()).toBe("off");
     // The choice stays for when a model that supports it comes back.
-    llm.setModel("deep");
+    llm.setModel(OWNER, "deep");
     expect(llm.effort()).toBe("high");
   });
 
   test("the status lists every model with the efforts it supports", async () => {
-    const llm = new Llm(database(), Secrets.forTests(), {
-      provider: twoModels().provider,
-      name: "Test",
-      defaultModel: "fast",
-    });
-    const status = await llm.status();
+    const llm = new Llm(
+      database(),
+      Secrets.forTests(),
+      {
+        provider: twoModels().provider,
+        name: "Test",
+        defaultModel: "fast",
+      },
+      OWNER.email
+    );
+    const status = await llm.status(OWNER);
     expect(status.provider).toBe("Test");
     expect(status.models.map((model) => [model.id, model.name])).toEqual([
       ["fast", "Fast"],
@@ -178,12 +203,22 @@ describe("Llm device login", () => {
       }
     );
 
-    expect(await llm.status()).toMatchObject({
+    expect(await llm.status(OWNER)).toMatchObject({
       connected: false,
       login: null,
+      owner: true,
     });
+    const someone = { id: "someone", name: "Someone", email: "a@example.com" };
+    await expect(llm.startLogin(someone)).rejects.toThrow(
+      new HttpError(403, "Only the server's owner changes this")
+    );
     const before = Date.now();
-    const started = await llm.startLogin();
+    const started = await llm.startLogin(OWNER);
+    // Only the owner sees the device code.
+    expect(await llm.status(someone)).toMatchObject({
+      owner: false,
+      login: null,
+    });
     expect(seen.method).toBe("device_code");
     expect(seen.agentName).toBe("Golem");
     // The device ID is made once and then kept.
@@ -200,12 +235,12 @@ describe("Llm device login", () => {
     expect(started.login).not.toHaveProperty("abort");
 
     // A second start while the code shows does not start another login.
-    expect((await llm.startLogin()).login?.userCode).toBe("ABCD-1234");
+    expect((await llm.startLogin(OWNER)).login?.userCode).toBe("ABCD-1234");
     expect(logins()).toBe(1);
 
     approved.resolve();
     const connected = await until(
-      () => llm.status(),
+      () => llm.status(OWNER),
       (status) => status.connected
     );
     expect(connected).toMatchObject({ login: null, error: null });
@@ -220,7 +255,10 @@ describe("Llm device login", () => {
       access: "access-token",
     });
 
-    expect(await llm.logout()).toMatchObject({ connected: false, login: null });
+    expect(await llm.logout(OWNER)).toMatchObject({
+      connected: false,
+      login: null,
+    });
     // The login stays, encrypted and marked deleted; nothing reads it again.
     expect(
       db
@@ -229,7 +267,7 @@ describe("Llm device login", () => {
         )
         .get()
     ).toEqual({ count: 1 });
-    expect((await llm.status()).connected).toBe(false);
+    expect((await llm.status(OWNER)).connected).toBe(false);
   });
 
   test("uses the expiry the provider gives for the device code", async () => {
@@ -238,10 +276,10 @@ describe("Llm device login", () => {
       return await new Promise<OAuthCredential>(() => undefined);
     });
     const before = Date.now();
-    const { login } = await llm.startLogin();
+    const { login } = await llm.startLogin(OWNER);
     expect(login!.expiresAt).toBeGreaterThanOrEqual(before + 60_000);
     expect(login!.expiresAt).toBeLessThanOrEqual(Date.now() + 60_000);
-    await llm.logout();
+    await llm.logout(OWNER);
   });
 
   test("a prompt other than the device code choice fails the login", async () => {
@@ -252,7 +290,7 @@ describe("Llm device login", () => {
       } as AuthPrompt);
       return oauthCredential("never");
     });
-    expect(await llm.startLogin()).toMatchObject({
+    expect(await llm.startLogin(OWNER)).toMatchObject({
       connected: false,
       login: null,
       error: "Unsupported login prompt: Paste the code",
@@ -268,7 +306,7 @@ describe("Llm device login", () => {
       });
       return oauthCredential("never");
     });
-    expect((await llm.startLogin()).error).toBe(
+    expect((await llm.startLogin(OWNER)).error).toBe(
       "Unsupported login prompt: Pick a browser"
     );
   });
@@ -286,16 +324,16 @@ describe("Llm device login", () => {
       await rejected.promise;
       throw new Error("The device code expired");
     });
-    expect((await llm.startLogin()).login?.userCode).toBe("ABCD-1234");
+    expect((await llm.startLogin(OWNER)).login?.userCode).toBe("ABCD-1234");
     rejected.resolve();
     expect(
       await until(
-        () => llm.status(),
+        () => llm.status(OWNER),
         (status) => status.error !== null
       )
     ).toMatchObject({ login: null, error: "The device code expired" });
     // An error that is not an Error object shows as text.
-    expect((await llm.startLogin()).error).toBe("provider is down");
+    expect((await llm.startLogin(OWNER)).error).toBe("provider is down");
   });
 
   test("logout cancels a login in progress without an error", async () => {
@@ -303,14 +341,14 @@ describe("Llm device login", () => {
       interaction.notify(deviceCode);
       return await new Promise<OAuthCredential>(() => undefined);
     });
-    expect((await llm.startLogin()).login).not.toBeNull();
-    expect(await llm.logout()).toMatchObject({
+    expect((await llm.startLogin(OWNER)).login).not.toBeNull();
+    expect(await llm.logout(OWNER)).toMatchObject({
       connected: false,
       login: null,
       error: null,
     });
     await Bun.sleep(0);
-    expect((await llm.status()).error).toBeNull();
+    expect((await llm.status(OWNER)).error).toBeNull();
   });
 });
 
@@ -500,11 +538,16 @@ describe("Threads with the Llm", () => {
   test("a thread follows the model chosen in settings, also after it changes", async () => {
     const dataDirectory = await mkdtemp(join(tmpdir(), "golem-llm-"));
     const faux = twoModels();
-    const llm = new Llm(database(), Secrets.forTests(), {
-      provider: faux.provider,
-      name: "Test",
-      defaultModel: "fast",
-    });
+    const llm = new Llm(
+      database(),
+      Secrets.forTests(),
+      {
+        provider: faux.provider,
+        name: "Test",
+        defaultModel: "fast",
+      },
+      OWNER.email
+    );
     const { threads, thread } = threadsOver(dataDirectory, llm);
     const used: string[] = [];
     const answer =
@@ -532,7 +575,7 @@ describe("Threads with the Llm", () => {
           (current) => current.messages.length === count && !current.running
         );
       await answered(2);
-      llm.setModel("deep");
+      llm.setModel(OWNER, "deep");
       await threads.send(id, user, "Think harder");
       const state = await answered(4);
       expect(used).toEqual(["fast", "deep"]);
@@ -551,11 +594,16 @@ describe("Threads with the Llm", () => {
   test("the threads of a workspace are separate conversations in one session file, also after a restart", async () => {
     const dataDirectory = await mkdtemp(join(tmpdir(), "golem-llm-"));
     const faux = twoModels();
-    const llm = new Llm(database(), Secrets.forTests(), {
-      provider: faux.provider,
-      name: "Test",
-      defaultModel: "fast",
-    });
+    const llm = new Llm(
+      database(),
+      Secrets.forTests(),
+      {
+        provider: faux.provider,
+        name: "Test",
+        defaultModel: "fast",
+      },
+      OWNER.email
+    );
     faux.setResponses([
       fauxAssistantMessage("Pasta"),
       fauxAssistantMessage("Saturday"),
