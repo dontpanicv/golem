@@ -1361,6 +1361,7 @@ export class Threads {
       () => this.rememberOrchestrator(workspaceId)
     );
     this.memories.set(workspaceId, memory);
+    this.forget(workspaceId);
     this.briefs.set(workspaceId, new Briefs(memoryPath, summarize));
     const golem = await this.golemExtension(workspaceId);
     const codemode = createCodemodeExtension({
@@ -1461,6 +1462,18 @@ export class Threads {
   async reloadTools(workspaceId: string): Promise<void> {
     const registry = this.registries.get(workspaceId);
     registry?.install(await this.golemExtension(workspaceId));
+  }
+
+  /**
+   * Takes the messages of threads that are gone, such as those of a deleted channel, out of the workspace's memory,
+   * when it is open; it also does so when it opens.
+   */
+  forget(workspaceId: string): void {
+    this.memories
+      .get(workspaceId)
+      ?.keep(
+        new Set(this.registry.threadsIn(workspaceId).map((thread) => thread.id))
+      );
   }
 
   /** One message of a thread whole, for zoom in the workspace's memory. */

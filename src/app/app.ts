@@ -86,7 +86,12 @@ export async function createApp(
         console.error("reloading the tools failed", error)
       );
   };
-  const workspaces = new Workspaces(database, auth, reloadTools);
+  const workspaces = new Workspaces(
+    database,
+    auth,
+    reloadTools,
+    (workspaceId) => threads.forget(workspaceId)
+  );
   const integrations = new Integrations(database, resolvedSecrets, workspaces, {
     directory: join(config.dataDirectory, "integrations"),
     clients: config.integrations,

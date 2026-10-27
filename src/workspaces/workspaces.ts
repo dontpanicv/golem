@@ -50,6 +50,9 @@ export class Workspaces {
     private readonly auth: Auth,
     /** Called when someone joins a workspace, whose own integrations then reach its agents. */
     private readonly memberAdded: (workspaceId: string) => void = () =>
+      undefined,
+    /** Called when a channel is deleted, whose threads then leave the workspace's memory. */
+    private readonly channelRemoved: (workspaceId: string) => void = () =>
       undefined
   ) {}
 
@@ -250,6 +253,7 @@ export class Workspaces {
         )
         .run(Date.now(), channelId);
     })();
+    this.channelRemoved(workspaceId);
     return channel;
   }
 
