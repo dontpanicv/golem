@@ -23,6 +23,16 @@ struct ComposerRow<Content: View>: View {
     }
 }
 
+extension View {
+    /// The screen above a composer: a tap on it, as a swipe down, puts the keyboard away, and with it the tab bar comes
+    /// back. Taps on its messages and links still work.
+    func dismissesKeyboardOnTap() -> some View {
+        simultaneousGesture(TapGesture().onEnded {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        })
+    }
+}
+
 /// File chips in a row that scrolls sideways. Tapping a chip calls `open` with its index; `remove` gives each chip a
 /// remove button.
 struct FileChips: View {
@@ -81,10 +91,13 @@ struct Composer: View {
             }
             HStack(alignment: .bottom, spacing: 0) {
                 if recording {
-                    RecordingBar(startedAt: listener.startedAt, holding: gesture == .hold, cancel: cancel)
-                        .padding(.leading, Tokens.Space.lg)
-                        .frame(minHeight: Tokens.Mobile.Size.voice)
-                    Spacer(minLength: 0)
+                    RecordingBar(
+                        startedAt: listener.startedAt, holding: gesture == .hold,
+                        level: { active ? listener.level : 0 }, cancel: cancel
+                    )
+                    .padding(.leading, Tokens.Space.lg)
+                    .padding(.trailing, Tokens.Space.md)
+                    .frame(minHeight: Tokens.Mobile.Size.voice)
                 } else {
                     AttachMenu { files += $0 } label: {
                         Image(systemName: "plus")

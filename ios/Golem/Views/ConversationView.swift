@@ -55,6 +55,7 @@ struct ConversationView: View {
                 ProgressView()
             }
         }
+        .dismissesKeyboardOnTap()
         .defaultScrollAnchor(.bottom)
         // New words and messages keep the newest in view.
         .defaultScrollAnchor(.bottom, for: .sizeChanges)

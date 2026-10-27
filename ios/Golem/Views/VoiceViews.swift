@@ -88,10 +88,12 @@ struct MicButton: View {
     }
 }
 
-/// While dictating: the trash (once locked on) and the time.
+/// While dictating: the trash (once locked on), the time, and the microphone's level.
 struct RecordingBar: View {
     let startedAt: Date?
     let holding: Bool
+    /// The microphone's level now, 0…1.
+    let level: () -> Double
     let cancel: () -> Void
 
     var body: some View {
@@ -112,7 +114,41 @@ struct RecordingBar: View {
                     .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium).monospacedDigit())
                     .foregroundStyle(Tokens.Colors.textSecondary)
             }
+            LevelWave(level: level)
         }
+    }
+}
+
+/// The microphone's level over the last few seconds, newest on the right: bars that rise with the voice and lie flat
+/// as dots in silence.
+struct LevelWave: View {
+    let level: () -> Double
+    @State private var levels: [Double] = []
+
+    private static let bar = Tokens.Space.xxs
+    private static let gap = Tokens.Space.xxs
+
+    var body: some View {
+        Canvas { context, size in
+            let step = Self.bar + Self.gap
+            for (index, level) in levels.suffix(Int(size.width / step)).reversed().enumerated() {
+                let height = max(Self.bar, size.height * min(1, level))
+                let rect = CGRect(
+                    x: size.width - CGFloat(index + 1) * step + Self.gap, y: (size.height - height) / 2,
+                    width: Self.bar, height: height)
+                context.fill(
+                    Path(roundedRect: rect, cornerRadius: Self.bar / 2), with: .color(Tokens.Colors.textTertiary))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: Tokens.Size.controlSmall)
+        .task {
+            while !Task.isCancelled {
+                // More than a screen's width of bars.
+                levels = Array((levels + [level()]).suffix(240))
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

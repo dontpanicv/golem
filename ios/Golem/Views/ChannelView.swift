@@ -49,6 +49,7 @@ struct ChannelView: View {
         .overlay {
             if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything", systemImage: "sparkles") }
         }
+        .dismissesKeyboardOnTap()
         .safeAreaBar(edge: .bottom) {
             ComposerRow {
                 Composer(
