@@ -170,15 +170,16 @@ nonisolated enum TurnEnd {
         "ale", "nebo", "protože", "takže", "že", "aby", "když", "ehm", "hm"
     ]
 
-    /// Seconds of quiet after `words`: short after a finished sentence, long after "and…", "um" or a comma.
+    /// Seconds of quiet after `words`: shorter after a finished sentence, long after "and…", "um" or a comma. The
+    /// recognizer ends a thought cut by a pause with a full stop too, so even that waits for the rest of it.
     static func pause(after words: String) -> Double {
         let text = words.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let last = text.last else { return .infinity }
-        if last == "," || last == "-" || last == "…" { return 2.0 }
+        if last == "," || last == "-" || last == "…" { return 3.0 }
         let lastWord = text.split(whereSeparator: { !$0.isLetter && $0 != "'" }).last.map { $0.lowercased() } ?? ""
-        if unfinished.contains(lastWord) { return 2.0 }
-        if ".!?".contains(last) { return 0.8 }
-        return 1.2
+        if unfinished.contains(lastWord) { return 3.0 }
+        if ".!?".contains(last) { return 1.5 }
+        return 2.0
     }
 }
 

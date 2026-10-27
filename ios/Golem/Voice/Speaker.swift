@@ -28,7 +28,7 @@ final class Speaker {
     }
     static let key = "golem.voice"
 
-    /// The folder FluidAudio finds `supertonic-3-coreml` in.
+    /// The folder FluidAudio finds the model's folder (`Repo.supertonic3.folderName`) in.
     nonisolated static let directory = Bundle.main.url(forResource: "Supertonic", withExtension: nil)
     nonisolated static var isBundled: Bool { directory != nil }
     nonisolated static let format = AVAudioFormat(
@@ -162,6 +162,8 @@ final class Speaker {
     func sample(_ voice: String) async throws {
         self.voice = voice
         stop()
+        // A model that can't load is an error for the user here, not a silence.
+        try await load()
         let engine = ownEngine ?? AVAudioEngine()
         ownEngine = engine
         connect(to: engine)
@@ -209,7 +211,7 @@ final class Speaker {
             throw VoiceError("Golem has no voice named \(id).")
         }
         let style = try Supertonic3VoiceStyle.load(
-            from: directory.appending(path: "supertonic-3-coreml").appending(path: voice.fileName))
+            from: directory.appending(path: Repo.supertonic3.folderName).appending(path: voice.fileName))
         styles[id] = style
         return style
     }

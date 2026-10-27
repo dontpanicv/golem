@@ -50,8 +50,8 @@ voice_styles/M3.json 000b60436b77619b933fdc33628ad737595e6794
 voice_styles/M4.json aae253ae81185fa06a6469c3f1cdff04ed121ddf
 voice_styles/M5.json 0536b252698830f8536c077edcb94e1ce4768ab6
 "
-# FluidAudio finds the files in a folder named after the repository.
-MODEL="$DEST/model/supertonic-3-coreml"
+# FluidAudio finds the files in this folder (Repo.supertonic3.folderName); elsewhere it downloads them again.
+MODEL="$DEST/model/supertonic-3"
 echo "$FILES" | while read -r file hash; do
   [ -n "$file" ] || continue
   target="$MODEL/$file"

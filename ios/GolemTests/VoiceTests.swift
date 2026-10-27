@@ -117,14 +117,14 @@ struct SpokenLanguageTests {
 @Suite("Turn end")
 struct TurnEndTests {
     @Test func pausesDependOnHowTheWordsEnd() {
-        #expect(TurnEnd.pause(after: "What's on bender?") == 0.8)
-        #expect(TurnEnd.pause(after: "check the build and") == 2.0)
-        #expect(TurnEnd.pause(after: "So, um,") == 2.0)
-        #expect(TurnEnd.pause(after: "open the logs") == 1.2)
+        #expect(TurnEnd.pause(after: "What's on bender?") == 1.5)
+        #expect(TurnEnd.pause(after: "check the build and") == 3.0)
+        #expect(TurnEnd.pause(after: "So, um,") == 3.0)
+        #expect(TurnEnd.pause(after: "open the logs") == 2.0)
         #expect(TurnEnd.pause(after: "") == .infinity)
-        #expect(TurnEnd.pause(after: "podívej se do pošty a") == 2.0)
-        #expect(TurnEnd.pause(after: "napiš Janě, že") == 2.0)
-        #expect(TurnEnd.pause(after: "Co mám zítra?") == 0.8)
+        #expect(TurnEnd.pause(after: "podívej se do pošty a") == 3.0)
+        #expect(TurnEnd.pause(after: "napiš Janě, že") == 3.0)
+        #expect(TurnEnd.pause(after: "Co mám zítra?") == 1.5)
     }
 
     @Test func golemsOwnVoiceIsntTheUser() {

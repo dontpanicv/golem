@@ -140,7 +140,8 @@ final class VoiceChat {
 
     func mute(_ muted: Bool) {
         self.muted = muted
-        if muted { listener.clear() }
+        // Either way the user's turn starts now: what was heard before (its words can still arrive) isn't theirs.
+        listener.clear()
     }
 
     // MARK: The loop
