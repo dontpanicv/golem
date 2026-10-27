@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type {
   Context,
@@ -249,13 +249,16 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (other) {
     return call("send_to_thread", { thread: other[1]!, message: "Hi" });
   }
-  const save = /(Save|Copy) (\{.*\})$/.exec(text);
+  const save = /(Save|Delete|Copy) (\{.*\})$/.exec(text);
   if (save) {
     return fauxAssistantMessage(
       [
-        save[1] === "Save"
-          ? fauxToolCall("save_file", JSON.parse(save[2]!))
-          : scriptCall("hands_copy_file", JSON.parse(save[2]!)),
+        save[1] === "Copy"
+          ? scriptCall("hands_copy_file", JSON.parse(save[2]!))
+          : fauxToolCall(
+              save[1] === "Save" ? "save_file" : "delete_file",
+              JSON.parse(save[2]!)
+            ),
       ],
       { stopReason: "toolUse" }
     );
@@ -1626,6 +1629,34 @@ test("save_file writes text and prints an artifact, and hands_copy_file puts a f
     expect(copied).toEqual([
       [home.id, "glados", "# Shopping\n- milk", "Desktop/list.md"],
     ]);
+
+    expect(
+      await ask(
+        `Save ${JSON.stringify({ content: "# Shopping\n- milk\n- eggs", replaces: files[0]!.id })}`
+      )
+    ).toContain(`Saved the new version of file ${files[0]!.id} as list.md.`);
+    expect(
+      await ask(`Delete ${JSON.stringify({ file: files[1]!.id })}`)
+    ).toContain("Deleted Party invite.pdf.");
+    expect(
+      await ask(`Delete ${JSON.stringify({ file: files[1]!.id })}`)
+    ).toContain(`There is no file ${files[1]!.id} in this channel.`);
+    const left = await threads.files({
+      workspaceId: home.id,
+      channelId: general.id,
+    });
+    expect(left.map((file) => [file.id, file.name])).toEqual([
+      [files[0]!.id, "list.md"],
+    ]);
+    const { path } = await threads.file(home.id, alice, files[0]!.id);
+    expect(await Bun.file(path).text()).toBe("# Shopping\n- milk\n- eggs");
+    const deleted = join(dirname(dirname(path)), "deleted");
+    const kept = await Promise.all(
+      (await readdir(deleted))
+        .toSorted()
+        .map((name) => Bun.file(join(deleted, name)).text())
+    );
+    expect(kept).toEqual(["# Shopping\n- milk", "%PDF"]);
   } finally {
     await threads.closeAll();
     await rm(dataDirectory, { recursive: true, force: true });
@@ -1914,6 +1945,7 @@ test("the model calls the core tools itself, and every other tool from codemode 
     "codemode",
     "create_channel",
     "delete_channel",
+    "delete_file",
     "list_channels",
     "list_files",
     "notify",

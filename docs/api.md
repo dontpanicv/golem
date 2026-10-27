@@ -227,7 +227,8 @@ same fields as a `multipart/form-data` form with one `files` part per file inste
 thread's channel, or the workspace for the orchestrator. A message then needs text, files, or both; a thread without
 text takes the name of its first file. A message's `FileRef` opens at `/api/v1/workspaces/:workspaceId/files/:fileId`.
 The agents see each attached file by name and id; `list_files` lists the files of their channel, and `read_file` reads
-any file of the workspace by its id.
+any file of the workspace by its id. `save_file` with `replaces` saves a new version of a file of their channel, which
+keeps its id, and `delete_file` deletes a file of their channel.
 
 Each member has an orchestrator of their own in each workspace, their personal assistant: one thread that never ends,
 which the workspace opens on, and whose agent gives work to the threads of the channels. Only its person reads and

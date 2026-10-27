@@ -104,6 +104,8 @@ export function fileResponse(path: string, name: string): Response {
       "content-type": inline ? file.type : "application/octet-stream",
       "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`,
       "x-content-type-options": "nosniff",
+      // A changed file keeps its id and address.
+      "cache-control": "no-cache",
     },
   });
 }
