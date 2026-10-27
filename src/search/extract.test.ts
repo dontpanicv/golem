@@ -6,8 +6,10 @@ import { strToU8, zipSync } from "fflate";
 import {
   type Extraction,
   extract,
+  htmlText,
   isIgnored,
   kindOf,
+  readText,
   tools,
 } from "./extract.ts";
 
@@ -277,10 +279,73 @@ test("a broken Office file, an unknown file, and a very large file give no text"
   const large = join(directory, "huge.txt");
   await Bun.write(large, "");
   await truncate(large, 50_000_001); // sparse: it uses no disk space
-  expect(await extract(large)).toEqual({
-    segments: [],
-    note: "too large to read",
+  await expect(extract(large)).rejects.toThrow("too large to read");
+  await expect(readText(large)).rejects.toThrow("too large to read");
+});
+
+test("an Office file whose entries unpack to more than 50 MB is not unpacked", async () => {
+  // About 60 KB on disk, 60 MB unpacked.
+  const bomb = await zip("bomb.docx", {
+    "word/document.xml": "a".repeat(60_000_000),
   });
+  expect(Bun.file(bomb).size).toBeLessThan(1_000_000);
+  await expect(extract(bomb)).rejects.toThrow("too large to read");
+  await expect(readText(bomb)).rejects.toThrow("too large to read");
+
+  const sheets = await zip("bomb.xlsx", {
+    "xl/worksheets/sheet1.xml": "a".repeat(30_000_000),
+    "xl/worksheets/sheet2.xml": "a".repeat(30_000_000),
+  });
+  await expect(readText(sheets)).rejects.toThrow("too large to read");
+});
+
+test("markup without end tags is read in linear time", async () => {
+  const hostile = [
+    "<".repeat(280_000),
+    "<script".repeat(40_000),
+    "<a ".repeat(100_000),
+    `<head>${"<style>".repeat(40_000)}`,
+  ];
+  for (const html of hostile) {
+    const start = performance.now();
+    htmlText(html);
+    expect(performance.now() - start).toBeLessThan(100);
+  }
+
+  const xlsx = await zip("hostile.xlsx", {
+    "xl/workbook.xml": "<sheet ".repeat(40_000),
+    "xl/sharedStrings.xml": `${"<si>".repeat(70_000)}${"<si><t ".repeat(40_000)}`,
+    "xl/worksheets/sheet1.xml": `<row>${"<c ".repeat(70_000)}${"<row>".repeat(40_000)}`,
+  });
+  const pptx = await zip("hostile.pptx", {
+    "ppt/slides/slide1.xml": "<a:p>".repeat(70_000),
+  });
+  const docx = await zip("hostile.docx", {
+    "word/document.xml": "<w:br".repeat(70_000),
+  });
+  for (const path of [xlsx, pptx, docx]) {
+    const start = performance.now();
+    await readText(path);
+    expect(performance.now() - start).toBeLessThan(100);
+  }
+});
+
+test("markup with end tags reads as before", async () => {
+  expect(
+    htmlText(
+      `<HTML><HEAD><TITLE>x</TITLE><SCRIPT>if (a < b) go()</SCRIPT></HEAD><body><header>Menu</header><style>p{}</style><p>Tom &lt; Ann</p><br/>Line<script>${"x".repeat(5_000_000)}</script></body></HTML>`
+    )
+  ).toBe("Menu Tom < Ann\n\nLine");
+
+  const xlsx = await zip("rich.xlsx", {
+    "xl/workbook.xml":
+      '<workbook><sheets><sheet name="Plan" sheetId="1"/></sheets></workbook>',
+    "xl/sharedStrings.xml":
+      '<sst><si><r><rPr><b/></rPr><t>Bold</t></r><r><t xml:space="preserve"> text</t></r></si></sst>',
+    "xl/worksheets/sheet1.xml":
+      '<worksheet><sheetData><row r="1" spans="1:3"><c r="A1" t="s"><v>0</v></c><c r="B1"/><c r="C1"><v>3</v></c></row></sheetData></worksheet>',
+  });
+  expect(await readText(xlsx)).toBe("Plan\nBold text\t\t3");
 });
 
 test("RTF is read without textutil, and a legacy Word file needs it", async () => {
@@ -294,6 +359,17 @@ test("RTF is read without textutil, and a legacy Word file needs it", async () =
   await withTools({ textutil: null }, async () => {
     expect(texts(await extract(rtf))).toBe("Helvetica;Pancakes\n Two eggs");
     await expect(extract(doc)).rejects.toThrow("legacy Word files need macOS");
+  });
+});
+
+test("a program that writes more than 300 MB is stopped", async () => {
+  const doc = join(directory, "endless.doc");
+  await Bun.write(doc, "binary");
+  const endless = await fakeTool("endless-textutil", "exec yes");
+  await withTools({ textutil: endless }, async () => {
+    await expect(extract(doc)).rejects.toThrow(
+      "stopped after 10 minutes or 300 MB of output"
+    );
   });
 });
 

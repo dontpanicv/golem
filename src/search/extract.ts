@@ -74,10 +74,27 @@ const PAGE_TEXT_MINIMUM = 200;
 const PAGE_VECTOR_CHARACTERS = 4000;
 const AUDIO_WINDOW_SECONDS = 30;
 const AUDIO_HOP_SECONDS = 25;
-const AUDIO_MAX_SECONDS = 4 * 3600;
+/** Two hours of 16 kHz 16-bit PCM is 230 MB, below `RUN_MAX_OUTPUT`. */
+const AUDIO_MAX_SECONDS = 2 * 3600;
+/** A program that extraction runs is stopped after this time or this much output. */
+const RUN_TIMEOUT = 10 * 60_000;
+const RUN_MAX_OUTPUT = 300 * 1024 ** 2;
 const SILENCE_RMS = 0.003;
 const VIDEO_FRAME_EVERY_SECONDS = 3;
 const VIDEO_MAX_FRAMES = 1200;
+
+// Markup patterns stay linear on hostile input: attributes stop at `<`, and an element's body cannot hold its own tag.
+const SHARED_STRING = element("si");
+const SHARED_TEXT = element("t");
+const ROW = element("row");
+const CELL = new RegExp(
+  `<c\\b([^<>]*?)(?:\\/>|>(${withoutTag("c")})<\\/c>)`,
+  "g"
+);
+const SLIDE_PARAGRAPH = element("a:p");
+const HIDDEN_ELEMENTS = ["script", "style", "head"].map((tag) =>
+  element(tag, "gi")
+);
 
 export const tools = {
   ffmpeg: Bun.which("ffmpeg"),
@@ -188,9 +205,6 @@ export async function readText(path: string): Promise<string | null> {
 // Documents
 
 async function documentSegments(path: string): Promise<Extraction> {
-  if (Bun.file(path).size > MAX_TEXT_BYTES) {
-    return { segments: [], note: "too large to read" };
-  }
   const text = await documentText(path);
   const title = extname(path).match(/^\.(md|markdown)$/i)
     ? text.match(/^#\s+(.+)$/m)?.[1]?.trim()
@@ -208,6 +222,9 @@ async function documentSegments(path: string): Promise<Extraction> {
 }
 
 async function documentText(path: string): Promise<string> {
+  if (Bun.file(path).size > MAX_TEXT_BYTES) {
+    throw new Error("too large to read");
+  }
   const extension = extname(path).slice(1).toLowerCase();
   switch (extension) {
     case "html":
@@ -258,26 +275,44 @@ async function documentText(path: string): Promise<string> {
 }
 
 function zipEntry(path: string, name: string): string {
-  const entries = unzipSync(new Uint8Array(readFileSync(path)), {
-    filter: (file) => file.name === name,
-  });
-  const entry = entries[name];
-  if (!entry) {
+  const entry = zipEntries(path, (candidate) => candidate === name)[name];
+  if (entry === undefined) {
     throw new Error(`no ${name} inside`);
   }
-  return decode(entry);
+  return entry;
 }
 
+/** The matched entries as text. fflate allocates each entry's declared size, so the sum of those sizes is the bound. */
 function zipEntries(
   path: string,
   match: (name: string) => boolean
 ): Record<string, string> {
+  let declared = 0;
   const entries = unzipSync(new Uint8Array(readFileSync(path)), {
-    filter: (file) => match(file.name),
+    filter: (file) => {
+      if (!match(file.name)) {
+        return false;
+      }
+      declared += file.originalSize;
+      if (declared > MAX_TEXT_BYTES) {
+        throw new Error("too large to read");
+      }
+      return true;
+    },
   });
   return Object.fromEntries(
     Object.entries(entries).map(([name, bytes]) => [name, decode(bytes)])
   );
+}
+
+/** `<tag …>body</tag>`, with the body as group 1. */
+function element(tag: string, flags = "g"): RegExp {
+  return new RegExp(`<${tag}\\b[^<>]*>(${withoutTag(tag)})<\\/${tag}>`, flags);
+}
+
+/** Any text without `<tag` or `</tag`, so a missing end tag ends the match at the next start tag. */
+function withoutTag(tag: string): string {
+  return `[^<]*(?:<(?!\\/?${tag}\\b)[^<]*)*`;
 }
 
 /** A sheet is its name, then one tab-separated line per row. */
@@ -290,32 +325,30 @@ function xlsxText(path: string): string {
       /^xl\/worksheets\/sheet\d+\.xml$/.test(name)
   );
   const shared = [
-    ...(files["xl/sharedStrings.xml"] ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g),
+    ...(files["xl/sharedStrings.xml"] ?? "").matchAll(SHARED_STRING),
   ].map((match) =>
     entities(
-      [...match[1]!.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)]
-        .map((text) => text[1])
-        .join("")
+      [...match[1]!.matchAll(SHARED_TEXT)].map((text) => text[1]).join("")
     )
   );
   const names = [
-    ...(files["xl/workbook.xml"] ?? "").matchAll(/<sheet [^>]*name="([^"]*)"/g),
+    ...(files["xl/workbook.xml"] ?? "").matchAll(
+      /<sheet [^<>]*name="([^"]*)"/g
+    ),
   ].map((match) => entities(match[1]!));
   const sheets = Object.keys(files)
     .filter((name) => name.startsWith("xl/worksheets/"))
     .sort((a, b) => Number(a.match(/\d+/)![0]) - Number(b.match(/\d+/)![0]));
   return sheets
     .map((name, index) => {
-      const rows = [
-        ...files[name]!.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g),
-      ].map((row) =>
-        [...row[1]!.matchAll(/<c([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)]
+      const rows = [...files[name]!.matchAll(ROW)].map((row) =>
+        [...row[1]!.matchAll(CELL)]
           .map(([, attributes, body = ""]) => {
             if (/t="s"/.test(attributes!)) {
               return shared[Number(body.match(/<v>([^<]*)<\/v>/)?.[1])] ?? "";
             }
             if (/t="inlineStr"/.test(attributes!)) {
-              return entities(body.replace(/<[^>]+>/g, ""));
+              return entities(body.replace(/<[^<>]+>/g, ""));
             }
             return entities(body.match(/<v>([^<]*)<\/v>/)?.[1] ?? "");
           })
@@ -338,7 +371,7 @@ function pptxText(path: string): string {
   return slides
     .map((name) => {
       const text = (xml: string) =>
-        [...xml.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)]
+        [...xml.matchAll(SLIDE_PARAGRAPH)]
           .map((p) =>
             entities(
               [...p[1]!.matchAll(/<a:t>([^<]*)<\/a:t>/g)]
@@ -366,9 +399,9 @@ function xmlText(
     text = text.replaceAll(`</${tag}>`, "\n");
   }
   for (const tag of spaces) {
-    text = text.replace(new RegExp(`<${tag}\\b[^>]*/?>`, "g"), " ");
+    text = text.replace(new RegExp(`<${tag}\\b[^<>]*/?>`, "g"), " ");
   }
-  return entities(text.replace(/<[^>]+>/g, ""))
+  return entities(text.replace(/<[^<>]+>/g, ""))
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -377,10 +410,9 @@ function xmlText(
 /** The visible text of an HTML page, as search reads it. */
 export function htmlText(html: string): string {
   return entities(
-    html
-      .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, " ")
+    HIDDEN_ELEMENTS.reduce((text, hidden) => text.replace(hidden, " "), html)
       .replace(/<\/(p|div|li|h\d|tr|br)>|<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
+      .replace(/<[^<>]+>/g, " ")
   )
     .replace(/[ \t]+/g, " ")
     .trim();
@@ -855,6 +887,8 @@ async function run(command: string[]): Promise<Uint8Array> {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
+    timeout: RUN_TIMEOUT,
+    maxBuffer: RUN_MAX_OUTPUT,
   });
   const [output, error, code] = await Promise.all([
     new Response(child.stdout).bytes(),
@@ -862,7 +896,10 @@ async function run(command: string[]): Promise<Uint8Array> {
     child.exited,
   ]);
   if (code !== 0) {
-    throw new Error(`${basename(command[0]!)} failed: ${error.slice(0, 200)}`);
+    const reason = child.signalCode
+      ? `stopped after 10 minutes or 300 MB of output (${child.signalCode})`
+      : error.slice(0, 200);
+    throw new Error(`${basename(command[0]!)} failed: ${reason}`);
   }
   return output;
 }
