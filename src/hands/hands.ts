@@ -59,8 +59,8 @@ const INSTALL_SCRIPT = join(
 const PAIRING_LIFETIME = 10 * 60 * 1000;
 /** Readable and typable: no 0/o or 1/i/l. */
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
-/** After this many wrong codes every running pairing ends, so a code cannot be guessed. */
-const MAX_WRONG_CODES = 100;
+/** 16 characters of 31 are 79 bits, so a code cannot be guessed in its 10 minutes. */
+const CODE_LENGTH = 16;
 const BINARIES = [
   "darwin-arm64",
   "darwin-x86_64",
@@ -103,7 +103,6 @@ interface PendingPairing extends Pairing {
  */
 export class Hands {
   private readonly pairings = new Map<string, PendingPairing>();
-  private wrongCodes = 0;
   private readonly connections = new Map<string, Promise<HandsConnection>>();
   private readonly serverPin: (baseUrl: string) => Promise<string>;
 
@@ -158,7 +157,7 @@ export class Hands {
     // Checked now, so a missing binary shows here and not on the machine.
     await this.checksums();
     const code = Array.from(
-      { length: 6 },
+      { length: CODE_LENGTH },
       () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]
     ).join("");
     const pairing: PendingPairing = {
@@ -369,11 +368,6 @@ export class Hands {
       (candidate) => candidate.code === code
     );
     if (!pairing) {
-      this.wrongCodes += 1;
-      if (this.wrongCodes >= MAX_WRONG_CODES) {
-        this.wrongCodes = 0;
-        this.pairings.clear();
-      }
       throw notFound();
     }
     if (pairing.expiresAt < Date.now()) {

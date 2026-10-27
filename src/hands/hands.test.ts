@@ -52,7 +52,7 @@ async function person(name: string, email: string): Promise<User> {
 }
 
 function codeOf(command: string): string {
-  return command.match(/\/hands\/([a-z2-9]{6}) \| sh$/)![1]!;
+  return command.match(/\/hands\/([a-z2-9]{16}) \| sh$/)![1]!;
 }
 
 function pairingRequest(fields: Record<string, unknown> = {}) {
@@ -73,7 +73,7 @@ describe("pairing", () => {
   test("a member gets a command that installs hands from Golem, pinned to Golem's key", async () => {
     const { command } = await hands.startPairing(family, alice);
     expect(command).toMatch(
-      /^curl -fsSL https:\/\/golem\.test\/hands\/[a-z2-9]{6} \| sh$/
+      /^curl -fsSL https:\/\/golem\.test\/hands\/[a-z2-9]{16} \| sh$/
     );
     expect(hands.pairing(family, alice)?.command).toBe(command);
 
@@ -97,6 +97,16 @@ describe("pairing", () => {
     expect(() => hands.machines(family, eve)).toThrow("Not found");
     await expect(hands.startPairing(family, eve)).rejects.toThrow("Not found");
     await expect(hands.installScript("zzzzzz")).rejects.toThrow("Not found");
+  });
+
+  test("wrong codes do not end a running pairing", async () => {
+    const code = codeOf((await hands.startPairing(family, alice)).command);
+    for (let index = 0; index < 150; index += 1) {
+      await expect(hands.installScript("z".repeat(16))).rejects.toThrow(
+        "Not found"
+      );
+    }
+    expect(await hands.installScript(code)).toContain(code);
   });
 
   test("a machine pairs once with a code and trusts the workspace's key", async () => {
@@ -157,6 +167,22 @@ describe("pairing", () => {
     expect(() => hands.removeMachine(work, alice, machines[0]!.id)).toThrow(
       "Not found"
     );
+  });
+});
+
+test("a frame whose JSON is not an object is a bad frame", () => {
+  for (const json of ["null", "[]", "5", '"text"']) {
+    const body = Buffer.from(json);
+    const frame = new Uint8Array(13 + body.length);
+    const view = new DataView(frame.buffer);
+    view.setUint32(0, 9 + body.length);
+    view.setUint8(4, 3);
+    view.setUint32(9, body.length);
+    frame.set(body, 13);
+    expect(() => decodeFrame(frame)).toThrow("bad frame");
+  }
+  expect(decodeFrame(encodeFrame(2, 1, { ok: true })).json).toEqual({
+    ok: true,
   });
 });
 
@@ -315,6 +341,28 @@ describe("the hands tools", () => {
     ).rejects.toThrow("the certificate does not match the pin");
   });
 
+  test("a machine that sends an error frame whose JSON is null loses its connection", async () => {
+    const [machine] = hands.machinesIn(toolsWorkspace);
+    const connection = await hands.connection(toolsWorkspace, {
+      ...machine!,
+      id: "null-error",
+    });
+    await expect(connection.request("null-error")).rejects.toThrow("was lost");
+    expect(connection.closed).toBe(true);
+  });
+
+  test("a machine that does not answer hello in time is closed", async () => {
+    const [machine] = hands.machinesIn(toolsWorkspace);
+    listener.hangHello(true);
+    try {
+      await expect(
+        hands.connection(toolsWorkspace, { ...machine!, id: "silent" })
+      ).rejects.toThrow("did not answer in time");
+    } finally {
+      listener.hangHello(false);
+    }
+  }, 10_000);
+
   test("a machine refuses a workspace it did not pair with", async () => {
     const [machine] = hands.machinesIn(toolsWorkspace);
     await expect(
@@ -406,6 +454,7 @@ async function fakeHands() {
     close: () => [{}],
   };
   const handles = new Map<number, string>();
+  let silentHello = false;
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -445,6 +494,22 @@ async function fakeHands() {
           return;
         }
         const frame = decodeFrame(new Uint8Array(message));
+        if (frame.json.op === "hello" && silentHello) {
+          return;
+        }
+        if (frame.json.op === "null-error") {
+          // An error frame whose JSON is `null`.
+          const body = Buffer.from("null");
+          const raw = new Uint8Array(13 + body.length);
+          const view = new DataView(raw.buffer);
+          view.setUint32(0, 9 + body.length);
+          view.setUint8(4, 3);
+          view.setUint32(5, frame.id);
+          view.setUint32(9, body.length);
+          raw.set(body, 13);
+          socket.send(raw);
+          return;
+        }
         const answer = results[frame.json.op as string];
         if (frame.type === 1 && answer) {
           const [json, payload] = answer(frame.json, frame.payload);
@@ -460,6 +525,10 @@ async function fakeHands() {
     reads,
     files,
     trust: (publicKey: string) => trusted.push(publicKey),
+    /** Stops answering `hello`, as a machine that hangs after its handshake. */
+    hangHello: (hang: boolean) => {
+      silentHello = hang;
+    },
     stop: () => server.stop(true),
   };
 }

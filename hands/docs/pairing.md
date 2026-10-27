@@ -9,9 +9,9 @@ All hashes are SHA-256. `base64` is standard base64 with padding. `hex` is lower
 
 When the user taps **Add machine**, the app:
 
-1. Creates a one-time setup code `S`: 6 characters from `abcdefghjkmnpqrstuvwxyz23456789` (no `0`/`o` or `1`/`i`/`l`,
-   so it can be read off the screen and typed). It is valid for 10 minutes and can complete pairing exactly once.
-   After 100 requests with a wrong code the phone stops serving, so `S` can't be guessed.
+1. Creates a one-time setup code `S` from `abcdefghjkmnpqrstuvwxyz23456789` (no `0`/`o` or `1`/`i`/`l`, so it can be
+   read off the screen and typed). The server chooses its length; Golem uses 16 characters, so `S` cannot be guessed.
+   `hands` accepts a code of any length. It is valid for 10 minutes and can complete pairing exactly once.
 2. Listens on every network the phone is on, on two ports:
    - **`W`** (plain HTTP, `8484`): serves only the install script, at `GET /S`.
    - **`P`** (HTTPS, `8485`): everything, using a self-signed ECDSA P-256 certificate. Its pin is

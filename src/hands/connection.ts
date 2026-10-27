@@ -143,9 +143,17 @@ export class HandsConnection {
       throw error;
     }
     const connection = new HandsConnection(machine, socket);
-    connection.info = (
-      await connection.request("hello", { protocol: PROTOCOL })
-    ).json;
+    try {
+      connection.info = (
+        await withTimeout(
+          connection.request("hello", { protocol: PROTOCOL }),
+          OPEN_TIMEOUT
+        )
+      ).json;
+    } catch (error) {
+      connection.close();
+      throw error;
+    }
     return connection;
   }
 
@@ -393,6 +401,9 @@ export function decodeFrame(frame: Uint8Array): Reply & {
   const json = jsonLength
     ? JSON.parse(Buffer.from(frame.subarray(13, 13 + jsonLength)).toString())
     : {};
+  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+    throw new Error("bad frame");
+  }
   return {
     type: view.getUint8(4),
     id: view.getUint32(5),

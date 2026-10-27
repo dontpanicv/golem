@@ -355,7 +355,7 @@ its saved UTC time is due, or when Golem starts again after that time. Reminders
 | `POST /api/v1/workspaces/:workspaceId/machines/pairing` | | `Pairing`; replaces the workspace's earlier pairing. `409` when `base_url` is not `https://` or Golem has no hands binaries |
 | `DELETE /api/v1/workspaces/:workspaceId/machines/:machineId` | | `204` |
 
-The machine calls these, without an account; the six-character pairing code in the path is the credential. They follow
+The machine calls these, without an account; the 16-character pairing code in the path is the credential. They follow
 the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 
 | Request | Response |
