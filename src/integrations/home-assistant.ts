@@ -69,6 +69,11 @@ export function homeAssistantConnector(
     description:
       "The home's Home Assistant: the state and history of its lights, heating, devices, and sensors, and the services that control them.",
     secretLabel: "Long-lived access token",
+    guide: [
+      "In Home Assistant, open the profile of an administrator › **Security** › **Long-lived access tokens**, click **Create token**, and copy it.",
+      "Click **Add credential**. Type the name of the home as the label, the address of Home Assistant, such as `http://homeassistant.local:8123`, and paste the token.",
+      "The Golem machine must reach that address, for example over your VPN.",
+    ],
     address: true,
     tools: [
       {

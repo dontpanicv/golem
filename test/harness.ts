@@ -51,7 +51,6 @@ export async function startTestApp() {
         clientId: "test-client.apps.googleusercontent.com",
         clientSecret: "test-secret",
       },
-      integrations: {},
       iosAppId: "ABCDE12345.dev.golem.test",
       apns: null,
     },

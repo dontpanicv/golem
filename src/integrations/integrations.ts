@@ -23,6 +23,7 @@ import { HttpError, notFound, required } from "../platform/errors.ts";
 import type { Secrets } from "../platform/secrets.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 import { integrationCatalog } from "./catalog.ts";
+import { SIGN_IN_ADDRESS } from "./sign-in.ts";
 
 export interface CredentialSummary {
   readonly createdAt: number;
@@ -40,6 +41,16 @@ export interface Integration {
   readonly secretLabel: string | null;
   /** Whether a secret also needs the address of the person's own server, such as their Home Assistant's. */
   readonly address: boolean;
+  /** The steps that set it up, in Markdown; empty when Connect is all. */
+  readonly guide: readonly string[];
+  /**
+   * Golem's own OAuth client, for an integration whose sign-in server does not register clients: its ID once the
+   * server's owner set it, and whether this person may set it. `null` for the other integrations.
+   */
+  readonly client: {
+    readonly clientId: string | null;
+    readonly changeable: boolean;
+  } | null;
 }
 
 /**
@@ -61,27 +72,35 @@ export interface ConnectorTool<Parameters extends TSchema = TSchema> {
 }
 
 /**
- * An outside system that agents use: through the tools of its connector, with a secret from Settings or with a device
- * linked to a person's number, or through the tools of its MCP servers, after someone signs in to them.
+ * An outside system that agents use: through the tools of its connector, with a secret from Settings, with a device
+ * linked to a person's number, or with the access token of a sign-in, or through the tools of its MCP servers, after
+ * someone signs in to them.
  */
 export interface Connector {
   readonly id: string;
   readonly name: string;
   /** What agents do with it; the description of its codemode namespace. */
   readonly description: string;
-  /** `null` for MCP servers, which people sign in to, and for a device. */
+  /** `null` for a sign-in, and for a device. */
   readonly secretLabel: string | null;
   /**
    * Its secret also needs the address of the person's own server. The tools then get the secret as JSON
    * `{ address, secret }`.
    */
   readonly address?: boolean;
+  /** The steps that set it up, in Markdown, which Settings shows. */
+  readonly guide?: readonly string[];
   readonly tools: readonly ConnectorTool[];
   /** The addresses of its MCP servers, which give the tools; one sign-in serves them all. */
   readonly mcp?: readonly string[];
   /**
-   * It signs in with Golem's own OAuth client, from `[integrations.<id>]` in golem.toml, because its sign-in server does
-   * not register clients. Golem offers it only with that client.
+   * The OAuth server that people sign in to, for a connector whose own tools call its API, such as Google's; the tools
+   * then get a fresh access token instead of a secret.
+   */
+  readonly oauth?: string;
+  /**
+   * It signs in with Golem's own OAuth client, which the server's owner sets in Settings, because its sign-in server
+   * does not register clients. Only the owner sees it until then.
    */
   readonly registered?: boolean;
   /** The OAuth scopes that its sign-in asks for; else the ones that its server gives. */
@@ -140,8 +159,8 @@ export interface ConnectorNamespace {
 export interface IntegrationsOptions {
   /** Where the devices keep their stores, one folder for each credential. */
   readonly directory: string;
-  /** Golem's own OAuth clients, by integration id, for the integrations that need one. */
-  readonly clients?: Readonly<Record<string, OAuthClient>>;
+  /** The email address of the server's owner, who alone sets Golem's own OAuth clients. */
+  readonly owner?: string | null;
   /** Called when the connector tools of a workspace may change: a credential there or of a member changed. */
   readonly changed?: (workspaceId: string) => void;
   readonly catalog?: readonly Connector[];
@@ -149,13 +168,13 @@ export interface IntegrationsOptions {
   readonly transport?: (url: URL, provider: OAuthClientProvider) => Transport;
 }
 
-/** What a credential of an MCP server keeps, encrypted: its OAuth client, and its tokens once someone signed in. */
+/** What a credential of a sign-in keeps, encrypted: its OAuth client, and its tokens once someone signed in. */
 interface McpGrant {
   client?: OAuthClientInformationMixed;
   tokens?: OAuthTokens;
 }
 
-/** A sign-in that someone started: on the MCP server's page, or by entering a device's code on their phone. */
+/** A sign-in that someone started: on a sign-in page, or by entering a device's code on their phone. */
 interface PendingSignIn {
   readonly provider?: GrantProvider;
   readonly device?: {
@@ -172,12 +191,6 @@ interface PendingSignIn {
 const SIGN_IN_MS = 10 * 60 * 1000;
 /** How long finishing a device's link waits for the person to enter its code. */
 const LINK_WAIT_MS = 60 * 1000;
-/**
- * Where an MCP server's sign-in page sends people. Rohlík registers only loopback addresses for clients that register
- * themselves, and Slack only https ones, so the browser ends on an error page at this address, and the person pastes
- * the address into Golem, which reads the sign-in code from it.
- */
-const SIGN_IN_ADDRESS = "https://localhost/golem-sign-in";
 
 /**
  * The outside systems that agents use. A person connects an integration in a workspace, for every member's turns there,
@@ -192,6 +205,11 @@ export class Integrations {
   private readonly signIns = new Map<string, PendingSignIn>();
   /** One MCP client for each credential and server, by `<credential id> <server>`, connected at first use. */
   private readonly clients = new Map<string, Promise<Client>>();
+  /** The access token of each credential of an `oauth` connector, until shortly before it expires. */
+  private readonly accessTokens = new Map<
+    string,
+    Promise<{ token: string; expiresAt: number }>
+  >();
 
   constructor(
     private readonly database: Database,
@@ -199,9 +217,7 @@ export class Integrations {
     private readonly workspaces: Workspaces,
     private readonly options: IntegrationsOptions
   ) {
-    this.catalog = (options.catalog ?? integrationCatalog()).filter(
-      (connector) => !connector.registered || options.clients?.[connector.id]
-    );
+    this.catalog = options.catalog ?? integrationCatalog();
     for (const connector of this.catalog) {
       if (connector.device) {
         const linked = this.database
@@ -223,16 +239,53 @@ export class Integrations {
         "SELECT c.id, c.integration, c.label, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE (c.workspace_id = ?1 OR (?1 IS NULL AND c.workspace_id IS NULL AND c.owner_id = ?2)) AND c.deleted_at IS NULL ORDER BY c.created_at"
       )
       .all(place, user.id) as (CredentialSummary & { integration: string })[];
-    return this.catalog.map((connector) => ({
-      id: connector.id,
-      name: connector.name,
-      connect: connectionOf(connector),
-      secretLabel: connector.secretLabel,
-      address: connector.address ?? false,
-      credentials: credentials
-        .filter((credential) => credential.integration === connector.id)
-        .map(({ integration: _, ...credential }) => credential),
-    }));
+    const owner = this.isOwner(user);
+    return this.catalog.flatMap((connector) => {
+      const clientId = connector.registered
+        ? (this.oauthClient(connector.id)?.clientId ?? null)
+        : null;
+      if (connector.registered && !(clientId || owner)) {
+        return [];
+      }
+      return {
+        id: connector.id,
+        name: connector.name,
+        connect: connectionOf(connector),
+        secretLabel: connector.secretLabel,
+        address: connector.address ?? false,
+        guide: connector.guide ?? [],
+        client: connector.registered ? { clientId, changeable: owner } : null,
+        credentials: credentials
+          .filter((credential) => credential.integration === connector.id)
+          .map(({ integration: _, ...credential }) => credential),
+      };
+    });
+  }
+
+  /**
+   * Sets Golem's own OAuth client of an integration whose sign-in server does not register clients; only the server's
+   * owner does. The next sign-in uses it; the sign-ins before keep the client they signed in with.
+   */
+  setClient(user: User, integrationId: string, client: OAuthClient): void {
+    if (!this.isOwner(user)) {
+      throw new HttpError(403, "Only the server's owner sets the client");
+    }
+    if (!this.connector(integrationId).registered) {
+      throw notFound();
+    }
+    this.database
+      .query(
+        "INSERT INTO oauth_client (integration, client_id, secret, changed_by, changed_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (integration) DO UPDATE SET client_id = ?2, secret = ?3, changed_by = ?4, changed_at = ?5"
+      )
+      .run(
+        integrationId,
+        required(client.clientId, "Client ID").trim(),
+        this.secrets.encrypt(
+          required(client.clientSecret, "Client secret").trim()
+        ),
+        user.id,
+        Date.now()
+      );
   }
 
   addCredential(
@@ -243,7 +296,7 @@ export class Integrations {
   ): CredentialSummary {
     this.requireAccess(place, user);
     const connector = this.connector(integrationId);
-    if (connector.mcp || connector.device) {
+    if (connectionOf(connector) !== "secret") {
       throw new HttpError(400, "Connect it by signing in");
     }
     const secret = required(input.secret, "Secret");
@@ -259,7 +312,7 @@ export class Integrations {
   }
 
   /**
-   * Starts a sign-in. For MCP servers: registers Golem with their sign-in server unless Golem has its own client, and
+   * Starts a sign-in. For a sign-in: registers Golem with the sign-in server unless Golem has its own client, and
    * returns the page where the person signs in, which ends at an address that the person gives to `finishConnect`. For
    * a device: returns the code that the person enters on the phone of `phone`.
    */
@@ -296,11 +349,19 @@ export class Integrations {
       });
       return { code };
     }
-    if (!connector.mcp) {
+    if (connectionOf(connector) !== "sign-in") {
       throw notFound();
     }
     const state = randomUUID();
-    const client = this.options.clients?.[connector.id];
+    const client = connector.registered
+      ? this.oauthClient(connector.id)
+      : undefined;
+    if (connector.registered && !client) {
+      throw new HttpError(
+        400,
+        `The server's owner has not set the client of ${connector.name}`
+      );
+    }
     const provider = new GrantProvider(
       client
         ? {
@@ -328,8 +389,8 @@ export class Integrations {
   }
 
   /**
-   * Ends the person's own sign-in of the place where it started, and keeps it as a credential. An MCP sign-in ends with
-   * the address where its page ended, and works once; a device's when the person entered its code.
+   * Ends the person's own sign-in of the place where it started, and keeps it as a credential. A sign-in ends with the
+   * address where its page ended, and works once; a device's link when the person entered its code.
    */
   async finishConnect(
     place: Place,
@@ -468,6 +529,7 @@ export class Integrations {
       .query("UPDATE credential SET deleted_at = ? WHERE id = ?")
       .run(Date.now(), credentialId);
     this.closeClient(credentialId);
+    this.accessTokens.delete(credentialId);
     const connector = this.catalog.find(({ id }) => id === row.integration);
     if (connector?.device) {
       this.unlink(connector, credentialId);
@@ -488,12 +550,10 @@ export class Integrations {
               name: tool.name,
               description: tool.description,
               parameters: tool.parameters,
-              call: (args, credential, signal) =>
+              call: async (args, credential, signal) =>
                 tool.execute(
                   args as never,
-                  connector.device
-                    ? this.store(credential.id)
-                    : credential.secret,
+                  await this.secretOf(connector, credential),
                   signal
                 ),
             }));
@@ -509,6 +569,72 @@ export class Integrations {
       })
     );
     return tools.flat();
+  }
+
+  /** What a connector's own tool gets of a credential: a device's store, a fresh access token, or the secret. */
+  private async secretOf(
+    connector: Connector,
+    credential: Credential
+  ): Promise<string> {
+    if (connector.device) {
+      return this.store(credential.id);
+    }
+    return connector.oauth
+      ? (await this.accessToken(connector, credential)).token
+      : credential.secret;
+  }
+
+  /**
+   * The access token of a credential of an `oauth` connector, from the cache until a minute before it expires; else
+   * the refresh token gets a new one, and the new grant replaces the stored one.
+   */
+  private accessToken(
+    connector: Connector,
+    credential: Credential
+  ): Promise<{ token: string; expiresAt: number }> {
+    const cached = this.accessTokens.get(credential.id);
+    if (cached) {
+      return cached.then((access) =>
+        access.expiresAt > Date.now()
+          ? access
+          : this.refreshedToken(connector, credential)
+      );
+    }
+    return this.refreshedToken(connector, credential);
+  }
+
+  private refreshedToken(
+    connector: Connector,
+    credential: Credential
+  ): Promise<{ token: string; expiresAt: number }> {
+    const provider = new GrantProvider(
+      JSON.parse(credential.secret),
+      connector,
+      undefined,
+      (grant) => this.saveGrant(credential.id, grant)
+    );
+    const refreshing = signIn(connector, provider).then(() => {
+      const { tokens } = provider.grant;
+      // A refresh that failed leaves the SDK wanting a new sign-in.
+      if (provider.authorizationUrl || !tokens) {
+        throw new Error(
+          `${connector.name} ended the sign-in. Connect it again in Settings.`
+        );
+      }
+      return {
+        token: tokens.access_token,
+        expiresAt: Date.now() + ((tokens.expires_in ?? 0) - 60) * 1000,
+      };
+    });
+    refreshing.catch(() => this.accessTokens.delete(credential.id));
+    this.accessTokens.set(credential.id, refreshing);
+    return refreshing;
+  }
+
+  private saveGrant(credentialId: string, grant: McpGrant): void {
+    this.database
+      .query("UPDATE credential SET secret = ? WHERE id = ?")
+      .run(this.secrets.encrypt(JSON.stringify(grant)), credentialId);
   }
 
   /** The codemode namespace of each connector. */
@@ -700,10 +826,7 @@ export class Integrations {
         JSON.parse(credential.secret),
         connector,
         undefined,
-        (grant) =>
-          this.database
-            .query("UPDATE credential SET secret = ? WHERE id = ?")
-            .run(this.secrets.encrypt(JSON.stringify(grant)), credential.id)
+        (grant) => this.saveGrant(credential.id, grant)
       );
       const url = new URL(server);
       const transport =
@@ -809,6 +932,22 @@ export class Integrations {
       .map((member) => member.userId);
   }
 
+  private oauthClient(integrationId: string): OAuthClient | undefined {
+    const row = this.database
+      .query("SELECT client_id, secret FROM oauth_client WHERE integration = ?")
+      .get(integrationId) as { client_id: string; secret: Uint8Array } | null;
+    return row
+      ? {
+          clientId: row.client_id,
+          clientSecret: this.secrets.decrypt(row.secret),
+        }
+      : undefined;
+  }
+
+  private isOwner(user: User): boolean {
+    return user.email.toLowerCase() === this.options.owner?.toLowerCase();
+  }
+
   /** A workspace's credentials are for its members; a person's own only for them. */
   private requireAccess(place: Place, user: User): void {
     if (place !== null) {
@@ -868,7 +1007,7 @@ function connectionOf(connector: Connector): Integration["connect"] {
   if (connector.device) {
     return "phone";
   }
-  return connector.mcp ? "sign-in" : "secret";
+  return connector.mcp || connector.oauth ? "sign-in" : "secret";
 }
 
 /** The email address in an OpenID token, which names the account of a sign-in, such as a Google one. */
@@ -883,7 +1022,10 @@ function emailOf(idToken: string | undefined): string | undefined {
   }
 }
 
-/** Runs the MCP SDK's sign-in step; a refusal of the sign-in server reaches the person with its reason. */
+/**
+ * Runs the MCP SDK's sign-in step, which refreshes the tokens when the grant has a refresh token; a refusal of the
+ * sign-in server reaches the person with its reason.
+ */
 async function signIn(
   connector: Connector,
   provider: GrantProvider,
@@ -891,7 +1033,8 @@ async function signIn(
 ): Promise<void> {
   try {
     await auth(provider, {
-      serverUrl: connector.mcp![0]!,
+      // Without the metadata of a protected resource, the SDK takes this as the sign-in server.
+      serverUrl: connector.oauth ?? connector.mcp![0]!,
       ...(connector.scope ? { scope: connector.scope } : {}),
       ...(authorizationCode ? { authorizationCode } : {}),
     });
@@ -910,8 +1053,6 @@ class GrantProvider implements OAuthClientProvider {
   readonly redirectUrl = SIGN_IN_ADDRESS;
   /** The sign-in page, once the SDK wants the person to sign in. */
   authorizationUrl: URL | undefined;
-  /** Leaves out the token's resource: one token of Google serves its three servers. */
-  readonly validateResourceURL?: () => Promise<undefined>;
   private verifier = "";
 
   constructor(
@@ -919,11 +1060,7 @@ class GrantProvider implements OAuthClientProvider {
     private readonly connector: Connector,
     private readonly signInState?: string,
     private readonly saved: (grant: McpGrant) => void = () => undefined
-  ) {
-    if (connector.mcp!.length > 1) {
-      this.validateResourceURL = async () => undefined;
-    }
-  }
+  ) {}
 
   get clientMetadata() {
     return {

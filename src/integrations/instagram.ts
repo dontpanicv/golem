@@ -136,6 +136,13 @@ export function instagramConnector(request: typeof fetch = fetch): Connector {
     description:
       "The person's Instagram account: the posts and reels that they saved, newest first, and the collections that they sorted them into. Read only.",
     secretLabel: "Session cookie",
+    guide: [
+      "Open a private window, and sign in to instagram.com.",
+      "Open the developer tools. In **Application** (Chrome) or **Storage** (Firefox and Safari), open the cookies of `https://www.instagram.com`, and copy the value of `sessionid`.",
+      "Close the window, but do not sign out: signing out ends the cookie.",
+      "Click **Add credential**, type your handle as the label, and paste the cookie.",
+      "Instagram can lock or ban an account that uses its web API this way.",
+    ],
     tools: [
       {
         name: "instagram_saved",

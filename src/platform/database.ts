@@ -8,7 +8,7 @@ import { dirname } from "node:path";
  *
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
- * `credential` and `integration_setting` (no longer read), `llm` owns `provider_credential` and its keys in `setting`,
+ * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential` and its keys in `setting`,
  * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
  * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, and `notifications` owns `notification` and
  * `push_device`. Start a new migration with a comment that names its owner.
@@ -267,6 +267,15 @@ const migrations = [
   `UPDATE thread SET created_by = (SELECT c.created_by FROM channel c WHERE c.workspace_id = thread.workspace_id ORDER BY c.created_at, c.rowid LIMIT 1) WHERE orchestrator = 1;
 	DROP INDEX thread_orchestrator;
 	CREATE UNIQUE INDEX thread_own_orchestrator ON thread (workspace_id, created_by) WHERE orchestrator = 1;`,
+  // integrations: Golem's own OAuth client of an integration whose sign-in server does not register clients, such as
+  // Google's; the server's owner sets it in Settings. `secret` is the encrypted client secret.
+  `CREATE TABLE oauth_client (
+		integration TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		secret BLOB NOT NULL,
+		changed_by TEXT NOT NULL,
+		changed_at INTEGER NOT NULL
+	);`,
 ];
 
 export function openDatabase(path: string): Database {

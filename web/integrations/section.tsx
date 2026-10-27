@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { request } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
 import type { Integration } from "../app/types.ts";
@@ -34,6 +35,8 @@ export function IntegrationsSection({
       }),
   });
   const [adding, setAdding] = useState<Integration | null>(null);
+  const [settingClient, setSettingClient] = useState<Integration | null>(null);
+  const [guiding, setGuiding] = useState<Integration | null>(null);
   const [signingIn, setSigningIn] = useState<{
     integration: Integration;
     url: string;
@@ -100,6 +103,24 @@ export function IntegrationsSection({
       return queryClient.invalidateQueries({ queryKey });
     },
   });
+  // The server's owner sets the OAuth client that Golem signs in with; the next sign-in uses it.
+  const setClient = useMutation({
+    mutationFn: (input: { integration: Integration; form: FormData }) =>
+      request(`/integrations/${input.integration.id}/client`, {
+        method: "PUT",
+        body: {
+          clientId: String(input.form.get("clientId")),
+          clientSecret: String(input.form.get("clientSecret")),
+        },
+      }),
+    onSuccess: (_, { integration }) => {
+      setSettingClient(null);
+      showToast("success", `${integration.name} client saved`);
+      return queryClient.invalidateQueries({
+        predicate: ({ queryKey: key }) => key.includes("integrations"),
+      });
+    },
+  });
   const remove = useMutation({
     mutationFn: (credentialId: string) =>
       request(`${base}/credentials/${credentialId}`, {
@@ -121,7 +142,17 @@ export function IntegrationsSection({
                 : `${accountCount(integration.credentials.length)} · ${integration.secretLabel}`
             }
             label={integration.name}
-          />
+          >
+            {integration.guide.length > 0 && (
+              <Button
+                icon="info"
+                label={`Set up ${integration.name}`}
+                onClick={() => setGuiding(integration)}
+                size="icon"
+                variant="ghost"
+              />
+            )}
+          </SettingsRow>
           {integration.credentials.map((credential) => (
             <SettingsRow
               compact
@@ -142,13 +173,24 @@ export function IntegrationsSection({
           <div className="settings-row compact">
             {integration.connect === "sign-in" && (
               <Button
-                disabled={connect.isPending}
+                disabled={
+                  connect.isPending || integration.client?.clientId === null
+                }
                 icon="link"
                 label="Connect"
                 onClick={() => connect.mutate(integration)}
                 size="small"
               />
             )}
+            {integration.client?.changeable ? (
+              <Button
+                icon="key"
+                label="Client"
+                onClick={() => setSettingClient(integration)}
+                size="small"
+                variant="ghost"
+              />
+            ) : null}
             {integration.connect === "phone" && (
               <Button
                 icon="link"
@@ -199,6 +241,58 @@ export function IntegrationsSection({
           autoComplete="off"
           label={adding?.secretLabel ?? "Secret"}
           name="secret"
+          required
+          type="password"
+        />
+      </Dialog>
+      <Dialog
+        onClose={() => setGuiding(null)}
+        open={guiding !== null}
+        title={`Set up ${guiding?.name ?? ""}`}
+      >
+        <div className="prose">
+          <ol className="guide">
+            {guiding?.guide.map((step) => (
+              <li key={step}>
+                <ReactMarkdown
+                  components={{
+                    a: ({ href, children }) => (
+                      <a href={href} rel="noopener" target="_blank">
+                        {children}
+                      </a>
+                    ),
+                  }}
+                >
+                  {step}
+                </ReactMarkdown>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </Dialog>
+      <Dialog
+        busy={setClient.isPending}
+        onClose={() => setSettingClient(null)}
+        onSubmit={(form) =>
+          settingClient &&
+          setClient.mutate({ integration: settingClient, form })
+        }
+        open={settingClient !== null}
+        submit="Save"
+        title={`${settingClient?.name ?? ""} OAuth client`}
+      >
+        <TextField
+          autoComplete="off"
+          autoFocus
+          defaultValue={settingClient?.client?.clientId ?? ""}
+          label="Client ID"
+          name="clientId"
+          required
+        />
+        <TextField
+          autoComplete="off"
+          label="Client secret"
+          name="clientSecret"
           required
           type="password"
         />

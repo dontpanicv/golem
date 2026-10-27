@@ -1,15 +1,44 @@
+import { googleConnector } from "./google.ts";
 import { homeAssistantConnector } from "./home-assistant.ts";
 import { instagramConnector } from "./instagram.ts";
 import type { Connector } from "./integrations.ts";
+import { PASTE_ADDRESS, SIGN_IN_ADDRESS } from "./sign-in.ts";
 import { whatsAppConnector } from "./whatsapp.ts";
 import { xConnector } from "./x.ts";
 
+/** What Slack's sign-in asks for: reading, and `chat:write` for drafts. */
+const SLACK_SCOPES = [
+  "search:read.public",
+  "search:read.private",
+  "search:read.mpim",
+  "search:read.im",
+  "search:read.files",
+  "search:read.users",
+  "channels:history",
+  "groups:history",
+  "mpim:history",
+  "im:history",
+  "channels:read",
+  "groups:read",
+  "mpim:read",
+  "im:read",
+  "users:read",
+  "users:read.email",
+  "files:read",
+  "canvases:read",
+  "lists:read",
+  "reactions:read",
+  "emoji:read",
+  "chat:write",
+];
+
 /**
- * The connectors that Golem has: ones with a secret, MCP servers that people sign in to, and WhatsApp when this machine
- * has wacli.
+ * The connectors that Golem has: ones with a secret, MCP servers that people sign in to, Google when this machine has
+ * gog, and WhatsApp when it has wacli.
  */
 export function integrationCatalog(
-  wacli = Bun.which("wacli")
+  wacli = Bun.which("wacli"),
+  gog = Bun.which("gog")
 ): readonly Connector[] {
   return [
     homeAssistantConnector(),
@@ -19,50 +48,11 @@ export function integrationCatalog(
       description:
         "The family's grocery shop with delivery: products, the cart, orders and their history, recipes, and shopping lists. Put things in the cart; people place the order themselves.",
       secretLabel: null,
+      guide: ["Click **Connect**, and sign in to Rohlík.", PASTE_ADDRESS],
       tools: [],
       mcp: ["https://mcp.rohlik.cz/mcp"],
     },
-    {
-      id: "google",
-      name: "Google",
-      description:
-        "Gmail, Google Calendar, and Google Drive of each connected Google account. Search and read mail, and draft mail that the person sends; read calendars and events, and find free time; find, read, and create files.",
-      secretLabel: null,
-      tools: [],
-      mcp: [
-        "https://gmailmcp.googleapis.com/mcp/v1",
-        "https://calendarmcp.googleapis.com/mcp/v1",
-        "https://drivemcp.googleapis.com/mcp/v1",
-      ],
-      registered: true,
-      scope: [
-        "openid",
-        "email",
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.compose",
-        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-        "https://www.googleapis.com/auth/calendar.events.freebusy",
-        "https://www.googleapis.com/auth/calendar.events.readonly",
-        "https://www.googleapis.com/auth/drive.readonly",
-        "https://www.googleapis.com/auth/drive.file",
-      ].join(" "),
-      // A refresh token, and the choice of account, for each sign-in.
-      authorizationParameters: {
-        access_type: "offline",
-        prompt: "consent select_account",
-      },
-      // The scopes above do not let these change mail labels or events.
-      hiddenTools: [
-        "label_message",
-        "label_thread",
-        "unlabel_message",
-        "unlabel_thread",
-        "create_event",
-        "update_event",
-        "delete_event",
-        "respond_to_event",
-      ],
-    },
+    ...(gog ? [googleConnector(gog)] : []),
     {
       id: "slack",
       name: "Slack",
@@ -72,30 +62,16 @@ export function integrationCatalog(
       tools: [],
       mcp: ["https://mcp.slack.com/mcp"],
       registered: true,
-      scope: [
-        "search:read.public",
-        "search:read.private",
-        "search:read.mpim",
-        "search:read.im",
-        "search:read.files",
-        "search:read.users",
-        "channels:history",
-        "groups:history",
-        "mpim:history",
-        "im:history",
-        "channels:read",
-        "groups:read",
-        "mpim:read",
-        "im:read",
-        "users:read",
-        "users:read.email",
-        "files:read",
-        "canvases:read",
-        "lists:read",
-        "reactions:read",
-        "emoji:read",
-        "chat:write",
-      ].join(" "),
+      scope: SLACK_SCOPES.join(" "),
+      guide: [
+        "On [api.slack.com/apps](https://api.slack.com/apps), click **Create New App › From scratch**, and select the Slack workspace.",
+        `In **OAuth & Permissions**, add the redirect URL \`${SIGN_IN_ADDRESS}\`, and these **User Token Scopes**: ${SLACK_SCOPES.map((scope) => `\`${scope}\``).join(", ")}.`,
+        "In **Agents & AI Apps**, turn on **Model Context Protocol**.",
+        "Install the app to the Slack workspace. An administrator may need to approve it.",
+        "Click **Client** here, and paste the **Client ID** and **Client Secret** from **Basic Information**.",
+        "Click **Connect**, and sign in to Slack.",
+        PASTE_ADDRESS,
+      ],
       // `chat:write` is for drafts; agents never send.
       hiddenTools: ["slack_send_message", "slack_schedule_message"],
     },

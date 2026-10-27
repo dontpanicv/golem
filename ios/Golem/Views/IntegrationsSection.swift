@@ -9,6 +9,8 @@ struct IntegrationsSection: View {
     @State private var addingTo: Integration?
     @State private var signingIn: SignIn?
     @State private var linking: Integration?
+    @State private var settingClient: Integration?
+    @State private var guiding: Integration?
 
     var body: some View {
         Group {
@@ -31,6 +33,7 @@ struct IntegrationsSection: View {
                         case .signIn:
                             Button("Connect", systemImage: "link") { connect(integration) }
                                 .buttonStyle(.golem(.ghost, .small))
+                                .disabled(integration.client.map { $0.clientId == nil } ?? false)
                         case .phone:
                             Button("Link number", systemImage: "link") { linking = integration }
                                 .buttonStyle(.golem(.ghost, .small))
@@ -38,7 +41,16 @@ struct IntegrationsSection: View {
                             Button("Add credential", systemImage: "plus") { addingTo = integration }
                                 .buttonStyle(.golem(.ghost, .small))
                         }
+                        if integration.client?.changeable == true {
+                            Button("Client", systemImage: "key") { settingClient = integration }
+                                .buttonStyle(.golem(.ghost, .small))
+                        }
                         Spacer()
+                        if !integration.guide.isEmpty {
+                            Button("Set up \(integration.name)", systemImage: "info.circle") { guiding = integration }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.golem(.ghost, .icon))
+                        }
                     }
                     .padding(.horizontal, Tokens.Space.md)
                     .padding(.vertical, Tokens.Space.lg)
@@ -59,6 +71,12 @@ struct IntegrationsSection: View {
                     integrations[index].credentials.append(credential)
                 }
             }
+        }
+        .sheet(item: $guiding) { integration in
+            Guide(integration: integration)
+        }
+        .sheet(item: $settingClient) { integration in
+            ClientForm(integration: integration) { Task { await load() } }
         }
         .sheet(item: $addingTo) { integration in
             CredentialForm(workspaceID: workspaceID, integration: integration) { credential in
@@ -137,6 +155,84 @@ private struct CredentialForm: View {
                     label: label, secret: secret, address: integration.address ? address : nil
                 ))
                 session.show("Credential added", .success)
+                dismiss()
+            }
+            busy = false
+        }
+    }
+}
+
+/// The steps that set up an integration, numbered; links open, and the text can be copied.
+private struct Guide: View {
+    let integration: Integration
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Dialog(title: "Set up \(integration.name)") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Tokens.Space.lg) {
+                    ForEach(Array(integration.guide.enumerated()), id: \.offset) { index, step in
+                        HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.md) {
+                            Text("\(index + 1).")
+                                .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                                .monospacedDigit()
+                            Text(LocalizedStringKey(step))
+                                .foregroundStyle(Tokens.Mobile.Colors.text)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.book))
+                    }
+                }
+            }
+            .frame(maxHeight: 520)
+        } actions: {
+            Button("Done") { dismiss() }.buttonStyle(.golem(.primary, .large))
+        }
+    }
+}
+
+/// The OAuth client that Golem signs in to an integration with, which the server's owner sets.
+private struct ClientForm: View {
+    let integration: Integration
+    let saved: () -> Void
+    @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var clientID: String
+    @State private var clientSecret = ""
+    @State private var busy = false
+
+    init(integration: Integration, saved: @escaping () -> Void) {
+        self.integration = integration
+        self.saved = saved
+        _clientID = State(initialValue: integration.client?.clientId ?? "")
+    }
+
+    var body: some View {
+        Dialog(title: "\(integration.name) OAuth client") {
+            GolemTextField("Client ID", text: $clientID, autofocus: true)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            GolemTextField("Client secret", text: $clientSecret, secure: true)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        } actions: {
+            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
+            Button("Save", action: save)
+                .buttonStyle(.golem(.primary, .large))
+                .disabled(busy || clientID.isEmpty || clientSecret.isEmpty)
+        }
+    }
+
+    private func save() {
+        busy = true
+        Task {
+            await session.run {
+                try await session.api.setIntegrationClient(
+                    integrationID: integration.id, clientID: clientID, clientSecret: clientSecret
+                )
+                session.show("\(integration.name) client saved", .success)
+                saved()
                 dismiss()
             }
             busy = false

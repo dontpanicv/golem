@@ -22,11 +22,6 @@ export interface Config {
   /** The Google OAuth client for sign-in; see google-sign-in.md. */
   readonly google: OAuthClient;
   /**
-   * Golem's own OAuth clients of the integrations whose servers do not register clients, by integration id; see
-   * docs/integrations.md. Golem offers such an integration only with its client.
-   */
-  readonly integrations: Readonly<Record<string, OAuthClient>>;
-  /**
    * The iOS app, as `<team id>.<bundle id>`, which `/.well-known/apple-app-site-association` names so that its Google
    * sign-in can return to this server's https address; `null` serves no such file.
    */
@@ -68,15 +63,6 @@ allowed_emails = []
 client_id = ""
 client_secret = ""
 
-# The OAuth clients of Google (Gmail, Calendar, Drive) and Slack, which people sign in to in Settings.
-# docs/integrations.md shows how to create them.
-# [integrations.google]
-# client_id = ""
-# client_secret = ""
-# [integrations.slack]
-# client_id = ""
-# client_secret = ""
-
 # The iOS app, as <team id>.<bundle id>, for example "ABCDE12345.dev.golem.app". Its Google sign-in returns to the
 # https address of base_url, so that address must name the app; leave it empty without the iOS app.
 ios_app_id = ""
@@ -105,10 +91,6 @@ export async function readConfig(
   }
   const values = Bun.TOML.parse(await file.text()) as Record<string, unknown>;
   const google = (values.google ?? {}) as Record<string, unknown>;
-  const integrations = (values.integrations ?? {}) as Record<
-    string,
-    Record<string, unknown>
-  >;
   const apns = values.apns as Record<string, unknown> | undefined;
   return {
     configDirectory,
@@ -127,18 +109,6 @@ export async function readConfig(
       clientId: text(google.client_id, "google.client_id"),
       clientSecret: text(google.client_secret, "google.client_secret"),
     },
-    integrations: Object.fromEntries(
-      Object.entries(integrations).map(([id, client]) => [
-        id,
-        {
-          clientId: text(client.client_id, `integrations.${id}.client_id`),
-          clientSecret: text(
-            client.client_secret,
-            `integrations.${id}.client_secret`
-          ),
-        },
-      ])
-    ),
     iosAppId: values.ios_app_id ? text(values.ios_app_id, "ios_app_id") : null,
     apns: apns
       ? {

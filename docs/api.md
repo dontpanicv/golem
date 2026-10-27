@@ -111,7 +111,7 @@ type SearchResult = {
 };
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; ownerName: string; createdAt: number };
-type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; address: boolean; credentials: Credential[] }; // secretLabel: for "secret"; address: the secret also needs the address of the person's own server
+type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; address: boolean; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; address: the secret also needs the address of the person's own server; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
 type RoutineRun = {
 	id: string;
 	routineId: string;
@@ -325,8 +325,6 @@ to put that host on the internet while the rest of Golem stays private.
 
 ### Integrations (`src/integrations/`)
 
-| Request | Body | Response |
-| --- | --- | --- |
 Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the workspace's integrations, and under
 `/api/v1` for the person's own.
 
@@ -338,6 +336,10 @@ Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the works
 | `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`; `400` when the address is not of the person's own sign-in of this place, the sign-in did not finish, or the number did not link within a minute |
 | `DELETE …/credentials/:credentialId` | | `204` |
 
+| Request | Body | Response |
+| --- | --- | --- |
+| `PUT /api/v1/integrations/:integrationId/client` | `{ clientId, clientSecret }` | `204`; the next sign-in uses it, at once. `403` unless the person is the server's owner, `404` unless the integration has `client` |
+
 Where a person connects an integration says whose turns use it. A workspace's credentials serve the turns of every
 member there; every member sees and deletes them. A person's own serve only their turns, in each of their workspaces;
 only they see and delete them. A turn is for the author of the message it answers, the person whose request another
@@ -347,15 +349,18 @@ unless the call names another of their accounts in its `account` argument; `<int
 agents of a workspace get the tools of each integration that the workspace or one of its members connected. Secrets
 never leave the server.
 
-An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's, Google's, or Slack's. The app
-shows a link to the `url` of `connect`; the person signs in there. Rohlík lets self-registered clients return only to
+An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's or Slack's, or an API that
+Golem's own tools call, such as Google's. The app shows a link to the `url` of `connect`; the person signs in there. Rohlík lets self-registered clients return only to
 loopback addresses, and Slack only to https ones, so the sign-in ends on an error page at
 `https://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and `sign-in` keeps the tokens as a
 credential, labeled with the account's email when the server gives it. The agents then get the servers' tools as
 `<integrationId>_<tool>`, in the codemode namespace of the integration. Golem lists a server's tools with the
-workspace's sign-in, else with a member's own; the list has only tool names and schemas. Google and Slack need Golem's
-own OAuth client;
-`docs/integrations.md` shows how to set them up.
+workspace's sign-in, else with a member's own; the list has only tool names and schemas. Google's tools run gog with
+an access token that Golem renews with the refresh token.
+
+An integration with `client` signs in with Golem's own OAuth client, because its sign-in server does not register
+clients: Google and Slack. The server's owner sets the client in Settings; until then, only the owner sees the
+integration, and `connect` answers `400`. `docs/integrations.md` shows how to make the clients.
 
 An integration with `connect: "phone"`, WhatsApp, links the person's number as a device. `connect` gives the code that
 the person enters on their phone, in Linked devices; then `sign-in` waits up to a minute for the link.

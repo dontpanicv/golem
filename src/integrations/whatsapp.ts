@@ -29,6 +29,12 @@ export function whatsAppConnector(binary: string): Connector {
     description:
       "The person's own WhatsApp chats, from when they linked it: chats, messages, search, and contacts. Draft a message as a wa.me link; the person sends it.",
     secretLabel: null,
+    guide: [
+      "Click **Link number**, type your number with its country code, and click **Get code**.",
+      "On your phone, open WhatsApp › **Linked devices** › **Link a device** › **Link with phone number instead**, and type the code.",
+      "Click **Done**. Your phone sends the newest messages of each chat; ask an agent to load older ones.",
+      "WhatsApp can ban a number that uses a linked device such as this one.",
+    ],
     device: whatsApp,
     tools: [
       readTool(whatsApp, {

@@ -39,6 +39,14 @@ extension APIClient {
         )
     }
 
+    /// Sets the OAuth client that Golem signs in to an integration with; only the server's owner may.
+    func setIntegrationClient(integrationID: String, clientID: String, clientSecret: String) async throws {
+        _ = try await send(
+            "PUT", "/api/v1/integrations/\(integrationID)/client",
+            ["clientId": clientID, "clientSecret": clientSecret]
+        )
+    }
+
     func deleteCredential(workspaceID: String?, credentialID: String) async throws {
         _ = try await send("DELETE", "\(Self.integrationsBase(workspaceID))/credentials/\(credentialID)")
     }

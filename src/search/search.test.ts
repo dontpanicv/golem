@@ -65,7 +65,6 @@ beforeAll(async () => {
         clientId: "test-client.apps.googleusercontent.com",
         clientSecret: "test-secret",
       },
-      integrations: {},
       iosAppId: null,
       apns: null,
     },

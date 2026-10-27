@@ -1189,6 +1189,9 @@ a {
 .prose li > input {
   margin: 0 var(--space-sm) 0 0;
 }
+.guide li + li {
+  margin-top: var(--space-md);
+}
 .prose a:not(.thread-link) {
   color: var(--color-accent);
   text-underline-offset: 2px;

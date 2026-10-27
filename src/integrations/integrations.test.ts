@@ -16,6 +16,8 @@ import { whatsAppConnector } from "./whatsapp.ts";
 
 let golem: TestApp;
 let alice: User;
+/** A person who is not the server's owner. */
+const notOwner: User = { id: "otto", name: "Otto", email: "otto@example.com" };
 let workspaceId: string;
 /** A sign-in server and an MCP server's address, as Rohlík's are, on a local port. */
 let signInServer: ReturnType<typeof Bun.serve>;
@@ -101,6 +103,13 @@ async function signIn(request: Request): Promise<Response> {
     // Golem's own client signs in to Google, whose token names the account.
     const owned =
       parameters.has("client_secret") || request.headers.has("authorization");
+    if (parameters.get("grant_type") === "refresh_token") {
+      return Response.json({
+        access_token: "access-refreshed",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }
     return Response.json({
       access_token:
         parameters.get("code") === "code-own" ? "access-own" : "access-1",
@@ -391,90 +400,134 @@ test("a secret of a connector with an address keeps its server's address", async
   });
 });
 
-test("a connector with Golem's own client signs in to all its servers at once, and hides the tools that send", async () => {
-  const servers = ["/mcp", "/calendar"].map(
-    (path) => new URL(path, signInServer.url).href
+test("only the server's owner sets Golem's own client, and its MCP server hides the tools that send", async () => {
+  const chat: Connector = {
+    id: "chat",
+    name: "Chat",
+    description: "Messages.",
+    secretLabel: null,
+    tools: [],
+    mcp: [new URL("/mcp", signInServer.url).href],
+    registered: true,
+    scope: "search chat:write",
+    hiddenTools: ["checkout"],
+  };
+  const { database, workspaces } = golem.app;
+  const withOwner = new Integrations(database, Secrets.forTests(), workspaces, {
+    directory: join(golem.app.config.dataDirectory, "integrations"),
+    catalog: [chat],
+    owner: "Alice@example.com",
+    transport: () => {
+      const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+      shopServer().connect(serverSide);
+      return clientSide;
+    },
+  });
+  // Until the owner sets the client, only the owner sees the integration, and nobody can connect it.
+  expect(withOwner.list(null, notOwner)).toEqual([]);
+  expect(withOwner.list(null, alice)[0]!.client).toEqual({
+    clientId: null,
+    changeable: true,
+  });
+  await expect(withOwner.connect(null, alice, "chat")).rejects.toThrow(
+    "The server's owner has not set the client of Chat"
   );
+  expect(() =>
+    withOwner.setClient(notOwner, "chat", { clientId: "x", clientSecret: "y" })
+  ).toThrow("Only the server's owner sets the client");
+  withOwner.setClient(alice, "chat", {
+    clientId: " own-client ",
+    clientSecret: "shh",
+  });
+  expect(withOwner.list(null, notOwner)[0]!.client).toEqual({
+    clientId: "own-client",
+    changeable: false,
+  });
+
+  const { url } = (await withOwner.connect(null, alice, "chat")) as {
+    url: string;
+  };
+  const page = new URL(url);
+  expect(page.searchParams.get("client_id")).toBe("own-client");
+  expect(page.searchParams.get("scope")).toBe("search chat:write");
+  const credential = await withOwner.finishConnect(
+    null,
+    alice,
+    "chat",
+    `https://localhost/golem-sign-in?code=code-2&state=${page.searchParams.get("state")}`
+  );
+  expect(credential.label).toBe("anna@work.example");
+  expect((await withOwner.tools(workspaceId)).map((tool) => tool.name)).toEqual(
+    ["chat_search_products", "chat_cart", "chat_accounts"]
+  );
+  withOwner.deleteCredential(null, alice, credential.id);
+  await withOwner.close();
+});
+
+test("the own tools of a sign-in get a fresh access token, which the refresh token renews", async () => {
   const google: Connector = {
     id: "google",
     name: "Google",
     description: "Mail and calendars.",
     secretLabel: null,
-    tools: [],
-    mcp: servers,
+    oauth: new URL(signInServer.url).origin,
     registered: true,
     scope: "openid email mail",
     authorizationParameters: { access_type: "offline" },
-    hiddenTools: ["checkout", "delete_event"],
+    tools: [
+      {
+        name: "google_token",
+        description: "The access token that the call got.",
+        parameters: Type.Object({}),
+        execute: async (_args, accessToken) => accessToken,
+      },
+    ],
   };
-  const options = {
-    directory: join(golem.app.config.dataDirectory, "integrations"),
-    catalog: [google],
-    transport: (address: URL) => {
-      const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-      (address.pathname === "/calendar"
-        ? calendarServer()
-        : shopServer()
-      ).connect(serverSide);
-      return clientSide;
-    },
-  };
-  const { database, workspaces } = golem.app;
-  // Without its client in golem.toml, Golem does not offer it.
-  expect(
-    new Integrations(database, Secrets.forTests(), workspaces, options).list(
-      null,
-      alice
-    )
-  ).toEqual([]);
-  const withClient = new Integrations(
-    database,
+  const withOwner = new Integrations(
+    golem.app.database,
     Secrets.forTests(),
-    workspaces,
+    golem.app.workspaces,
     {
-      ...options,
-      clients: { google: { clientId: "own-client", clientSecret: "shh" } },
+      directory: join(golem.app.config.dataDirectory, "integrations"),
+      catalog: [google],
+      owner: "alice@example.com",
     }
   );
-
-  const { url } = (await withClient.connect(null, alice, "google")) as {
+  withOwner.setClient(alice, "google", {
+    clientId: "own-client",
+    clientSecret: "shh",
+  });
+  expect(withOwner.list(null, alice)[0]).toMatchObject({ connect: "sign-in" });
+  const { url } = (await withOwner.connect(null, alice, "google")) as {
     url: string;
   };
   const page = new URL(url);
-  expect(page.searchParams.get("client_id")).toBe("own-client");
-  expect(page.searchParams.get("scope")).toBe("openid email mail");
+  expect(page.pathname).toBe("/authorize");
   expect(page.searchParams.get("access_type")).toBe("offline");
-  // One token serves both servers, so it names neither.
   expect(page.searchParams.has("resource")).toBe(false);
-  const state = page.searchParams.get("state");
-  const credential = await withClient.finishConnect(
+  const credential = await withOwner.finishConnect(
     null,
     alice,
     "google",
-    `https://localhost/golem-sign-in?code=code-2&state=${state}`
+    `https://localhost/golem-sign-in?code=code-3&state=${page.searchParams.get("state")}`
   );
   expect(credential.label).toBe("anna@work.example");
 
-  const tools = await withClient.tools(workspaceId);
-  expect(tools.map((tool) => tool.name)).toEqual([
-    "google_search_products",
-    "google_cart",
-    "google_list_events",
-    "google_accounts",
-  ]);
-  expect(
-    await tools[2]!.execute(
-      { account: "Anna@work.example" },
-      { userId: alice.id }
-    )
-  ).toBe("No events.");
-  await expect(
-    tools[2]!.execute({ account: "anna@home.example" }, { userId: alice.id })
-  ).rejects.toThrow(
-    "Google has no account anna@home.example; it has anna@work.example."
-  );
-  withClient.deleteCredential(null, alice, credential.id);
-  await withClient.close();
+  const [token, accounts] = await withOwner.tools(workspaceId);
+  expect(accounts!.name).toBe("google_accounts");
+  const refreshes = () =>
+    tokenRequests.filter(
+      (request) => request.get("grant_type") === "refresh_token"
+    ).length;
+  const before = refreshes();
+  const turn = { userId: alice.id };
+  expect(await token!.execute({}, turn)).toBe("access-refreshed");
+  // The token stays until shortly before it expires.
+  expect(await token!.execute({}, turn)).toBe("access-refreshed");
+  expect(refreshes()).toBe(before + 1);
+  expect(tokenRequests.at(-1)?.get("refresh_token")).toBe("refresh-1");
+  withOwner.deleteCredential(null, alice, credential.id);
+  await withOwner.close();
 });
 
 test("a turn picks one of its person's accounts by name, and lists them", async () => {
@@ -643,21 +696,3 @@ esac
       : 0;
   }
 });
-
-/** A second MCP server of the same sign-in, as Google Calendar is Gmail's. */
-function calendarServer(): Server {
-  const server = new Server(
-    { name: "calendar", version: "1" },
-    { capabilities: { tools: {} } }
-  );
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: ["list_events", "delete_event"].map((name) => ({
-      name,
-      inputSchema: { type: "object" as const, properties: {} },
-    })),
-  }));
-  server.setRequestHandler(CallToolRequestSchema, async () => ({
-    content: [{ type: "text", text: "No events." }],
-  }));
-  return server;
-}

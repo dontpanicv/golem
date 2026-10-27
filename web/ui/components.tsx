@@ -232,9 +232,10 @@ export function Dialog({
   open: boolean;
   onClose: () => void;
   title: string;
-  submit: string;
+  /** The submit button; a dialog without one only shows its content. */
+  submit?: string;
   /** Gets the form's fields. */
-  onSubmit: (form: FormData) => void;
+  onSubmit?: (form: FormData) => void;
   busy?: boolean;
   children: ReactNode;
 }) {
@@ -250,7 +251,7 @@ export function Dialog({
   }, [open]);
   const send = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    onSubmit(new FormData(event.currentTarget));
+    onSubmit?.(new FormData(event.currentTarget));
   };
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape closes the dialog
@@ -274,10 +275,12 @@ export function Dialog({
             />
           </header>
           <div className="dialog-body">{children}</div>
-          <footer className="dialog-footer">
-            <Button label="Cancel" onClick={onClose} />
-            <Button label={submit} type="submit" variant="primary" />
-          </footer>
+          {submit ? (
+            <footer className="dialog-footer">
+              <Button label="Cancel" onClick={onClose} />
+              <Button label={submit} type="submit" variant="primary" />
+            </footer>
+          ) : null}
         </form>
       ) : null}
     </dialog>

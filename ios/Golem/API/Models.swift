@@ -223,9 +223,19 @@ struct Integration: Codable, Hashable, Identifiable {
     let secretLabel: String?
     /// Whether the secret also needs the address of the person's own server.
     let address: Bool
+    /// The steps that set it up, in Markdown; empty when Connect is all.
+    let guide: [String]
+    /// Golem's own OAuth client, which the server's owner sets; nil for integrations without one.
+    let client: Client?
     var credentials: [Credential]
 
     enum Connection: String, Codable { case secret, signIn = "sign-in", phone }
+
+    struct Client: Codable, Hashable {
+        let clientId: String?
+        /// Whether this person may set it.
+        let changeable: Bool
+    }
 }
 
 /// The sign-in page of an integration's MCP server.

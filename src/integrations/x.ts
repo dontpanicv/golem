@@ -52,6 +52,14 @@ export function xConnector(
     description:
       "The person's X (Twitter) account: their bookmarks, newest first, and posts with their replies and threads. Read only.",
     secretLabel: "API key",
+    guide: [
+      "In Firefox, install the [Rettiwt Auth Helper](https://addons.mozilla.org/en-US/firefox/addon/rettiwt-auth-helper) extension, and let it run in private windows.",
+      "Open a private window, and sign in to X.",
+      "Click the extension, click **Get API Key**, and copy the key. Close the window, but do not sign out: signing out ends the key.",
+      "Click **Add credential**, type your handle as the label, and paste the key.",
+      'Without Firefox: copy the `auth_token`, `ct0`, and `twid` cookies of x.com from the developer tools, and run `btoa("auth_token=…;ct0=…;twid=…;")` in the console. The result is the key.',
+      "X can limit or ban an account that uses this key.",
+    ],
     tools: [
       {
         name: "x_bookmarks",

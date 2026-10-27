@@ -7,12 +7,14 @@ test("the workspace's one orchestrator from before becomes the own of the person
   const { user_version: version } = database
     .query("PRAGMA user_version")
     .get() as { user_version: number };
-  // The state before the last migration: one orchestrator of the workspace, made by Golem.
-  database.run(`DROP INDEX thread_own_orchestrator;
+  // The state before the migration of the orchestrators and the one after it: one orchestrator of the workspace,
+  // made by Golem, and no OAuth clients.
+  database.run(`DROP TABLE oauth_client;
+	DROP INDEX thread_own_orchestrator;
 	CREATE UNIQUE INDEX thread_orchestrator ON thread (workspace_id) WHERE orchestrator = 1;
 	INSERT INTO channel (id, workspace_id, name, created_by, created_at) VALUES ('general', 'home', 'general', 'alice', 1), ('food', 'home', 'food', 'bob', 2);
 	INSERT INTO thread (id, workspace_id, channel_id, title, created_by, created_at, updated_at, orchestrator) VALUES ('golem', 'home', 'food', 'Golem', 'golem', 1, 1, 1), ('dinner', 'home', 'food', 'Dinner', 'bob', 1, 1, 0);
-	PRAGMA user_version = ${version - 1};`);
+	PRAGMA user_version = ${version - 2};`);
   migrate(database);
   expect(
     database

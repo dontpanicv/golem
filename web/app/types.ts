@@ -146,6 +146,13 @@ export interface Integration {
   readonly secretLabel: string | null;
   /** Whether the secret also needs the address of the person's own server. */
   readonly address: boolean;
+  /** The steps that set it up, in Markdown; empty when Connect is all. */
+  readonly guide: readonly string[];
+  /** Golem's own OAuth client, which the server's owner sets: its ID, and whether this person may set it. */
+  readonly client: {
+    readonly clientId: string | null;
+    readonly changeable: boolean;
+  } | null;
   readonly credentials: readonly Credential[];
 }
 
