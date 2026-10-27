@@ -9,7 +9,7 @@ export interface User {
 export interface Workspace {
   readonly id: string;
   readonly name: string;
-  /** The person's role: `owner` can rename and delete the workspace. */
+  /** The person's role: `owner` can rename and delete the workspace, and add members. */
   readonly role: string;
 }
 

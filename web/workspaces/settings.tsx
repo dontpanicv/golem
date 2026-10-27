@@ -83,8 +83,9 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
   );
 }
 
-/** The members of a workspace, and a form to add one. */
-export function MembersSection({ workspaceId }: { workspaceId: string }) {
+/** The members of a workspace, and a form to add one for its owners. */
+export function MembersSection({ workspace }: { workspace: Workspace }) {
+  const workspaceId = workspace.id;
   const members = useQuery(membersQuery(workspaceId)).data ?? [];
   const add = useMutation({
     mutationFn: (email: string) =>
@@ -112,31 +113,33 @@ export function MembersSection({ workspaceId }: { workspaceId: string }) {
           <Badge label={member.role} />
         </SettingsRow>
       ))}
-      <form
-        aria-busy={add.isPending || undefined}
-        onSubmit={(event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          add.mutate(String(new FormData(form).get("email")), {
-            onSuccess: () => form.reset(),
-          });
-        }}
-      >
-        <SettingsRow
-          description="They need a Golem account first."
-          label="Add a member"
+      {workspace.role === "owner" ? (
+        <form
+          aria-busy={add.isPending || undefined}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            add.mutate(String(new FormData(form).get("email")), {
+              onSuccess: () => form.reset(),
+            });
+          }}
         >
-          <input
-            aria-label="Email"
-            className="input"
-            name="email"
-            placeholder="name@example.com"
-            required
-            type="email"
-          />
-          <Button label="Add" type="submit" />
-        </SettingsRow>
-      </form>
+          <SettingsRow
+            description="They need a Golem account first."
+            label="Add a member"
+          >
+            <input
+              aria-label="Email"
+              className="input"
+              name="email"
+              placeholder="name@example.com"
+              required
+              type="email"
+            />
+            <Button label="Add" type="submit" />
+          </SettingsRow>
+        </form>
+      ) : null}
     </SettingsCard>
   );
 }

@@ -42,19 +42,21 @@ struct WorkspaceSettingsView: View {
                         Badge(label: member.role.capitalized)
                     }
                 }
-                HStack(spacing: Tokens.Space.md) {
-                    GolemTextField(nil, placeholder: "Email address", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onSubmit(addMember)
-                        .accessibilityLabel("Email")
-                    Button("Add", action: addMember)
-                        .buttonStyle(.secondary)
-                        .disabled(email.isEmpty)
+                if session.workspace?.role == "owner" {
+                    HStack(spacing: Tokens.Space.md) {
+                        GolemTextField(nil, placeholder: "Email address", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .onSubmit(addMember)
+                            .accessibilityLabel("Email")
+                        Button("Add", action: addMember)
+                            .buttonStyle(.secondary)
+                            .disabled(email.isEmpty)
+                    }
+                    .padding(Tokens.Space.xl)
                 }
-                .padding(Tokens.Space.xl)
             }
             SettingsCard(title: "Machines") {
                 ForEach(machines) { machine in

@@ -180,7 +180,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
 | `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrator moves to the next channel; `409` for the last channel |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
-| `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once |
+| `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once; `403` for a member who is not an owner |
 
 ### Threads (`src/threads/`)
 

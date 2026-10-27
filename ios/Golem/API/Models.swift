@@ -11,7 +11,7 @@ struct User: Codable, Hashable {
 struct Workspace: Codable, Hashable, Identifiable {
     let id: String
     let name: String
-    /// The person's role: `owner` can rename and delete the workspace.
+    /// The person's role: `owner` can rename and delete the workspace, and add members.
     let role: String
 }
 

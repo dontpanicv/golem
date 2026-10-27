@@ -381,13 +381,13 @@ export class Workspaces {
       .all(workspaceId) as Member[];
   }
 
-  /** Adds someone who already has an account. */
+  /** Adds someone who already has an account, for an owner of the workspace. */
   async addMember(
     workspaceId: string,
     user: User,
     email: string
   ): Promise<Member> {
-    this.requireMember(workspaceId, user);
+    this.requireOwner(workspaceId, user);
     const person = this.database
       .query("SELECT id, name, email FROM user WHERE lower(email) = lower(?)")
       .get(required(email, "Email")) as {

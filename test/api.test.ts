@@ -201,6 +201,14 @@ test("members are listed, and only people who signed in once can be added once",
       role: "member",
     }),
   ]);
+  expect(
+    await failure(
+      await golem.call(members, {
+        token: bob,
+        body: { email: "alice@example.com" },
+      })
+    )
+  ).toEqual({ status: 403, error: "Only an owner can do this" });
 });
 
 test("an unknown integration is not found", async () => {
