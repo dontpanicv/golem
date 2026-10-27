@@ -24,7 +24,8 @@ SQLite and markdown.
 | Structured history | The job that pulled it | Immutable Parquet files, synced as files |
 | Search index | Each device | Not replicated; rebuilt locally |
 
-The machines connect over a WireGuard mesh VPN.
+The machines connect over a WireGuard mesh VPN. The apps need Golem's `https` address: put a TLS proxy, such as
+Caddy, in front of Golem on the mesh.
 
 ## Tech Stack
 
