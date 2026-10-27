@@ -50,6 +50,42 @@ test("an answer's thread links open the thread, its files show, and nothing in i
   }
 });
 
+test("a picture from another site shows as a link, and loads nothing", async () => {
+  const html = await render(
+    <Markdown
+      text={[
+        "![the dog](https://example.com/p.png)",
+        '<img src="https://example.com/q.png">',
+        '<picture><source srcset="https://example.com/r.png"></picture>',
+      ].join("\n\n")}
+      workspaceId="family"
+    />
+  );
+  expect(html).toContain('href="https://example.com/p.png"');
+  expect(html).toContain(">the dog</a>");
+  expect(html).not.toContain('src="https');
+  expect(html).not.toMatch(/srcset/i);
+});
+
+test("only a link to a path of this site opens in the app; one to another site opens a new tab", async () => {
+  const html = await render(
+    <Markdown
+      text={[
+        "[home](/w/family)",
+        "[evil](//evil.example/a)",
+        '<a href="/&#9;/evil.example/b">tab</a>',
+        '<a href="/\\evil.example/c">slash</a>',
+      ].join("\n\n")}
+      workspaceId="family"
+    />
+  );
+  expect(html).toContain('<a href="/w/family">home</a>');
+  for (const link of html.match(/<a [^>]*evil\.example[^>]*>/g) ?? []) {
+    expect(link).toContain('target="_blank"');
+  }
+  expect(html.match(/<a [^>]*evil\.example[^>]*>/g)).toHaveLength(3);
+});
+
 test("an artifact in an answer runs in its own sandboxed page", async () => {
   const html = await render(
     <Markdown text="![Votes](artifact:amber-fox)" workspaceId="family" />

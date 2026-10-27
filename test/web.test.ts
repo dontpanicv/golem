@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { OAuthCredential } from "@earendil-works/pi-ai";
 import { $ } from "bun";
+import { clientKey } from "../src/artifacts/web.ts";
 import type { User } from "../src/platform/auth.ts";
 import type { ThreadRef } from "../src/workspaces/workspaces.ts";
 import { cookies, startTestApp, type TestApp, until } from "./harness.ts";
@@ -57,6 +58,10 @@ describe("the web app", () => {
       const page = await golem.call(path);
       expect([path, page.status]).toEqual([path, 200]);
       expect(page.headers.get("cache-control")).toBe("no-cache");
+      const policy = page.headers.get("content-security-policy")!;
+      expect(policy).toContain("img-src 'self' data: blob:");
+      expect(policy).toContain("script-src 'self' 'wasm-unsafe-eval'");
+      expect(policy).toContain("frame-ancestors 'none'");
       const html = await page.text();
       expect(html).toContain('<div id="root"></div>');
       const script = /src="(\/app\/[^"]+\.js)"/.exec(html)![1]!;
@@ -115,7 +120,12 @@ describe("the web app", () => {
     const policy = content.headers.get("content-security-policy")!;
     expect(policy).toStartWith("sandbox allow-scripts");
     expect(policy).not.toContain("allow-same-origin");
-    expect(await content.text()).toContain("window.golem = golem");
+    expect(policy).toContain("; img-src data: blob:;");
+    expect(policy).toContain("connect-src 'none'");
+    expect(page).toContain("new MessageChannel()");
+    const text = await content.text();
+    expect(text).toContain("window.golem = golem");
+    expect(text).toContain("event.ports");
 
     const call = (body: unknown, headers: Record<string, string>) =>
       golem.call(`${link}/rpc`, { body, headers });
@@ -247,6 +257,72 @@ describe("the web app", () => {
       (await golem.call("/a/amber-guess", { headers: from("203.0.113.8") }))
         .status
     ).toBe(404);
+    const large = (address: string) =>
+      golem.call("/a/amber-guess/rpc", {
+        body: { op: "me", args: { padding: "x".repeat(2 * 1024 ** 2) } },
+        headers: from(address),
+      });
+    // An IPv6 client can pick any address of its /48 network, so the network counts.
+    for (let miss = 0; miss < 20; miss += 1) {
+      await golem.call(`/a/amber-guess${miss}`, {
+        headers: from(`2001:db8:7:${miss}::1`),
+      });
+    }
+    expect(
+      (
+        await golem.call("/a/amber-guess", {
+          headers: from("2001:db8:7:ff::2"),
+        })
+      ).status
+    ).toBe(429);
+    // A members link tells a signed-out client that its name exists, so it counts too.
+    const members = golem.app.artifacts.create(thread, generalId, {
+      title: "Members",
+      html: "<p>M</p>",
+      requestKey: "web-members-miss",
+    });
+    for (let miss = 0; miss < 20; miss += 1) {
+      expect(
+        (
+          await golem.call(`/a/${members.id}`, {
+            headers: from("203.0.113.30"),
+          })
+        ).status
+      ).toBe(303);
+    }
+    expect(
+      (await golem.call(`/a/${members.id}`, { headers: from("203.0.113.30") }))
+        .status
+    ).toBe(429);
+    // A full limiter pushes out its oldest clients only: the client that waits, which came later, still waits.
+    for (let client = 0; client < 9998; client += 1) {
+      await golem.call("/a/amber-guess", {
+        headers: from(`198.18.${Math.floor(client / 256)}.${client % 256}`),
+      });
+    }
+    expect(
+      (await golem.call("/a/amber-guess", { headers: from("203.0.113.30") }))
+        .status
+    ).toBe(429);
+    golem.app.artifacts.delete(members.id, alice);
+    // A body that is too large is refused before the lookup, so it is not a miss.
+    for (let call = 0; call < 20; call += 1) {
+      expect((await large("203.0.113.9")).status).toBe(413);
+    }
+    expect(
+      (await golem.call("/a/amber-guess", { headers: from("203.0.113.9") }))
+        .status
+    ).toBe(404);
+  });
+
+  test("the limiter keys an IPv6 client by its /48 network and an IPv4 client by its address", () => {
+    expect(clientKey("2001:db8:7:1::1")).toBe("2001:db8:7::/48");
+    expect(clientKey("2001:0DB8:0007:ffff:1:2:3:4")).toBe("2001:db8:7::/48");
+    expect(clientKey("2001:db8::1")).toBe("2001:db8:0::/48");
+    expect(clientKey("::1")).toBe("0:0:0::/48");
+    expect(clientKey("fe80::1%en0")).toBe("fe80:0:0::/48");
+    expect(clientKey("::ffff:203.0.113.7")).toBe("203.0.113.7");
+    expect(clientKey("203.0.113.7")).toBe("203.0.113.7");
   });
 
   test("assets come from the public folder only", async () => {

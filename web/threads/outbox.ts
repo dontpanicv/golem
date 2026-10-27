@@ -2,7 +2,7 @@ import {
   createCollection,
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
-import { request, retriable } from "../app/api.ts";
+import { request, retriable, SIGNED_OUT, signedOut } from "../app/api.ts";
 import type { Message } from "../app/types.ts";
 import { showToast } from "../ui/toast.tsx";
 import { delivery, ownMessage, sendWithFiles } from "./data.ts";
@@ -42,9 +42,17 @@ export function sendMessage(
   return Promise.resolve();
 }
 
-/** Sends what the outbox holds on start, when the connection comes back, and when the page shows again. */
+/**
+ * Sends what the outbox holds on start, when the connection comes back, when the page shows again, and when the same
+ * person signs in again in another tab.
+ */
 export function startOutbox(): void {
   addEventListener("online", flush);
+  window.addEventListener("storage", (event) => {
+    if (event.key === SIGNED_OUT && event.newValue === null) {
+      flush();
+    }
+  });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       flush();
@@ -81,6 +89,10 @@ async function sendAll(): Promise<void> {
   // The collection reads localStorage once something asks for its rows.
   await outbox.preload();
   for (;;) {
+    // Signed out, the outbox keeps its messages for when the same person signs in again.
+    if (signedOut()) {
+      return;
+    }
     const [next] = [...outbox.values()].sort(
       (left, right) => left.time - right.time
     );

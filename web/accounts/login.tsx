@@ -1,5 +1,6 @@
 import { getRouteApi } from "@tanstack/react-router";
 import { type SubmitEvent, useEffect, useState } from "react";
+import { markSignedOut } from "../app/api.ts";
 import { clearCache } from "../app/query.ts";
 import { Avatar, Button } from "../ui/components.tsx";
 import { showToast } from "../ui/toast.tsx";
@@ -31,6 +32,8 @@ export function LoginPage() {
       message?: string;
     } | null;
     if (response.ok && body?.url) {
+      // Another person may sign in here, so the saved copy and the outbox wait until Golem says who it is.
+      markSignedOut();
       location.assign(body.url);
       return;
     }
@@ -56,20 +59,28 @@ export function LoginPage() {
   );
 }
 
-/** Signs out on this device and forgets what the app saved. */
+/** Signs out on this device and forgets what the app saved. When Golem does not confirm it, the page stays. */
 export async function signOut(): Promise<void> {
-  await fetch("/api/auth/sign-out", {
+  const response = await fetch("/api/auth/sign-out", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",
-  });
+  }).catch(() => null);
+  if (!response?.ok) {
+    showToast("error", "Sign-out failed. Try again.");
+    return;
+  }
   await clearCache();
   location.assign("/login");
 }
 
-/** A path on this site, so that sign-in never sends anyone to another site. */
-function localPath(path: string | undefined): string | null {
-  return path?.startsWith("/") && !path.startsWith("//") && !path.includes("\\")
+/**
+ * A path on this site, or null, so that a link or a sign-in never sends anyone to another site. The browser's URL
+ * parser decides: it drops tabs and line breaks, and reads `\` as `/`, so `//host` and `/\host` are other sites.
+ */
+export function localPath(path: string | undefined): string | null {
+  return path?.startsWith("/") &&
+    new URL(path, "http://golem.invalid").host === "golem.invalid"
     ? path
     : null;
 }

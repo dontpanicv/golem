@@ -7,6 +7,23 @@ const publicDirectory = resolve(import.meta.dir, "../../public");
 const appDirectory = resolve(import.meta.dir, "../../dist/web");
 
 /**
+ * What the app's page may load: its own scripts, and pictures, frames, and data only from Golem, so a picture or a
+ * link in what an agent writes cannot send data to another site. Shiki compiles its grammars to WebAssembly; the
+ * previews and Radix add inline styles.
+ */
+const APP_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data: blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+/**
  * The web app's page for every path the app routes in the browser. It has no data: the app loads it from the JSON API
  * and keeps it in the browser.
  */
@@ -21,6 +38,7 @@ export async function appPage(): Promise<Response> {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-cache",
+      "content-security-policy": APP_POLICY,
     },
   });
 }
@@ -99,6 +117,30 @@ export function rejectCrossOrigin({ app, request }: RouteInput): void {
   if (origin && origin !== new URL(app.config.baseUrl).origin) {
     throw new HttpError(403, "Cross-site request");
   }
+}
+
+/**
+ * The body of a request as text, or `413` when it is over `limit` bytes. It counts the bytes as they come, so a body
+ * without a true `content-length` stops at the limit too.
+ */
+export async function readText(
+  request: Request,
+  limit: number
+): Promise<string> {
+  const tooLarge = new HttpError(413, "The request is too large");
+  if (Number(request.headers.get("content-length")) > limit) {
+    throw tooLarge;
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of request.body ?? []) {
+    size += chunk.byteLength;
+    if (size > limit) {
+      throw tooLarge;
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /** The text fields of a form, and its files; a file field with nothing chosen sends no file. */

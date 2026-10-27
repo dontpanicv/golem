@@ -291,7 +291,8 @@ final class APIClient {
 
     private func makeRequest(_ method: String, _ path: String) throws -> URLRequest {
         let base = baseURL.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let url = URL(string: base + path), url.scheme?.hasPrefix("http") == true else {
+        // Only TLS proves that the server is Golem before the token goes to it; a simulator talks to its own Mac.
+        guard let url = URL(string: base + path), url.scheme == "https" || url.host == "localhost" else {
             throw APIError(status: 0, message: "The server address is not valid.")
         }
         var request = URLRequest(url: url)

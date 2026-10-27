@@ -3,28 +3,31 @@ import type { Artifact } from "./artifacts.ts";
 const escapeHtml = Bun.escapeHTML;
 
 /**
- * The script of a link's page. The artifact's `golem` calls arrive as messages from its sandboxed frame, and go to
- * Golem with this page's cookies; the frame has no origin of its own to name in the reply.
+ * The script of a link's page. The artifact's `golem` calls arrive on a port that only the frame's first page gets,
+ * so a page that the frame goes to later cannot call Golem. They go to Golem with this page's cookies.
  */
 const RELAY = `const frame = document.querySelector("iframe");
-addEventListener("message", async (event) => {
-  const message = event.data;
-  if (event.source !== frame.contentWindow || message?.golem !== 1) return;
-  const reply = { golem: 1, id: message.id };
-  try {
-    const response = await fetch(frame.dataset.rpc, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ op: message.op, args: message.args }),
-    });
-    const body = await response.json();
-    if (response.ok) reply.result = body.result;
-    else reply.error = body.error ?? "Golem could not do it";
-  } catch {
-    reply.error = "Golem is not reachable";
-  }
-  frame.contentWindow.postMessage(reply, "*");
-});`;
+frame.addEventListener("load", () => {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = async ({ data: message }) => {
+    if (message?.golem !== 1) return;
+    const reply = { golem: 1, id: message.id };
+    try {
+      const response = await fetch(frame.dataset.rpc, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op: message.op, args: message.args }),
+      });
+      const body = await response.json();
+      if (response.ok) reply.result = body.result;
+      else reply.error = body.error ?? "Golem could not do it";
+    } catch {
+      reply.error = "Golem is not reachable";
+    }
+    channel.port1.postMessage(reply);
+  };
+  frame.contentWindow.postMessage({ golem: 1 }, "*", [channel.port2]);
+}, { once: true });`;
 
 /**
  * The page a link opens: the artifact in a sandboxed frame. Its addresses are relative, so the page works at

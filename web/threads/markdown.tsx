@@ -4,6 +4,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { localPath } from "../accounts/login.tsx";
 import { fileHref } from "../app/api.ts";
 import { previewLink } from "../ui/file-preview.tsx";
 import { ThreadLink } from "./thread-link.tsx";
@@ -17,6 +18,8 @@ const SCHEME = /^(thread|file|artifact):([\w-]+)$/;
  */
 const SCHEMA = {
   ...defaultSchema,
+  // A `<source srcset>` loads its picture from any site, and the sanitizer does not check its address.
+  tagNames: defaultSchema.tagNames?.filter((name) => name !== "source"),
   protocols: {
     ...defaultSchema.protocols,
     href: [
@@ -106,7 +109,7 @@ function MarkdownLink({
       </Link>
     );
   }
-  if (href?.startsWith("/")) {
+  if (localPath(href)) {
     return <a href={href}>{children}</a>;
   }
   return (
@@ -135,6 +138,14 @@ function MarkdownPicture({
         src={`/a/${id}`}
         title={alt || "Artifact"}
       />
+    );
+  }
+  if (src && /^https:/i.test(src)) {
+    // A picture from another site would tell that site who reads the answer, and what the agent put in its address.
+    return (
+      <a href={src} rel="noopener noreferrer" target="_blank">
+        {alt || src}
+      </a>
     );
   }
   const url = scheme === "file" ? fileHref(workspaceId, id!) : src;

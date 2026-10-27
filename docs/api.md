@@ -2,6 +2,7 @@
 
 The web app and the iOS app have the same functionality, and both use this JSON API. The iOS app sends a bearer token;
 the web app sends its session cookie, and a request that names another origin than `base_url` gets `403`.
+A JSON body over 1 MB, an artifact call over 1 MB, a pairing request over 64 KB, and any body over 100 MB get `413`.
 
 ## Authentication
 
@@ -119,7 +120,7 @@ type Routine = {
 	lastRun: RoutineRun | null;
 };
 type Artifact = {
-	id: string; // two words, such as "amber-fox"; a name is never given out again
+	id: string; // four words, such as "amber-fox-lake-moss" (older ones have two); a name is never given out again
 	channelId: string | null; // the channel it belongs to; null: the workspace's own, which the orchestrator makes
 	threadId: string; // the thread that made it
 	title: string;
@@ -251,30 +252,34 @@ key in `config/apns.p8`.
 | `PUT /api/v1/artifacts/:artifactId` | `{ visibility }` | `Artifact` |
 | `DELETE /api/v1/artifacts/:artifactId` | | `204`; its data goes with it |
 | `POST /api/v1/artifacts/:artifactId/rpc` | `{ op, args }` | `{ result }`: a call of the artifact's `golem` runtime, as the signed-in user |
-| `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes |
+| `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes, and the records move aside, so the limits are free again |
 | `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |
 
 An artifact is a page or a small app that an agent makes in a thread with its `artifacts_create`, `artifacts_update`,
 `artifacts_edit`, `artifacts_read`, `artifacts_list`, `artifacts_data`, and `artifacts_set_data` tools. It belongs to the
 thread's channel, or to a channel the agent names: every thread of the channel sees it, and it stays after the thread
 is settled. The orchestrator's belong to the workspace. `content` is the
-agent's HTML with Golem's `golem` runtime at the top of its head. The runtime sends each call as a message: to
-`window.webkit.messageHandlers.golem` in a web view, or else to the parent window. Its reply goes back through
-`window.__golemReceive({ golem: 1, id, result })`, or `{ golem: 1, id, error }`. The iOS app loads `content` with no
-base URL, and answers each message with `rpc`.
+agent's HTML with a content policy and Golem's `golem` runtime at the start of the page. The policy lets scripts,
+styles, and fonts come only from cdn.jsdelivr.net, unpkg.com, cdnjs.cloudflare.com, and Google Fonts, and pictures
+only from the page itself. The runtime sends each call as a message: to `window.webkit.messageHandlers.golem` in a
+web view, or else on a `MessagePort` that the link's page gives the frame at its first load. Its reply goes back
+through `window.__golemReceive({ golem: 1, id, result })`, or `{ golem: 1, id, error }`, or on the port. The iOS app
+loads `content` with no base URL, and answers each message of the main frame with `rpc`. It opens a link that a
+person taps in the browser, and nothing else replaces the page.
 
 The runtime the page calls:
 
 | Call | `op` and `args` | Who |
 | --- | --- | --- |
-| `golem.ready`, `golem.me` | `me`: `{}` → `{ id, name, member }` | everyone |
+| `golem.ready`, `golem.me` | `me`: `{}` → `{ id, name, member }`; a member is their user id and name, and every other visitor an id of this artifact only, with no name until `setName` | everyone |
 | `golem.setName(name)` | `name`: `{ name }` → the new `me` | everyone |
 | `golem.mine.get/set/delete/list` | `get`, `set`, `delete`, `list`: `{ scope: "mine", key, value?, prefix? }` | everyone, on their own records |
 | `golem.everyone.list(prefix?)` | `list`: `{ scope: "everyone", prefix }` → `ArtifactRecord[]` of visitors | everyone |
 | `golem.shared.get/set/delete/list` | the same with `scope: "shared"` | everyone reads; members change |
 
 `list` gives `{ key, value, updatedAt }[]` for `mine` and `shared`. A value is up to 64 KB of JSON; a visitor keeps up
-to 1000 keys, and an artifact up to 20,000 records. `400` names bad input, `403` a shared write by a non-member, and
+to 1000 keys, and an artifact up to 20,000 records, 10 MB of values, and 10,000 visitors; a visitor past that can look and
+write, but has no name. `400` names bad input, `403` a shared write by a non-member, and
 `413` a value or an artifact that is full.
 
 The web app opens an artifact at its `url`, with no `/api` prefix:
@@ -282,7 +287,7 @@ The web app opens an artifact at its `url`, with no `/api` prefix:
 | Request | Response |
 | --- | --- |
 | `GET /a/:artifactId` | The page: a frame with the artifact. A public visitor without a session gets a `golem-visitor` cookie; the runtime keeps their data under its hash. A signed-out person goes to `/login?next=/a/:artifactId` for a members artifact. |
-| `GET /a/:artifactId/content` | `content`, with `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads`: it runs without the site's origin, so it cannot read Golem's cookies or call Golem |
+| `GET /a/:artifactId/content` | `content`, with `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads` and the page's content policy: it runs without the site's origin, so it cannot read Golem's cookies or call Golem, and it loads no pictures from other sites |
 | `POST /a/:artifactId/rpc` | `{ op, args }` → `{ result }`, as the session's user or the `golem-visitor` cookie's visitor. Only from Golem's own origin. |
 
 With `share_url` set, its host serves public artifacts at `/:artifactId`, `/:artifactId/content`, and
@@ -380,9 +385,11 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 - Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
 - A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
-  keep. Its name is two words that people can remember, so it can be guessed: a client that opens 20 artifact links
-  that do not exist in 10 minutes gets `429` until the 10 minutes end. On the public host the client is
-  `CF-Connecting-IP`; on Golem's own address, the last `X-Forwarded-For` address. Keep private things in members
+  keep. Its name is four words that people can remember, about 1.6e8 names; names from before have two words and can
+  be guessed, so make such an artifact again. A client that opens 20 artifact links in 10 minutes that do not exist,
+  or that are for members while it is signed out, gets `429` until the 10 minutes end. On the public host the client
+  is `CF-Connecting-IP`; on Golem's own address, the last `X-Forwarded-For` address, which only a Golem with
+  `host = "127.0.0.1"` behind Caddy can trust. An IPv6 client is its /48 network. Keep private things in members
   artifacts.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The

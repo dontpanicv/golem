@@ -114,7 +114,8 @@ test("an agent makes an artifact in its thread, changes it, and reads and writes
     visitors: 0,
     url: `http://golem.test/a/${artifact.id}`,
   });
-  expect(artifact.id).toMatch(/^[a-z]+-[a-z]+$/);
+  expect(artifact.id).toMatch(/^[a-z]+(-[a-z]+){3}$/);
+  expect(new Set(artifact.id.split("-")).size).toBe(4);
   expect(toolResults.at(-1)).toContain(artifact.url);
 
   expect(
@@ -233,6 +234,13 @@ test("visitors keep their own data, read everyone's, and only members change sha
     name: "Alice",
     member: true,
   });
+  // The author of a public artifact does not learn who of another workspace looks.
+  const stranger = artifacts.call(id, { user: eve }, "me", {}) as {
+    id: string;
+  };
+  expect(stranger).toMatchObject({ name: null, member: false });
+  expect(stranger.id).toHaveLength(32);
+  expect(stranger.id).not.toBe(eve.id);
 
   expect(() => artifacts.call(id, {}, "me", {})).toThrow("Open the link again");
   expect(() =>
@@ -305,7 +313,61 @@ test("a members artifact is only for members, and people delete its records, its
   ).toEqual({ id });
 });
 
-test("the runtime goes at the top of the head, and after the doctype of a page without one", () => {
+test("an artifact keeps a limited number of visitors and bytes, and gets them back when its data is cleared", () => {
+  const { artifacts, database } = golem.app;
+  const { id } = artifacts.create(thread, thread.channelId, {
+    title: "Busy",
+    html: "<p>Busy</p>",
+    visibility: "public",
+    requestKey: crypto.randomUUID(),
+  });
+  const insert = database.query(
+    "INSERT INTO artifact_visitor (artifact_id, visitor, seen_at) VALUES (?, ?, 0)"
+  );
+  database.transaction(() => {
+    for (let visitor = 0; visitor < 10_000; visitor += 1) {
+      insert.run(id, `visitor-${visitor}`);
+    }
+  })();
+  const late = { token: "late-browser" };
+  expect(artifacts.call(id, late, "me", {})).toMatchObject({
+    name: null,
+    member: false,
+  });
+  const visitors = () =>
+    artifacts
+      .inPlace(thread.workspaceId, thread.channelId, alice)
+      .find((artifact) => artifact.id === id)!.visitors;
+  expect(visitors()).toBe(10_000);
+
+  const value = "x".repeat(60 * 1024);
+  const set = (key: string) =>
+    artifacts.call(id, { user: alice }, "set", { scope: "shared", key, value });
+  // 170 values of 60 KB fit in 10 MB; the next does not.
+  for (let key = 0; key < 170; key += 1) {
+    set(`k${key}`);
+  }
+  expect(() => set("k170")).toThrow("This artifact keeps no more data");
+  expect(visitors()).toBe(10_000);
+
+  artifacts.clearData(id, alice);
+  expect(visitors()).toBe(0);
+  set("k170");
+  artifacts.call(id, late, "me", {});
+  expect(visitors()).toBe(2);
+  expect(artifacts.dataFor(id, alice)).toMatchObject([{ key: "k170" }]);
+  // Nothing is removed: the cleared records stay, moved aside.
+  expect(
+    database
+      .query(
+        "SELECT count(*) AS count FROM artifact_record WHERE artifact_id = ? AND scope LIKE 'shared~%' AND deleted_at IS NOT NULL"
+      )
+      .get(id)
+  ).toEqual({ count: 170 });
+  artifacts.delete(id, alice);
+});
+
+test("the content policy and the runtime start every page, before any of the agent's HTML", () => {
   const { artifacts } = golem.app;
   const make = (html: string) =>
     artifacts.create(thread, thread.channelId, {
@@ -313,19 +375,24 @@ test("the runtime goes at the top of the head, and after the doctype of a page w
       html,
       requestKey: crypto.randomUUID(),
     }).id;
-  const withHead = artifacts.content(make(POLL));
-  expect(withHead).toStartWith(
-    '<!doctype html><html><head><meta http-equiv="Content-Security-Policy"'
-  );
-  expect(withHead).toContain("connect-src 'none'");
-  expect(withHead).toContain("window.golem = golem");
-  expect(withHead).toEndWith(
-    '<title>Trip</title></head><body><button id="vote">15 Dec</button></body></html>'
-  );
-  expect(artifacts.content(make("<!DOCTYPE html><p>Hi</p>"))).toMatch(
-    /^<!DOCTYPE html><meta [^>]+><script>[\s\S]+<\/script><p>Hi<\/p>$/
-  );
-  expect(artifacts.content(make("<p>Hi</p>"))).toEndWith("</script><p>Hi</p>");
+  const start = '<!doctype html><meta http-equiv="Content-Security-Policy"';
+  for (const html of [
+    POLL,
+    "<!-- <head> --><script>x</script>",
+    "<header><head></header><p>Hi</p>",
+    "<!DOCTYPE html><p>Hi</p>",
+    "<p>Hi</p>",
+  ]) {
+    const page = artifacts.content(make(html));
+    expect(page).toStartWith(start);
+    expect(page.match(/<!doctype/gi)).toHaveLength(1);
+    expect(page).toContain("window.golem = golem");
+    expect(page).toEndWith(html.replace(/^<!doctype html>/i, ""));
+  }
+  const policy = artifacts.content(make("<p>Hi</p>"));
+  expect(policy).toContain("connect-src 'none'");
+  expect(policy).not.toMatch(/(img|media)-src[^;]*https/);
+  expect(policy).not.toMatch(/(script|style|font)-src[^;]*https:[ ;]/);
   expect(
     artifacts.create(thread, thread.channelId, {
       title: "Again",

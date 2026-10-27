@@ -13,6 +13,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Button, Empty } from "./components.tsx";
 import {
+  COLUMN_LIMIT,
   decodeText,
   dispositionName,
   extension,
@@ -20,6 +21,7 @@ import {
   fileKind,
   imageType,
   parseDelimited,
+  ROW_LIMIT,
 } from "./file-kind.ts";
 import { size } from "./format.ts";
 import { Icon } from "./icon.tsx";
@@ -352,8 +354,12 @@ function ExternalLink({
 
 function Picture({ bytes, name }: { bytes: ArrayBuffer; name: string }) {
   // The server sends a picture it cannot show safely, such as an SVG, as bytes; a typed blob shows it.
+  const type = imageType(name);
+  // A blob: URL has Golem's origin, so an SVG opened from it as a page would run its scripts here; a data: URL has none.
   const [url] = useState(() =>
-    URL.createObjectURL(new Blob([bytes], { type: imageType(name) }))
+    type === "image/svg+xml"
+      ? `data:${type},${encodeURIComponent(new TextDecoder().decode(bytes))}`
+      : URL.createObjectURL(new Blob([bytes], { type }))
   );
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   // biome-ignore lint/correctness/useImageSize: a file's picture has no known size
@@ -404,10 +410,6 @@ function Code({ text, language }: { text: string; language: string }) {
   );
 }
 
-/** Rows past this do not show, so that a large sheet does not hold up the page. */
-// shortcut: a sheet shows its first 5,000 rows; render rows as they scroll into view if families keep larger sheets.
-const ROW_LIMIT = 5000;
-
 function Table({ rows }: { rows: readonly (readonly unknown[])[] }) {
   const [head, ...body] = rows;
   return (
@@ -416,7 +418,7 @@ function Table({ rows }: { rows: readonly (readonly unknown[])[] }) {
         {head ? (
           <thead>
             <tr>
-              {head.map((cell, column) => (
+              {head.slice(0, COLUMN_LIMIT).map((cell, column) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: cells have no identity but their place
                 <th key={column}>{cellText(cell)}</th>
               ))}
@@ -427,7 +429,7 @@ function Table({ rows }: { rows: readonly (readonly unknown[])[] }) {
           {body.slice(0, ROW_LIMIT).map((row, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the same
             <tr key={index}>
-              {row.map((cell, column) => (
+              {row.slice(0, COLUMN_LIMIT).map((cell, column) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: the same
                 <td key={column}>{cellText(cell)}</td>
               ))}
@@ -574,7 +576,7 @@ function Archive({ bytes, file }: { bytes: ArrayBuffer; file: Named }) {
     // The filter sees each entry and takes none, so nothing unpacks.
     unzipSync(new Uint8Array(bytes), {
       filter: (entry) => {
-        if (!entry.name.endsWith("/")) {
+        if (!entry.name.endsWith("/") && found.length < ROW_LIMIT) {
           found.push(entry);
         }
         return false;

@@ -1,11 +1,18 @@
 import { expect, test } from "bun:test";
 import {
+  COLUMN_LIMIT,
   decodeText,
   dispositionName,
   fileKind,
   imageType,
   parseDelimited,
+  ROW_LIMIT,
 } from "./file-kind.ts";
+
+test("a CSV keeps the head and ROW_LIMIT rows, each with COLUMN_LIMIT fields at most", () => {
+  expect(parseDelimited(",".repeat(10_000), ",")[0]).toHaveLength(COLUMN_LIMIT);
+  expect(parseDelimited("a\n".repeat(10_000), ",")).toHaveLength(ROW_LIMIT + 1);
+});
 
 test("a file's kind comes from its extension, and any other file may be text", () => {
   expect(fileKind("Photo.JPG")).toBe("image");

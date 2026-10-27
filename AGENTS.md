@@ -49,6 +49,10 @@ addresses, or code and data from employers or clients.
 - The event streams of `docs/api.md` keep open threads and the working threads current; do not poll what they send.
 - Text messages go through the outbox (`web/threads/outbox.ts`), which keeps them in localStorage and sends them with a
   `requestId` once Golem answers; a message with files needs a connection.
+- The saved cache and the outbox belong to one person (`confirmPerson` in `web/app/query.ts`): after a `401` or the
+  start of a sign-in they wait; the same person gets both back, and the browser forgets both for another person.
+- The app page has a content policy (`src/app/web.ts`): scripts, pictures, and frames come only from Golem. A
+  picture from the web in Markdown shows as a link.
 - `bun start` builds the app into `dist/web/` first; `bun run dev` rebuilds it on every change.
 
 ## Modules

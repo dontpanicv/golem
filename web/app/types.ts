@@ -160,7 +160,7 @@ export interface Routine {
 }
 
 export interface Artifact {
-  /** Two words, such as "amber-fox". */
+  /** Four words, such as "amber-fox-lake-moss"; names from before have two. */
   readonly id: string;
   readonly channelId: string | null;
   readonly threadId: string;

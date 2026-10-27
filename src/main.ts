@@ -55,6 +55,8 @@ HttpRouter.serve(server).pipe(
       hostname: config.host,
       port: config.port,
       idleTimeout: 0,
+      // The largest file a person or an agent sends, as the Cloudflare tunnel allows; Bun's own limit is 128 MB.
+      maxRequestBodySize: 100 * 1024 ** 2,
     })
   ),
   Layer.launch,

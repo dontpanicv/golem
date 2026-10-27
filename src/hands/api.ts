@@ -1,5 +1,6 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
+import { readText } from "../app/web.ts";
 
 /** The machines of a workspace, and the endpoints a machine pairs with (hands/docs/pairing.md). */
 export const handsApiRoutes: readonly Route[] = [
@@ -51,7 +52,11 @@ export const handsApiRoutes: readonly Route[] = [
     "POST",
     "/hands/:code/pair",
     async ({ app, params, request }) => {
-      const body = await request.json().catch(() => null);
+      // Anyone may call this route, so it reads only a small body.
+      const text = await readText(request, 64 * 1024);
+      const body = await Promise.resolve()
+        .then(() => JSON.parse(text))
+        .catch(() => null);
       return json(app.hands.pair(params.code!, body));
     },
   ],

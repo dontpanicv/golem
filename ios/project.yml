@@ -51,12 +51,8 @@ targets:
         UIBackgroundModes: [audio]
         GolemServerURL: $(GOLEM_SERVER_URL)
         NSAppTransportSecurity:
-          # Golem runs on the private NetBird network without TLS; WireGuard encrypts the traffic.
+          # The app talks to Golem over https only (APIClient.makeRequest); http only to localhost, in the simulator.
           NSAllowsLocalNetworking: true
-          NSExceptionDomains:
-            netbird.selfhosted:
-              NSIncludesSubdomains: true
-              NSExceptionAllowsInsecureHTTPLoads: true
     postCompileScripts:
       - name: Bundle Fluid Speech Mini
         basedOnDependencyAnalysis: false

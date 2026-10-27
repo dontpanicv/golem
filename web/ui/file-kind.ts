@@ -67,7 +67,17 @@ export function imageType(name: string): string {
   return IMAGE_TYPES[extension(name)] ?? "application/octet-stream";
 }
 
-/** The rows of a CSV or TSV file, with quoted fields as RFC 4180 writes them. */
+/** Rows past this do not show, so that a large sheet or archive does not hold up the page. */
+// shortcut: a sheet shows its first 5,000 rows; render rows as they scroll into view if families keep larger sheets.
+export const ROW_LIMIT = 5000;
+/** Columns past this do not show, for the same reason. */
+// shortcut: a sheet shows its first 200 columns; render columns as they scroll into view if families keep wider sheets.
+export const COLUMN_LIMIT = 200;
+
+/**
+ * The rows of a CSV or TSV file, with quoted fields as RFC 4180 writes them: the head and `ROW_LIMIT` rows at most,
+ * each with `COLUMN_LIMIT` fields at most.
+ */
 export function parseDelimited(text: string, delimiter: string): string[][] {
   // A quoted field or a plain one, then what ends it: the delimiter, a line break, or the end of the text.
   const field = new RegExp(
@@ -77,12 +87,14 @@ export function parseDelimited(text: string, delimiter: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   for (const [, quoted, plain, end] of text.matchAll(field)) {
-    row.push(quoted === undefined ? plain! : quoted.replaceAll('""', '"'));
+    if (row.length < COLUMN_LIMIT) {
+      row.push(quoted === undefined ? plain! : quoted.replaceAll('""', '"'));
+    }
     if (end !== delimiter) {
       rows.push(row);
       row = [];
     }
-    if (end === "") {
+    if (end === "" || rows.length > ROW_LIMIT) {
       break;
     }
   }
