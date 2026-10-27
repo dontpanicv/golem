@@ -9,7 +9,11 @@ import type {
   UserMessage,
 } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
-import { CodemodeSandbox } from "@earendil-works/pi-codemode";
+import {
+  CODEMODE_OPTIONS_PREFIX,
+  CodemodeSandbox,
+  parseCodemodeSource,
+} from "@earendil-works/pi-codemode";
 import {
   type AgentState,
   type Conversation,
@@ -40,7 +44,7 @@ import {
 import { randomUUIDv5 } from "bun";
 import type { Artifacts } from "../artifacts/artifacts.ts";
 import type { Browser } from "../browser/browser.ts";
-import type { Hands } from "../hands/hands.ts";
+import type { Hands, Machine } from "../hands/hands.ts";
 import type {
   Integrations,
   WorkspaceTool,
@@ -115,6 +119,29 @@ export type FileRef = Pick<SavedFile, "id" | "name">;
 export interface ThreadMessages {
   readonly messages: readonly Message[];
   readonly running: boolean;
+  /** What the agent waits for a person to allow. */
+  readonly approvals: readonly Approval[];
+}
+
+/**
+ * A serious action that waits for one person: a change on a machine in a turn that read content no member wrote, in
+ * a turn that no person watches, or on a machine that another person paired.
+ */
+export interface Approval {
+  readonly id: string;
+  readonly tool: string;
+  /** What the action does, such as `Run on bender: make deploy`. */
+  readonly text: string;
+  /** The person who may allow it; null for any member. */
+  readonly approverId: string | null;
+  readonly expiresAt: number;
+}
+
+/** An approval and how its answer reaches the call that waits. */
+interface PendingApproval {
+  readonly approval: Approval;
+  readonly threadId: string;
+  readonly answer: (allow: boolean, scope: "once" | "turn", by: User) => void;
 }
 
 const AUTHORED = "golem.message";
@@ -124,6 +151,29 @@ const RELAYED = "golem.relay";
 const TASK = "golem.task";
 /** Someone stopped the agent; its `at` ends the agent's work in the transcript. */
 const STOPPED = "golem.stopped";
+/** The turn took in content that no member wrote, such as a web page, so changes on machines wait for a person. */
+const EXPOSED = "golem.exposed";
+/** A person allowed the rest of the turn on one machine. */
+const ALLOWED = "golem.allowed";
+/** The tools whose results come from outside the workspace's members. */
+const EXPOSING = new Set([
+  "web_search",
+  "browser_run",
+  "artifacts_data",
+  "routines_test_script",
+]);
+/** The tools that change a machine, which `approved` gates. */
+const CHANGES_MACHINE = new Set([
+  "hands_exec",
+  "hands_job_start",
+  "hands_write",
+  "hands_edit",
+  "hands_copy_file",
+]);
+/** How long an action waits for a person to allow it. */
+const APPROVAL_WAIT = 10 * 60_000;
+/** The longest a codemode script runs, with its tool calls; above `APPROVAL_WAIT`, so a script outlasts a wait. */
+const SCRIPT_DEADLINE = 15 * 60_000;
 /** How often one person's message may pass between threads: a question to another thread, and its answer back. */
 const MAX_HOPS = 2;
 /** How much of a file's text read_file gives the agent at once. */
@@ -170,10 +220,6 @@ const ORCHESTRATOR =
   "This thread is the orchestrator of the workspace: one thread that never ends, where the family talks to you first. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the family in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the family what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of every thread of the workspace, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
 /** The largest file that save_file copies from a machine. */
 const MAX_MACHINE_FILE = 1024 ** 3;
-/** The largest file that save_file downloads from the web. */
-const MAX_WEB_FILE = 100 * 1024 ** 2;
-/** How long save_file waits for a file from the web, all of it. */
-const DOWNLOAD_TIMEOUT = 10 * 60_000;
 /** Above about this many tokens of context, the orchestrator compacts after its turn, so each turn reads little. */
 const ORCHESTRATOR_TOKENS = 48_000;
 /** A compaction needs this many new messages since the one before, so a long message that stays cannot repeat it. */
@@ -214,6 +260,8 @@ interface Relay extends JsonObject {
   readonly text: string;
   readonly requesterId: string | null;
   readonly requesterName: string | null;
+  /** The sending turn took in content that no member wrote, or no person watched it. */
+  readonly exposed: boolean;
 }
 
 export interface ThreadHooks {
@@ -271,7 +319,10 @@ export interface FilePlace {
 }
 
 /** The machines of a workspace, which its agents use through the hands tools. */
-export type ThreadHands = Pick<Hands, "file" | "put" | "section" | "tools">;
+export type ThreadHands = Pick<
+  Hands,
+  "file" | "machineNamed" | "put" | "section" | "tools"
+>;
 
 /** The connectors of a workspace, which its agents use through their tools. */
 export type ThreadIntegrations = Pick<Integrations, "tools" | "namespaces">;
@@ -283,7 +334,10 @@ export type ThreadArtifacts = Pick<
 >;
 
 /** The browser that agents visit websites with. */
-export type ThreadBrowser = Pick<Browser, "pdf" | "screenshot" | "tools">;
+export type ThreadBrowser = Pick<
+  Browser,
+  "download" | "pdf" | "screenshot" | "tools"
+>;
 
 /** The inboxes of the workspace's people, which agents fill when something needs them. */
 export type ThreadNotifications = Pick<Notifications, "notify">;
@@ -319,6 +373,10 @@ export class Threads {
   private readonly sandbox = new CodemodeSandbox({
     memoryLimitBytes: 256 * 1024 * 1024,
   });
+  /** The actions that wait for a person, by approval id; a wait lasts only as long as its call, so memory keeps them. */
+  private readonly approvals = new Map<string, PendingApproval>();
+  /** The thread streams that show approvals, by thread. */
+  private readonly approvalWatchers = new Map<string, Set<() => void>>();
 
   constructor(
     private readonly dataDirectory: string,
@@ -641,10 +699,13 @@ export class Threads {
     const conversation = await this.conversation(thread);
     const watch = await conversation.watch(BACKGROUND_CONTEXT);
     await watch.stop();
-    return threadMessages(
-      watch.value,
-      await earlierEntries(conversation, watch.value)
-    );
+    return {
+      ...threadMessages(
+        watch.value,
+        await earlierEntries(conversation, watch.value)
+      ),
+      approvals: this.approvalsIn(thread.id),
+    };
   }
 
   /** Calls `listener` with the current messages, then after every change, until the returned stop is called. */
@@ -656,18 +717,64 @@ export class Threads {
     const watch = await conversation.watch(BACKGROUND_CONTEXT);
     // The entries before a compaction change only when the next compaction moves the head.
     let earlier: { head?: EntryId; entries: EntryRecord[] } = { entries: [] };
+    let current = watch.value;
+    const send = () =>
+      listener({
+        ...threadMessages(current, earlier.entries),
+        approvals: this.approvalsIn(thread.id),
+      });
     const show = async (view: ConversationView) => {
       const head = view.entries[0]?.head;
       if (head !== earlier.head) {
         earlier = { head, entries: await earlierEntries(conversation, view) };
       }
-      listener(threadMessages(view, earlier.entries));
+      current = view;
+      send();
     };
     await show(watch.value);
     watch.start(show);
+    const watchers = this.approvalWatchers.get(thread.id) ?? new Set();
+    watchers.add(send);
+    this.approvalWatchers.set(thread.id, watchers);
     return async () => {
+      watchers.delete(send);
       await watch.stop();
     };
+  }
+
+  /**
+   * Answers an approval of a thread of the person's workspace: `allow` runs the action, once or for the rest of the
+   * turn on its machine. Only its approver answers, or any member when it has none.
+   */
+  answerApproval(
+    threadId: string,
+    approvalId: string,
+    user: User,
+    allow: boolean,
+    scope: "once" | "turn"
+  ): void {
+    const thread = this.registry.thread(threadId, user);
+    const pending = this.approvals.get(approvalId);
+    if (pending?.threadId !== thread.id) {
+      throw notFound();
+    }
+    const { approverId } = pending.approval;
+    if (approverId && approverId !== user.id) {
+      throw new HttpError(403, "Only the person it asks can answer");
+    }
+    pending.answer(allow, scope, user);
+  }
+
+  private approvalsIn(threadId: string): Approval[] {
+    return [...this.approvals.values()]
+      .filter((pending) => pending.threadId === threadId)
+      .map((pending) => pending.approval);
+  }
+
+  private approvalsChanged(threadId: string): void {
+    for (const send of this.approvalWatchers.get(threadId) ?? []) {
+      send();
+    }
   }
 
   /**
@@ -1353,10 +1460,16 @@ export class Threads {
     this.memories.set(workspaceId, memory);
     this.briefs.set(workspaceId, new Briefs(memoryPath, summarize));
     const golem = await this.golemExtension(workspaceId);
-    const codemode = createCodemodeExtension({
+    const extension = createCodemodeExtension({
       sandbox: this.sandbox,
       namespaces: [...NAMESPACES, ...this.integrations.namespaces()],
     });
+    const codemode = {
+      ...extension,
+      tools: extension.tools?.map((tool) =>
+        tool.name === "codemode" ? withDeadline(tool) : tool
+      ),
+    };
     const registry = createRegistry();
     this.registries.set(workspaceId, registry);
     registry.install(golem);
@@ -1407,39 +1520,43 @@ export class Threads {
       this.integrations.tools(workspaceId),
       this.hooks.tools(workspaceId),
     ]);
+    const requesterOf = async (conversationId: ConversationId) =>
+      (await this.requester(workspaceId, conversationId))?.id ?? null;
+    const tools = [
+      this.recallTool(workspaceId),
+      this.listChannelsTool(workspaceId),
+      this.searchChannelsTool(workspaceId),
+      this.createChannelTool(workspaceId),
+      this.deleteChannelTool(workspaceId),
+      this.readThreadTool(workspaceId),
+      this.startThreadTool(workspaceId),
+      this.sendToThreadTool(workspaceId),
+      this.notifyTool(workspaceId),
+      this.listFilesTool(workspaceId),
+      this.readFileTool(workspaceId),
+      this.saveFileTool(workspaceId),
+      ...this.llm.tools(),
+      ...[
+        this.copyToMachineTool(workspaceId),
+        ...this.hands.tools(workspaceId),
+        ...connectors.map((tool) =>
+          this.exposing(workspaceId, connectorTool(tool, requesterOf))
+        ),
+        ...this.artifacts.tools(workspaceId),
+        ...this.browser.tools(workspaceId, requesterOf),
+        ...hooked,
+      ].map(scriptOnly),
+    ].map((tool: ToolRegistration) => {
+      if (EXPOSING.has(tool.name)) {
+        return this.exposing(workspaceId, tool);
+      }
+      return CHANGES_MACHINE.has(tool.name)
+        ? this.approved(workspaceId, tool)
+        : tool;
+    });
     return defineExtension({
       name: "golem",
-      tools: [
-        this.recallTool(workspaceId),
-        this.listChannelsTool(workspaceId),
-        this.searchChannelsTool(workspaceId),
-        this.createChannelTool(workspaceId),
-        this.deleteChannelTool(workspaceId),
-        this.readThreadTool(workspaceId),
-        this.startThreadTool(workspaceId),
-        this.sendToThreadTool(workspaceId),
-        this.notifyTool(workspaceId),
-        this.listFilesTool(workspaceId),
-        this.readFileTool(workspaceId),
-        this.saveFileTool(workspaceId),
-        ...this.llm.tools(),
-        ...[
-          this.copyToMachineTool(workspaceId),
-          ...this.hands.tools(workspaceId),
-          ...connectors.map((tool) =>
-            connectorTool(tool, async (conversationId) => {
-              const requester = await this.requester(
-                workspaceId,
-                conversationId
-              );
-              return requester?.id ?? null;
-            })
-          ),
-          ...this.artifacts.tools(workspaceId),
-          ...this.browser.tools(workspaceId),
-          ...hooked,
-        ].map(scriptOnly),
-      ],
+      tools,
       sections: [
         this.hands.section(workspaceId),
         this.channelSection(workspaceId),
@@ -1451,6 +1568,164 @@ export class Threads {
   async reloadTools(workspaceId: string): Promise<void> {
     const registry = this.registries.get(workspaceId);
     registry?.install(await this.golemExtension(workspaceId));
+  }
+
+  /** A tool whose result comes from outside the workspace's members: its call marks the turn as exposed. */
+  private exposing(workspaceId: string, tool: ToolRegistration) {
+    return {
+      ...tool,
+      execute: async (
+        ...[args, api, context]: Parameters<ToolRegistration["execute"]>
+      ) => {
+        await this.expose(workspaceId, api.conversationId);
+        return tool.execute(args, api, context);
+      },
+    };
+  }
+
+  /** Marks the running turn of a conversation as exposed, in its transcript, so a rerun after a restart sees it too. */
+  private async expose(
+    workspaceId: string,
+    conversationId: ConversationId
+  ): Promise<void> {
+    const conversation = await this.conversation(
+      this.threadOf(workspaceId, conversationId)
+    );
+    await conversation.submit(
+      { type: "write", entry: { kind: EXPOSED, data: { at: Date.now() } } },
+      BACKGROUND_CONTEXT
+    );
+  }
+
+  /**
+   * A tool that changes a machine, which waits for a person to allow it when the turn took in content that no member
+   * wrote, when no person watches the turn, or when another person paired the machine. An allowed call keeps its
+   * memo, so a rerun after a restart does not ask again.
+   */
+  private approved(workspaceId: string, tool: ToolRegistration) {
+    return {
+      ...tool,
+      execute: async (
+        ...[args, api, context]: Parameters<ToolRegistration["execute"]>
+      ) => {
+        if (!(await api.memo<boolean>("approved", context))) {
+          const { machine } = args as { machine: string };
+          await this.allowed(
+            workspaceId,
+            api.conversationId,
+            tool.name,
+            args as Record<string, unknown>,
+            this.hands.machineNamed(workspaceId, machine),
+            context.abortSignal
+          );
+          await api.memo("approved", true, context);
+        }
+        return tool.execute(args, api, context);
+      },
+    };
+  }
+
+  /** Resolves when the action may run: at once, or once its approver allows it; throws when nobody does. */
+  private async allowed(
+    workspaceId: string,
+    conversationId: ConversationId,
+    tool: string,
+    args: Record<string, unknown>,
+    machine: Pick<Machine, "id" | "name" | "pairedBy">,
+    signal: AbortSignal | undefined
+  ): Promise<void> {
+    const thread = this.threadOf(workspaceId, conversationId);
+    const conversation = await this.conversation(thread);
+    const turn = await turnOf(conversation);
+    if (turn.allowed.has(machine.id)) {
+      return;
+    }
+    const requesterId =
+      (await this.requester(workspaceId, conversationId))?.id ?? null;
+    const members = this.members(workspaceId).map((member) => member.userId);
+    // The machine's owner allows every change for another person; one who left the workspace owns nothing.
+    const owner =
+      machine.pairedBy && members.includes(machine.pairedBy)
+        ? machine.pairedBy
+        : null;
+    let approverId: string | null;
+    if (owner && owner !== requesterId) {
+      approverId = owner;
+    } else if (turn.exposed || turn.unattended) {
+      approverId = requesterId ?? owner;
+    } else {
+      return;
+    }
+    const scope = await this.ask(
+      thread,
+      approverId,
+      members,
+      tool,
+      actionText(tool, args, machine.name),
+      signal
+    );
+    if (scope === "turn") {
+      await conversation.submit(
+        {
+          type: "write",
+          entry: { kind: ALLOWED, data: { machineId: machine.id } },
+        },
+        BACKGROUND_CONTEXT
+      );
+    }
+  }
+
+  /**
+   * Shows an approval in the thread and notifies its approver, or every member for none, and waits up to
+   * `APPROVAL_WAIT` for an answer. Deny, the wait's end, and Stop throw, so the agent gets an error result.
+   */
+  private ask(
+    thread: ThreadSummary & ThreadRef,
+    approverId: string | null,
+    members: readonly string[],
+    tool: string,
+    text: string,
+    signal: AbortSignal | undefined
+  ): Promise<"once" | "turn"> {
+    const approval: Approval = {
+      id: randomUUID(),
+      tool,
+      text,
+      approverId,
+      expiresAt: Date.now() + APPROVAL_WAIT,
+    };
+    return new Promise((resolve, reject) => {
+      const end = (outcome: Error | "once" | "turn") => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", stopped);
+        this.approvals.delete(approval.id);
+        this.approvalsChanged(thread.id);
+        if (outcome instanceof Error) {
+          reject(outcome);
+        } else {
+          resolve(outcome);
+        }
+      };
+      const stopped = () => end(new Error("Someone stopped the agent."));
+      const timer = setTimeout(
+        () => end(new Error("Nobody allowed this in 10 minutes.")),
+        APPROVAL_WAIT
+      );
+      signal?.addEventListener("abort", stopped, { once: true });
+      this.approvals.set(approval.id, {
+        approval,
+        threadId: thread.id,
+        answer: (allow, scope, by) =>
+          end(allow ? scope : new Error(`${by.name} did not allow this.`)),
+      });
+      this.approvalsChanged(thread.id);
+      for (const userId of approverId ? [approverId] : members) {
+        this.notifyAbout(thread, userId, `Allow? ${text}`);
+      }
+      if (signal?.aborted) {
+        stopped();
+      }
+    });
   }
 
   /** One message of a thread whole, for zoom in the workspace's memory. */
@@ -1686,6 +1961,7 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
+        const turn = await turnOf(await this.conversation(from));
         const channels = this.registry.channelsIn(workspaceId);
         const name = args.channel?.replace(/^#/, "").toLowerCase();
         const channel = name
@@ -1717,7 +1993,14 @@ export class Threads {
         await this.deliver(
           workspaceId,
           await this.conversation(thread),
-          relayed(from, args.message, hops, `relay:${api.taskId}`, requester)
+          relayed(
+            from,
+            args.message,
+            hops,
+            `relay:${api.taskId}`,
+            requester,
+            turn.exposed || turn.unattended
+          )
         );
         return {
           output: [
@@ -1748,6 +2031,7 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
+        const turn = await turnOf(await this.conversation(from));
         const target = this.threadIn(workspaceId, args.thread);
         if (target.id === from.id) {
           throw new Error("That is this thread. Answer here instead.");
@@ -1755,7 +2039,14 @@ export class Threads {
         await this.deliver(
           workspaceId,
           await this.conversation(target),
-          relayed(from, args.message, hops, `relay:${api.taskId}`, requester)
+          relayed(
+            from,
+            args.message,
+            hops,
+            `relay:${api.taskId}`,
+            requester,
+            turn.exposed || turn.unattended
+          )
         );
         this.registry.touchThread(target.id);
         return {
@@ -1994,7 +2285,8 @@ export class Threads {
     if (args.browser_screenshot) {
       const screenshot = await this.browser.screenshot(
         workspaceId,
-        conversationId
+        conversationId,
+        (await this.requester(workspaceId, conversationId))?.id ?? null
       );
       if (!screenshot) {
         throw new Error("The browser could not take a screenshot.");
@@ -2013,7 +2305,8 @@ export class Threads {
       return args.name || basename(args.path);
     }
     if (args.url) {
-      const name = await download(args.url, path, signal);
+      await this.expose(workspaceId, conversationId);
+      const name = await this.browser.download(args.url, path, signal);
       return args.name || name;
     }
     throw new Error(
@@ -2217,7 +2510,7 @@ async function earlierEntries(
 export function threadMessages(
   view: ConversationView,
   earlier: readonly EntryRecord[] = []
-): ThreadMessages {
+): Omit<ThreadMessages, "approvals"> {
   const { running, generation } = liveOf(view);
   const messages: Message[] = [];
   let startedAt = 0;
@@ -2488,78 +2781,6 @@ function messageText(text: string | undefined, files: readonly File[]): string {
   return files.length > 0 ? (text ?? "").trim() : required(text, "Message");
 }
 
-/**
- * Downloads a file from the web to `destination` and returns its name. It fails over `MAX_WEB_FILE` bytes, before more
- * of the file is read.
- */
-async function download(
-  address: string,
-  destination: string,
-  signal: AbortSignal | undefined
-): Promise<string> {
-  const url = URL.parse(address);
-  if (url?.protocol !== "http:" && url?.protocol !== "https:") {
-    throw new Error(
-      `save_file gets only http and https addresses, not ${address}.`
-    );
-  }
-  const response = await fetch(url, {
-    signal: AbortSignal.any([
-      AbortSignal.timeout(DOWNLOAD_TIMEOUT),
-      ...(signal ? [signal] : []),
-    ]),
-  });
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error(
-      `${url} answered ${response.status} ${response.statusText}`
-    );
-  }
-  const tooLarge = new Error(`${url} is over ${MAX_WEB_FILE / 1024 ** 2} MB`);
-  if (Number(response.headers.get("content-length")) > MAX_WEB_FILE) {
-    await response.body?.cancel();
-    throw tooLarge;
-  }
-  const writer = Bun.file(destination).writer();
-  let size = 0;
-  try {
-    // Leaving the loop cancels the rest of the body.
-    for await (const chunk of response.body ?? []) {
-      size += chunk.length;
-      if (size > MAX_WEB_FILE) {
-        throw tooLarge;
-      }
-      writer.write(chunk);
-    }
-  } finally {
-    await writer.end();
-  }
-  return (
-    dispositionName(response.headers.get("content-disposition")) ||
-    decodeName(url.pathname.split("/").at(-1)!) ||
-    "download"
-  );
-}
-
-/** The file name of a Content-Disposition header, in its `filename*` or `filename` form. */
-function dispositionName(header: string | null): string {
-  const encoded = /filename\*\s*=\s*[\w-]*'[^']*'([^;]+)/i.exec(
-    header ?? ""
-  )?.[1];
-  if (encoded) {
-    return decodeName(encoded.trim());
-  }
-  return /filename\s*=\s*"?([^";]+)"?/i.exec(header ?? "")?.[1]?.trim() ?? "";
-}
-
-function decodeName(name: string): string {
-  try {
-    return decodeURIComponent(name);
-  } catch {
-    return name;
-  }
-}
-
 /** A name that stays one file in the thread's folder: no folders, control characters, or leading dots. */
 function fileName(name: string): string {
   const clean = name
@@ -2578,7 +2799,8 @@ function relayed(
   text: string,
   hops: number,
   requestId: string,
-  requester: User | null
+  requester: User | null,
+  exposed: boolean
 ) {
   const data: Relay = {
     fromThreadId: from.id,
@@ -2587,6 +2809,7 @@ function relayed(
     text,
     requesterId: requester?.id ?? null,
     requesterName: requester?.name ?? null,
+    exposed,
   };
   return {
     content: `${minute(Date.now())} UTC Golem from ${threadLink(from)}: ${text}`,
@@ -2598,6 +2821,102 @@ function relayed(
 /** The tool for codemode scripts only, so the model is not offered it. */
 function scriptOnly<Tool extends ToolRegistration>(tool: Tool): Tool {
   return { ...tool, callers: ["tools"] };
+}
+
+/**
+ * What the running turn of a conversation did since its input: whether it took in content that no member wrote,
+ * whether no person watches it (a task such as a reminder or a routine run), and the machines a person allowed for it.
+ */
+async function turnOf(conversation: Conversation): Promise<{
+  exposed: boolean;
+  unattended: boolean;
+  allowed: Set<string>;
+}> {
+  const allowed = new Set<string>();
+  let exposed = false;
+  let cursor: Parameters<Conversation["entries"]>[2];
+  do {
+    const page = await conversation.entries(
+      { order: "descending" },
+      50,
+      cursor,
+      BACKGROUND_CONTEXT
+    );
+    for (const entry of page.items) {
+      if (entry.kind === EXPOSED) {
+        exposed = true;
+      } else if (entry.kind === ALLOWED) {
+        allowed.add((entry.data as { machineId: string }).machineId);
+      } else if (entry.kind === AUTHORED) {
+        return { exposed, unattended: false, allowed };
+      } else if (entry.kind === RELAYED) {
+        const relay = entry.data as unknown as Relay;
+        return {
+          exposed: exposed || relay.exposed,
+          unattended: false,
+          allowed,
+        };
+      } else if (entry.kind === TASK) {
+        return { exposed, unattended: true, allowed };
+      }
+    }
+    cursor = page.next;
+  } while (cursor);
+  return { exposed, unattended: true, allowed };
+}
+
+/** What a tool that changes a machine is about to do, for the person who allows it. */
+function actionText(
+  tool: string,
+  args: Record<string, unknown>,
+  machine: string
+): string {
+  if (tool === "hands_exec" || tool === "hands_job_start") {
+    return `Run on ${machine}: ${clip(String(args.command))}`;
+  }
+  const verb =
+    { hands_write: "Write", hands_edit: "Edit" }[tool] ?? "Copy a file to";
+  return `${verb} ${String(args.path)} on ${machine}`;
+}
+
+/**
+ * The codemode tool with a deadline for each script: the script's own `timeout_ms`, at most `SCRIPT_DEADLINE`, so a
+ * script that never ends stops. A script whose options do not parse goes on as it is, and fails there.
+ */
+function withDeadline(tool: ToolRegistration): ToolRegistration {
+  return {
+    ...tool,
+    execute: (
+      ...[args, api, context]: Parameters<ToolRegistration["execute"]>
+    ) =>
+      tool.execute(
+        {
+          ...(args as { code: string }),
+          code: scriptWithDeadline((args as { code: string }).code),
+        },
+        api,
+        context
+      ),
+  };
+}
+
+/** A codemode script's source with an options line whose `timeout_ms` is at most `SCRIPT_DEADLINE`. */
+export function scriptWithDeadline(source: string): string {
+  let parsed: ReturnType<typeof parseCodemodeSource>;
+  try {
+    parsed = parseCodemodeSource(source);
+  } catch {
+    return source;
+  }
+  const { code, options } = parsed;
+  const line = `${CODEMODE_OPTIONS_PREFIX} ${JSON.stringify({
+    timeout_ms: Math.min(options.timeoutMs ?? SCRIPT_DEADLINE, SCRIPT_DEADLINE),
+    ...(options.maxOutputTokens === undefined
+      ? {}
+      : { max_output_tokens: options.maxOutputTokens }),
+  })}`;
+  // The parsed code keeps an empty first line where its options were, so line numbers stay.
+  return code === source ? `${line}\n${code}` : `${line}${code}`;
 }
 
 /**

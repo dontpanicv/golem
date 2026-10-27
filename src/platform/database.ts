@@ -229,6 +229,8 @@ const migrations = [
 	ALTER TABLE credential_next RENAME TO credential;
 	CREATE INDEX credential_workspace ON credential (workspace_id, integration);
 	CREATE INDEX credential_owner ON credential (owner_id, integration) WHERE workspace_id IS NULL;`,
+  // hands: the member who paired a machine, who allows what agents do on it for others.
+  "ALTER TABLE machine ADD COLUMN paired_by TEXT;",
 ];
 
 export function openDatabase(path: string): Database {

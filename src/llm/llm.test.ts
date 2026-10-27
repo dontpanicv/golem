@@ -396,6 +396,9 @@ const hooks = {
 const noMachines = {
   file: () => Promise.reject(new Error("No machines are paired.")),
   put: () => Promise.reject(new Error("No machines are paired.")),
+  machineNamed: () => {
+    throw new Error("No machines are paired.");
+  },
   tools: () => [],
   section: () => ({ key: "machines", render: () => undefined }),
 };
@@ -415,6 +418,7 @@ const noNotifications = {
 };
 const noBrowser = {
   pdf: () => Promise.reject(new Error("There is no browser.")),
+  download: () => Promise.reject(new Error("There is no browser.")),
   screenshot: async () => null,
   tools: () => [],
 };

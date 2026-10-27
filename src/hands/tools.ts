@@ -35,7 +35,8 @@ export function handsSection(hands: Hands, workspaceId: string): PromptSection {
         ...lines,
         '- People may say "the Mac" or "the server": pick the machine that matches; ask only if two match.',
         "- You can use several machines in one script: `await Promise.all([...])` runs calls on different machines at the same time.",
-        "- For something that must keep running while you do other things (a server, a watcher, a build), use hands_job_start, and stop it with hands_job_cancel when you are done.",
+        "- For something that must keep running while you do other things (a server, a watcher, a build), use hands_job_start, and stop it with hands_job_cancel when you are done. A script stops after 15 minutes, so use hands_job_start for longer work.",
+        "- A person must allow a command or a file change on a machine when this turn read a web page, search results, or a connected service, when no person asked for the turn, or when another person paired the machine. The call waits up to 10 minutes and fails when they do not allow it; then tell the people in the thread.",
         "- When one machine has to reach another, use the other machine's address from this list, not localhost.",
         "- On a Mac, script an app with osascript when it has a scripting dictionary (Music, Finder, Mail). Start an app that is not running with `open -ga <App>` first.",
       ].join("\n");

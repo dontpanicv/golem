@@ -119,6 +119,7 @@ describe("pairing", () => {
       name: "mac-mini",
       addresses: ["192.168.1.40"],
       certSha256: "a".repeat(64),
+      pairedBy: alice.id,
     });
     // Each workspace signs in with a key of its own.
     const other = codeOf((await hands.startPairing(work, alice)).command);
@@ -158,6 +159,28 @@ describe("pairing", () => {
       "Not found"
     );
   });
+
+  test("a pairing that names Golem's own machine or a link-local address is refused; LAN and VPN ones pair", async () => {
+    const code = codeOf((await hands.startPairing(family, alice)).command);
+    for (const fields of [
+      { addresses: ["127.0.0.1"] },
+      { addresses: ["192.168.1.40", "169.254.169.254"] },
+      { addresses: ["::ffff:127.0.0.1"] },
+      { hostname: "localhost" },
+      { hostname: "golem.localhost" },
+    ]) {
+      expect(() => hands.pair(code, pairingRequest(fields))).toThrow(
+        "is missing or malformed"
+      );
+    }
+    hands.pair(
+      code,
+      pairingRequest({
+        certSha256: "c".repeat(64),
+        addresses: ["192.168.1.41", "100.101.102.103"],
+      })
+    );
+  });
 });
 
 describe("the hands tools", () => {
@@ -178,10 +201,13 @@ describe("the hands tools", () => {
         name: "bender",
         port: listener.port,
         certSha256: listener.certSha256,
-        addresses: ["127.0.0.1"],
         hostname: null,
       })
     );
+    // Pairing refuses a loopback address, so the test moves the machine to its fake listener afterwards.
+    golem.app.database
+      .query("UPDATE machine SET addresses = ? WHERE cert_sha256 = ?")
+      .run(JSON.stringify(["127.0.0.1"]), listener.certSha256);
     listener.trust(publicKey);
   });
   afterAll(() => listener.stop());

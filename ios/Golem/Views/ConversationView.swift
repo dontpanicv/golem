@@ -108,9 +108,17 @@ struct ConversationView: View {
         })
     }
 
-    /// The running state above the composer row; a conversation takes the composer's place.
+    /// What the agent waits for this person to allow.
+    private var approvals: [Approval] {
+        (state?.approvals ?? []).filter { $0.approverId == nil || $0.approverId == session.user?.id }
+    }
+
+    /// The approvals and the running state above the composer row; a conversation takes the composer's place.
     private var bottomBar: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.md) {
+            ForEach(approvals) { approval in
+                ApprovalCard(approval: approval, threadID: threadID).composerPadding(bottom: false)
+            }
             if state?.running == true {
                 HStack(spacing: Tokens.Space.md) {
                     Badge(label: "Running", tone: .accent)
@@ -181,6 +189,47 @@ struct ConversationView: View {
     private func openFile(_ file: FileRef) {
         guard let workspaceID = session.workspace?.id else { return }
         Task { await session.run { preview = try await session.api.download(workspaceID: workspaceID, file: file) } }
+    }
+}
+
+/// An action the agent waits for the person to allow: once, for the rest of the turn on that machine, or not.
+private struct ApprovalCard: View {
+    let approval: Approval
+    let threadID: String
+    @Environment(Session.self) private var session
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.md) {
+            Text(approval.text)
+                .font(.system(size: Tokens.FontSize.md, design: .monospaced))
+                .foregroundStyle(Tokens.Colors.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Tokens.Space.sm) {
+                Spacer()
+                Button("Deny") { answer(false) }
+                    .buttonStyle(.golem(.danger, .small))
+                Button("Allow for this turn") { answer(true, scope: "turn") }
+                    .buttonStyle(.golem(.secondary, .small))
+                Button("Allow") { answer(true) }
+                    .buttonStyle(.golem(.primary, .small))
+            }
+            .disabled(busy)
+        }
+        .padding(Tokens.Space.lg)
+        .raisedCard(ring: Tokens.Colors.ringControl)
+    }
+
+    private func answer(_ allow: Bool, scope: String = "once") {
+        busy = true
+        Task {
+            await session.run {
+                try await session.api.answerApproval(
+                    threadID: threadID, approvalID: approval.id, allow: allow, scope: scope
+                )
+            }
+            busy = false
+        }
     }
 }
 

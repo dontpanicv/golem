@@ -1,6 +1,7 @@
 {
   "default": "deny",
   "allow": [
+    "launch",
     "navigate",
     "read",
     "snapshot",

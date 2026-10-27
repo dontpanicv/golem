@@ -12,6 +12,8 @@ export interface Machine {
   readonly name: string;
   readonly os: string;
   readonly pairedAt: number;
+  /** The member who started the pairing, who allows what agents do on it; null for a machine paired before. */
+  readonly pairedBy: string | null;
   readonly port: number;
   readonly version: string;
 }

@@ -207,6 +207,11 @@ Used by the workspace switcher and action menus.
   progress view in rows, and "· working" after a thread link.
 - Stop: a tiny secondary button with a stop icon before Send, only while the agent works. It stops the threads the agent asked
   for something, which still work on that message, too.
+- Approval: above the composer, for the person it asks only, while the agent waits for them to allow a change on a
+  machine. `surfaceRaised`, a 0.5 px `ringControl`, shadow `low`, `radius.lg`, padding 12; the action in
+  `fontSize.md` monospace `textSecondary`, wrapped; 8 px below, at the end, small buttons: danger "Deny", secondary
+  "Allow for this turn", primary "Allow". A push says "Allow? <action>" and opens the thread. iOS shows the same card
+  above the composer row, with 44 pt touch targets.
 - The sidebar shows the threads and channels that agents start while they work, without a reload.
 - Composer: `surfaceComposer`, `radius.lg`, padding 12, shadow `low`, no focus ring. The text is `fontSize.lg` on a
   24 px line with padding 2 × 6; placeholder `textQuaternary`. Actions sit 8 px below: a tiny ghost attach button

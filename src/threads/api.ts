@@ -95,6 +95,29 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
+    "/api/v1/threads/:thread/approvals/:approval",
+    api(async ({ app, user, params, body }) => {
+      if (
+        typeof body.allow !== "boolean" ||
+        !(body.scope === "once" || body.scope === "turn")
+      ) {
+        throw new HttpError(
+          400,
+          'Allow must be true or false, and scope "once" or "turn"'
+        );
+      }
+      app.threads.answerApproval(
+        params.thread!,
+        params.approval!,
+        user,
+        body.allow,
+        body.scope
+      );
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
+    "POST",
     "/api/v1/threads/:thread/messages",
     api(async ({ app, user, params, body, files }) => {
       await app.threads.send(

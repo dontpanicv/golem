@@ -30,7 +30,7 @@ src/
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── integrations/            The connectors, their tools, and the credentials of workspaces and people
 ├── artifacts/               The pages and small apps agents make for a channel, their link pages, and their data
-├── browser/                 The headless Chrome of each thread, which agents visit websites with
+├── browser/                 The headless Chrome of each thread and person, which agents visit websites with
 ├── notifications/           Each person's inbox, the devices that get pushes, and the APNs sender
 ├── threads/                 One Pi Durable session per workspace, a conversation per thread, the agent tools, and the
 │                            files of each channel

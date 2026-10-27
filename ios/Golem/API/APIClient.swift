@@ -159,6 +159,13 @@ final class APIClient {
         try await events("/api/v1/threads/\(id)/events", named: "thread", onEvent: onState)
     }
 
+    /// Answers an approval; `scope` "turn" also allows the rest of the turn's changes on that machine.
+    func answerApproval(threadID: String, approvalID: String, allow: Bool, scope: String = "once") async throws {
+        _ = try await send(
+            "POST", "/api/v1/threads/\(threadID)/approvals/\(approvalID)", ["allow": allow, "scope": scope]
+        )
+    }
+
     /// Stops the agent of a thread: it drops the messages it has not read yet and ends its run.
     func stopThread(_ id: String) async throws {
         _ = try await send("POST", "/api/v1/threads/\(id)/stop")

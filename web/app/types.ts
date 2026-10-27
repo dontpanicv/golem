@@ -96,6 +96,16 @@ export interface ThreadState {
   readonly thread: ThreadSummary;
   readonly messages: readonly Message[];
   readonly running: boolean;
+  readonly approvals: readonly Approval[];
+}
+
+/** An action that waits for one person, or for any member when `approverId` is null. */
+export interface Approval {
+  readonly id: string;
+  readonly tool: string;
+  readonly text: string;
+  readonly approverId: string | null;
+  readonly expiresAt: number;
 }
 
 export type SearchKind = "thread" | "artifact" | "note" | "file" | "capture";
