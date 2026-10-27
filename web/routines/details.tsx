@@ -81,8 +81,8 @@ const routinesOf = keyed((key: string) =>
 const route = getRouteApi("/signed-in/w/$workspaceId/c/$channelId");
 
 /**
- * A channel's summary and brief, its routines, and their newest runs, under its threads. People create routines by
- * asking an agent; the model writes the summary and the brief from the channel's threads.
+ * A channel's summary, its routines, their newest runs, and its brief, which can be long, under its threads. People
+ * create routines by asking an agent; the model writes the summary and the brief from the channel's threads.
  */
 export function ChannelDetails() {
   const { workspaceId, channelId } = route.useParams();
@@ -121,17 +121,6 @@ export function ChannelDetails() {
       {channel?.summary ? (
         <PageSection title="Summary">
           <p className="page-text">{channel.summary}</p>
-        </PageSection>
-      ) : null}
-      {brief ? (
-        <PageSection title="Brief">
-          <div className="page-text prose">
-            <AgentText
-              // The brief's headings sit under the section's own heading.
-              text={brief.text.replace(/^#{1,2} /gm, "### ")}
-              workspaceId={workspaceId}
-            />
-          </div>
         </PageSection>
       ) : null}
       <PageSection title="Routines">
@@ -236,6 +225,17 @@ export function ChannelDetails() {
           <Empty icon="inbox" title="No runs yet" />
         )}
       </PageSection>
+      {brief ? (
+        <PageSection title="Brief">
+          <div className="page-text prose">
+            <AgentText
+              // The brief's headings sit under the section's own heading.
+              text={brief.text.replace(/^#{1,2} /gm, "### ")}
+              workspaceId={workspaceId}
+            />
+          </div>
+        </PageSection>
+      ) : null}
     </>
   );
 }
