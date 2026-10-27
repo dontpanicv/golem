@@ -9,6 +9,7 @@ import { routineApiRoutes } from "../routines/api.ts";
 import { searchApiRoutes } from "../search/api.ts";
 import { threadApiRoutes } from "../threads/api.ts";
 import { workspaceApiRoutes } from "../workspaces/api.ts";
+import { api } from "./api.ts";
 import type { Route } from "./http.ts";
 import { appFile, appPage, asset } from "./web.ts";
 
@@ -40,4 +41,20 @@ export const allRoutes: readonly Route[] = [
   ...threadApiRoutes,
   ...searchApiRoutes,
   ...routineApiRoutes,
+  [
+    "POST",
+    "/api/v1/server/restart",
+    api(async () => {
+      restart();
+      return new Response(null, { status: 202 });
+    }),
+  ],
 ];
+
+/**
+ * Stops Golem cleanly after the response goes out; its service starts it again, so it reads `config/golem.toml`
+ * again. Turns continue after the restart, because they are durable.
+ */
+function restart(): void {
+  setTimeout(() => process.kill(process.pid, "SIGTERM"), 100);
+}

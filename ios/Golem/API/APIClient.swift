@@ -236,6 +236,11 @@ final class APIClient {
         try decode(try await send("PUT", "/api/v1/llm/effort", ["effort": effort]).data)
     }
 
+    /// Restarts Golem, which then reads its configuration again.
+    func restartServer() async throws {
+        _ = try await send("POST", "/api/v1/server/restart")
+    }
+
     // MARK: Transport
 
     private func filesPath(_ workspaceID: String, _ channelID: String?) -> String {

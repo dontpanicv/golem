@@ -62,6 +62,19 @@ struct SettingsView: View {
                 }
             }
             IntegrationsSection(workspaceID: nil)
+            SettingsCard(title: "Server") {
+                SettingsRow("Configuration") {
+                    Button("Reload") {
+                        Task {
+                            await session.run {
+                                try await session.api.restartServer()
+                                session.show("Golem restarts", .success)
+                            }
+                        }
+                    }
+                    .buttonStyle(.secondary)
+                }
+            }
             if let user = session.user {
                 SettingsCard(title: "Account") {
                     SettingsRow(label: user.name, description: user.email) {

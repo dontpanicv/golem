@@ -53,6 +53,8 @@ HttpRouter.serve(server).pipe(
       hostname: config.host,
       port: config.port,
       idleTimeout: 0,
+      // Open event streams never end by themselves; the stop ends them after this, before launchd kills Golem at 20 s.
+      gracefulShutdownTimeout: "5 seconds",
     })
   ),
   Layer.launch,

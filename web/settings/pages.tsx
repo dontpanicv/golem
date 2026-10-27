@@ -1,5 +1,6 @@
 import { getRouteApi } from "@tanstack/react-router";
 import { signOut } from "../accounts/login.tsx";
+import { request } from "../app/api.ts";
 import { MachinesSection } from "../hands/machines.tsx";
 import { IntegrationsSection } from "../integrations/section.tsx";
 import { LlmCard } from "../llm/card.tsx";
@@ -11,6 +12,7 @@ import {
   SettingsCard,
   SettingsRow,
 } from "../ui/components.tsx";
+import { showError, showToast } from "../ui/toast.tsx";
 import { lastOpened, useMe } from "../workspaces/data.ts";
 import { MembersSection, WorkspaceSection } from "../workspaces/settings.tsx";
 import { FloatingSidebarButton, Shell } from "../workspaces/shell.tsx";
@@ -64,6 +66,13 @@ export function SettingsPage() {
           <PageSection title="Integrations">
             <IntegrationsSection workspaceId={null} />
           </PageSection>
+          <PageSection title="Server">
+            <SettingsCard>
+              <SettingsRow label="Configuration">
+                <Button label="Reload" onClick={reload} />
+              </SettingsRow>
+            </SettingsCard>
+          </PageSection>
           <PageSection title="Account">
             <SettingsCard>
               <SettingsRow
@@ -83,4 +92,14 @@ export function SettingsPage() {
       </section>
     </Shell>
   );
+}
+
+/** Restarts Golem, which then reads config/golem.toml again. */
+async function reload() {
+  try {
+    await request("/server/restart", { method: "POST" });
+    showToast("success", "Golem restarts");
+  } catch (error) {
+    showError(error);
+  }
 }
