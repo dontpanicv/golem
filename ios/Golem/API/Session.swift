@@ -93,6 +93,8 @@ final class Session {
     // MARK: Workspaces
 
     func open(_ workspace: Workspace) async throws {
+        // A conversation talks in a thread of the workspace that started it.
+        if workspace.id != self.workspace?.id { VoiceSession.shared.talk.end() }
         let detail = try await api.workspace(workspace.id)
         let orchestrator = try await api.orchestrator(workspaceID: workspace.id)
         self.workspace = detail.workspace
@@ -224,6 +226,7 @@ final class Session {
     }
 
     private func clear() {
+        VoiceSession.shared.talk.end()
         Keychain.token = nil
         api.token = nil
         signedIn = false
