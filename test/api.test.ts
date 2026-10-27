@@ -335,7 +335,8 @@ test("artifacts of a channel open with their runtime, run calls, and change and 
     )
   ).toMatchObject({ visibility: "public" });
   expect(await body(await rpc("me", {}, eve))).toMatchObject({
-    result: { name: "Eve", member: false },
+    // A visitor of another workspace is an id of this artifact only, with no name.
+    result: { name: null, member: false },
   });
   expect(
     await failure(

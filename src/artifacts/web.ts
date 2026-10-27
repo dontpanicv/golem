@@ -20,9 +20,11 @@ const MAX_CALL = 200_000;
  */
 const SANDBOX =
   "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads";
-/** Artifact names are two words, so they can be guessed: a client that misses this many links in a window waits. */
+/** A client that misses this many artifact links in a window waits, so that it cannot try names one by one. */
 const MAX_MISSES = 20;
 const MISS_WINDOW = 10 * 60_000;
+/** The clients the limiter keeps; past this, the oldest go first. */
+const MAX_CLIENTS = 10_000;
 const misses = new Map<string, { count: number; until: number }>();
 
 /** The page of an artifact link: the artifact in a sandboxed frame. */
@@ -97,15 +99,17 @@ export const artifactWebRoutes: readonly Route[] = [
  */
 async function openFor(input: RouteInput) {
   const share = onShareHost(input);
-  // On the public host the client is the address Cloudflare saw; otherwise the address the proxy (Caddy) adds.
-  const client =
+  // On the public host the client is the address Cloudflare saw; otherwise the address the proxy (Caddy) adds, which
+  // only a Golem that listens on 127.0.0.1 behind it can trust.
+  const client = clientKey(
     (share
       ? input.request.headers.get("cf-connecting-ip")
       : input.request.headers
           .get("x-forwarded-for")
           ?.split(",")
           .at(-1)
-          ?.trim()) ?? "direct";
+          ?.trim()) ?? "direct"
+  );
   const now = Date.now();
   const missed = misses.get(client);
   const current =
@@ -126,19 +130,61 @@ async function openFor(input: RouteInput) {
     }
     return { viewer, artifact };
   } catch (error) {
-    // The public host does not tell a members artifact from a missing one.
-    const missing =
+    // A members artifact tells a signed-out client that the name exists, so it counts as a miss too.
+    if (
       error instanceof HttpError &&
-      (error.status === 404 || (share && error.status === 401));
-    if (missing) {
+      (error.status === 404 || error.status === 401)
+    ) {
       current.count += 1;
-      if (misses.size > 10_000) {
-        misses.clear();
+      if (!misses.has(client) && misses.size >= MAX_CLIENTS) {
+        evictClients(now);
       }
       misses.set(client, current);
-      throw notFound();
+      // The public host does not tell a members artifact from a missing one.
+      if (error.status === 404 || share) {
+        throw notFound();
+      }
     }
     throw error;
+  }
+}
+
+/**
+ * The key of a client address for the limiter. An IPv6 client gets a /48 network, and can pick any address in it,
+ * so the network is the key; an IPv4 address is its own key.
+ */
+export function clientKey(address: string): string {
+  const ip = address.split("%")[0]!.toLowerCase();
+  const ipv4 = /(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
+  if (!ip.includes(":") || ipv4) {
+    return ipv4?.[1] ?? ip;
+  }
+  const [head = "", tail = ""] = ip.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = [
+    ...left,
+    ...new Array(Math.max(0, 8 - left.length - right.length)).fill("0"),
+    ...right,
+  ];
+  return `${groups
+    .slice(0, 3)
+    .map((group) => group.replace(/^0+(?=.)/, ""))
+    .join(":")}::/48`;
+}
+
+/** Drops the clients whose window ended, then the oldest, until there is room for one more. */
+function evictClients(now: number): void {
+  for (const [client, missed] of misses) {
+    if (missed.until <= now) {
+      misses.delete(client);
+    }
+  }
+  for (const client of misses.keys()) {
+    if (misses.size < MAX_CLIENTS) {
+      break;
+    }
+    misses.delete(client);
   }
 }
 

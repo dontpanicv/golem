@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { OAuthCredential } from "@earendil-works/pi-ai";
 import { $ } from "bun";
+import { clientKey } from "../src/artifacts/web.ts";
 import type { User } from "../src/platform/auth.ts";
 import type { ThreadRef } from "../src/workspaces/workspaces.ts";
 import { cookies, startTestApp, type TestApp, until } from "./harness.ts";
@@ -257,10 +258,53 @@ describe("the web app", () => {
         .status
     ).toBe(404);
     const large = (address: string) =>
-      golem.call(`/a/amber-guess/rpc`, {
+      golem.call("/a/amber-guess/rpc", {
         body: { op: "me", args: { padding: "x".repeat(2 * 1024 ** 2) } },
         headers: from(address),
       });
+    // An IPv6 client can pick any address of its /48 network, so the network counts.
+    for (let miss = 0; miss < 20; miss += 1) {
+      await golem.call(`/a/amber-guess${miss}`, {
+        headers: from(`2001:db8:7:${miss}::1`),
+      });
+    }
+    expect(
+      (
+        await golem.call("/a/amber-guess", {
+          headers: from("2001:db8:7:ff::2"),
+        })
+      ).status
+    ).toBe(429);
+    // A members link tells a signed-out client that its name exists, so it counts too.
+    const members = golem.app.artifacts.create(thread, generalId, {
+      title: "Members",
+      html: "<p>M</p>",
+      requestKey: "web-members-miss",
+    });
+    for (let miss = 0; miss < 20; miss += 1) {
+      expect(
+        (
+          await golem.call(`/a/${members.id}`, {
+            headers: from("203.0.113.30"),
+          })
+        ).status
+      ).toBe(303);
+    }
+    expect(
+      (await golem.call(`/a/${members.id}`, { headers: from("203.0.113.30") }))
+        .status
+    ).toBe(429);
+    // A full limiter pushes out its oldest clients only: the client that waits, which came later, still waits.
+    for (let client = 0; client < 9998; client += 1) {
+      await golem.call("/a/amber-guess", {
+        headers: from(`198.18.${Math.floor(client / 256)}.${client % 256}`),
+      });
+    }
+    expect(
+      (await golem.call("/a/amber-guess", { headers: from("203.0.113.30") }))
+        .status
+    ).toBe(429);
+    golem.app.artifacts.delete(members.id, alice);
     // A body that is too large is refused before the lookup, so it is not a miss.
     for (let call = 0; call < 20; call += 1) {
       expect((await large("203.0.113.9")).status).toBe(413);
@@ -269,6 +313,16 @@ describe("the web app", () => {
       (await golem.call("/a/amber-guess", { headers: from("203.0.113.9") }))
         .status
     ).toBe(404);
+  });
+
+  test("the limiter keys an IPv6 client by its /48 network and an IPv4 client by its address", () => {
+    expect(clientKey("2001:db8:7:1::1")).toBe("2001:db8:7::/48");
+    expect(clientKey("2001:0DB8:0007:ffff:1:2:3:4")).toBe("2001:db8:7::/48");
+    expect(clientKey("2001:db8::1")).toBe("2001:db8:0::/48");
+    expect(clientKey("::1")).toBe("0:0:0::/48");
+    expect(clientKey("fe80::1%en0")).toBe("fe80:0:0::/48");
+    expect(clientKey("::ffff:203.0.113.7")).toBe("203.0.113.7");
+    expect(clientKey("203.0.113.7")).toBe("203.0.113.7");
   });
 
   test("assets come from the public folder only", async () => {

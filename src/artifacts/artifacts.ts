@@ -69,8 +69,15 @@ const MAX_VALUE = 64 * 1024;
 const MAX_NAME = 100;
 const MAX_KEYS_PER_VISITOR = 1000;
 const MAX_RECORDS = 20_000;
+/** The live visitors of an artifact; more visitors can still look, but they get no row and no name. */
+const MAX_VISITORS = 10_000;
+/** The size of the values of an artifact, so that its records and `everyone.list` stay small. */
+const MAX_BYTES = 10 * 1024 ** 2;
 const SHARED = "shared";
-/** Artifact names are two of these words, such as `amber-fox`, so that people know a link when they see it again. */
+/**
+ * Artifact names are four different words of these, such as `amber-fox-lake-moss`, so that people know a link when
+ * they see it again; there are about 1.6e8 of them, too many to guess. Names of two words from before stay valid.
+ */
 const WORDS =
   "acorn amber apple autumn beach berry birch bloom blue breeze brook cedar cherry cloud coral creek dawn daisy deer dove dream dusk eagle earth elm fern field finch flame flower forest fox frolic frost garden gold grape green grove harbor hazel hill honey island ivy jade jasmine lake leaf lemon light lily lime maple meadow mint moon moss mountain oak ocean olive orange orchard otter owl peach pearl pine plum pond poppy rabbit rain raven reed river robin rock rose ruby sage sand sea seed shadow shell shore sky snow sparrow spring star stone storm summer sun swan sweet thyme tiger tulip turtle valley violet water wave willow wind winter wolf wood wren yellow".split(
     " "
@@ -437,23 +444,27 @@ export class Artifacts {
     if (json.length > MAX_VALUE) {
       throw new HttpError(413, "The value is too large");
     }
-    const exists = this.database
+    checkedKey(key);
+    // Records that `clearData` moved aside have `~` in their scope, and count no more.
+    const { found, mine, total, others } = this.database
       .query(
-        "SELECT 1 FROM artifact_record WHERE artifact_id = ? AND scope = ? AND key = ?"
+        `SELECT count(*) FILTER (WHERE scope = ?1 AND key = ?2) AS found, count(*) FILTER (WHERE scope = ?1) AS mine,
+				count(*) AS total, coalesce(sum(length(value)) FILTER (WHERE NOT (scope = ?1 AND key = ?2)), 0) AS others
+				FROM artifact_record WHERE artifact_id = ?3 AND scope NOT LIKE '%~%'`
       )
-      .get(id, owner, checkedKey(key));
-    if (!exists) {
-      const { mine, total } = this.database
-        .query(
-          "SELECT count(*) FILTER (WHERE scope = ?) AS mine, count(*) AS total FROM artifact_record WHERE artifact_id = ?"
-        )
-        .get(owner, id) as { mine: number; total: number };
-      if (
-        total >= MAX_RECORDS ||
-        (owner !== SHARED && mine >= MAX_KEYS_PER_VISITOR)
-      ) {
-        throw new HttpError(413, "This artifact keeps no more data");
-      }
+      .get(owner, key, id) as {
+      found: number;
+      mine: number;
+      total: number;
+      others: number;
+    };
+    if (
+      (!found &&
+        (total >= MAX_RECORDS ||
+          (owner !== SHARED && mine >= MAX_KEYS_PER_VISITOR))) ||
+      others + json.length > MAX_BYTES
+    ) {
+      throw new HttpError(413, "This artifact keeps no more data");
     }
     this.database
       .query(
@@ -483,14 +494,17 @@ export class Artifacts {
     this.deleteRecord(id, owner, key);
   }
 
-  /** Deletes every record and visitor of an artifact of the person's workspace. */
+  /**
+   * Deletes every record and visitor of an artifact of the person's workspace. The records move aside, with `~<time>`
+   * after their scope, so they stay but no longer count toward the limits.
+   */
   clearData(id: string, user: User): void {
     this.get(id, user);
     const now = Date.now();
     this.database.transaction(() => {
       this.database
         .query(
-          "UPDATE artifact_record SET deleted_at = ? WHERE artifact_id = ? AND deleted_at IS NULL"
+          "UPDATE artifact_record SET scope = scope || '~' || ?1, deleted_at = coalesce(deleted_at, ?1) WHERE artifact_id = ?2 AND scope NOT LIKE '%~%'"
         )
         .run(now, id);
       this.database
@@ -507,8 +521,10 @@ export class Artifacts {
   }
 
   /**
-   * Notes a visit and gives the viewer's identity. A signed-in person is their user id; a public visitor is the hash
-   * of their browser's token, so that the id other visitors see does not let them write as that visitor.
+   * Notes a visit and gives the viewer's identity. A member is their user id and name. Another signed-in person is a
+   * hash of the artifact and their user id, so the artifact's author learns neither. A public visitor is the hash of
+   * their browser's token, so that the id other visitors see does not let them write as that visitor. Past
+   * `MAX_VISITORS`, a new visitor gets no row.
    */
   private visit(id: string, viewer: Viewer): Me {
     let me: Me;
@@ -520,18 +536,28 @@ export class Artifacts {
       } catch {
         member = false;
       }
-      me = { id: viewer.user.id, name: viewer.user.name, member };
+      me = member
+        ? { id: viewer.user.id, name: viewer.user.name, member }
+        : { id: hash(`${id}:${viewer.user.id}`), name: null, member };
     } else if (viewer.token) {
-      me = {
-        id: new Bun.CryptoHasher("sha256")
-          .update(viewer.token)
-          .digest("hex")
-          .slice(0, 32),
-        name: null,
-        member: false,
-      };
+      me = { id: hash(viewer.token), name: null, member: false };
     } else {
       throw new HttpError(403, "Open the link again");
+    }
+    const known = this.database
+      .query(
+        "SELECT 1 FROM artifact_visitor WHERE artifact_id = ? AND visitor = ? AND deleted_at IS NULL"
+      )
+      .get(id, me.id);
+    if (!known) {
+      const { visitors } = this.database
+        .query(
+          "SELECT count(*) AS visitors FROM artifact_visitor WHERE artifact_id = ? AND deleted_at IS NULL"
+        )
+        .get(id) as { visitors: number };
+      if (visitors >= MAX_VISITORS) {
+        return me;
+      }
     }
     const visitor = this.database
       .query(
@@ -541,14 +567,15 @@ export class Artifacts {
     return { ...me, name: visitor.name };
   }
 
-  /** Two different words that no artifact had before, so that an old link never opens another artifact. */
+  /** Four different words that no artifact had before, so that an old link never opens another artifact. */
   private newName(): string {
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const first = WORDS[randomInt(WORDS.length)]!;
-      const second = WORDS[randomInt(WORDS.length)]!;
-      const name = `${first}-${second}`;
+      const words = new Set(
+        Array.from({ length: 4 }, () => WORDS[randomInt(WORDS.length)]!)
+      );
+      const name = [...words].join("-");
       if (
-        first !== second &&
+        words.size === 4 &&
         this.database
           .query("INSERT OR IGNORE INTO artifact_name (id) VALUES (?)")
           .run(name).changes === 1
@@ -629,4 +656,9 @@ function checkedKey(key: unknown): string {
     throw new HttpError(400, `A key is text of 1 to ${MAX_KEY} characters`);
   }
   return key;
+}
+
+/** A visitor id that does not show what it comes from. */
+function hash(text: string): string {
+  return new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 32);
 }

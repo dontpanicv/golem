@@ -120,7 +120,7 @@ type Routine = {
 	lastRun: RoutineRun | null;
 };
 type Artifact = {
-	id: string; // two words, such as "amber-fox"; a name is never given out again
+	id: string; // four words, such as "amber-fox-lake-moss" (older ones have two); a name is never given out again
 	channelId: string | null; // the channel it belongs to; null: the workspace's own, which the orchestrator makes
 	threadId: string; // the thread that made it
 	title: string;
@@ -252,7 +252,7 @@ key in `config/apns.p8`.
 | `PUT /api/v1/artifacts/:artifactId` | `{ visibility }` | `Artifact` |
 | `DELETE /api/v1/artifacts/:artifactId` | | `204`; its data goes with it |
 | `POST /api/v1/artifacts/:artifactId/rpc` | `{ op, args }` | `{ result }`: a call of the artifact's `golem` runtime, as the signed-in user |
-| `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes |
+| `DELETE /api/v1/artifacts/:artifactId/data` | | `204`; every record and visitor goes, and the records move aside, so the limits are free again |
 | `DELETE /api/v1/artifacts/:artifactId/records/:recordId` | | `204` |
 
 An artifact is a page or a small app that an agent makes in a thread with its `artifacts_create`, `artifacts_update`,
@@ -271,14 +271,15 @@ The runtime the page calls:
 
 | Call | `op` and `args` | Who |
 | --- | --- | --- |
-| `golem.ready`, `golem.me` | `me`: `{}` → `{ id, name, member }` | everyone |
+| `golem.ready`, `golem.me` | `me`: `{}` → `{ id, name, member }`; a member is their user id and name, and every other visitor an id of this artifact only, with no name until `setName` | everyone |
 | `golem.setName(name)` | `name`: `{ name }` → the new `me` | everyone |
 | `golem.mine.get/set/delete/list` | `get`, `set`, `delete`, `list`: `{ scope: "mine", key, value?, prefix? }` | everyone, on their own records |
 | `golem.everyone.list(prefix?)` | `list`: `{ scope: "everyone", prefix }` → `ArtifactRecord[]` of visitors | everyone |
 | `golem.shared.get/set/delete/list` | the same with `scope: "shared"` | everyone reads; members change |
 
 `list` gives `{ key, value, updatedAt }[]` for `mine` and `shared`. A value is up to 64 KB of JSON; a visitor keeps up
-to 1000 keys, and an artifact up to 20,000 records. `400` names bad input, `403` a shared write by a non-member, and
+to 1000 keys, and an artifact up to 20,000 records, 10 MB of values, and 10,000 visitors; a visitor past that can look and
+write, but has no name. `400` names bad input, `403` a shared write by a non-member, and
 `413` a value or an artifact that is full.
 
 The web app opens an artifact at its `url`, with no `/api` prefix:
@@ -384,9 +385,11 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 - Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
 - A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
-  keep. Its name is two words that people can remember, so it can be guessed: a client that opens 20 artifact links
-  that do not exist in 10 minutes gets `429` until the 10 minutes end. On the public host the client is
-  `CF-Connecting-IP`; on Golem's own address, the last `X-Forwarded-For` address. Keep private things in members
+  keep. Its name is four words that people can remember, about 1.6e8 names; names from before have two words and can
+  be guessed, so make such an artifact again. A client that opens 20 artifact links in 10 minutes that do not exist,
+  or that are for members while it is signed out, gets `429` until the 10 minutes end. On the public host the client
+  is `CF-Connecting-IP`; on Golem's own address, the last `X-Forwarded-For` address, which only a Golem with
+  `host = "127.0.0.1"` behind Caddy can trust. An IPv6 client is its /48 network. Keep private things in members
   artifacts.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The

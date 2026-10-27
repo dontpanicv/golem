@@ -51,7 +51,8 @@ data/
   moves to `channels/<id>/deleted/`. A deleted channel hides its threads, files, artifacts, and routines; a deleted
   workspace (`organization.deletedAt`) hides all of it, and its folder stays. Only an owner deletes a workspace. Deleted
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
-  Artifact records that were deleted still count toward the artifact's limits.
+  Artifact records that were deleted still count toward the artifact's limits, until a member clears the data, which
+  moves the records aside with `~<time>` after their scope.
 - **Workspaces are separate on disk.** Every byte of a workspace is under `data/workspaces/<workspace-id>/`:
   its threads, files, notes, captures, tables, and its own search index. A workspace's folder and rows hold all of it.
   Nothing reads one workspace's folder on behalf of another.

@@ -28,7 +28,7 @@ With the `cf` CLI, signed in to the account of the domain:
      "ingress": [
        {
          "hostname": "a.example.com",
-         "path": "^/[a-z]+-[a-z]+(/content|/rpc)?$",
+         "path": "^/[a-z]+(-[a-z]+){1,3}(/content|/rpc)?$",
          "service": "http://127.0.0.1:3000"
        },
        { "service": "http_status:404" }
