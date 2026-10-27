@@ -119,7 +119,12 @@ describe("the web app", () => {
     const policy = content.headers.get("content-security-policy")!;
     expect(policy).toStartWith("sandbox allow-scripts");
     expect(policy).not.toContain("allow-same-origin");
-    expect(await content.text()).toContain("window.golem = golem");
+    expect(policy).toContain("; img-src data: blob:;");
+    expect(policy).toContain("connect-src 'none'");
+    expect(page).toContain("new MessageChannel()");
+    const text = await content.text();
+    expect(text).toContain("window.golem = golem");
+    expect(text).toContain("event.ports");
 
     const call = (body: unknown, headers: Record<string, string>) =>
       golem.call(`${link}/rpc`, { body, headers });

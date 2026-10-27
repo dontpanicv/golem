@@ -146,7 +146,10 @@ struct ArtifactWebView: UIViewRepresentable {
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(context.coordinator, name: "golem")
         let view = WKWebView(frame: .zero, configuration: configuration)
+        #if DEBUG
         view.isInspectable = true
+        #endif
+        view.navigationDelegate = context.coordinator
         context.coordinator.webView = view
         return view
     }
@@ -163,15 +166,28 @@ struct ArtifactWebView: UIViewRepresentable {
         view.configuration.userContentController.removeScriptMessageHandler(forName: "golem")
     }
 
-    final class Coordinator: NSObject, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         weak var webView: WKWebView?
         var content: String?
         var call: (String, Any) async throws -> Any = { _, _ in NSNull() }
 
+        /// Only the artifact's own page runs here, so no other page gets its `golem` calls answered. A tapped https
+        /// link opens in the browser, as a link opens a new tab on the web.
+        func webView(
+            _ webView: WKWebView, decidePolicyFor action: WKNavigationAction
+        ) async -> WKNavigationActionPolicy {
+            guard let url = action.request.url else { return .cancel }
+            if url.scheme == "about" { return .allow }
+            if action.navigationType == .linkActivated, url.scheme == "https" {
+                await UIApplication.shared.open(url)
+            }
+            return .cancel
+        }
+
         func userContentController(
             _ controller: WKUserContentController, didReceive message: WKScriptMessage
         ) {
-            guard let body = message.body as? [String: Any], let id = body["id"] as? Int,
+            guard message.frameInfo.isMainFrame, let body = message.body as? [String: Any], let id = body["id"] as? Int,
                   let operation = body["op"] as? String else { return }
             let args = body["args"] ?? [String: Any]()
             Task {

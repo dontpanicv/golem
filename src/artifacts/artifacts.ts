@@ -82,11 +82,18 @@ const BRIDGE = `(() => {
   const pending = new Map();
   let next = 0;
   const native = window.webkit?.messageHandlers?.golem;
+  // On the web, the link's page gives a port only to the first page of the frame.
+  const port = native ? null : new Promise((resolve) => addEventListener("message", (event) => {
+    const [given] = event.ports;
+    if (event.source !== parent || event.data?.golem !== 1 || !given) return;
+    given.onmessage = (reply) => receive(reply.data);
+    resolve(given);
+  }));
   const send = (op, args) => new Promise((resolve, reject) => {
     const id = ++next;
     pending.set(id, { resolve, reject });
     const message = { golem: 1, id, op, args };
-    if (native) native.postMessage(message); else parent.postMessage(message, "*");
+    if (native) native.postMessage(message); else port.then((given) => given.postMessage(message));
   });
   const receive = (data) => {
     const call = data?.golem === 1 && pending.get(data.id);
@@ -94,7 +101,6 @@ const BRIDGE = `(() => {
     pending.delete(data.id);
     if (data.error) call.reject(new Error(data.error)); else call.resolve(data.result);
   };
-  addEventListener("message", (event) => { if (event.source === parent) receive(event.data); });
   window.__golemReceive = receive;
   const scope = (name) => ({
     get: (key) => send("get", { scope: name, key }),
@@ -113,9 +119,25 @@ const BRIDGE = `(() => {
   window.golem = golem;
 })();`;
 
-/** Sends data only through `golem`; the web also serves the HTML with a sandbox header. */
-const CONTENT_POLICY =
-  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https: data: blob:; style-src 'unsafe-inline' https: data:; img-src https: data: blob:; font-src https: data:; media-src https: data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'";
+/** CDNs that do not show their request logs to the authors of pages. */
+const CDNS =
+  "https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com";
+
+/**
+ * Sends data only through `golem`: scripts, styles, and fonts come only from `CDNS`, and pictures only from the page.
+ * The web also sends it as a header, with the sandbox.
+ */
+export const CONTENT_POLICY = [
+  "default-src 'none'",
+  `script-src 'unsafe-inline' 'unsafe-eval' data: blob: ${CDNS}`,
+  `style-src 'unsafe-inline' data: ${CDNS} https://fonts.googleapis.com`,
+  "img-src data: blob:",
+  `font-src data: ${CDNS} https://fonts.gstatic.com`,
+  "media-src data: blob:",
+  "connect-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+].join("; ");
 
 interface ArtifactRow {
   readonly id: string;
@@ -309,16 +331,13 @@ export class Artifacts {
     return this.artifact(row);
   }
 
-  /** The page to run: the agent's HTML with the `golem` runtime and a content policy at the top of its head. */
+  /**
+   * The page to run: the content policy and the `golem` runtime at the start of the page, then the agent's HTML. The
+   * parser puts them in the page's head, before any of the agent's HTML can run.
+   */
   content(id: string): string {
-    const html = this.html(id);
-    const head = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_POLICY}"><script>${BRIDGE}</script>`;
-    const at = /<head[^>]*>/i.exec(html) ?? /<!doctype[^>]*>/i.exec(html);
-    return at
-      ? html.slice(0, at.index + at[0].length) +
-          head +
-          html.slice(at.index + at[0].length)
-      : head + html;
+    const html = this.html(id).replace(/^\s*<!doctype[^>]*>/i, "");
+    return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${CONTENT_POLICY}"><script>${BRIDGE}</script>${html}`;
   }
 
   /** Answers a call of an artifact's `golem` runtime for a viewer who may open it. */

@@ -8,7 +8,7 @@ import {
 import { html, readText, redirect, rejectCrossOrigin } from "../app/web.ts";
 import { currentUser } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
-import type { Viewer } from "./artifacts.ts";
+import { CONTENT_POLICY, type Viewer } from "./artifacts.ts";
 import { artifactPage } from "./pages.ts";
 
 const VISITOR_COOKIE = "golem-visitor";
@@ -48,7 +48,7 @@ const linkContent: Handler = async (input) => {
     return new Response(input.app.artifacts.content(artifact.id), {
       headers: {
         "content-type": "text/html; charset=utf-8",
-        "content-security-policy": SANDBOX,
+        "content-security-policy": `${SANDBOX}; ${CONTENT_POLICY}`,
         "x-content-type-options": "nosniff",
         "cache-control": "no-store",
       },

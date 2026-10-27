@@ -305,7 +305,7 @@ test("a members artifact is only for members, and people delete its records, its
   ).toEqual({ id });
 });
 
-test("the runtime goes at the top of the head, and after the doctype of a page without one", () => {
+test("the content policy and the runtime start every page, before any of the agent's HTML", () => {
   const { artifacts } = golem.app;
   const make = (html: string) =>
     artifacts.create(thread, thread.channelId, {
@@ -313,19 +313,24 @@ test("the runtime goes at the top of the head, and after the doctype of a page w
       html,
       requestKey: crypto.randomUUID(),
     }).id;
-  const withHead = artifacts.content(make(POLL));
-  expect(withHead).toStartWith(
-    '<!doctype html><html><head><meta http-equiv="Content-Security-Policy"'
-  );
-  expect(withHead).toContain("connect-src 'none'");
-  expect(withHead).toContain("window.golem = golem");
-  expect(withHead).toEndWith(
-    '<title>Trip</title></head><body><button id="vote">15 Dec</button></body></html>'
-  );
-  expect(artifacts.content(make("<!DOCTYPE html><p>Hi</p>"))).toMatch(
-    /^<!DOCTYPE html><meta [^>]+><script>[\s\S]+<\/script><p>Hi<\/p>$/
-  );
-  expect(artifacts.content(make("<p>Hi</p>"))).toEndWith("</script><p>Hi</p>");
+  const start = '<!doctype html><meta http-equiv="Content-Security-Policy"';
+  for (const html of [
+    POLL,
+    "<!-- <head> --><script>x</script>",
+    "<header><head></header><p>Hi</p>",
+    "<!DOCTYPE html><p>Hi</p>",
+    "<p>Hi</p>",
+  ]) {
+    const page = artifacts.content(make(html));
+    expect(page).toStartWith(start);
+    expect(page.match(/<!doctype/gi)).toHaveLength(1);
+    expect(page).toContain("window.golem = golem");
+    expect(page).toEndWith(html.replace(/^<!doctype html>/i, ""));
+  }
+  const policy = artifacts.content(make("<p>Hi</p>"));
+  expect(policy).toContain("connect-src 'none'");
+  expect(policy).not.toMatch(/(img|media)-src[^;]*https/);
+  expect(policy).not.toMatch(/(script|style|font)-src[^;]*https:[ ;]/);
   expect(
     artifacts.create(thread, thread.channelId, {
       title: "Again",

@@ -259,10 +259,13 @@ An artifact is a page or a small app that an agent makes in a thread with its `a
 `artifacts_edit`, `artifacts_read`, `artifacts_list`, `artifacts_data`, and `artifacts_set_data` tools. It belongs to the
 thread's channel, or to a channel the agent names: every thread of the channel sees it, and it stays after the thread
 is settled. The orchestrator's belong to the workspace. `content` is the
-agent's HTML with Golem's `golem` runtime at the top of its head. The runtime sends each call as a message: to
-`window.webkit.messageHandlers.golem` in a web view, or else to the parent window. Its reply goes back through
-`window.__golemReceive({ golem: 1, id, result })`, or `{ golem: 1, id, error }`. The iOS app loads `content` with no
-base URL, and answers each message with `rpc`.
+agent's HTML with a content policy and Golem's `golem` runtime at the start of the page. The policy lets scripts,
+styles, and fonts come only from cdn.jsdelivr.net, unpkg.com, cdnjs.cloudflare.com, and Google Fonts, and pictures
+only from the page itself. The runtime sends each call as a message: to `window.webkit.messageHandlers.golem` in a
+web view, or else on a `MessagePort` that the link's page gives the frame at its first load. Its reply goes back
+through `window.__golemReceive({ golem: 1, id, result })`, or `{ golem: 1, id, error }`, or on the port. The iOS app
+loads `content` with no base URL, and answers each message of the main frame with `rpc`. It opens a link that a
+person taps in the browser, and nothing else replaces the page.
 
 The runtime the page calls:
 
@@ -283,7 +286,7 @@ The web app opens an artifact at its `url`, with no `/api` prefix:
 | Request | Response |
 | --- | --- |
 | `GET /a/:artifactId` | The page: a frame with the artifact. A public visitor without a session gets a `golem-visitor` cookie; the runtime keeps their data under its hash. A signed-out person goes to `/login?next=/a/:artifactId` for a members artifact. |
-| `GET /a/:artifactId/content` | `content`, with `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads`: it runs without the site's origin, so it cannot read Golem's cookies or call Golem |
+| `GET /a/:artifactId/content` | `content`, with `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads` and the page's content policy: it runs without the site's origin, so it cannot read Golem's cookies or call Golem, and it loads no pictures from other sites |
 | `POST /a/:artifactId/rpc` | `{ op, args }` → `{ result }`, as the session's user or the `golem-visitor` cookie's visitor. Only from Golem's own origin. |
 
 With `share_url` set, its host serves public artifacts at `/:artifactId`, `/:artifactId/content`, and
