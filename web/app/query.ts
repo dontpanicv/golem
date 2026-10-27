@@ -26,19 +26,19 @@ const persister = createAsyncStoragePersister({
   key: "golem",
 });
 
-/** The address of the app's script holds a hash of the whole build: a new build drops the copy of an older one. */
-const BUSTER =
-  document.querySelector<HTMLScriptElement>('script[type="module"]')?.src ?? "";
-
 /** Loads the saved copy, then saves every change to it. */
 export async function restoreCache(): Promise<void> {
+  // The address of the app's script holds a hash of the whole build: a new build drops the copy of an older one.
+  const buster =
+    document.querySelector<HTMLScriptElement>('script[type="module"]')?.src ??
+    "";
   await persistQueryClientRestore({
     queryClient,
     persister,
     maxAge: WEEK,
-    buster: BUSTER,
+    buster,
   }).catch(() => undefined);
-  persistQueryClientSubscribe({ queryClient, persister, buster: BUSTER });
+  persistQueryClientSubscribe({ queryClient, persister, buster });
 }
 
 /** The id of the person whose copy and outbox this browser keeps. */

@@ -4,6 +4,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { localPath } from "../accounts/login.tsx";
 import { fileHref } from "../app/api.ts";
 import { previewLink } from "../ui/file-preview.tsx";
 import { ThreadLink } from "./thread-link.tsx";
@@ -108,7 +109,7 @@ function MarkdownLink({
       </Link>
     );
   }
-  if (href?.startsWith("/")) {
+  if (localPath(href)) {
     return <a href={href}>{children}</a>;
   }
   return (

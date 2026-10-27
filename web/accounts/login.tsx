@@ -74,9 +74,13 @@ export async function signOut(): Promise<void> {
   location.assign("/login");
 }
 
-/** A path on this site, so that sign-in never sends anyone to another site. */
-function localPath(path: string | undefined): string | null {
-  return path?.startsWith("/") && !path.startsWith("//") && !path.includes("\\")
+/**
+ * A path on this site, or null, so that a link or a sign-in never sends anyone to another site. The browser's URL
+ * parser decides: it drops tabs and line breaks, and reads `\` as `/`, so `//host` and `/\host` are other sites.
+ */
+export function localPath(path: string | undefined): string | null {
+  return path?.startsWith("/") &&
+    new URL(path, "http://golem.invalid").host === "golem.invalid"
     ? path
     : null;
 }
