@@ -162,6 +162,8 @@ const SCRIPT_DEADLINE = 15 * 60_000;
 const MAX_HOPS = 2;
 /** How much of a file's text read_file gives the agent at once. */
 const MAX_READ_CHARACTERS = 100_000;
+const NAME_THREAD =
+  "Name the topic of the message that starts this conversation in two to five words, in the message's language, as a short title. Answer only with the title: no quotes and no full stop.";
 const FILE_NAME =
   /^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/;
 /** The search uri of a saved file: in a channel's `files/`, or in the workspace's own. */
@@ -288,6 +290,7 @@ export type ThreadRegistry = Pick<
   | "removeChannel"
   | "orchestratorOf"
   | "registerThread"
+  | "renameThread"
   | "requireMember"
   | "setChannelSummary"
   | "thread"
@@ -378,7 +381,10 @@ export class Threads {
     private readonly hooks: ThreadHooks
   ) {}
 
-  /** Starts a thread in a channel with its first message and files; the message, or else the first file, names it. */
+  /**
+   * Starts a thread in a channel with its first message and files. The message, or else the first file, names it at
+   * once; then the model names its topic.
+   */
   async create(
     workspaceId: string,
     user: User,
@@ -402,6 +408,7 @@ export class Threads {
       conversation,
       authored(user, message, attached)
     );
+    this.nameThread(thread.id, message);
     return thread;
   }
 
@@ -468,6 +475,27 @@ export class Threads {
       this.making.set(key, making);
     }
     return making;
+  }
+
+  /** Gives the thread the fast model's name for the topic of its first message, in the background; a failure keeps the name. */
+  private nameThread(threadId: string, message: string): void {
+    const fast = this.llm.llmProvider.fastModel;
+    if (!(message && fast)) {
+      return;
+    }
+    topicOf(
+      (systemPrompt, text) =>
+        this.llm.complete(systemPrompt, text, this.background.signal, fast),
+      message
+    )
+      .then((title) => {
+        if (title) {
+          this.registry.renameThread(threadId, title);
+        }
+      })
+      .catch((error: unknown) =>
+        console.error("naming a thread failed", error)
+      );
   }
 
   /** Starts a thread that an agent owns, such as the thread of a routine, without a first message. */
@@ -2000,7 +2028,10 @@ export class Threads {
           })
         ),
         title: Type.Optional(
-          Type.String({ description: "Default: the first line of the message" })
+          Type.String({
+            description:
+              "Two to five words that name its topic; default: the model names it from the message",
+          })
         ),
       }),
       // A rerun after a crash finds the thread and the message it made before.
@@ -2039,6 +2070,9 @@ export class Threads {
             conversationId: conversation.id,
             ownerId: null,
           };
+          if (!args.title) {
+            this.nameThread(id, args.message);
+          }
         }
         await this.deliver(
           workspaceId,
@@ -2985,6 +3019,15 @@ function threadLink(thread: {
   readonly title: string;
 }): string {
   return `[${thread.title.replace(/[[\]\n]/g, " ")}](thread:${thread.id})`;
+}
+
+/** The model's name for the topic of a thread's first message, a few words; empty when it gives none. */
+export async function topicOf(
+  complete: (systemPrompt: string, text: string) => Promise<string>,
+  message: string
+): Promise<string> {
+  const answer = await complete(NAME_THREAD, message);
+  return titleOf(answer.trim().replace(/^["'„“]+|["'“”.]+$/g, ""));
 }
 
 function titleOf(text: string): string {

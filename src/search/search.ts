@@ -217,7 +217,8 @@ export class Indexer {
           title: thread.title,
           threadId: thread.id,
           channelId: thread.channelId,
-          version: await this.threads.version(thread),
+          // A new name also indexes the thread again.
+          version: `${await this.threads.version(thread)}:${thread.title}`,
           updatedAt: thread.updatedAt,
         },
         async () => {

@@ -205,7 +205,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/orchestrator` | | `ThreadSummary` of the person's own orchestrator in the workspace; the first call makes it |
-| `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message and the title |
+| `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message, and its first line the title until the model names the topic in a few words |
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
 | `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |

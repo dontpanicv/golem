@@ -352,6 +352,12 @@ export class Workspaces {
       .get(workspaceId, personId) as (ThreadSummary & ThreadRef) | null;
   }
 
+  renameThread(threadId: string, title: string): void {
+    this.database
+      .query("UPDATE thread SET title = ? WHERE id = ?")
+      .run(title, threadId);
+  }
+
   /** Moves the thread up in its channel, after a new message. */
   touchThread(threadId: string): void {
     this.database

@@ -1,22 +1,13 @@
-import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
 import { HttpRouter } from "effect/http";
 import { checkRequirements, closeApp, createApp } from "./app/app.ts";
 import { routes } from "./app/http.ts";
 import { allRoutes } from "./app/routes.ts";
-import type { LlmProvider } from "./llm/llm.ts";
+import { chatGpt } from "./llm/chat-gpt.ts";
 import { readConfig } from "./platform/config.ts";
 import { reportRequirements } from "./platform/requirements.ts";
 import { LlamaEmbedder } from "./search/embedder.ts";
-
-/** ChatGPT through the Codex device login: one subscription for every workspace's agents. */
-const chatGpt: LlmProvider = {
-  provider: openaiCodexProvider(),
-  name: "ChatGPT",
-  defaultModel: "gpt-6.1-sol",
-  fastModel: "gpt-6-luna",
-};
 
 // Every file and folder Golem makes is for its own user only: the database, the uploads, the keys.
 process.umask(0o077);

@@ -27,7 +27,10 @@ export interface LlmProvider {
   /** Shown in settings, e.g. "ChatGPT". */
   readonly name: string;
   readonly provider: Provider;
-  /** The fast model that runs ChatGPT's web search; without one, agents have no web_search tool. */
+  /**
+   * The fast model that runs ChatGPT's web search and names new threads; without one, agents have no web_search tool
+   * and a thread keeps the first line of its message as its name.
+   */
   readonly fastModel?: string;
 }
 
@@ -232,15 +235,19 @@ export class Llm {
     return searchWeb({ baseUrl: model.baseUrl, model: model.id, token, query });
   }
 
-  /** The text answer of the chosen model at low effort, for background work such as summaries. Throws on a failed call. */
+  /**
+   * The text answer of a model, by default the chosen one, at low effort, for background work such as summaries.
+   * Throws on a failed call.
+   */
   async complete(
     systemPrompt: string,
     text: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    modelId = this.model()
   ): Promise<string> {
-    const model = this.find(this.model());
+    const model = this.find(modelId);
     if (!model) {
-      throw new Error(`Unknown model: ${this.model()}`);
+      throw new Error(`Unknown model: ${modelId}`);
     }
     const effort = clampThinkingLevel(model, "low");
     const answer = await this.models.completeSimple(

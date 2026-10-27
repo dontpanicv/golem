@@ -471,6 +471,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       workspaceId: string;
       conversationId: number;
       channelId: string;
+      title: string;
       ownerId: null;
     }
   >();
@@ -494,14 +495,12 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     },
     thread: (threadId: string) => ({
       ...registered.get(threadId)!,
-      title: "",
       updatedAt: 0,
       settledAt: null,
     }),
     threadsIn: () =>
       [...registered.values()].map((thread) => ({
         ...thread,
-        title: "",
         updatedAt: 0,
         settledAt: null,
       })),
@@ -521,6 +520,9 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     },
     setChannelSummary: () => undefined,
     touchThread: () => undefined,
+    renameThread: (threadId: string, title: string) => {
+      registered.set(threadId, { ...registered.get(threadId)!, title });
+    },
     agentMember: () => ({ id: "user-1", name: "Alice", email: "" }),
     members: () => [],
   };
@@ -591,6 +593,56 @@ describe("Threads with the Llm", () => {
         "Think harder",
         "Second",
       ]);
+    } finally {
+      await threads.closeAll();
+      await rm(dataDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("the fast model names a new thread for the topic of its first message", async () => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), "golem-llm-"));
+    const faux = twoModels();
+    const llm = new Llm(
+      database(),
+      Secrets.forTests(),
+      {
+        provider: faux.provider,
+        name: "Test",
+        defaultModel: "deep",
+        fastModel: "fast",
+      },
+      OWNER.email
+    );
+    const { threads, thread } = threadsOver(dataDirectory, llm);
+    const answer = (
+      _context: unknown,
+      _options: unknown,
+      _state: unknown,
+      model: { id: string }
+    ) =>
+      fauxAssistantMessage(
+        model.id === "fast" ? '"Saturday dinner plans."' : "Pasta"
+      );
+    faux.setResponses([answer, answer]);
+    try {
+      const { id, title } = await threads.create(
+        "family",
+        user,
+        "food",
+        "Could we cook something with the kids on Saturday evening?\nBob is back at six."
+      );
+      expect(title).toBe(
+        "Could we cook something with the kids on Saturday evening?"
+      );
+      const named = await until(
+        async () => thread(id),
+        (current) => current.title !== title
+      );
+      expect(named.title).toBe("Saturday dinner plans");
+      await until(
+        () => threads.messages(named),
+        (current) => current.messages.length === 2 && !current.running
+      );
     } finally {
       await threads.closeAll();
       await rm(dataDirectory, { recursive: true, force: true });
