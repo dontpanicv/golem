@@ -111,7 +111,7 @@ type SearchResult = {
 };
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; ownerName: string; createdAt: number };
-type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; credentials: Credential[] }; // secretLabel: for "secret"
+type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; address: boolean; credentials: Credential[] }; // secretLabel: for "secret"; address: the secret also needs the address of the person's own server
 type RoutineRun = {
 	id: string;
 	routineId: string;
@@ -329,7 +329,7 @@ Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the works
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET …/integrations` | | `Integration[]` |
-| `POST …/integrations/:integrationId/credentials` | `{ label, secret }` | `Credential`; `400` unless `connect` is `"secret"` |
+| `POST …/integrations/:integrationId/credentials` | `{ label, secret, address? }`; `address` when the integration has `address` | `Credential`; `400` unless `connect` is `"secret"` |
 | `POST …/integrations/:integrationId/connect` | `{ phone }` for `"phone"` | `{ url }`: the integration's sign-in page; `{ code }` for `"phone"` |
 | `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`; `400` when the address is not of the person's own sign-in of this place, the sign-in did not finish, or the number did not link within a minute |
 | `DELETE …/credentials/:credentialId` | | `204` |

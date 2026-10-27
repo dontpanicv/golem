@@ -24,7 +24,11 @@ export const integrationApiRoutes: readonly Route[] = (
           params.workspace ?? null,
           user,
           params.integration!,
-          { label: body.label as string, secret: body.secret as string }
+          {
+            label: body.label as string,
+            secret: body.secret as string,
+            address: body.address as string | undefined,
+          }
         )
       )
     ),

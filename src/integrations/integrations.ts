@@ -38,6 +38,8 @@ export interface Integration {
   readonly connect: "secret" | "sign-in" | "phone";
   /** The name of the secret, for `connect: "secret"`. */
   readonly secretLabel: string | null;
+  /** Whether a secret also needs the address of the person's own server, such as their Home Assistant's. */
+  readonly address: boolean;
 }
 
 /**
@@ -69,6 +71,11 @@ export interface Connector {
   readonly description: string;
   /** `null` for MCP servers, which people sign in to, and for a device. */
   readonly secretLabel: string | null;
+  /**
+   * Its secret also needs the address of the person's own server. The tools then get the secret as JSON
+   * `{ address, secret }`.
+   */
+  readonly address?: boolean;
   readonly tools: readonly ConnectorTool[];
   /** The addresses of its MCP servers, which give the tools; one sign-in serves them all. */
   readonly mcp?: readonly string[];
@@ -221,6 +228,7 @@ export class Integrations {
       name: connector.name,
       connect: connectionOf(connector),
       secretLabel: connector.secretLabel,
+      address: connector.address ?? false,
       credentials: credentials
         .filter((credential) => credential.integration === connector.id)
         .map(({ integration: _, ...credential }) => credential),
@@ -231,19 +239,22 @@ export class Integrations {
     place: Place,
     user: User,
     integrationId: string,
-    input: { label: string; secret: string }
+    input: { label: string; secret: string; address?: string }
   ): CredentialSummary {
     this.requireAccess(place, user);
     const connector = this.connector(integrationId);
     if (connector.mcp || connector.device) {
       throw new HttpError(400, "Connect it by signing in");
     }
+    const secret = required(input.secret, "Secret");
     return this.insertCredential(
       place,
       user,
       integrationId,
       required(input.label, "Label"),
-      required(input.secret, "Secret")
+      connector.address
+        ? JSON.stringify({ address: serverAddress(input.address), secret })
+        : secret
     );
   }
 
@@ -961,4 +972,13 @@ class GrantProvider implements OAuthClientProvider {
   codeVerifier(): string {
     return this.verifier;
   }
+}
+
+/** The address of a person's own server, such as `http://homeassistant.local:8123`. */
+function serverAddress(address: string | undefined): string {
+  const url = URL.parse(required(address, "Address"));
+  if (!(url && (url.protocol === "http:" || url.protocol === "https:"))) {
+    throw new HttpError(400, "Address must start with http:// or https://");
+  }
+  return url.href;
 }

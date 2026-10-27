@@ -144,6 +144,8 @@ export interface Integration {
   readonly connect: "secret" | "sign-in" | "phone";
   /** The name of the secret, for `connect: "secret"`. */
   readonly secretLabel: string | null;
+  /** Whether the secret also needs the address of the person's own server. */
+  readonly address: boolean;
   readonly credentials: readonly Credential[];
 }
 

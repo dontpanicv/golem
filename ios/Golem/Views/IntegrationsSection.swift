@@ -105,11 +105,18 @@ private struct CredentialForm: View {
     @Environment(\.dismiss) private var dismiss
     @State private var label = ""
     @State private var secret = ""
+    @State private var address = ""
     @State private var busy = false
 
     var body: some View {
         Dialog(title: "Add \(integration.name) credential") {
             GolemTextField("Label", text: $label, autofocus: true)
+            if integration.address {
+                GolemTextField("Address", text: $address)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
             GolemTextField(integration.secretLabel ?? "Secret", text: $secret, secure: true)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -117,7 +124,7 @@ private struct CredentialForm: View {
             Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
             Button("Add", action: save)
                 .buttonStyle(.golem(.primary, .large))
-                .disabled(busy || label.isEmpty || secret.isEmpty)
+                .disabled(busy || label.isEmpty || secret.isEmpty || (integration.address && address.isEmpty))
         }
     }
 
@@ -127,7 +134,7 @@ private struct CredentialForm: View {
             await session.run {
                 added(try await session.api.addCredential(
                     workspaceID: workspaceID, integrationID: integration.id,
-                    label: label, secret: secret
+                    label: label, secret: secret, address: integration.address ? address : nil
                 ))
                 session.show("Credential added", .success)
                 dismiss()

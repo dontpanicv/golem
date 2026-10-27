@@ -1,3 +1,4 @@
+import { homeAssistantConnector } from "./home-assistant.ts";
 import { instagramConnector } from "./instagram.ts";
 import type { Connector } from "./integrations.ts";
 import { whatsAppConnector } from "./whatsapp.ts";
@@ -11,27 +12,7 @@ export function integrationCatalog(
   wacli = Bun.which("wacli")
 ): readonly Connector[] {
   return [
-    {
-      id: "github",
-      name: "GitHub",
-      description: "Code, issues, and pull requests.",
-      secretLabel: "Personal access token",
-      tools: [],
-    },
-    {
-      id: "linear",
-      name: "Linear",
-      description: "Issues and projects.",
-      secretLabel: "API key",
-      tools: [],
-    },
-    {
-      id: "home-assistant",
-      name: "Home Assistant",
-      description: "The lights, devices, and sensors of the home.",
-      secretLabel: "Long-lived access token",
-      tools: [],
-    },
+    homeAssistantConnector(),
     {
       id: "rohlik",
       name: "Rohlík",

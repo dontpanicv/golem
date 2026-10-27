@@ -221,6 +221,8 @@ struct Integration: Codable, Hashable, Identifiable {
     let connect: Connection
     /// The name of the secret, for `.secret`.
     let secretLabel: String?
+    /// Whether the secret also needs the address of the person's own server.
+    let address: Bool
     var credentials: [Credential]
 
     enum Connection: String, Codable { case secret, signIn = "sign-in", phone }

@@ -50,6 +50,7 @@ export function IntegrationsSection({
         body: {
           label: String(input.form.get("label")),
           secret: String(input.form.get("secret")),
+          address: input.form.get("address") ?? undefined,
         },
       }),
     onSuccess: () => {
@@ -184,6 +185,16 @@ export function IntegrationsSection({
           placeholder="Family account"
           required
         />
+        {adding?.address === true && (
+          <TextField
+            autoComplete="off"
+            label="Address"
+            name="address"
+            placeholder="http://homeassistant.local:8123"
+            required
+            type="url"
+          />
+        )}
         <TextField
           autoComplete="off"
           label={adding?.secretLabel ?? "Secret"}

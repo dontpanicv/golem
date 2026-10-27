@@ -232,9 +232,13 @@ test("workspaces are isolated until someone adds you", async () => {
 test("credentials belong to the workspace, and secrets never leave the server", async () => {
   const base = `/api/v1/workspaces/${workspaceId}`;
   const credential = (await (
-    await call(`${base}/integrations/github/credentials`, {
+    await call(`${base}/integrations/home_assistant/credentials`, {
       token: alice,
-      body: { label: "Family", secret: "family-secret" },
+      body: {
+        label: "Family",
+        secret: "family-secret",
+        address: "http://home.local:8123",
+      },
     })
   ).json()) as any;
 

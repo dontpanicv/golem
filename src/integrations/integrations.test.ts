@@ -348,6 +348,49 @@ test("a turn uses its person's own credential, else the workspace's, in each of 
   expect(await token(workspaceId, alice.id)).toBe("family");
 });
 
+test("a secret of a connector with an address keeps its server's address", async () => {
+  const home = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      directory: join(golem.app.config.dataDirectory, "integrations"),
+      catalog: [
+        {
+          id: "home",
+          name: "Home",
+          description: "The home.",
+          secretLabel: "Token",
+          address: true,
+          tools: [
+            {
+              name: "home_secret",
+              description: "The secret a call gets",
+              parameters: Type.Object({}),
+              execute: async (_args, secret) => JSON.parse(secret),
+            },
+          ],
+        },
+      ],
+    }
+  );
+  const add = (address?: string) =>
+    home.addCredential(workspaceId, alice, "home", {
+      label: "Home",
+      secret: "token",
+      ...(address === undefined ? {} : { address }),
+    });
+  expect(() => add()).toThrow("Address is required");
+  expect(() => add("file:///etc")).toThrow("http:// or https://");
+  add("http://home.local:8123");
+  expect(home.list(workspaceId, alice)[0]!.address).toBe(true);
+  const [tool] = await home.tools(workspaceId);
+  expect(await tool!.execute({}, { userId: alice.id })).toEqual({
+    address: "http://home.local:8123/",
+    secret: "token",
+  });
+});
+
 test("a connector with Golem's own client signs in to all its servers at once, and hides the tools that send", async () => {
   const servers = ["/mcp", "/calendar"].map(
     (path) => new URL(path, signInServer.url).href

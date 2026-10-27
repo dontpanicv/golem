@@ -128,3 +128,17 @@ Agents read all the posts and reels that you saved, newest first, with the ids o
 one collection: the caption, the author, the place, and the pictures and videos. Instagram's web API gives no list of
 collections with their names. Agents do not save, like, or post. Instagram watches for many calls: read a large
 backlog in small steps.
+
+## Home Assistant
+
+Golem controls your home through the REST API of Home Assistant, with a long-lived access token of a Home Assistant
+user. The user must be an administrator, because Home Assistant renders templates only for administrators. The Golem
+machine must reach Home Assistant, for example over your VPN.
+
+1. In Home Assistant, open the profile of the user › **Security** › **Long-lived access tokens**, click
+   **Create token**, and copy it.
+2. In Settings, click **Add credential** on Home Assistant. Type the name of the home as the label, the address of
+   Home Assistant, such as `http://homeassistant.local:8123`, and paste the token.
+
+Agents read the states and history of entities, render templates, for example to find the entities of an area, and
+call services, such as turning on a light or setting a thermostat. They do not call `notify` services.
