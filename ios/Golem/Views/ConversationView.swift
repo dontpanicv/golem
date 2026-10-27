@@ -1,7 +1,9 @@
 import QuickLook
 import SwiftUI
 
-/// One thread. Loads its state, then follows the server-sent events until the view disappears.
+/// One thread, as a Slack thread: messages with their author's avatar, the working line over the composer, and the
+/// title capsule with the thread's menu. Loads its state, then follows the server-sent events until the view
+/// disappears.
 struct ConversationView: View {
     let threadID: String
     /// An artifact to open in the panel, as a search result does.
@@ -29,21 +31,21 @@ struct ConversationView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: Tokens.Space.xxl) {
-                if !isOrchestrator, let thread = state?.thread {
-                    DetailTitle(title: thread.title, caption: channelName.isEmpty ? nil : "# \(channelName)")
-                        .padding(.horizontal, Tokens.Space.xs)
+            LazyVStack(alignment: .leading, spacing: 0) {
+                let messages = state?.messages ?? []
+                ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                    let continued = index > 0 && MessageRow.continues(message, after: messages[index - 1])
+                    MessageRow(message: message, continued: continued, openFile: openFile)
+                        .padding(.top, continued ? Tokens.Space.xs : Tokens.Space.lg)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                ForEach(state?.messages ?? []) { MessageRow(message: $0, openFile: openFile) }
             }
-            .padding(.horizontal, Tokens.Space.lg)
-            .padding(.vertical, Tokens.Space.md)
+            .padding(.horizontal, Tokens.Mobile.Size.margin)
+            .padding(.bottom, Tokens.Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.snappy, value: state?.messages.count)
         }
         .scrollDismissesKeyboard(.interactively)
-        .onScrollPhaseChange { _, phase in
-            if phase == .interacting { tabBar?.expanded = false }
-        }
         .overlay {
             if let state {
                 if state.messages.isEmpty { EmptyState(title: "Ask Golem anything", systemImage: "sparkles") }
@@ -54,6 +56,8 @@ struct ConversationView: View {
             }
         }
         .defaultScrollAnchor(.bottom)
+        // New words and messages keep the newest in view.
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .safeAreaBar(edge: .bottom) {
             bottomBar
         }
@@ -74,24 +78,42 @@ struct ConversationView: View {
                 .inspectorColumnWidth(Tokens.Size.artifacts)
         }
         // After the inspector: in a navigation stack, a title and toolbar set before it do not show.
-        .modifier(ConversationTitle(isOrchestrator: isOrchestrator, title: state?.thread.title ?? ""))
+        .pushedScreen(isOrchestrator ? "Golem" : state?.thread.title ?? "")
         .toolbar {
-            if !isOrchestrator {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(state?.thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
-                           systemImage: state?.thread.settledAt == nil ? "checkmark" : "tray") {
-                        guard let thread = state?.thread else { return }
-                        Task {
-                            await session.run {
-                                try await session.setThreadSettled(threadID: threadID, settled: thread.settledAt == nil)
-                                open(.channel(thread.channelId))
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    Button("Files and artifacts", systemImage: "sidebar.right") { showArtifacts = true }
+                    if !isOrchestrator, let thread = state?.thread {
+                        Button("Open #\(channelName)", systemImage: "number") { open(.channel(thread.channelId)) }
+                        Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
+                               systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
+                            Task {
+                                await session.run {
+                                    try await session.setThreadSettled(
+                                        threadID: threadID, settled: thread.settledAt == nil
+                                    )
+                                }
                             }
                         }
                     }
+                } label: {
+                    if isOrchestrator {
+                        HStack(spacing: Tokens.Space.sm) {
+                            Avatar(name: "Golem", agent: true)
+                            HeaderTitle(title: "Golem", caption: state?.running == true ? "Working" : nil)
+                        }
+                        .padding(.leading, Tokens.Space.sm)
+                    } else {
+                        HeaderTitle(
+                            title: state?.thread.title ?? "", caption: channelName.isEmpty ? nil : "# \(channelName)"
+                        )
+                    }
                 }
+                .accessibilityHint("Shows the thread's menu")
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button("Artifacts", systemImage: "sidebar.right") { showArtifacts.toggle() }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Talk with Golem", systemImage: "waveform", action: startTalk)
+                    .disabled(talk.isOn && talk.thread == threadID)
             }
         }
         .quickLookPreview($preview)
@@ -113,36 +135,36 @@ struct ConversationView: View {
         (state?.approvals ?? []).filter { $0.approverId == nil || $0.approverId == session.user?.id }
     }
 
-    /// The approvals and the running state above the composer row; a conversation takes the composer's place.
+    /// The approvals and the working line over the composer; a conversation takes the composer's place.
     private var bottomBar: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.md) {
-            ForEach(approvals) { approval in
-                ApprovalCard(approval: approval, threadID: threadID).composerPadding(bottom: false)
-            }
-            if state?.running == true {
-                HStack(spacing: Tokens.Space.md) {
-                    Badge(label: "Running", tone: .accent)
-                    Button("Stop", systemImage: "stop.fill") {
-                        Task { await session.run { try await session.api.stopThread(threadID) } }
-                    }
-                    .buttonStyle(.golem(.secondary, .tiny))
+        ComposerRow {
+            VStack(alignment: .leading, spacing: Tokens.Space.sm) {
+                ForEach(approvals) { approval in
+                    ApprovalCard(approval: approval, threadID: threadID)
                 }
-                .composerPadding(bottom: false)
-            }
-            if talk.isOn, talk.thread == threadID {
-                TalkDock(talk: talk).composerPadding()
-            } else {
-                ComposerRow {
+                if state?.running == true {
+                    HStack {
+                        WorkingLabel()
+                        Spacer()
+                        Button("Stop", systemImage: "stop.fill") {
+                            Task { await session.run { try await session.api.stopThread(threadID) } }
+                        }
+                        .buttonStyle(.golem(.secondary, .tiny))
+                    }
+                    .padding(.horizontal, Tokens.Space.xs)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                if talk.isOn, talk.thread == threadID {
+                    TalkDock(talk: talk).transition(.opacity.combined(with: .scale(scale: 0.95)))
+                } else {
                     Composer(
-                        owner: threadID, placeholder: isOrchestrator ? "Message Golem" : "Message \(channelName)",
+                        owner: threadID, placeholder: isOrchestrator ? "Message Golem" : "Reply",
                         draft: $draft, files: $files, sending: sending, send: send
                     )
-                    GlassCircleButton(
-                        label: "Talk with Golem", systemImage: "waveform", size: Tokens.Mobile.Size.voice,
-                        action: startTalk
-                    )
                 }
             }
+            .animation(.snappy, value: state?.running)
+            .animation(.snappy, value: talk.isOn)
         }
     }
 
@@ -230,15 +252,5 @@ private struct ApprovalCard: View {
             }
             busy = false
         }
-    }
-}
-
-/// The orchestrator is a tab's first screen, titled Golem; a thread is pushed and shows its title in the content.
-private struct ConversationTitle: ViewModifier {
-    let isOrchestrator: Bool
-    let title: String
-
-    func body(content: Content) -> some View {
-        if isOrchestrator { content.screenTitle("Golem") } else { content.pushedScreen(title) }
     }
 }

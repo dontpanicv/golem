@@ -266,42 +266,59 @@ Used by the workspace switcher and action menus.
 
 ## iOS
 
-Measured from Linear's iOS app on an iPhone 17 Pro Max in both themes; colors and sizes are the `mobile` tokens.
-The phone's text was one step below the default size, so the font sizes are the measured ones × 17/16; Inter scales
-with Dynamic Type. iPad keeps the sidebar with the same screens.
+The look is measured from Linear's iOS app on an iPhone 17 Pro Max in both themes; colors and sizes are the `mobile`
+tokens. The layout and navigation follow Slack's iOS app, as Golem's channels and threads are Slack's. The phone's text
+was one step below the default size, so the font sizes are the measured ones × 17/16; Inter scales with Dynamic Type.
+iPad keeps the sidebar with the same screens.
 
 - Page: `background` (white, #0d0d0d dark). Text: `title` for screen titles, `text` for rows and messages,
   `textSecondary` for unselected pills and icons, `textTertiary` for captions, `textQuaternary` for section titles and
   chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
-- Tab bar: our own, not the system's. A 320 × 56 glass capsule 28 pt from the left and 24 pt above the bottom of the
-  screen; Golem, Channels, and Search tabs 48 high in it, inset 4, the open one on a `tabSelected` capsule; icons only,
-  19 pt, `title`. The fourth slot is the More chevron, 54 wide; after a screen is picked from the menu it shows that
-  screen's icon and a small chevron, 78 wide. A 48 pt glass circle 12 pt to its side starts a conversation with Golem.
-- More menu: a 320 wide glass card, radius 36, level with the bar: the workspace switcher (a native menu) on a 66 pt
-  row, a hairline, then Golem, Channels, Search, Inbox, Workspace settings, and Settings as 45 pt rows with 17 pt `medium`
-  text and 21 pt icons; the open screen sits on a `menuSelected` capsule. A tap outside closes it.
-- Screen title: in the navigation bar at its leading edge, 12 pt from the screen edge, level with the 44 pt glass
-  buttons at the trailing edge; `fontSize.title` `semibold`. Pushed screens show the round glass back button and put
-  their title at the top of the content: `fontSize.detailTitle` `semibold` `text`, with a `caption` above (the channel
-  of a thread).
+- Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt glass capsule 20 pt
+  from the screen edges and 24 pt above the bottom: Home, Golem, Activity, and Search, each an 18 pt icon over its
+  `tabLabel` name; the open one is `title` on a `tabSelected` capsule that slides to the tab tapped, the others
+  `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
+  screen. The keyboard covers the bar.
+- Tabs keep their own stacks and fade into each other in 200 ms. Golem, Activity, and Search open in their tabs; a
+  channel or a thread opens on the open tab's stack. Settings and Workspace settings open as sheets with a close
+  button.
+- Home: as Slack's. The workspace's avatar and name at the leading edge open the workspace panel; the person's avatar
+  at the trailing edge opens a native menu with Settings and Workspace settings. Open threads, newest first, with their
+  channel under the title, then the channels with their count of open threads and Add channel, in sections whose title
+  folds them. A 48 pt accent glass circle over the bar opens a native menu: New thread in a channel, or New channel.
+- Workspace panel: as Slack's. It slides in from the leading edge, up to 340 wide with radius 36 at the trailing
+  corners, over a 40 % black dim: Workspaces in `fontSize.detailTitle`, the workspaces with the open one on a
+  `menuSelected` fill, a hairline, then New workspace, Workspace settings, and Settings. A tap on the dim or a swipe
+  back closes it.
+- Screen title: top-level screens put it in the navigation bar at its leading edge, 12 pt from the screen edge, level
+  with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Channels and threads show the round
+  glass back button and a title capsule beside it, as Slack's: the title in `fontSize.row` `semibold` over a `caption`
+  (the count of open threads, or the thread's channel). The capsule opens the screen's native menu.
 - Pills: 34 high, padding 12, 7 apart, from 12 pt; the selected one is glass with `text`, the others plain
   `textSecondary`; a count in `textQuaternary` 8 pt after the title.
 - Lists: rows 46 pt apart, 10 pt in from the screen with their content 10 pt further in, a 21 pt wide icon, the title in
-  `fontSize.row` `book`. A section title is `fontSize.small` `textQuaternary` 20 pt in, with an add button at the right.
-  Channels lists each channel as a section of its threads; its title opens the channel.
-- Conversation: as Linear's Agent chat. A person's message is a full-width `fill` bubble, radius 24, text 12 pt in;
-  Golem's reply is plain text level with it. Author and time sit above in `fontSize.small`. Text is `fontSize.body`
-  with inline Markdown; links take the accent.
-- Composer row: as Linear's issue screen. The open tab as a 48 pt glass circle, the composer, and on threads the
-  48 pt voice circle; 28 pt from the screen edges, 24 pt above the bottom. The tab circle brings the whole bar back
-  until the screen scrolls. The composer is a glass field, radius 24: add (+), the text, the mic, and the send button
-  once there is something to send. Content fades under the glass bars at the top and bottom.
-- Search: as Linear's. The field sits in the composer row between the open tab and the voice button and does not take
-  focus by itself; before a query the screen lists the channels. The tab button also closes the keyboard.
+  `fontSize.row` `book`. A row lights up on a `fill` rounded rectangle under a finger at once and fades in 150 ms. A
+  folding section title is `fontSize.small` `medium` `textSecondary` 20 pt in, with a chevron that turns.
+- Channel: as a Slack channel. Its open threads read as messages, the newest at the bottom over the composer: a 36 pt
+  `fill` tile with an icon, the title in `fontSize.body`, then "View thread" in the accent, or the working line, and
+  the time. Settled threads fold above them. Sending from the composer starts a thread.
+- Conversation: as a Slack thread. Each message has the author's 36 pt avatar at the side, the name in `fontSize.row`
+  `semibold` and the time in `caption` over the text; a message of the same author within five minutes shows only its
+  text. Text is `fontSize.body` with inline Markdown; links take the accent. New messages slide up and fade in, and
+  the newest stays in view. While Golem works, the working line sits over the composer: three accent dots that light
+  in turn, "Golem is working", and Stop. The round voice button is in the bar at the trailing edge.
+- Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it
+  shows. The composer is a glass field, radius 24: add (+), the text, the mic, and the send button once there is
+  something to send. Content fades under the glass bars at the top and bottom. Dragging the content closes the
+  keyboard.
+- Activity: as Slack's. All and Unread pills; each notification has Golem's avatar, its title and the time, "in #"
+  and the channel, two lines of text, and an accent dot while unread.
+- Search: as Slack's. The field sits at the top under the title; before a query the screen lists Golem and the
+  channels. Scrolling closes the keyboard.
 - Artifacts: a sheet on iPhone with Artifacts and Files pills and a glass close button; an open artifact has a glass
   back button. Each screen keeps its own panel.
-- Channels: a section's add button opens the channel with its composer focused. Dragging a conversation closes the
-  keyboard; the composer row stays 8 pt above the keyboard.
+- Motion: springs (`snappy`) for the tab selection, folding, the panel, and new rows; native menus and pushes keep the
+  system's own.
 - Settings: flat groups on the page, no cards: a section title, rows 43 high with the label 20 pt in and the value at
   the right; a select is the value and an up-and-down chevron opening a native menu. Sign out is a `danger` row with
   its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.

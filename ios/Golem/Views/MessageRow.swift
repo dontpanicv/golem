@@ -1,40 +1,51 @@
 import SwiftUI
 
-/// One message, as Linear's Agent chat shows it: a person's text in a full-width bubble, the agent's as plain text
-/// level with it. The author and time sit above, as a thread can have several people.
+/// One message, as Slack shows it: the author's avatar at the side, their name and the time over the text. A message
+/// that follows one of the same author within five minutes shows only its text (``continues(_:after:)``).
 struct MessageRow: View {
     let message: Message
+    var continued = false
     let openFile: (FileRef) -> Void
     @Environment(Session.self) private var session
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.sm) {
-            HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.sm) {
-                Text(message.author)
-                    .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium))
-                    .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
-                Text(Date(milliseconds: message.time), format: .dateTime.hour().minute())
-                    .font(.golem(Tokens.Mobile.FontSize.small))
-                    .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+        HStack(alignment: .top, spacing: Tokens.Space.lg) {
+            if continued {
+                Color.clear.frame(width: Tokens.Mobile.Size.avatar, height: 1)
+            } else {
+                Avatar(name: message.author, agent: message.agent, size: Tokens.Mobile.Size.avatar)
             }
-            .padding(.horizontal, Tokens.Space.lg)
-            if let work = message.work { WorkLog(work: work).padding(.horizontal, Tokens.Space.lg) }
-            if !message.text.isEmpty {
-                Text(Self.linked(message.text, working: session.working))
-                    .font(.golem(Tokens.Mobile.FontSize.body))
-                    .foregroundStyle(message.failed ? Tokens.Mobile.Colors.danger : Tokens.Mobile.Colors.text)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Tokens.Space.lg)
-                    .padding(.vertical, message.agent ? 0 : 13)
-                    .background(message.agent ? .clear : Tokens.Mobile.Colors.fill, in: .rect(cornerRadius: 24))
-            }
-            if !message.files.isEmpty {
-                FileChips(names: message.files.map(\.name)) { openFile(message.files[$0]) }
-                    .padding(.horizontal, Tokens.Space.lg)
+            VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                if !continued {
+                    HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.sm) {
+                        Text(message.author)
+                            .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.semibold))
+                            .foregroundStyle(Tokens.Mobile.Colors.title)
+                        Text(Date(milliseconds: message.time), format: .dateTime.hour().minute())
+                            .font(.golem(Tokens.Mobile.FontSize.caption))
+                            .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+                    }
+                }
+                if let work = message.work { WorkLog(work: work) }
+                if !message.text.isEmpty {
+                    Text(Self.linked(message.text, working: session.working))
+                        .font(.golem(Tokens.Mobile.FontSize.body))
+                        .foregroundStyle(message.failed ? Tokens.Mobile.Colors.danger : Tokens.Mobile.Colors.text)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !message.files.isEmpty {
+                    FileChips(names: message.files.map(\.name)) { openFile(message.files[$0]) }
+                }
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    /// The message follows one of the same author within five minutes, and has no work log to head.
+    static func continues(_ message: Message, after previous: Message) -> Bool {
+        message.author == previous.author && message.agent == previous.agent && message.work == nil
+            && message.time - previous.time < 5 * 60 * 1000
     }
 
     /// The text with its inline Markdown (bold, italics, code, links) and each thread link the agent wrote,
@@ -80,7 +91,7 @@ struct WorkLog: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.xs) {
             Button {
-                chosen = !open
+                withAnimation(.snappy) { chosen = !open }
             } label: {
                 HStack(spacing: Tokens.Space.xs) {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -170,7 +181,7 @@ struct WorkGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.xs) {
             Button {
-                chosen = !open
+                withAnimation(.snappy) { chosen = !open }
             } label: {
                 HStack(spacing: Tokens.Space.sm) {
                     Text(WorkLog.toolName(steps[0].tool))
@@ -204,7 +215,7 @@ struct WorkStep: View {
         switch step.kind {
         case "tool":
             VStack(alignment: .leading, spacing: Tokens.Space.xs) {
-                Button { open.toggle() } label: {
+                Button { withAnimation(.snappy) { open.toggle() } } label: {
                     HStack(spacing: Tokens.Space.sm) {
                         if step.running { ProgressView().controlSize(.mini) }
                         Text(WorkLog.toolName(step.tool))

@@ -1,24 +1,27 @@
 import QuickLook
 import SwiftUI
 
-/// Searches the open workspace, never another; results update as you type, like the web search page.
+/// Searches the open workspace, never another, from a field at the top as Slack's search; results update as you
+/// type, like the web search page. Before a query it lists the places to go.
 struct SearchView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var query = ""
     @State private var response: SearchResponse?
     @State private var preview: URL?
-    @Environment(\.phoneTabBar) private var tabBar
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    // As Linear's search before a query: places to go.
+                    if let orchestrator = session.orchestrator {
+                        Button { open(.thread(orchestrator.id)) } label: { ListRow("Golem", systemImage: "sparkles") }
+                            .buttonStyle(.row)
+                    }
                     ListSectionHeader(title: "Channels")
                     ForEach(session.channels) { channel in
                         Button { open(.channel(channel.id)) } label: { ListRow(channel.name, systemImage: "number") }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.row)
                     }
                 } else {
                     if let response, !response.semantic {
@@ -33,9 +36,10 @@ struct SearchView: View {
                             let channel = session.channels.first { $0.id == result.channelId }
                             SearchRow(result: result, channel: channel?.name)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.row)
                         .disabled(!opens(result))
                         .padding(.horizontal, 10)
+                        .transition(.opacity)
                     }
                 }
             }
@@ -45,19 +49,14 @@ struct SearchView: View {
                 EmptyState(title: "Nothing found", systemImage: "magnifyingglass")
             }
         }
-        .scrollDismissesKeyboard(.interactively)
-        // The field sits at the bottom between the open tab and the voice button, as Linear's search field does.
-        .safeAreaBar(edge: .bottom) {
-            ComposerRow {
-                SearchField(placeholder: "Search \(session.workspace?.name ?? "")", text: $query)
-                if let tabBar {
-                    GlassCircleButton(
-                        label: "Talk with Golem", systemImage: "waveform", size: Tokens.Mobile.Size.voice,
-                        action: { tabBar.select(.talk) }
-                    )
-                }
-            }
-        }
+        .animation(.snappy, value: response?.results.map(\.id))
+        .scrollDismissesKeyboard(.immediately)
+        .searchable(
+            text: $query, placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search \(session.workspace?.name ?? "")"
+        )
+        .autocorrectionDisabled()
+        .phoneTabBar()
         .mobileBackground()
         .quickLookPreview($preview)
         .screenTitle("Search")
@@ -144,24 +143,5 @@ private struct SearchRow: View {
         case (_, "capture"): "tray"
         default: "doc"
         }
-    }
-}
-
-/// A search field in a glass capsule, 48 pt high as the composer.
-private struct SearchField: View {
-    let placeholder: String
-    @Binding var text: String
-
-    var body: some View {
-        TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(Tokens.Mobile.Colors.placeholder))
-            .font(.golem(Tokens.Mobile.FontSize.body))
-            .foregroundStyle(Tokens.Mobile.Colors.text)
-            .tint(Tokens.Colors.accent)
-            .submitLabel(.search)
-            .autocorrectionDisabled()
-            .accessibilityLabel(placeholder)
-            .padding(.horizontal, Tokens.Mobile.Size.margin)
-        .frame(height: Tokens.Mobile.Size.voice)
-        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }

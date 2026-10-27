@@ -1,53 +1,25 @@
 import PhotosUI
 import SwiftUI
 
-/// The bottom of a screen with a composer on iPhone, as Linear's issue screen: the open tab as a round button, then
-/// the content (the composer, and the voice button after it). The tab button brings the whole bar back until the screen
-/// scrolls. Without the phone tab bar (iPad) only the content shows.
+/// The bottom of a screen with a composer, as Slack's: on iPhone the composer sits over the tab bar, and over the
+/// keyboard while it shows. Without the phone tab bar (iPad) only the composer shows.
 struct ComposerRow<Content: View>: View {
     @ViewBuilder let content: Content
     @Environment(\.phoneTabBar) private var tabBar
 
     var body: some View {
-        if let tabBar, tabBar.expanded {
-            FloatingTabBar(bar: tabBar)
-        } else {
-            HStack(alignment: .bottom, spacing: Tokens.Space.md) {
-                if let tabBar {
-                    GlassCircleButton(label: "Show tabs", systemImage: tabBar.icon, size: Tokens.Mobile.Size.voice) {
-                        tabBar.expanded = true
-                    }
-                }
-                content
-            }
-            .composerPadding()
+        VStack(spacing: 0) {
+            HStack(alignment: .bottom, spacing: Tokens.Space.md) { content }
+                .padding(.horizontal, tabBar == nil ? Tokens.Space.lg : Tokens.Mobile.Size.margin)
+                .padding(.bottom, bottomPadding)
+            if let tabBar, !tabBar.keyboard { Color.clear.frame(height: PhoneTabBar.room) }
         }
     }
-}
 
-extension View {
-    /// The margins of the composer row: the bar's on iPhone, and at the bottom 24 pt above the edge of the screen.
-    func composerPadding(bottom: Bool = true) -> some View { modifier(ComposerPadding(bottom: bottom)) }
-}
-
-private struct ComposerPadding: ViewModifier {
-    let bottom: Bool
-    @Environment(\.phoneTabBar) private var tabBar
-    /// The bottom safe area: the home indicator, or the keyboard while it shows.
-    @State private var safeBottom: CGFloat = 0
-
-    func body(content: Content) -> some View {
-        content
-            .padding(.horizontal, tabBar == nil ? Tokens.Space.lg : Tokens.Mobile.Size.barMargin)
-            .padding(.bottom, bottom ? bottomPadding : 0)
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { safeBottom = $0 }
-    }
-
-    /// Into the home indicator's area as Linear's bar, but clear of the keyboard.
+    /// On iPhone 8 pt over the keyboard, else none, as the bar's room holds the gap.
     private var bottomPadding: CGFloat {
-        guard tabBar != nil else { return Tokens.Space.xs }
-        let keyboard = safeBottom > Tokens.Mobile.Size.homeIndicator + 1
-        return keyboard ? Tokens.Space.md : Tokens.Mobile.Size.tabBarBottom - Tokens.Mobile.Size.homeIndicator
+        guard let tabBar else { return Tokens.Space.xs }
+        return tabBar.keyboard ? Tokens.Space.md : 0
     }
 }
 

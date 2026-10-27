@@ -50,7 +50,7 @@ private struct LoadingView: View {
     }
 }
 
-enum Destination: Hashable {
+enum Destination: Hashable, Identifiable {
     case search
     case channel(String)
     /// A channel with its composer focused, to start a thread.
@@ -62,6 +62,8 @@ enum Destination: Hashable {
     case inbox
     case workspaceSettings
     case settings
+
+    var id: Self { self }
 
     /// What `MainView` remembers, so the app opens on the last channel or thread.
     var key: String? {

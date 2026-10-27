@@ -1,7 +1,9 @@
 import SwiftUI
 
-// The building blocks of the iPhone screens, measured from Linear's iOS app: a title in the navigation bar beside
-// its glass buttons, pills, flat list sections with hairlines between groups, and round glass buttons.
+// The building blocks of the iPhone screens. They keep the look measured from Linear's iOS app (a title in the
+// navigation bar beside its glass buttons, pills, flat list sections with hairlines between groups, and round glass
+// buttons) in the layout of Slack's iOS app (folding sections, a title capsule in the bar, and rows that light up
+// under a finger).
 
 extension View {
     /// The screen's title at the leading edge of the navigation bar, level with its glass buttons, as Linear's
@@ -191,7 +193,7 @@ struct ListSeparator: View {
     }
 }
 
-/// A round glass button with a symbol: the sheet's close and send buttons, and the voice button beside the composer.
+/// A round glass button with a symbol: the close buttons of sheets and the buttons of the artifacts panel.
 struct GlassCircleButton: View {
     let label: String
     let systemImage: String
@@ -210,5 +212,103 @@ struct GlassCircleButton: View {
         .buttonStyle(.plain)
         .glassEffect(tint.map { .regular.tint($0).interactive() } ?? .regular.interactive(), in: .circle)
         .accessibilityLabel(label)
+    }
+}
+
+/// A row that lights up while a finger is on it: at once, then it fades out in 150 ms, as Linear's hover does.
+struct RowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                RoundedRectangle(cornerRadius: Tokens.Radius.xl)
+                    .fill(configuration.isPressed ? Tokens.Mobile.Colors.fill : .clear)
+                    .padding(.horizontal, 10)
+            }
+            .animation(
+                configuration.isPressed ? nil : Tokens.Easing.ease(Tokens.Duration.fast), value: configuration.isPressed
+            )
+    }
+}
+
+extension ButtonStyle where Self == RowButtonStyle {
+    static var row: RowButtonStyle { RowButtonStyle() }
+}
+
+/// A list section whose heading folds it, as Slack's Home sections: the chevron turns and the rows slide away.
+struct FoldingSection<Content: View>: View {
+    let title: String
+    @Binding var folded: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy) { folded.toggle() }
+            } label: {
+                HStack {
+                    Text(title)
+                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium))
+                        .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+                        .rotationEffect(.degrees(folded ? -90 : 0))
+                }
+                .padding(.horizontal, Tokens.Mobile.Size.margin)
+                .frame(minHeight: Tokens.Size.listRow)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(folded ? "Folded" : "Open")
+            if !folded {
+                VStack(alignment: .leading, spacing: 0) { content }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .clipped()
+    }
+}
+
+/// The title of a screen in a glass capsule beside the back button, as Slack's channel header: the title over a
+/// small caption. The caller wraps it in the screen's menu.
+struct HeaderTitle: View {
+    let title: String
+    var caption: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.semibold))
+                .foregroundStyle(Tokens.Mobile.Colors.title)
+            if let caption {
+                Text(caption)
+                    .font(.golem(Tokens.Mobile.FontSize.caption, Tokens.FontWeight.book))
+                    .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                    .contentTransition(.opacity)
+            }
+        }
+        .lineLimit(1)
+        .padding(.horizontal, Tokens.Space.sm)
+        .frame(maxWidth: 220, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Golem at work, as Slack's typing line: three dots that light in turn, then the words.
+struct WorkingLabel: View {
+    var text = "Golem is working"
+
+    var body: some View {
+        HStack(spacing: Tokens.Space.sm) {
+            Image(systemName: "ellipsis")
+                .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
+                .foregroundStyle(Tokens.Colors.accent)
+            Text(text)
+        }
+        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
+        .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
     }
 }

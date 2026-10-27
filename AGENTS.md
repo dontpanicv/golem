@@ -89,8 +89,8 @@ addresses, or code and data from employers or clients.
   `web/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Each platform keeps the look of
   Linear's app on it.
 - `design/components.md` is the spec for every component, measured from Linear's web and iOS apps. The web never uses a
-  native select, picker, menu, toggle, or alert; menus, selects, and tooltips are Radix primitives in `web/ui/`. iOS follows Linear's iOS app:
-  native menus, the system glass, and the `mobile` tokens.
+  native select, picker, menu, toggle, or alert; menus, selects, and tooltips are Radix primitives in `web/ui/`. iOS keeps the look of Linear's iOS app
+  (native menus, the system glass, and the `mobile` tokens) in the navigation of Slack's iOS app.
 - iOS controls keep 44 pt touch targets where the web uses 28 px rows.
 
 ## Code Conventions

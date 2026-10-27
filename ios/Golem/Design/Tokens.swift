@@ -140,6 +140,7 @@ enum Tokens {
 		}
 
 		enum FontSize {
+			static let tabLabel: CGFloat = 10
 			static let caption: CGFloat = 12
 			static let small: CGFloat = 14
 			static let row: CGFloat = 15.5
@@ -155,14 +156,12 @@ enum Tokens {
 			static let header: CGFloat = 44
 			static let pill: CGFloat = 34
 			static let row: CGFloat = 46
-			static let tabBarWidth: CGFloat = 320
 			static let tabBar: CGFloat = 56
 			static let tabBarBottom: CGFloat = 24
 			static let voice: CGFloat = 48
-			static let menuRow: CGFloat = 45
 			static let settingsRow: CGFloat = 43
 			static let homeIndicator: CGFloat = 34
-			static let barMargin: CGFloat = 28
+			static let avatar: CGFloat = 36
 		}
 	}
 
