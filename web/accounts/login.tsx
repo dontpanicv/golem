@@ -1,5 +1,6 @@
 import { getRouteApi } from "@tanstack/react-router";
 import { type SubmitEvent, useEffect, useState } from "react";
+import { markSignedOut } from "../app/api.ts";
 import { clearCache } from "../app/query.ts";
 import { Avatar, Button } from "../ui/components.tsx";
 import { showToast } from "../ui/toast.tsx";
@@ -31,6 +32,8 @@ export function LoginPage() {
       message?: string;
     } | null;
     if (response.ok && body?.url) {
+      // Another person may sign in here, so the saved copy and the outbox wait until Golem says who it is.
+      markSignedOut();
       location.assign(body.url);
       return;
     }

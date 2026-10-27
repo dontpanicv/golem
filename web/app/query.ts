@@ -6,6 +6,7 @@ import {
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { del, get, set } from "idb-keyval";
 import { showError } from "../ui/toast.tsx";
+import { SIGNED_OUT } from "./api.ts";
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 
@@ -38,6 +39,33 @@ export async function restoreCache(): Promise<void> {
     buster: BUSTER,
   }).catch(() => undefined);
   persistQueryClientSubscribe({ queryClient, persister, buster: BUSTER });
+}
+
+/** The id of the person whose copy and outbox this browser keeps. */
+const PERSON = "golem-person";
+
+/**
+ * After a session ended or a sign-in started, asks Golem whose session this is. The same person keeps the copy and the
+ * outbox, which sends again; for another person, the browser forgets both first. Signed out or offline, it waits.
+ */
+export async function confirmPerson(): Promise<void> {
+  if (localStorage.getItem(SIGNED_OUT) === null) {
+    return;
+  }
+  const response = await fetch("/api/v1/me").catch(() => null);
+  if (!response?.ok) {
+    return;
+  }
+  const { user } = (await response.json()) as { user: { id: string } };
+  // A copy from before this tag has the person it showed; a copy of nobody known is forgotten.
+  const owner =
+    localStorage.getItem(PERSON) ??
+    queryClient.getQueryData<{ user: { id: string } }>(["me"])?.user.id;
+  if (owner !== user.id) {
+    await clearCache();
+  }
+  localStorage.setItem(PERSON, user.id);
+  localStorage.removeItem(SIGNED_OUT);
 }
 
 /** Forgets everything, as at sign-out: another person may use this browser next. */

@@ -17,7 +17,8 @@ export interface RequestOptions {
 }
 
 /**
- * Calls `/api/v1<path>`. A `401` sends the person to sign in; other errors throw with the server's message.
+ * Calls `/api/v1<path>`. A `401` keeps what the browser saved, stops the outbox, and sends the person to sign in;
+ * other errors throw with the server's message.
  *
  * @example
  * const { user, workspaces } = await request<Me>("/me");
@@ -37,6 +38,7 @@ export async function request<T>(
     signal: options.signal,
   });
   if (response.status === 401) {
+    markSignedOut();
     signIn();
     throw new ApiError(401, "Sign in first");
   }
@@ -56,6 +58,20 @@ export async function request<T>(
 /** The address of a file of the workspace, in a channel or its own. */
 export function fileHref(workspaceId: string, fileId: string): string {
   return `/api/v1/workspaces/${workspaceId}/files/${fileId}`;
+}
+
+/**
+ * Set when a session ends or a sign-in starts: the browser's copy and its outbox wait until Golem says whose session
+ * this is (`confirmPerson` in `query.ts`). Every tab sees it.
+ */
+export const SIGNED_OUT = "golem-signed-out";
+
+export function markSignedOut(): void {
+  localStorage.setItem(SIGNED_OUT, "1");
+}
+
+export function signedOut(): boolean {
+  return localStorage.getItem(SIGNED_OUT) !== null;
 }
 
 /** Opens the sign-in page, which comes back to this page after sign-in. */
