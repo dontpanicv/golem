@@ -86,6 +86,27 @@ test("a person who has the thread open gets no push, and opening a thread reads 
   expect(notifications.inbox("home", alice).unread).toBe(1);
 });
 
+test("a person keeps their 10 newest devices, and the 11th retires the oldest", () => {
+  const { database, notifications } = setup();
+  const tokens = Array.from({ length: 11 }, (_, index) =>
+    index.toString(16).padStart(2, "0").repeat(32)
+  );
+  for (const token of tokens) {
+    notifications.addDevice(alice, token, "sandbox");
+  }
+  notifications.addDevice(eve, "ff".repeat(32), "sandbox");
+  const live = (user: User) =>
+    (
+      database
+        .query(
+          "SELECT token FROM push_device WHERE user_id = ? AND deleted_at IS NULL ORDER BY id"
+        )
+        .all(user.id) as { token: string }[]
+    ).map((device) => device.token);
+  expect(live(alice)).toEqual(tokens.slice(1));
+  expect(live(eve)).toEqual(["ff".repeat(32)]);
+});
+
 test("people read one notification or all, only their own", () => {
   const { notifications } = setup();
   const first = notifications.notify(answer);

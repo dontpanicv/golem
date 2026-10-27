@@ -92,6 +92,8 @@ const PRIORS: Record<Modality, { mean: number; deviation: number }> = {
 const MODALITIES: readonly Modality[] = ["text", "image", "audio", "none"];
 const Z_GATE = 2;
 const COVERAGE_GATE = 0.5;
+/** Words after these many give a query no more terms, so a long query costs no more SQL. */
+const MAX_QUERY_TERMS = 32;
 const STOPWORDS = new Set(
   "a an and are as at be by for from has have i in is it me my of on or our the to was we what when where which who with you".split(
     " "
@@ -529,7 +531,9 @@ function queryTerms(query: string): string[] {
         .toLowerCase()
         .match(/[\p{L}\p{N}]+/gu) ?? []
     ),
-  ].filter((term) => !STOPWORDS.has(term));
+  ]
+    .filter((term) => !STOPWORDS.has(term))
+    .slice(0, MAX_QUERY_TERMS);
 }
 
 function ftsTerm(term: string): string {

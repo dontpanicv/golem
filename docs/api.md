@@ -230,7 +230,7 @@ the message steers a run at work instead of waiting for it to end.
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/notifications` | | `Inbox` |
 | `POST /api/v1/workspaces/:workspaceId/notifications/read` | `{ id? }` | `Inbox`; marks one notification read, or all of them without `id` |
-| `POST /api/v1/devices` | `{ token, environment: "sandbox" \| "production" }` | `204`; the device gets the person's pushes, and no more of another person's |
+| `POST /api/v1/devices` | `{ token, environment: "sandbox" \| "production" }` | `204`; the device gets the person's pushes, and no more of another person's. A person keeps their 10 newest devices |
 | `DELETE /api/v1/devices/:token` | | `204`; the device gets no more of the person's pushes |
 
 A notification goes to a person's inbox when the agent answers their message, when a channel thread reports back to

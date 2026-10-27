@@ -61,6 +61,8 @@ const MAX_PUSH_BODY = 180;
 const COLUMNS =
   "id, workspace_id AS workspaceId, channel_id AS channelId, thread_id AS threadId, title, text, created_at AS createdAt, read_at AS readAt";
 const DEVICE_TOKEN = /^[0-9a-f]{64,200}$/i;
+/** A person keeps this many newest devices; an older one gets no more pushes. */
+const MAX_DEVICES = 10;
 const ENVIRONMENTS: readonly string[] = [
   "sandbox",
   "production",
@@ -223,6 +225,13 @@ export class Notifications {
           "INSERT INTO push_device (id, user_id, token, environment, created_at) VALUES (?, ?, ?, ?, ?)"
         )
         .run(Bun.randomUUIDv7(), user.id, token, environment, now);
+      this.database
+        .query(
+          `UPDATE push_device SET deleted_at = ? WHERE user_id = ? AND deleted_at IS NULL AND id NOT IN (
+            SELECT id FROM push_device WHERE user_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT ${MAX_DEVICES}
+          )`
+        )
+        .run(now, user.id, user.id);
     })();
   }
 

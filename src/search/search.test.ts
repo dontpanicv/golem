@@ -392,6 +392,19 @@ test("search handles stop words, a text without vectors, and long excerpts", asy
   index.close();
 });
 
+test("a query of 500 words uses only its first 32 terms", async () => {
+  const index = new WorkspaceIndex(":memory:", "model");
+  await sync(index, "notes/passport.md", "1", [
+    { key: "0", text: "The passport is in the blue folder." },
+  ]);
+  const words = Array.from({ length: 500 }, (_, number) => `word${number}`);
+  expect(index.search(["passport", ...words].join(" "), null, 5)).toHaveLength(
+    1
+  );
+  expect(index.search([...words, "passport"].join(" "), null, 5)).toEqual([]);
+  index.close();
+});
+
 test("with many vectors, meaning is measured against the index's own spread", async () => {
   const index = new WorkspaceIndex(":memory:", "model");
   const topics = Array.from(
