@@ -1,6 +1,9 @@
 import { HttpError } from "../platform/errors.ts";
 import { type AuthedInput, type Handler, json, signedIn } from "./http.ts";
-import { readForm, rejectCrossOrigin } from "./web.ts";
+import { readForm, readText, rejectCrossOrigin } from "./web.ts";
+
+/** The largest JSON body; files come as `multipart/form-data`. */
+const MAX_JSON = 1024 ** 2;
 
 export type ApiInput = AuthedInput & {
   readonly body: Record<string, unknown>;
@@ -29,7 +32,7 @@ export function api(handler: (input: ApiInput) => Promise<Response>): Handler {
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
-  const text = await request.text();
+  const text = await readText(request, MAX_JSON);
   if (!text.trim()) {
     return {};
   }

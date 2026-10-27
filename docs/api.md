@@ -2,6 +2,7 @@
 
 The web app and the iOS app have the same functionality, and both use this JSON API. The iOS app sends a bearer token;
 the web app sends its session cookie, and a request that names another origin than `base_url` gets `403`.
+A JSON body over 1 MB, an artifact call over 1 MB, a pairing request over 64 KB, and any body over 100 MB get `413`.
 
 ## Authentication
 

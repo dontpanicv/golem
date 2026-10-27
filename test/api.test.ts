@@ -385,6 +385,24 @@ test("machines pair only over HTTPS, and only members see them", async () => {
   expect((await golem.call("/hands/zzzzzz/pair", { body: {} })).status).toBe(
     404
   );
+  expect(
+    (
+      await golem.call("/hands/zzzzzz/pair", {
+        body: { padding: "x".repeat(100_000) },
+      })
+    ).status
+  ).toBe(413);
+});
+
+test("a JSON body over 1 MB gets 413 before the route reads it", async () => {
+  const large = await golem.call(`/api/v1/workspaces/${workspaceId}/channels`, {
+    token: alice,
+    body: { name: "x".repeat(2 * 1024 ** 2) },
+  });
+  expect(await failure(large)).toEqual({
+    status: 413,
+    error: "The request is too large",
+  });
 });
 
 test("thread events stream every change until the client leaves", async () => {

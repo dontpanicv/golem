@@ -5,7 +5,7 @@ import {
   type Route,
   type RouteInput,
 } from "../app/http.ts";
-import { html, redirect, rejectCrossOrigin } from "../app/web.ts";
+import { html, readText, redirect, rejectCrossOrigin } from "../app/web.ts";
 import { currentUser } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import type { Viewer } from "./artifacts.ts";
@@ -191,7 +191,7 @@ function pageError(error: unknown, signIn: string | null): Response {
 async function readCall(
   request: Request
 ): Promise<{ op: unknown; args: unknown }> {
-  const text = await request.text();
+  const text = await readText(request, 1024 ** 2);
   if (text.length > MAX_CALL) {
     throw new HttpError(413, "The call is too large");
   }

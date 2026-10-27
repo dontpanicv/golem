@@ -247,6 +247,19 @@ describe("the web app", () => {
       (await golem.call("/a/amber-guess", { headers: from("203.0.113.8") }))
         .status
     ).toBe(404);
+    const large = (address: string) =>
+      golem.call(`/a/amber-guess/rpc`, {
+        body: { op: "me", args: { padding: "x".repeat(2 * 1024 ** 2) } },
+        headers: from(address),
+      });
+    // A body that is too large is refused before the lookup, so it is not a miss.
+    for (let call = 0; call < 20; call += 1) {
+      expect((await large("203.0.113.9")).status).toBe(413);
+    }
+    expect(
+      (await golem.call("/a/amber-guess", { headers: from("203.0.113.9") }))
+        .status
+    ).toBe(404);
   });
 
   test("assets come from the public folder only", async () => {

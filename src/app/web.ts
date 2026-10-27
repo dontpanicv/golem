@@ -101,6 +101,30 @@ export function rejectCrossOrigin({ app, request }: RouteInput): void {
   }
 }
 
+/**
+ * The body of a request as text, or `413` when it is over `limit` bytes. It counts the bytes as they come, so a body
+ * without a true `content-length` stops at the limit too.
+ */
+export async function readText(
+  request: Request,
+  limit: number
+): Promise<string> {
+  const tooLarge = new HttpError(413, "The request is too large");
+  if (Number(request.headers.get("content-length")) > limit) {
+    throw tooLarge;
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of request.body ?? []) {
+    size += chunk.byteLength;
+    if (size > limit) {
+      throw tooLarge;
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 /** The text fields of a form, and its files; a file field with nothing chosen sends no file. */
 export async function readForm(request: Request): Promise<{
   fields: Record<string, string | undefined>;
