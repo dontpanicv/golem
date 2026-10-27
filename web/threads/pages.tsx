@@ -4,6 +4,7 @@ import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fileHref } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
+import type { ThreadSummary } from "../app/types.ts";
 import { ArtifactList, ArtifactPreview } from "../artifacts/panel.tsx";
 import {
   Button,
@@ -41,12 +42,12 @@ import { followed, outbox, sendMessage } from "./outbox.ts";
 
 const threadRoute = getRouteApi("/signed-in/w/$workspaceId/t/$threadId");
 
-/** A thread: its live transcript and composer, and the panel with its place's artifacts and files. */
+/** A thread of the workspace in the address; a thread of another workspace is not found. */
 export function ThreadPage() {
   const { workspaceId, threadId } = threadRoute.useParams();
   const orchestrator = useQuery(orchestratorQuery(workspaceId)).data;
   const isOrchestrator = orchestrator?.id === threadId;
-  const { data: listed } = useLiveQuery({
+  const { data: listed, isReady } = useLiveQuery({
     query: (q) =>
       q
         .from({ thread: threadsOf(workspaceId) })
@@ -54,11 +55,41 @@ export function ThreadPage() {
         .findOne(),
   });
   const thread = isOrchestrator ? orchestrator : listed;
+  if (!thread) {
+    return isReady && orchestrator ? (
+      <section className="conversation">
+        <PanelHeader title="" />
+        <Empty icon="hash" title="Not found" />
+      </section>
+    ) : null;
+  }
+  return (
+    <Thread
+      isOrchestrator={isOrchestrator}
+      thread={thread}
+      threadId={threadId}
+      workspaceId={workspaceId}
+    />
+  );
+}
+
+/** A thread: its live transcript and composer, and the panel with its place's artifacts and files. */
+function Thread({
+  workspaceId,
+  threadId,
+  thread,
+  isOrchestrator,
+}: {
+  workspaceId: string;
+  threadId: string;
+  thread: ThreadSummary;
+  isOrchestrator: boolean;
+}) {
   const { data: channel } = useLiveQuery({
     query: (q) =>
       q
         .from({ channel: channelsOf(workspaceId) })
-        .where(({ channel: row }) => eq(row.id, thread?.channelId ?? ""))
+        .where(({ channel: row }) => eq(row.id, thread.channelId))
         .findOne(),
   });
   const { data: messages = [] } = useLiveQuery({
@@ -70,7 +101,7 @@ export function ThreadPage() {
   // The orchestrator belongs to the workspace, not to its channel: its files and artifacts are the workspace's own.
   const place: Place = {
     workspaceId,
-    channelId: isOrchestrator ? null : (thread?.channelId ?? null),
+    channelId: isOrchestrator ? null : thread.channelId,
   };
   const key = placeKey(place);
   const placeChanged = useDebounced(
@@ -100,23 +131,23 @@ export function ThreadPage() {
     () => rememberOpened(`/w/${workspaceId}/t/${threadId}`),
     [workspaceId, threadId]
   );
-  const settled = thread?.settledAt !== null && thread !== undefined;
+  const settled = thread.settledAt !== null;
   return (
     <>
       <section className="conversation">
         <PanelHeader
           title={
             isOrchestrator ? (
-              thread?.title
+              thread.title
             ) : (
               <>
                 <span className="breadcrumb">{channel?.name} › </span>
-                {thread?.title}
+                {thread.title}
               </>
             )
           }
         >
-          {isOrchestrator || !thread ? null : (
+          {isOrchestrator ? null : (
             <Button
               icon={settled ? "inbox" : "check"}
               label={settled ? "Un-settle thread" : "Settle thread"}
