@@ -570,18 +570,20 @@ export class Integrations {
   }
 
   /**
-   * The tools of a connector's MCP servers, named `<id>_<tool>`, as a sign-in of the workspace or of a member lists them.
-   * None of a server without a sign-in, or when it fails, so one shop that is down does not stop the agents.
+   * The tools of a connector's MCP servers, named `<id>_<tool>`, as the workspace's sign-in lists them, else a member's
+   * own; the list has only names and schemas, and no tool call uses that sign-in for another person. None of a server
+   * without a sign-in, or when it fails, so one shop that is down does not stop the agents.
    */
   private async mcpTools(
     workspaceId: string,
     connector: Connector
   ): Promise<AccountTool[]> {
-    const [row] = this.credentialRows(
+    const rows = this.credentialRows(
       workspaceId,
       connector,
       this.memberIds(workspaceId)
     );
+    const row = rows.find((candidate) => candidate.workspace_id) ?? rows[0];
     if (!row) {
       return [];
     }

@@ -333,7 +333,9 @@ shows a link to the `url` of `connect`; the person signs in there. Rohlík lets 
 loopback addresses, and Slack only to https ones, so the sign-in ends on an error page at
 `https://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and `sign-in` keeps the tokens as a
 credential, labeled with the account's email when the server gives it. The agents then get the servers' tools as
-`<integrationId>_<tool>`, in the codemode namespace of the integration. Google and Slack need Golem's own OAuth client;
+`<integrationId>_<tool>`, in the codemode namespace of the integration. Golem lists a server's tools with the
+workspace's sign-in, else with a member's own; the list has only tool names and schemas. Google and Slack need Golem's
+own OAuth client;
 `docs/integrations.md` shows how to set them up.
 
 An integration with `connect: "phone"`, WhatsApp, links the person's number as a device. `connect` gives the code that

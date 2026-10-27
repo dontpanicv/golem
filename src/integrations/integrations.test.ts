@@ -102,7 +102,8 @@ async function signIn(request: Request): Promise<Response> {
     const owned =
       parameters.has("client_secret") || request.headers.has("authorization");
     return Response.json({
-      access_token: "access-1",
+      access_token:
+        parameters.get("code") === "code-own" ? "access-own" : "access-1",
       token_type: "Bearer",
       refresh_token: "refresh-1",
       ...(owned
@@ -233,6 +234,29 @@ test("people connect an MCP server by signing in, and agents get its tools", asy
 
   integrations.deleteCredential(workspaceId, alice, shop!.credentials[0]!.id);
   expect(await integrations.tools(workspaceId)).toEqual([]);
+});
+
+test("the workspace's sign-in lists an MCP server's tools, also when a member signed in on their own", async () => {
+  const signInTo = async (place: string | null, code: string) => {
+    const { url } = (await integrations.connect(place, alice, "shop")) as {
+      url: string;
+    };
+    const state = new URL(url).searchParams.get("state")!;
+    return integrations.finishConnect(
+      place,
+      alice,
+      "shop",
+      `https://localhost/golem-sign-in?code=${code}&state=${state}`
+    );
+  };
+  const shared = await signInTo(workspaceId, "code-1");
+  const own = await signInTo(null, "code-own");
+  await integrations.tools(workspaceId);
+  expect(connectedWith.at(-1)).toBe("access-1");
+  integrations.deleteCredential(workspaceId, alice, shared.id);
+  await integrations.tools(workspaceId);
+  expect(connectedWith.at(-1)).toBe("access-own");
+  integrations.deleteCredential(null, alice, own.id);
 });
 
 test("a sign-in that did not finish adds nothing", async () => {
