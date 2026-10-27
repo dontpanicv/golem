@@ -187,6 +187,16 @@ struct ThreadState: Codable, Hashable {
     let thread: ThreadSummary
     let messages: [Message]
     let running: Bool
+    let approvals: [Approval]
+}
+
+/// An action the agent waits for one person to allow, or for any member when `approverId` is nil.
+struct Approval: Codable, Hashable, Identifiable {
+    let id: String
+    let tool: String
+    let text: String
+    let approverId: String?
+    let expiresAt: Double
 }
 
 struct Member: Codable, Hashable, Identifiable {

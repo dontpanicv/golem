@@ -1383,6 +1383,33 @@ a {
   box-shadow: var(--shadow-low);
 }
 
+.approval {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin: 0 var(--space-xxl) var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow:
+    0 0 0 0.5px var(--color-ring-control),
+    var(--shadow-low);
+}
+.approval p {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
 .composer textarea {
   min-height: 28px;
   max-height: 240px;

@@ -91,7 +91,14 @@ type Step = {
 };
 type FileRef = { id: string; name: string };
 type SavedFile = { id: string; name: string; size: number; time: number }; // size in bytes; ids are UUIDv7
-type ThreadState = { thread: ThreadSummary; messages: Message[]; running: boolean };
+type ThreadState = { thread: ThreadSummary; messages: Message[]; running: boolean; approvals: Approval[] };
+type Approval = {
+	id: string;
+	tool: string; // such as "hands_exec"
+	text: string; // what the action does, such as "Run on bender: make deploy"
+	approverId: string | null; // the person who may answer; null for any member
+	expiresAt: number; // the agent gets an error after this
+};
 type SearchResult = {
 	uri: string; // thread:<id>, artifact:<id>, or a path under the workspace folder, such as channels/<id>/files/<file id>-<name>
 	kind: "thread" | "artifact" | "note" | "file" | "capture";
@@ -156,6 +163,7 @@ type Machine = {
 	arch: string;
 	version: string; // hands version when it paired
 	pairedAt: number;
+	pairedBy: string | null; // the member who paired it; null for a machine paired before Golem kept it
 };
 type Pairing = { command: string; expiresAt: number }; // run `command` on the machine before `expiresAt`
 type Effort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -201,6 +209,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice?, requestId? }` | `204`; a retry with the same `requestId` sends nothing again |
+| `POST /api/v1/threads/:threadId/approvals/:approvalId` | `{ allow: boolean, scope: "once" \| "turn" }` | `204`; `allow` runs the action once, or with `"turn"` also the rest of the turn's changes on that machine. `403` for a person who is not the approver; `404` when the approval ended or the person is not a member |
 | `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
 | `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/brief` | | `{ brief: Brief \| null }`: what the channel is for, where it is now, its decisions, its open questions, and what each person wants; `null` before the first |
@@ -384,7 +393,7 @@ the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 | --- | --- |
 | `GET /hands/:code` | `hands/scripts/pair-install.sh`, with Golem's address, the pin of its TLS key, and the binaries' SHA-256 |
 | `GET /hands/:code/hands-<os>-<arch>` | A binary from `hands/dist/`, which `hands/scripts/build-release.sh` builds |
-| `POST /hands/:code/pair` | `{ phoneName, publicKey }`: the workspace's name and Ed25519 key. `400` on a malformed request, `404` once the code was used, `410` once it expired |
+| `POST /hands/:code/pair` | `{ phoneName, publicKey }`: the workspace's name and Ed25519 key. `400` on a malformed request, also for a loopback or link-local address or a `localhost` name, `404` once the code was used, `410` once it expired |
 
 ### LLM (`src/llm/`)
 
@@ -420,6 +429,14 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
   artifacts.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The
-  machine trusts the workspace's own key, so pairing it with one workspace does not open it to another.
+  machine trusts the workspace's own key, so pairing it with one workspace does not open it to another. A command or
+  a file change on a machine waits for an approval (`ThreadState.approvals`, with a notification) from the member who
+  paired it when the turn is another person's, and from the turn's person when the turn read a web page, search
+  results, a connected service, or artifact visitor data since their last message, or when nobody watches the turn,
+  such as a reminder or a routine run. Reads stay open to every agent of the workspace.
+- Agents reach public addresses only: the browser and `save_file` go through Golem's egress proxy, which refuses
+  loopback, private, link-local, and other non-public addresses after each DNS answer and redirect. Each person of a
+  thread has a browser of their own, with their own logins.
+- A codemode script stops after 15 minutes. A routine runs at most every 15 minutes.
 - A credential belongs to a workspace, for the turns of every member there, or to one person, for their own turns in
   each of their workspaces. A turn never uses another person's own credential. Secrets never leave the server.

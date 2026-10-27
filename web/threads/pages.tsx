@@ -4,7 +4,7 @@ import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fileHref } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
-import type { ThreadSummary } from "../app/types.ts";
+import type { Approval, ThreadSummary } from "../app/types.ts";
 import { ArtifactList, ArtifactPreview } from "../artifacts/panel.tsx";
 import {
   Button,
@@ -19,6 +19,7 @@ import { Icon } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
 import {
   channelsOf,
+  meQuery,
   orchestratorQuery,
   refreshWorkspace,
   rememberOpened,
@@ -28,6 +29,7 @@ import {
 import { PanelHeader } from "../workspaces/shell.tsx";
 import { Composer } from "./composer.tsx";
 import {
+  answerApproval,
   filesOf,
   messagesOf,
   type Place,
@@ -120,7 +122,8 @@ function Thread({
         .where(({ message }) => eq(message.threadId, threadId))
         .orderBy(({ message }) => message.time),
   });
-  const running = useThreadStream(threadId, placeChanged);
+  const { running, approvals } = useThreadStream(threadId, placeChanged);
+  const me = useQuery(meQuery).data?.user.id;
   useEffect(() => {
     followed.add(threadId);
     return () => {
@@ -185,6 +188,15 @@ function Thread({
             </div>
           ) : null}
         </section>
+        {approvals
+          .filter(({ approverId }) => approverId === null || approverId === me)
+          .map((approval) => (
+            <ApprovalCard
+              approval={approval}
+              key={approval.id}
+              threadId={threadId}
+            />
+          ))}
         <Composer
           clearAtOnce
           onSend={(text, files) => sendMessage(threadId, text, files)}
@@ -197,6 +209,51 @@ function Thread({
       </section>
       <PlacePanel place={place} />
     </>
+  );
+}
+
+/** An action the agent waits for the person to allow: once, for the rest of the turn on that machine, or not. */
+function ApprovalCard({
+  approval,
+  threadId,
+}: {
+  approval: Approval;
+  threadId: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const answer = (allow: boolean, scope?: "once" | "turn") => {
+    setBusy(true);
+    answerApproval(threadId, approval.id, allow, scope).catch((error) => {
+      setBusy(false);
+      showError(error);
+    });
+  };
+  return (
+    <section aria-label="Approval" className="approval">
+      <p>{approval.text}</p>
+      <div className="approval-actions">
+        <Button
+          disabled={busy}
+          label="Deny"
+          onClick={() => answer(false)}
+          size="small"
+          variant="danger"
+        />
+        <Button
+          disabled={busy}
+          label="Allow for this turn"
+          onClick={() => answer(true, "turn")}
+          size="small"
+        />
+        <Button
+          disabled={busy}
+          label="Allow"
+          onClick={() => answer(true, "once")}
+          size="small"
+          variant="primary"
+        />
+      </div>
+    </section>
   );
 }
 

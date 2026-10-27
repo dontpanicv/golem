@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ConversationId } from "@earendil-works/pi-durable";
+import { Egress } from "../platform/egress.ts";
 import type { Requirement } from "../platform/requirements.ts";
 import { browserSession, browserTools } from "./tools.ts";
 
@@ -18,6 +20,22 @@ const MAX_OUTPUT = 20_000;
 const TIMEOUT = 120_000;
 /** The commands that take an address to open; `file:` would show the files of this machine. */
 const NAVIGATION = new Set(["open", "goto", "navigate"]);
+/** The options that agents may give; others, such as `--executable-path`, change the browser itself. */
+const OPTIONS = new Set([
+  "-i",
+  "--interactive",
+  "-c",
+  "--compact",
+  "-d",
+  "--depth",
+  "-s",
+  "--selector",
+  "--load",
+]);
+/** The largest file that download keeps. */
+const MAX_DOWNLOAD = 100 * 1024 ** 2;
+/** How long download waits for a file, all of it. */
+const DOWNLOAD_TIMEOUT = 10 * 60_000;
 
 /** Runs the agent-browser CLI with these arguments and this input, and gives its output; tests replace it. */
 export type BrowserRunner = (
@@ -32,28 +50,91 @@ export interface BrowseResult {
 }
 
 /**
- * A headless Chrome for each thread, driven by Vercel's agent-browser, so that agents can visit websites. Each session
- * keeps its tabs and logins until it closes or stays idle for an hour.
+ * A headless Chrome for each thread and person, driven by Vercel's agent-browser, so that agents can visit websites.
+ * Each session keeps its tabs and logins until it closes or stays idle for an hour. All web traffic of agents goes
+ * through `egress`, which reaches public addresses only.
  */
 export class Browser {
-  constructor(private readonly run: BrowserRunner = runCli) {}
+  constructor(
+    private readonly run: BrowserRunner = runCli,
+    private readonly egress = new Egress()
+  ) {}
 
-  /** The agent tools of a workspace. */
-  tools(workspaceId: string) {
-    return browserTools(this, workspaceId);
+  /** The agent tools of a workspace; `requesterOf` gives the person of a conversation's turn. */
+  tools(
+    workspaceId: string,
+    requesterOf: (conversationId: ConversationId) => Promise<string | null>
+  ) {
+    return browserTools(this, workspaceId, requesterOf);
   }
 
-  /** A picture of the page in a thread's browser, or null when it cannot take one. */
+  /** A picture of the page in the browser of a thread and person, or null when it cannot take one. */
   async screenshot(
     workspaceId: string,
-    conversationId: number
+    conversationId: number,
+    personId: string | null
   ): Promise<Uint8Array | null> {
     const { screenshot } = await this.browse(
-      browserSession(workspaceId, conversationId),
+      browserSession(workspaceId, conversationId, personId),
       [],
       true
     );
     return screenshot;
+  }
+
+  /**
+   * Downloads a file from the web to `destination` and returns its name. The request and each redirect go through the
+   * egress proxy. It fails over 100 MB, before more of the file is read.
+   */
+  async download(
+    address: string,
+    destination: string,
+    signal: AbortSignal | undefined
+  ): Promise<string> {
+    const url = URL.parse(address);
+    if (url?.protocol !== "http:" && url?.protocol !== "https:") {
+      throw new Error(
+        `save_file gets only http and https addresses, not ${address}.`
+      );
+    }
+    const response = await fetch(url, {
+      proxy: `http://127.0.0.1:${await this.egress.port()}`,
+      keepalive: false,
+      signal: AbortSignal.any([
+        AbortSignal.timeout(DOWNLOAD_TIMEOUT),
+        ...(signal ? [signal] : []),
+      ]),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(
+        `${url} answered ${response.status} ${response.statusText}`
+      );
+    }
+    const tooLarge = new Error(`${url} is over ${MAX_DOWNLOAD / 1024 ** 2} MB`);
+    if (Number(response.headers.get("content-length")) > MAX_DOWNLOAD) {
+      await response.body?.cancel();
+      throw tooLarge;
+    }
+    const writer = Bun.file(destination).writer();
+    let size = 0;
+    try {
+      // Leaving the loop cancels the rest of the body.
+      for await (const chunk of response.body ?? []) {
+        size += chunk.length;
+        if (size > MAX_DOWNLOAD) {
+          throw tooLarge;
+        }
+        writer.write(chunk);
+      }
+    } finally {
+      await writer.end();
+    }
+    return (
+      dispositionName(response.headers.get("content-disposition")) ||
+      decodeName(url.pathname.split("/").at(-1)!) ||
+      "download"
+    );
   }
 
   /**
@@ -64,7 +145,7 @@ export class Browser {
     const session = `golem-print-${randomUUID()}`;
     try {
       const output = await this.run(
-        ["--session", session, "batch"],
+        ["--session", session, ...(await this.proxy()), "batch"],
         JSON.stringify([["open"], ["get", "cdp-url"]])
       );
       const chrome = /ws:\/\/([^\s/]+)/.exec(output)?.[1];
@@ -100,6 +181,7 @@ export class Browser {
         [
           "--session",
           session,
+          ...(await this.proxy()),
           "--action-policy",
           POLICY,
           "--content-boundaries",
@@ -122,6 +204,22 @@ export class Browser {
         await rm(directory, { recursive: true, force: true });
       }
     }
+  }
+
+  /**
+   * Chrome's options for the egress proxy. Chrome sends host names to a SOCKS5 proxy, which resolves them;
+   * `<-loopback>` sends loopback addresses through it too, and WebRTC sends no UDP past it. A session that runs with
+   * other options, such as an older port, starts its Chrome again.
+   */
+  private async proxy(): Promise<string[]> {
+    return [
+      "--proxy",
+      `socks5://127.0.0.1:${await this.egress.port()}`,
+      "--proxy-bypass",
+      "<-loopback>",
+      "--args",
+      "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    ];
   }
 }
 
@@ -226,11 +324,30 @@ async function printPage(address: string, html: string): Promise<Uint8Array> {
   }
 }
 
-/** Refuses what the policy cannot see: an address that is not on the web, and a screenshot to a path of its own. */
+/**
+ * Refuses what the policy cannot see: an address that is not on the web, `read <url>`, which agent-browser fetches
+ * itself and not through Chrome, options that change the browser, and a screenshot to a path of its own.
+ */
 function checkCommand(command: readonly string[]): void {
   const [name = "", ...args] = command;
   if (name === "screenshot") {
     throw new Error("Set screenshot to true to see the page.");
+  }
+  // The policy allows `launch` for Golem's own options, which start Chrome behind the egress proxy.
+  if (name === "launch") {
+    throw new Error("The browser starts by itself; open a page.");
+  }
+  if (name === "read" && args.length > 0) {
+    throw new Error(
+      "Open the page first, then read it: read takes no address."
+    );
+  }
+  for (const option of args.filter((arg) => arg.startsWith("-"))) {
+    if (!OPTIONS.has(option)) {
+      throw new Error(
+        `${name} takes no option ${option}, and a value cannot start with "-".`
+      );
+    }
   }
   let addresses: string[] = [];
   if (NAVIGATION.has(name)) {
@@ -239,7 +356,7 @@ function checkCommand(command: readonly string[]): void {
     addresses = args.slice(1);
   }
   for (const address of addresses) {
-    if (!(address.startsWith("-") || isWebAddress(address))) {
+    if (!(OPTIONS.has(address) || isWebAddress(address))) {
       throw new Error(
         `${name} opens only http and https addresses, not ${address}.`
       );
@@ -253,6 +370,25 @@ function isWebAddress(address: string): boolean {
     /^[a-z][a-z\d+.-]*:/i.test(address) ? address : `https://${address}`
   );
   return url?.protocol === "http:" || url?.protocol === "https:";
+}
+
+/** The file name of a Content-Disposition header, in its `filename*` or `filename` form. */
+function dispositionName(header: string | null): string {
+  const encoded = /filename\*\s*=\s*[\w-]*'[^']*'([^;]+)/i.exec(
+    header ?? ""
+  )?.[1];
+  if (encoded) {
+    return decodeName(encoded.trim());
+  }
+  return /filename\s*=\s*"?([^";]+)"?/i.exec(header ?? "")?.[1]?.trim() ?? "";
+}
+
+function decodeName(name: string): string {
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
 }
 
 /** Runs agent-browser with its errors in the same stream, so each one stays next to the command it belongs to. */

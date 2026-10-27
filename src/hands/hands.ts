@@ -10,6 +10,7 @@ import { isIP } from "node:net";
 import { join } from "node:path";
 import { connect } from "node:tls";
 import type { User } from "../platform/auth.ts";
+import { isLocal } from "../platform/egress.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import type { Requirement } from "../platform/requirements.ts";
 import type { Secrets } from "../platform/secrets.ts";
@@ -25,6 +26,7 @@ import {
   handsSection,
   handsTools,
   machineFile,
+  machineNamed,
 } from "./tools.ts";
 
 export type { Machine } from "./connection.ts";
@@ -92,6 +94,7 @@ export async function handsRequirements(
 
 interface PendingPairing extends Pairing {
   readonly code: string;
+  readonly userId: string;
   readonly workspaceId: string;
   readonly workspaceName: string;
 }
@@ -124,7 +127,7 @@ export class Hands {
   machinesIn(workspaceId: string): Machine[] {
     const rows = this.database
       .query(
-        "SELECT id, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt FROM machine WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name"
+        "SELECT id, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt, paired_by AS pairedBy FROM machine WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name"
       )
       .all(workspaceId) as (Omit<Machine, "addresses"> & {
       addresses: string;
@@ -162,6 +165,7 @@ export class Hands {
     ).join("");
     const pairing: PendingPairing = {
       code,
+      userId: user.id,
       workspaceId,
       workspaceName: workspace.name,
       command: `curl -fsSL ${this.base(code)} | sh`,
@@ -227,7 +231,7 @@ export class Hands {
         .run(Date.now(), pairing.workspaceId, machine.certSha256);
       this.database
         .query(
-          "INSERT INTO machine (id, workspace_id, name, hostname, addresses, port, cert_sha256, os, arch, version, paired_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT INTO machine (id, workspace_id, name, hostname, addresses, port, cert_sha256, os, arch, version, paired_at, paired_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .run(
           randomUUID(),
@@ -240,7 +244,8 @@ export class Hands {
           machine.os,
           machine.arch,
           machine.version,
-          Date.now()
+          Date.now(),
+          pairing.userId
         );
     })();
     return {
@@ -313,6 +318,11 @@ export class Hands {
     path: string
   ): Promise<string> {
     return fileToMachine(this, workspaceId, machineName, source, path);
+  }
+
+  /** The machine of a workspace that a name means, as the hands tools find it; throws for no machine. */
+  machineNamed(workspaceId: string, name: string): Machine {
+    return machineNamed(this, workspaceId, name);
   }
 
   /** The agent tools of a workspace's machines. */
@@ -434,9 +444,13 @@ function machineOf(request: unknown) {
   ) {
     throw new HttpError(400, "port is missing or malformed");
   }
+  // Golem connects to these: a machine is on the LAN or a VPN, never Golem's own machine or a link-local address.
   if (
     !Array.isArray(addresses) ||
-    addresses.some((address) => typeof address !== "string" || !isIP(address))
+    addresses.some(
+      (address) =>
+        typeof address !== "string" || !isIP(address) || isLocal(address)
+    )
   ) {
     throw new HttpError(400, "addresses is missing or malformed");
   }
@@ -444,6 +458,9 @@ function machineOf(request: unknown) {
     body.hostname === undefined || body.hostname === null
       ? null
       : text("hostname", HOSTNAME);
+  if (hostname && /(^|\.)localhost$/i.test(hostname)) {
+    throw new HttpError(400, "hostname is missing or malformed");
+  }
   return {
     name: text("name", /^[\w.-]{1,63}$/),
     os: text("os", /^[a-z]{1,16}$/),

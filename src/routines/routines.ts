@@ -71,6 +71,8 @@ export type RoutineSearch = Pick<Indexer, "search">;
 const TICK = 30_000;
 /** The longest a script may run, with its tool calls. */
 const SCRIPT_TIMEOUT = 5 * 60_000;
+/** A routine runs at most this often, whatever its schedule says. */
+const MIN_ROUTINE_GAP = 15 * 60_000;
 /** The most of a script's result the agent gets. */
 const MAX_RESULT = 50_000;
 /** Runs the channel details page shows. */
@@ -332,7 +334,7 @@ export class Routines {
       .run(id, routine.id, startedAt);
     this.database
       .query("UPDATE routine SET next_run_at = ? WHERE id = ?")
-      .run(nextRun(routine.schedule, now), routine.id);
+      .run(nextRun(routine.schedule, now + MIN_ROUTINE_GAP), routine.id);
     let outcome: RoutineOutcome;
     let error: string | null = null;
     try {

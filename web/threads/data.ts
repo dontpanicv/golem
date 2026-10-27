@@ -6,6 +6,7 @@ import { request } from "../app/api.ts";
 import { keyed } from "../app/collections.ts";
 import { queryClient } from "../app/query.ts";
 import type {
+  Approval,
   Brief,
   Message,
   SavedFile,
@@ -118,16 +119,32 @@ export function stopThread(threadId: string): Promise<void> {
   return request(`/threads/${threadId}/stop`, { method: "POST" });
 }
 
+/** Answers an approval; the thread's stream takes it away once the agent goes on. */
+export function answerApproval(
+  threadId: string,
+  approvalId: string,
+  allow: boolean,
+  scope: "once" | "turn" = "once"
+): Promise<void> {
+  return request(`/threads/${threadId}/approvals/${approvalId}`, {
+    method: "POST",
+    body: { allow, scope },
+  });
+}
+
 /**
  * Follows a thread while its page is open: every change goes into its messages. `onChange` runs after each one, as
- * files and artifacts come with messages. Gives whether the agent works.
+ * files and artifacts come with messages. Gives whether the agent works, and what it waits for a person to allow.
  */
 export function useThreadStream(
   threadId: string,
   onChange: () => void
-): boolean {
+): { running: boolean; approvals: readonly Approval[] } {
   const [running, setRunning] = useState(
     () => streamed.get(threadId)?.running ?? false
+  );
+  const [approvals, setApprovals] = useState<readonly Approval[]>(
+    () => streamed.get(threadId)?.approvals ?? []
   );
   useEffect(() => {
     let source: EventSource | undefined;
@@ -143,6 +160,7 @@ export function useThreadStream(
         streamed.set(threadId, state);
         write(threadId, state);
         setRunning(state.running);
+        setApprovals(state.approvals);
         for (const listener of waiting.get(threadId) ?? []) {
           listener(state);
         }
@@ -157,7 +175,7 @@ export function useThreadStream(
       source?.close();
     };
   }, [threadId, onChange]);
-  return running;
+  return { running, approvals };
 }
 
 /**

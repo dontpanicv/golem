@@ -231,6 +231,8 @@ const migrations = [
 	CREATE INDEX credential_owner ON credential (owner_id, integration) WHERE workspace_id IS NULL;`,
   // reminders: the person who asked for a reminder or last changed it; its turn runs as them. Null for older rows.
   "ALTER TABLE reminder ADD COLUMN created_by TEXT;",
+  // hands: the member who paired a machine, who allows what agents do on it for others.
+  "ALTER TABLE machine ADD COLUMN paired_by TEXT;",
 ];
 
 export function openDatabase(path: string): Database {

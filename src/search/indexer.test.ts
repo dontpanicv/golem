@@ -77,6 +77,7 @@ function threadsWith(
     messages: async (thread) => ({
       messages: messages[thread.id] ?? [],
       running: false,
+      approvals: [],
     }),
     version: async (thread) => String(messages[thread.id]?.length ?? 0),
   };

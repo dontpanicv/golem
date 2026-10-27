@@ -385,6 +385,21 @@ test("a routine runs as the person who last wrote its script, and not after its 
   routines.delete(routine.id, alice);
 });
 
+test("a routine runs at most every 15 minutes, whatever its schedule says", async () => {
+  const routine = routines.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Every minute",
+    schedule: "* * * * *",
+    instructions: "Say hello.",
+    createdBy: alice.id,
+  });
+  const ranAt = routine.nextRunAt!;
+  const [run] = routines.tick(ranAt);
+  await run;
+  expect(routines.get(routine.id, alice).nextRunAt).toBe(ranAt + 16 * 60_000);
+  routines.delete(routine.id, alice);
+});
+
 test("agents create routines and test scripts", async () => {
   const thread = await golem.app.threads.create(
     workspaceId,

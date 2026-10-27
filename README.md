@@ -62,11 +62,12 @@ Caddy, in front of Golem on the mesh.
   Slack, and Rohlík connect through their MCP servers, WhatsApp through a device linked to the person's number, and X
   with a key of the person's session; agents only draft mail and messages. [docs/integrations.md](docs/integrations.md)
   shows the setup. Secrets never leave the server.
-- **Browser.** Agents visit websites in a headless Chrome of their own for each thread, driven by Vercel's
+- **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
   [agent-browser](https://github.com/vercel-labs/agent-browser). They read pages, click, fill in forms, and see
   screenshots. They search the web with ChatGPT's own search, over the same ChatGPT login, because search engines
-  block a headless browser. They cannot open the files of the server, and they ask before they buy, book, or send
-  anything.
+  block a headless browser. They reach public addresses only, never the files of the server or the home network, and
+  they ask before they buy, book, or send anything. After a turn read the web or a connected service, a command or a
+  file change on a machine waits for its person to allow it.
 - **Routines.** A channel can do work on a schedule, such as checking the school system every morning. People ask an
   agent in plain words; it writes the schedule, the instructions, and, for work that is the same every time, a script
   that collects what is new. The script runs in a code mode sandbox and calls the connectors' tools; when it finds
