@@ -35,15 +35,14 @@ const threads = database
 
 let named = 0;
 for (const thread of threads) {
-  // The session is read only: opening it in Golem would resume the runs it left.
+  // Only read: opening the session in Golem would resume the runs it left.
   const session = new Database(
     join(
       config.dataDirectory,
       "workspaces",
       thread.workspaceId,
       "session.sqlite"
-    ),
-    { readonly: true }
+    )
   );
   const first = session
     .query(
