@@ -109,3 +109,22 @@ Without Firefox, copy the `auth_token`, `ct0`, and `twid` cookies of x.com from 
 
 Agents read your bookmarks, newest first, and posts with their replies and threads. They do not post, like, or change
 bookmarks.
+
+## Instagram
+
+Golem reads your Instagram account through Instagram's own web API, with the `sessionid` cookie of your Instagram
+session. Instagram has no API for saved posts, and it can lock or ban an account that uses this one. The cookie gives
+the same access as your login, so keep it secret, as Golem does.
+
+1. Open a private window, and sign in to instagram.com.
+2. Open the developer tools. In **Application** (Chrome) or **Storage** (Firefox and Safari), open the cookies of
+   `https://www.instagram.com`, and copy the value of `sessionid`.
+3. Close the window, but do not sign out: signing out ends the cookie. It also ends when you change your password.
+4. In Settings, click **Connect** on Instagram, type your handle as the label, and paste the cookie.
+
+Golem also sends the `ds_user_id` cookie, which Instagram needs; it is the number at the start of `sessionid`.
+
+Agents read all the posts and reels that you saved, newest first, with the ids of their collections, and the posts of
+one collection: the caption, the author, the place, and the pictures and videos. Instagram's web API gives no list of
+collections with their names. Agents do not save, like, or post. Instagram watches for many calls: read a large
+backlog in small steps.

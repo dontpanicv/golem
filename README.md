@@ -60,8 +60,8 @@ Caddy, in front of Golem on the mesh.
   person's own settings serves only their turns, in each of their workspaces, and comes first. A person can connect
   several accounts of one integration, such as Google accounts for work and home. Google (Gmail, Calendar, Drive),
   Slack, and Rohlík connect through their MCP servers, WhatsApp through a device linked to the person's number, and X
-  with a key of the person's session; agents only draft mail and messages. [docs/integrations.md](docs/integrations.md)
-  shows the setup. Secrets never leave the server.
+  and Instagram with the cookies of the person's session; agents only draft mail and messages.
+  [docs/integrations.md](docs/integrations.md) shows the setup. Secrets never leave the server.
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
   [agent-browser](https://github.com/vercel-labs/agent-browser). They read pages, click, fill in forms, and see
   screenshots. They search the web with ChatGPT's own search, over the same ChatGPT login, because search engines

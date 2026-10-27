@@ -1,3 +1,4 @@
+import { instagramConnector } from "./instagram.ts";
 import type { Connector } from "./integrations.ts";
 import { whatsAppConnector } from "./whatsapp.ts";
 import { xConnector } from "./x.ts";
@@ -118,6 +119,7 @@ export function integrationCatalog(
       hiddenTools: ["slack_send_message", "slack_schedule_message"],
     },
     xConnector(),
+    instagramConnector(),
     ...(wacli ? [whatsAppConnector(wacli)] : []),
   ];
 }
