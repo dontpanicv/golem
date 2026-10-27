@@ -213,7 +213,7 @@ test("credentials belong to the workspace, and secrets never leave the server", 
   ).toEqual({ deleted: 1 });
 });
 
-test("the LLM provider is shared by everyone", async () => {
+test("everyone uses the one LLM provider, and only the server's owner changes it", async () => {
   const llm = (await (await call("/api/v1/llm", { token: bob })).json()) as any;
   // The faux model has no reasoning, so the default effort moves to the one level it supports.
   expect(llm).toMatchObject({
@@ -222,12 +222,29 @@ test("the LLM provider is shared by everyone", async () => {
     effort: "off",
     models: [{ id: golem.model.id, name: golem.model.name, efforts: ["off"] }],
     login: null,
+    owner: false,
   });
+  for (const [path, method, body] of [
+    ["/api/v1/llm/model", "PUT", { model: golem.model.id }],
+    ["/api/v1/llm/effort", "PUT", { effort: "off" }],
+    ["/api/v1/llm/login", "POST", {}],
+    ["/api/v1/llm/logout", "POST", {}],
+  ] as const) {
+    const refused = await call(path, { method, token: bob, body });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({
+      error: "Only the server's owner changes this",
+    });
+  }
+  // Alice's email is the first in allowed_emails.
+  expect(
+    await (await call("/api/v1/llm", { token: alice })).json()
+  ).toMatchObject({ owner: true });
   expect(
     (
       await call("/api/v1/llm/model", {
         method: "PUT",
-        token: bob,
+        token: alice,
         body: { model: "nope" },
       })
     ).status
@@ -236,7 +253,7 @@ test("the LLM provider is shared by everyone", async () => {
     (
       await call("/api/v1/llm/effort", {
         method: "PUT",
-        token: bob,
+        token: alice,
         body: { effort: "high" },
       })
     ).status
@@ -245,11 +262,11 @@ test("the LLM provider is shared by everyone", async () => {
     await (
       await call("/api/v1/llm/effort", {
         method: "PUT",
-        token: bob,
+        token: alice,
         body: { effort: "off" },
       })
     ).json()
-  ).toMatchObject({ effort: "off" });
+  ).toMatchObject({ effort: "off", owner: true });
 });
 
 test("the web app signs in with Google and keeps cross-site posts out", async () => {

@@ -155,11 +155,12 @@ type Pairing = { command: string; expiresAt: number }; // run `command` on the m
 type Effort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 type Llm = {
 	connected: boolean;
+	owner: boolean; // whether the person is the server's owner, the first email in `allowed_emails`
 	provider: string; // "ChatGPT"
 	model: string; // a model id
 	effort: Effort; // the chosen effort, moved to the nearest level the model supports
 	models: { id: string; name: string; efforts: Effort[] }[]; // from the provider's model catalog
-	login: { userCode: string; verificationUri: string; expiresAt: number } | null; // set while a device login waits
+	login: { userCode: string; verificationUri: string; expiresAt: number } | null; // set for the owner while a device login waits
 	error: string | null; // the last login error
 };
 ```
@@ -383,11 +384,15 @@ the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 | `PUT /api/v1/llm/model` | `{ model }` | `Llm` |
 | `PUT /api/v1/llm/effort` | `{ effort }` | `Llm`; `400` when the model does not support it |
 
+Only the server's owner, the first email in `allowed_emails`, logs in, logs out, and chooses the model and the effort;
+these routes answer `403` to other people.
+
 Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 ## Isolation
 
-- Workspaces share nothing except the LLM provider, which the server owner connects once in `/settings`.
+- Workspaces share nothing except the LLM provider, which the server's owner, the first email in `allowed_emails`,
+  connects once in `/settings`.
 - A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
   keep. Its name is two words that people can remember, so it can be guessed: a client that opens 20 artifact links
   that do not exist in 10 minutes gets `429` until the 10 minutes end. On the public host the client is

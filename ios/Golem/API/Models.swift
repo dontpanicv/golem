@@ -310,6 +310,8 @@ struct Llm: Codable, Hashable {
     }
 
     let connected: Bool
+    /// Whether the person is the server's owner, who alone changes the login, the model, and the effort.
+    let owner: Bool
     let provider: String
     let model: String
     let effort: String

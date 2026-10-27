@@ -3,31 +3,35 @@ import { json, type Route } from "../app/http.ts";
 
 /** The shared LLM provider. */
 export const llmApiRoutes: readonly Route[] = [
-  ["GET", "/api/v1/llm", api(async ({ app }) => json(await app.llm.status()))],
+  [
+    "GET",
+    "/api/v1/llm",
+    api(async ({ app, user }) => json(await app.llm.status(user))),
+  ],
   [
     "POST",
     "/api/v1/llm/login",
-    api(async ({ app }) => json(await app.llm.startLogin())),
+    api(async ({ app, user }) => json(await app.llm.startLogin(user))),
   ],
   [
     "POST",
     "/api/v1/llm/logout",
-    api(async ({ app }) => json(await app.llm.logout())),
+    api(async ({ app, user }) => json(await app.llm.logout(user))),
   ],
   [
     "PUT",
     "/api/v1/llm/model",
-    api(async ({ app, body }) => {
-      app.llm.setModel(body.model as string);
-      return json(await app.llm.status());
+    api(async ({ app, user, body }) => {
+      app.llm.setModel(user, body.model as string);
+      return json(await app.llm.status(user));
     }),
   ],
   [
     "PUT",
     "/api/v1/llm/effort",
-    api(async ({ app, body }) => {
-      app.llm.setEffort(body.effort as string);
-      return json(await app.llm.status());
+    api(async ({ app, user, body }) => {
+      app.llm.setEffort(user, body.effort as string);
+      return json(await app.llm.status(user));
     }),
   ],
 ];

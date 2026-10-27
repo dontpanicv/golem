@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The LLM provider, which the whole server shares, and the account.
+/// The LLM provider, which the whole server shares and only its owner changes, and the account.
 struct SettingsView: View {
     @Environment(Session.self) private var session
     @State private var llm: Llm?
@@ -14,8 +14,12 @@ struct SettingsView: View {
                         HStack(spacing: Tokens.Space.md) {
                             if llm.connected {
                                 Badge(label: "Connected", tone: .success)
-                                Button("Disconnect") { update { try await session.api.llmLogout() } }
-                                    .buttonStyle(.secondary)
+                                if llm.owner {
+                                    Button("Disconnect") { update { try await session.api.llmLogout() } }
+                                        .buttonStyle(.secondary)
+                                }
+                            } else if !llm.owner {
+                                Badge(label: "Not connected")
                             } else if llm.login != nil {
                                 Badge(label: "Waiting", tone: .warning)
                             } else {
@@ -27,7 +31,16 @@ struct SettingsView: View {
                     if !llm.connected, let login = llm.login {
                         DeviceLogin(login: login).padding(Tokens.Space.xl)
                     }
-                    if llm.connected {
+                    if llm.connected && !llm.owner {
+                        SettingsRow("Model") {
+                            Text(llm.models.first { $0.id == llm.model }?.name ?? llm.model)
+                                .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                        }
+                        SettingsRow("Effort") {
+                            Text(effortLabel(llm.effort)).foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                        }
+                    }
+                    if llm.connected && llm.owner {
                         SettingsRow("Model") {
                             GolemSelect(
                                 selection: Binding(get: { llm.model }, set: setModel),

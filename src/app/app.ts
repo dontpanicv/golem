@@ -70,7 +70,12 @@ export async function createApp(
   });
   await migrateAuth(auth);
   migrate(database);
-  const llm = new Llm(database, resolvedSecrets, llmProvider);
+  const llm = new Llm(
+    database,
+    resolvedSecrets,
+    llmProvider,
+    config.allowedEmails[0] ?? null
+  );
   // New connector tools reach the agents' next runs.
   const reloadTools = (workspaceId: string) => {
     threads

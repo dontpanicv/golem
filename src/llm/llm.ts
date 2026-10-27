@@ -15,6 +15,7 @@ import {
   type MutableModels,
   type Provider,
 } from "@earendil-works/pi-ai/models";
+import type { User } from "../platform/auth.ts";
 import { setSetting, setting } from "../platform/database.ts";
 import { HttpError } from "../platform/errors.ts";
 import type { Secrets } from "../platform/secrets.ts";
@@ -38,6 +39,8 @@ export interface LlmModel {
 
 export interface LlmStatus {
   readonly connected: boolean;
+  /** Whether the person is the server's owner, who alone changes the login, the model, and the effort. */
+  readonly owner: boolean;
   readonly effort: ModelThinkingLevel;
   readonly error: string | null;
   readonly login: {
@@ -52,7 +55,10 @@ export interface LlmStatus {
 
 const DEFAULT_EFFORT: ModelThinkingLevel = "medium";
 
-/** The one LLM provider every workspace's agents use, connected once with ChatGPT device login. */
+/**
+ * The one LLM provider every workspace's agents use, connected once with ChatGPT device login. Only the server's owner,
+ * the first email in `allowed_emails`, changes it.
+ */
 export class Llm {
   readonly models: MutableModels;
   private login: {
@@ -66,7 +72,8 @@ export class Llm {
   constructor(
     private readonly database: Database,
     secrets: Secrets,
-    readonly llmProvider: LlmProvider
+    readonly llmProvider: LlmProvider,
+    private readonly owner: string | null
   ) {
     this.models = createModels({
       credentials: new SqliteCredentialStore(database, secrets),
@@ -83,7 +90,8 @@ export class Llm {
     return chosen && this.find(chosen) ? chosen : this.llmProvider.defaultModel;
   }
 
-  setModel(model: string): void {
+  setModel(user: User, model: string): void {
+    this.requireOwner(user);
     if (!this.find(model)) {
       throw new HttpError(400, `Unknown model: ${model}`);
     }
@@ -98,7 +106,8 @@ export class Llm {
     return model ? clampThinkingLevel(model, chosen) : chosen;
   }
 
-  setEffort(effort: string): void {
+  setEffort(user: User, effort: string): void {
+    this.requireOwner(user);
     const model = this.find(this.model());
     if (
       !(
@@ -111,13 +120,15 @@ export class Llm {
     setSetting(this.database, "llm.effort", effort);
   }
 
-  async status(): Promise<LlmStatus> {
+  async status(user: User): Promise<LlmStatus> {
+    const owner = this.isOwner(user);
     const connected =
       (await this.models.checkAuth(this.providerId).catch(() => undefined)) !==
       undefined;
     const { abort: _, ...login } = this.login ?? { abort: undefined };
     return {
       connected,
+      owner,
       provider: this.llmProvider.name,
       model: this.model(),
       effort: this.effort(),
@@ -126,15 +137,16 @@ export class Llm {
         name: model.name,
         efforts: getSupportedThinkingLevels(model),
       })),
-      login: this.login ? (login as LlmStatus["login"]) : null,
+      login: owner && this.login ? (login as LlmStatus["login"]) : null,
       error: this.error,
     };
   }
 
   /** Starts a device login and returns once the code to enter is known, or the login failed. */
-  async startLogin(): Promise<LlmStatus> {
+  async startLogin(user: User): Promise<LlmStatus> {
+    this.requireOwner(user);
     if (this.login) {
-      return this.status();
+      return this.status(user);
     }
     this.error = null;
     const abort = new AbortController();
@@ -183,15 +195,26 @@ export class Llm {
         }
       });
     await Promise.race([codeShown.promise, done]);
-    return this.status();
+    return this.status(user);
   }
 
-  async logout(): Promise<LlmStatus> {
+  async logout(user: User): Promise<LlmStatus> {
+    this.requireOwner(user);
     this.login?.abort.abort();
     this.login = null;
     this.error = null;
     await this.models.logout(this.providerId);
-    return this.status();
+    return this.status(user);
+  }
+
+  private isOwner(user: User): boolean {
+    return user.email.toLowerCase() === this.owner;
+  }
+
+  private requireOwner(user: User): void {
+    if (!this.isOwner(user)) {
+      throw new HttpError(403, "Only the server's owner changes this");
+    }
   }
 
   /** The agent tools of every workspace. */

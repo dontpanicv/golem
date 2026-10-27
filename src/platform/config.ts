@@ -54,7 +54,8 @@ host = "127.0.0.1"
 # That address answers only artifact links; docs/artifacts-sharing.md shows how to set it up.
 # share_url = "https://a.example.com"
 
-# The Google accounts that may sign in, for example ["anna@gmail.com"]. Nobody else can.
+# The Google accounts that may sign in, for example ["anna@gmail.com"]. Nobody else can. The first is the server's
+# owner, who alone connects the LLM provider and chooses its model.
 allowed_emails = []
 
 # The Google OAuth client for sign-in. google-sign-in.md shows how to create it.

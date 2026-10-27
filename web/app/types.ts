@@ -206,6 +206,8 @@ export type Effort =
 
 export interface LlmStatus {
   readonly connected: boolean;
+  /** Whether the person is the server's owner, who alone changes the login, the model, and the effort. */
+  readonly owner: boolean;
   readonly provider: string;
   readonly model: string;
   readonly effort: Effort;
