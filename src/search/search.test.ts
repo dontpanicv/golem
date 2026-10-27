@@ -206,7 +206,7 @@ test("search covers one workspace and never another, also through the agent's re
   expect(recalled).not.toContain("Payroll");
 
   await app.indexer.scan(family.id);
-  const found = await app.indexer.search(family.id, "dentist");
+  const found = await app.indexer.search(family.id, "dentist", 20, null);
   expect(found.semantic).toBe(true);
   expect(found.results.map((result) => result.kind).sort()).toEqual([
     "note",

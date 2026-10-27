@@ -59,7 +59,7 @@ export interface Me {
 
 export type ArtifactWorkspaces = Pick<
   Workspaces,
-  "channel" | "channelsIn" | "orchestratorOf" | "requireMember" | "threadsIn"
+  "channel" | "channelsIn" | "requireMember" | "threadsIn"
 >;
 
 const MAX_TITLE = 200;

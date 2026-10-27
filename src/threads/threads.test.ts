@@ -1005,7 +1005,7 @@ test("stopping a thread also stops the threads it asked, which still work on its
   expect(answer).toMatchObject({ agent: true, work: { stopped: true } });
 });
 
-test("a workspace has one orchestrator thread, which stays open and out of the channel lists", async () => {
+test("each member has an own orchestrator thread, which stays open, out of the channel lists, and private", async () => {
   const family = await golem.app.workspaces.create(alice, "Orchestrated");
   const [first, again] = await Promise.all([
     golem.app.threads.orchestrator(family.id, alice),
@@ -1040,6 +1040,67 @@ test("a workspace has one orchestrator thread, which stays open and out of the c
   expect(
     (await golem.call(`${base}/orchestrator`, { token: outsider })).status
   ).toBe(404);
+  await golem.app.workspaces.addMember(family.id, alice, bob.email);
+  const bobs = await golem.app.threads.orchestrator(family.id, bob);
+  expect(bobs.id).not.toBe(first.id);
+  expect(() => golem.app.workspaces.thread(first.id, bob)).toThrow();
+  await expect(
+    golem.app.threads.send(first.id, bob, "Read Alice's thread")
+  ).rejects.toThrow();
+  expect(
+    (await golem.call(`/api/v1/threads/${first.id}`, { token: outsider }))
+      .status
+  ).toBe(404);
+});
+
+test("a person's memory has their own thread and the channels' threads, and search shows nobody else's own thread", async () => {
+  const home = await golem.app.workspaces.create(alice, "Private");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const alices = await golem.app.threads.orchestrator(home.id, alice);
+  const bobs = await golem.app.threads.orchestrator(home.id, bob);
+  await golem.app.threads.send(alices.id, alice, "My diary code is 4711");
+  const shared = await golem.app.threads.create(
+    home.id,
+    alice,
+    general!.id,
+    "Dinner at seven"
+  );
+  for (const thread of [
+    alices,
+    golem.app.workspaces.thread(shared.id, alice),
+  ]) {
+    await until(
+      () => golem.app.threads.messages(thread),
+      (state) => !state.running && state.messages.length === 2
+    );
+  }
+  const { memories } = golem.app.threads as unknown as {
+    memories: Map<
+      string,
+      { view: (end: number) => string; count: () => number }
+    >;
+  };
+  const viewOf = (orchestrator: { id: string }) =>
+    until(
+      async () => memories.get(orchestrator.id),
+      (memory) => (memory?.count() ?? 0) >= 2
+    ).then((memory) => memory!.view(memory!.count()));
+  expect(await viewOf(bobs)).toContain("Dinner at seven");
+  expect(await viewOf(bobs)).not.toContain("4711");
+  await until(
+    async () => (await viewOf(alices)).includes("Dinner at seven"),
+    Boolean
+  );
+  expect(await viewOf(alices)).toContain("My diary code is 4711");
+
+  await golem.app.indexer.scan(home.id);
+  const found = (searcher: User) =>
+    golem.app.indexer
+      .search(home.id, "diary", 20, searcher.id)
+      .then(({ results }) => results.map((result) => result.uri));
+  expect(await found(alice)).toContain(`thread:${alices.id}`);
+  expect(await found(bob)).not.toContain(`thread:${alices.id}`);
 });
 
 test("the orchestrator gets its own instructions, also after they change, and a channel thread gets none of them", async () => {
@@ -1064,7 +1125,7 @@ test("the orchestrator gets its own instructions, also after they change, and a 
     return systemPrompts.slice(before).join("\n");
   };
   expect(await promptOf(orchestrator, "Plan our trip")).toContain(
-    "This thread is the orchestrator of the workspace"
+    "This thread is an orchestrator: the own thread of one person"
   );
 
   const [channel] = golem.app.workspaces.channels(home.id, alice);
@@ -1082,7 +1143,7 @@ test("the orchestrator gets its own instructions, also after they change, and a 
     (state) => !state.running && state.messages.length === 2
   );
   expect(await promptOf(channelThread, "Plan our trip")).not.toContain(
-    "orchestrator of the workspace"
+    "This thread is an orchestrator"
   );
 });
 
@@ -1311,7 +1372,7 @@ test("people delete a channel; the orchestrator moves to the next channel", asyn
   expect(
     (await golem.call(path(general!.id), { method: "DELETE", token })).status
   ).toBe(204);
-  const moved = golem.app.workspaces.orchestratorOf(family.id)!;
+  const moved = golem.app.workspaces.orchestratorOf(family.id, alice.id)!;
   expect(moved.channelId).toBe(food.id);
   expect(golem.app.workspaces.thread(moved.id, alice).id).toBe(orchestrator.id);
   const last = await golem.call(path(food.id), { method: "DELETE", token });

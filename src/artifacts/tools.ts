@@ -26,9 +26,9 @@ export function artifactTools(
     }
     return thread;
   };
-  /** The channel an artifact belongs to: the named one, or the thread's; null, the workspace, for the orchestrator. */
+  /** The channel an artifact belongs to: the named one, or the thread's; null, the workspace, for an orchestrator. */
   const placeOf = (
-    thread: { readonly id: string; readonly channelId: string },
+    thread: { readonly channelId: string; readonly ownerId: string | null },
     channel: string | undefined
   ) => {
     if (channel !== undefined) {
@@ -43,9 +43,7 @@ export function artifactTools(
       }
       return named.id;
     }
-    return workspaces.orchestratorOf(workspaceId)?.id === thread.id
-      ? null
-      : thread.channelId;
+    return thread.ownerId === null ? thread.channelId : null;
   };
   const artifactOf = (id: string) => {
     const artifact = artifacts

@@ -592,9 +592,13 @@ export class Routines {
             thread: string;
             limit?: number;
           };
+          // A routine runs for the whole workspace, so it reads no person's own thread.
           const thread = this.workspaces
             .threadsIn(workspaceId)
-            .find((candidate) => candidate.id === threadId);
+            .find(
+              (candidate) =>
+                candidate.id === threadId && candidate.ownerId === null
+            );
           if (!thread) {
             throw new Error(`There is no thread ${threadId}.`);
           }
@@ -619,8 +623,9 @@ export class Routines {
         },
         execute: async (args) => {
           const { query, limit } = args as { query: string; limit?: number };
-          return (await this.search.search(workspaceId, query, limit ?? 10))
-            .results;
+          return (
+            await this.search.search(workspaceId, query, limit ?? 10, null)
+          ).results;
         },
       },
     ];

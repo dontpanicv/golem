@@ -156,9 +156,10 @@ test("start creates each workspace's folders and indexes a new file soon after i
     );
     await until(
       async () =>
-        (await indexer.search("family", "oat milk")).results.length === 1
+        (await indexer.search("family", "oat milk", 20, null)).results
+          .length === 1
     );
-    const found = await indexer.search("family", "oat milk");
+    const found = await indexer.search("family", "oat milk", 20, null);
     expect(found.semantic).toBe(false);
     expect(found.results[0]).toMatchObject({
       kind: "note",
@@ -183,6 +184,7 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
         title: "Holiday",
         updatedAt: 5,
         settledAt: null,
+        ownerId: null,
       },
       {
         id: "t2",
@@ -192,6 +194,7 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
         title: "Empty",
         updatedAt: 6,
         settledAt: null,
+        ownerId: null,
       },
     ]
   );
@@ -239,7 +242,7 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
   );
   try {
     await indexer.scan("family");
-    const { results } = await indexer.search("family", "ferry");
+    const { results } = await indexer.search("family", "ferry", 20, null);
     expect(
       results
         .map((result) => [
@@ -260,10 +263,12 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
     expect(results.find((result) => result.kind === "thread")?.snippet).toBe(
       "Anna: We take the ferry to the island"
     );
-    expect((await indexer.search("family", "draft")).results).toEqual([]);
+    expect((await indexer.search("family", "draft", 20, null)).results).toEqual(
+      []
+    );
     // A file Golem cannot read is still found by its name.
     expect(
-      (await indexer.search("family", "broken report")).results.map(
+      (await indexer.search("family", "broken report", 20, null)).results.map(
         (result) => result.uri
       )
     ).toEqual(["files/broken report.docx"]);
@@ -284,6 +289,7 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
     title: "Holiday",
     updatedAt: 5,
     settledAt: null,
+    ownerId: null,
   };
   const artifact = {
     id: "amber-fox",
@@ -317,7 +323,7 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
     null
   );
   const found = async () =>
-    (await indexer.search("family", "ferry")).results
+    (await indexer.search("family", "ferry", 20, null)).results
       .map((result) => result.uri)
       .sort();
   try {
@@ -362,14 +368,14 @@ test("pictures read while the model is down are read again, and text waits for t
     await indexer.scan("family");
     expect(indexer.status("family")).toMatchObject({ waiting: 0, model: true });
     expect(
-      (await indexer.search("family", "beach")).results.map(
+      (await indexer.search("family", "beach", 20, null)).results.map(
         (result) => result.modality
       )
     ).toEqual([]);
 
     state.failMedia = false;
     await indexer.scan("family");
-    const beach = await indexer.search("family", "beach");
+    const beach = await indexer.search("family", "beach", 20, null);
     expect(beach.semantic).toBe(true);
     expect(
       beach.results.map((result) => [result.title, result.modality])
@@ -377,7 +383,7 @@ test("pictures read while the model is down are read again, and text waits for t
 
     // Without a query vector, search still answers by keywords.
     state.failText = true;
-    const lake = await indexer.search("family", "mountain lake");
+    const lake = await indexer.search("family", "mountain lake", 20, null);
     expect(lake.semantic).toBe(false);
     expect(lake.results.map((result) => result.title)).toEqual(["trip"]);
   } finally {

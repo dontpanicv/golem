@@ -131,8 +131,8 @@ export async function createApp(
     browser,
     notifications,
     {
-      recall: (workspaceId, query, limit) =>
-        indexer.search(workspaceId, query, limit),
+      recall: (workspaceId, query, limit, personId) =>
+        indexer.search(workspaceId, query, limit, personId),
       changed: (workspaceId) => indexer.touch(workspaceId),
       tools: async (workspaceId) => [
         ...(await routines.tools(workspaceId)),

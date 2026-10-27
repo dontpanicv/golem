@@ -19,9 +19,11 @@ data/
 │   └── <workspace-id>/              One folder per workspace, and nothing of a workspace outside it.
 │       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per thread
 │       │                            (transcript, runs, tasks).
-│       ├── memory.sqlite            The workspace's memory, which the orchestrator reads: a line for each
-│       │                            message of every thread, merged in pairs into a tree of summaries; and
-│       │                            the brief of each channel, every version.
+│       ├── memory.sqlite            The brief of each channel, every version; and the workspace's one memory
+│       │                            from before each member had an orchestrator.
+│       ├── memories/
+│       │   └── <thread-id>.sqlite   The memory of one member's orchestrator: a line for each message of it and
+│       │                            of every thread of the channels, merged in pairs into a tree of summaries.
 │       ├── channels/
 │       │   └── <channel-id>/
 │       │       ├── files/           Files uploaded to the channel or attached to messages in its threads.
@@ -49,7 +51,7 @@ data/
 
 - **Nothing is ever removed.** A delete marks the row with `deleted_at`, and reads leave it out; a deleted thread file
   moves to `channels/<id>/deleted/`. A deleted channel hides its threads, files, artifacts, and routines, and search
-  leaves them out at once; in the workspace's memory, the lines of its messages become `(deleted)`, and the model writes
+  leaves them out at once; in each memory, the lines of its messages become `(deleted)`, and the model writes
   the summaries over them again without them; `session.sqlite` keeps the messages. A deleted
   workspace (`organization.deletedAt`) hides all of it, and its folder stays. Only an owner deletes a workspace. Deleted
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
@@ -62,8 +64,8 @@ data/
   threads, artifacts, notes, files, and captures. Each workspace has its own `index.sqlite`; there is no shared index.
 - **Folders are named by id, not by name.** Renaming a workspace, channel, or thread changes a row, never a path.
   A channel's folder holds only its files; a thread's channel is a column in `golem.sqlite`, and so is an artifact's.
-- **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `memory.sqlite`, `notes/`, `files/`,
-  `raw/`, and `tables/` are the record; `memory.sqlite` comes from `session.sqlite`, but only model calls can write it
+- **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `memory.sqlite`, `memories/`, `notes/`,
+  `files/`, `raw/`, and `tables/` are the record; the memories come from `session.sqlite`, but only model calls can write them
   again. `index.sqlite`, `models/`, and `logs/` can be deleted; Golem rebuilds or
   downloads them.
 - **Immutable things get time-ordered names.** Captures, channel files, and Parquet parts are named with UUIDv7,
@@ -79,7 +81,8 @@ data/
 | Channels, threads, credentials, routines and their runs, one-time reminders, notifications, push devices | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
-| The workspace's memory and the channel briefs: summaries of the messages of all threads, which the model wrote | `memory.sqlite` | SQLite; the table `node` is the orchestrator's memory before it read all threads, which nothing reads now |
+| The channel briefs: summaries of the messages of a channel's threads, which the model wrote | `memory.sqlite` | SQLite; the tables `node` and `line` are the memory of the workspace's one orchestrator from before, which its person's memory copied, and which nothing reads now |
+| The memory of each member's orchestrator: summaries of its messages and those of the channels' threads | `memories/<thread-id>.sqlite` | SQLite |
 | Files uploaded to a channel or attached to messages in its threads | `channels/<id>/files/` | the file as uploaded |
 | Artifacts: pages and small apps agents make, which belong to a channel, or the orchestrator's to the workspace | `golem.sqlite` | HTML, and the records their visitors keep |
 | Knowledge: people, places, decisions, how-tos | `notes/` | markdown + YAML frontmatter (`type`, `title`, dates, links) |

@@ -18,7 +18,8 @@ export const searchApiRoutes: readonly Route[] = [
         await app.indexer.search(
           workspace.id,
           url.searchParams.get("q") ?? "",
-          limit
+          limit,
+          user.id
         )
       );
     }),

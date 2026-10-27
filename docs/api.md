@@ -196,7 +196,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `PUT /api/v1/workspaces/:workspaceId` | `{ name }` | `Workspace`; `403` for a member who is not an owner |
 | `DELETE /api/v1/workspaces/:workspaceId` | | `204`; its channels, threads, files, artifacts, and routines go with it; `403` for a member who is not an owner |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
-| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrator moves to the next channel; `409` for the last channel |
+| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrators move to the next channel; `409` for the last channel |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
 | `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once; `403` for a member who is not an owner |
 
@@ -204,7 +204,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET /api/v1/workspaces/:workspaceId/orchestrator` | | `ThreadSummary` of the workspace's orchestrator; the first call makes it |
+| `GET /api/v1/workspaces/:workspaceId/orchestrator` | | `ThreadSummary` of the person's own orchestrator in the workspace; the first call makes it |
 | `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message and the title |
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
 | `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
@@ -229,9 +229,13 @@ text takes the name of its first file. A message's `FileRef` opens at `/api/v1/w
 The agents see each attached file by name and id; `list_files` lists the files of their channel, and `read_file` reads
 any file of the workspace by its id.
 
-The orchestrator is the one thread of a workspace that never ends: the workspace opens on it, and its agent gives
-work to the threads of the channels. It is in the first channel, but no `Channel.threads` list shows it, and it cannot
-be settled. Its agent remembers every message of every thread of the workspace: see `src/threads/memory.ts`.
+Each member has an orchestrator of their own in each workspace, their personal assistant: one thread that never ends,
+which the workspace opens on, and whose agent gives work to the threads of the channels. Only its person reads and
+writes it: for anyone else, its routes answer `404`, and search, recall, routines, and other agents leave it out. It is
+in the first channel, but no `Channel.threads` list shows it, and it cannot be settled. Its agent remembers every
+message of its own thread and of every thread of the channels, and no other person's orchestrator: see
+`src/threads/memory.ts`. The workspace's one orchestrator from before each member had one belongs to the person who
+made the workspace.
 
 Each channel has a brief, which the model writes again from the new messages of the channel's threads when they are
 quiet for 10 minutes or settled, and the channel's summary with it. Every thread of the channel reads the brief and the

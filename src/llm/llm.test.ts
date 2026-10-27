@@ -471,6 +471,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       workspaceId: string;
       conversationId: number;
       channelId: string;
+      ownerId: null;
     }
   >();
   const registry = {
@@ -488,7 +489,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
         conversationId: number;
       }
     ) => {
-      registered.set(thread.id, { ...thread, workspaceId });
+      registered.set(thread.id, { ...thread, workspaceId, ownerId: null });
       return { ...thread, updatedAt: 0, settledAt: null };
     },
     thread: (threadId: string) => ({

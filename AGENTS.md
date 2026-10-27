@@ -38,6 +38,8 @@ addresses, or code and data from employers or clients.
   app is a React single-page app in `web/`; the server sends it for every app path and has no other pages.
 - Reminders are agent-only: their create, list, change, and cancel operations are tools, with no user routes.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
+- An orchestrator (`ThreadRef.ownerId` set) belongs to one member: every route, tool, search, and memory that reads
+  threads leaves out the orchestrators of other people.
 - Serve HTML that an agent or a person wrote only from `/a/:id/content`, with its `sandbox` content policy; never run
   it on Golem's origin.
 

@@ -3,10 +3,14 @@ import { randomUUID } from "node:crypto";
 import type { Auth, User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 
-/** What identifies a thread: its id, its workspace, and its conversation in that workspace's session. */
+/**
+ * What identifies a thread: its id, its workspace, its conversation in that workspace's session, and, for an
+ * orchestrator, the person it belongs to; `ownerId` is null for a thread of a channel.
+ */
 export interface ThreadRef {
   readonly conversationId: number;
   readonly id: string;
+  readonly ownerId: string | null;
   readonly workspaceId: string;
 }
 export interface Workspace {
@@ -229,7 +233,7 @@ export class Workspaces {
   /**
    * Deletes a channel of the workspace, for an agent that acts for it. Nothing is removed: the channel and its threads
    * stay in the database, hidden. Its name gets `~<id>`, which no channel name has, so a new channel can take the
-   * name. The orchestrator moves to the first other channel, so a workspace keeps one channel at least.
+   * name. The orchestrators move to the first other channel, so a workspace keeps one channel at least.
    */
   removeChannel(workspaceId: string, channelId: string): Channel {
     const channels = this.channelsIn(workspaceId);
@@ -272,8 +276,8 @@ export class Workspaces {
 
   /**
    * Adds a thread to a channel of the workspace. `Threads` checks who asks, names the thread, and creates its
-   * conversation; `createdBy` is a person's id, or `golem` for a thread an agent started. A workspace has at most one
-   * `orchestrator` thread.
+   * conversation; `createdBy` is a person's id, or `golem` for a thread an agent started. Each person has at most one
+   * `orchestrator` thread in a workspace, their own.
    */
   registerThread(
     workspaceId: string,
@@ -314,11 +318,11 @@ export class Workspaces {
     return { id: thread.id, channelId, title, updatedAt: now, settledAt: null };
   }
 
-  /** The thread if `user` is a member of its workspace. */
+  /** The thread if `user` is a member of its workspace; an orchestrator only for its own person. */
   thread(threadId: string, user: User): ThreadSummary & ThreadRef {
     const thread = this.database
       .query(
-        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN member m ON m.organizationId = t.workspace_id JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.id = ? AND m.userId = ? AND t.${LIVE}`
+        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt, CASE WHEN t.orchestrator = 1 THEN t.created_by END AS ownerId FROM thread t JOIN member m ON m.organizationId = t.workspace_id JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.id = ? AND m.userId = ? AND (t.orchestrator = 0 OR t.created_by = m.userId) AND t.${LIVE}`
       )
       .get(threadId, user.id) as (ThreadSummary & ThreadRef) | null;
     if (!thread) {
@@ -331,18 +335,21 @@ export class Workspaces {
   threadsIn(workspaceId: string): (ThreadSummary & ThreadRef)[] {
     return this.database
       .query(
-        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ? AND t.${LIVE}`
+        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt, CASE WHEN t.orchestrator = 1 THEN t.created_by END AS ownerId FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ? AND t.${LIVE}`
       )
       .all(workspaceId) as (ThreadSummary & ThreadRef)[];
   }
 
-  /** The thread of the workspace that never ends, if it has one yet; `Threads.orchestrator` makes it. */
-  orchestratorOf(workspaceId: string): (ThreadSummary & ThreadRef) | null {
+  /** The person's thread of the workspace that never ends, if they have one yet; `Threads.orchestrator` makes it. */
+  orchestratorOf(
+    workspaceId: string,
+    personId: string
+  ): (ThreadSummary & ThreadRef) | null {
     return this.database
       .query(
-        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt FROM thread WHERE workspace_id = ? AND orchestrator = 1"
+        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt, created_by AS ownerId FROM thread WHERE workspace_id = ? AND created_by = ? AND orchestrator = 1"
       )
-      .get(workspaceId) as (ThreadSummary & ThreadRef) | null;
+      .get(workspaceId, personId) as (ThreadSummary & ThreadRef) | null;
   }
 
   /** Moves the thread up in its channel, after a new message. */
@@ -364,7 +371,7 @@ export class Workspaces {
     if (thread.workspaceId !== workspaceId) {
       throw notFound();
     }
-    if (this.orchestratorOf(workspaceId)?.id === threadId) {
+    if (thread.ownerId !== null) {
       throw new HttpError(400, "This thread stays open");
     }
     if ((thread.settledAt !== null) === settled) {

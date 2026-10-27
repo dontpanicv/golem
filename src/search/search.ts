@@ -114,13 +114,15 @@ export class Indexer {
   }
 
   /**
-   * Searches one workspace. The caller has checked that the person is a member. Results of a deleted channel or
-   * artifact stay out at once, before the next scan takes them from the index.
+   * Searches one workspace, for `personId`: their own thread with Golem is in the results, and no other person's.
+   * The caller has checked that the person is a member. Results of a deleted channel or artifact stay out at once,
+   * before the next scan takes them from the index.
    */
   async search(
     workspaceId: string,
     query: string,
-    limit = 20
+    limit: number,
+    personId: string | null
   ): Promise<SearchResponse> {
     const index = this.index(workspaceId);
     let vector: Float32Array | null = null;
@@ -133,6 +135,14 @@ export class Indexer {
     const channels = new Set(
       this.directory.channelsIn(workspaceId).map((channel) => channel.id)
     );
+    const othersOwn = new Set(
+      this.directory
+        .threadsIn(workspaceId)
+        .filter(
+          (thread) => thread.ownerId !== null && thread.ownerId !== personId
+        )
+        .map((thread) => `thread:${thread.id}`)
+    );
     const artifacts = new Set(
       this.artifacts
         .inWorkspace(workspaceId)
@@ -144,7 +154,8 @@ export class Indexer {
         .filter(
           (result) =>
             (result.channelId === null || channels.has(result.channelId)) &&
-            (result.kind !== "artifact" || artifacts.has(result.uri))
+            (result.kind !== "artifact" || artifacts.has(result.uri)) &&
+            !othersOwn.has(result.uri)
         ),
       semantic: vector !== null,
     };

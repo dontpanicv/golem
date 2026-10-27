@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -24,6 +25,7 @@ import {
   defineTool,
   type EntryId,
   type EntryRecord,
+  type Extension,
   Harness,
   type JsonObject,
   type Registry,
@@ -60,7 +62,7 @@ import type {
   Workspaces,
 } from "../workspaces/workspaces.ts";
 import { type Brief, type BriefMessage, Briefs } from "./brief.ts";
-import { Memory, type Said } from "./memory.ts";
+import { Memory, memoryExtension, type Said } from "./memory.ts";
 
 export type { Brief } from "./brief.ts";
 
@@ -197,12 +199,12 @@ const NAMESPACES: CodemodeNamespace[] = [
 ];
 const INSTRUCTIONS =
   "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Be useful first and witty second: explain complex things simply and with curiosity, as Richard Feynman did; be warm, humane, and lightly funny, as Terry Pratchett was; and add deadpan absurdity rarely, as Douglas Adams did. Use these only as broad traits; never claim to be or imitate a real person. Answer the question before you make a joke. Keep humor short and kind, and prefer one dry aside to a funny paragraph. Do not joke about sensitive, urgent, health, legal, money, or failure matters: when the answer is serious, be serious. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. Your answers are the memory: the brief of the channel and the memory of the workspace keep only the messages of people and your answers, never what you gave to tools or what tools gave you. So say in your answer what will matter later: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as 'Rivalové: watched on 26 October', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as 'Pressure (2026).md', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, do not save it again; say the change in your answer. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread's channel, which the model writes again from its threads, and the channel's threads: use it first, then read_thread and recall for more. Your answers show as Markdown: use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. Show a picture with ![what it shows](file:<id>) for a file of this channel. To show a picture from the web, a screenshot, or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file, use a machine: hands_copy_file puts a file there, and save_file brings the result back. You call the tools of channels, threads, files, and web search yourself. You call all other tools from a codemode script as `await tools.<name>(args)`: machines, artifacts, the browser, routines, reminders, and connected services such as shops. The codemode section lists them by namespace; describeNamespace() and searchTools() find the rest.";
-/** Added to `INSTRUCTIONS` for the orchestrator, the one thread of a workspace that never ends. */
+/** Added to `INSTRUCTIONS` for an orchestrator, the one thread of a person in a workspace that never ends. */
 const ORCHESTRATOR =
-  "This thread is the orchestrator of the workspace: one thread that never ends, where the family talks to you first. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the family in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the family what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of every thread of the workspace, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
+  "This thread is an orchestrator: the own thread of one person of the family, which never ends, where they talk to you first. You are their personal assistant here. Only they read and write this thread, so it is private: the threads of the channels are for the whole family, so give a thread there only what its work needs, and never the person's private matters unless they ask. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the person in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the person what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of this thread and of every thread of the workspace's channels, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
 /** The largest file that save_file copies from a machine. */
 const MAX_MACHINE_FILE = 1024 ** 3;
-/** Above about this many tokens of context, the orchestrator compacts after its turn, so each turn reads little. */
+/** Above about this many tokens of context, an orchestrator compacts after its turn, so each turn reads little. */
 const ORCHESTRATOR_TOKENS = 48_000;
 /** A compaction needs this many new messages since the one before, so a long message that stays cannot repeat it. */
 const COMPACTION_MESSAGES = 8;
@@ -247,11 +249,15 @@ interface Relay extends JsonObject {
 export interface ThreadHooks {
   /** Called when work in the workspace's threads starts or ends, such as a message or a finished answer. */
   readonly changed: (workspaceId: string) => void;
-  /** Searches one workspace; the recall tool of a thread only ever passes its own workspace. */
+  /**
+   * Searches one workspace, with the own thread of `personId` and no other person's; the recall tool of a thread only
+   * ever passes its own workspace.
+   */
   readonly recall: (
     workspaceId: string,
     query: string,
-    limit: number
+    limit: number,
+    personId: string | null
   ) => Promise<{ readonly results: readonly RecallResult[] }>;
   /** Tools of the modules after threads, such as routines, for the agents of a workspace. */
   readonly tools: (workspaceId: string) => Promise<readonly ToolRegistration[]>;
@@ -325,14 +331,16 @@ export type ThreadNotifications = Pick<Notifications, "notify">;
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
   private readonly open = new Map<string, Promise<Harness>>();
-  /** The memory of each open workspace's orchestrator. */
+  /** The memory of each open orchestrator, by its thread. */
   private readonly memories = new Map<string, Memory>();
   private readonly making = new Map<
     string,
     Promise<ThreadSummary & ThreadRef>
   >();
-  /** The memory size at each orchestrator's last compaction, by workspace. */
+  /** The memory size at each orchestrator's last compaction, by its thread. */
   private readonly compacted = new Map<string, number>();
+  /** The zoom tool and compaction hook of the orchestrators of each open workspace. */
+  private readonly memoryExtensions = new Map<string, Extension>();
   /** The channel briefs of each open workspace. */
   private readonly briefs = new Map<string, Briefs>();
   /** The version of each thread whose messages the memory and the briefs know, by thread. */
@@ -439,24 +447,25 @@ export class Threads {
   }
 
   /**
-   * The workspace's thread that never ends and that nobody settles. The first call makes it, in the first channel,
-   * which channel lists leave it out of.
+   * The person's own thread of the workspace, which never ends and nobody settles: their personal assistant. The first
+   * call makes it, in the first channel, which channel lists leave it out of.
    */
   async orchestrator(
     workspaceId: string,
     user: User
   ): Promise<ThreadSummary & ThreadRef> {
     this.registry.requireMember(workspaceId, user);
-    const existing = this.registry.orchestratorOf(workspaceId);
+    const existing = this.registry.orchestratorOf(workspaceId, user.id);
     if (existing) {
       return existing;
     }
-    let making = this.making.get(workspaceId);
+    const key = `${workspaceId}:${user.id}`;
+    let making = this.making.get(key);
     if (!making) {
-      making = this.makeOrchestrator(workspaceId).finally(() =>
-        this.making.delete(workspaceId)
+      making = this.makeOrchestrator(workspaceId, user).finally(() =>
+        this.making.delete(key)
       );
-      this.making.set(workspaceId, making);
+      this.making.set(key, making);
     }
     return making;
   }
@@ -475,7 +484,12 @@ export class Threads {
       conversationId: conversation.id,
       createdBy: "golem",
     });
-    return { ...thread, workspaceId, conversationId: conversation.id };
+    return {
+      ...thread,
+      workspaceId,
+      conversationId: conversation.id,
+      ownerId: null,
+    };
   }
 
   /**
@@ -626,16 +640,15 @@ export class Threads {
     return { workspaceId, channelId };
   }
 
-  /** Where a thread keeps its files: its channel, or the workspace for the orchestrator. */
+  /** Where a thread keeps its files: its channel, or the workspace for an orchestrator. */
   placeOf(
-    thread: Pick<ThreadRef, "id" | "workspaceId"> & {
+    thread: Pick<ThreadRef, "ownerId" | "workspaceId"> & {
       readonly channelId: string;
     }
   ): FilePlace {
-    const orchestrator = this.registry.orchestratorOf(thread.workspaceId);
     return {
       workspaceId: thread.workspaceId,
-      channelId: orchestrator?.id === thread.id ? null : thread.channelId,
+      channelId: thread.ownerId === null ? thread.channelId : null,
     };
   }
 
@@ -1108,7 +1121,8 @@ export class Threads {
   }
 
   private async makeOrchestrator(
-    workspaceId: string
+    workspaceId: string,
+    user: User
   ): Promise<ThreadSummary & ThreadRef> {
     const [channel] = this.registry.channelsIn(workspaceId);
     if (!channel) {
@@ -1122,7 +1136,7 @@ export class Threads {
           model: this.currentModel(),
           thinkingLevel: this.llm.effort(),
           instructions: `${INSTRUCTIONS} ${ORCHESTRATOR}`,
-          extensions: { add: [this.memories.get(workspaceId)!.extension] },
+          extensions: { add: [this.memoryExtensions.get(workspaceId)!] },
         },
       },
       BACKGROUND_CONTEXT
@@ -1133,12 +1147,14 @@ export class Threads {
         channelId: channel.id,
         title: "Golem",
         conversationId: conversation.id,
-        createdBy: "golem",
+        createdBy: user.id,
         orchestrator: true,
       }),
       workspaceId,
       conversationId: conversation.id,
+      ownerId: user.id,
     };
+    this.catchUp(workspaceId);
     return thread;
   }
 
@@ -1164,20 +1180,24 @@ export class Threads {
   }
 
   /**
-   * Adds the finished messages of each thread that changed to the memory, and, once the thread stops running, notes
-   * the ones that its channel's brief has not read. After the orchestrator's turn, it compacts the orchestrator when
+   * Adds the finished messages of each thread that changed to the memories: those of a channel's thread to every
+   * person's, and those of an orchestrator to its own person's only. Once a thread stops running, it notes the
+   * messages that its channel's brief has not read. After an orchestrator's turn, it compacts the orchestrator when
    * its context is long.
    */
   private async catchUpNow(workspaceId: string): Promise<void> {
-    const memory = this.memories.get(workspaceId);
     const briefs = this.briefs.get(workspaceId);
-    if (!(memory && briefs)) {
+    if (!briefs) {
       return;
     }
-    const orchestrator = this.registry.orchestratorOf(workspaceId);
+    const threads = this.registry.threadsIn(workspaceId);
+    const orchestrators = threads.filter((thread) => thread.ownerId !== null);
+    for (const orchestrator of orchestrators) {
+      this.memoryOf(orchestrator);
+    }
     const said: Said[] = [];
-    let orchestratorAnswered = false;
-    for (const thread of this.registry.threadsIn(workspaceId)) {
+    const answered: (ThreadSummary & ThreadRef)[] = [];
+    for (const thread of threads) {
       if (this.background.signal.aborted) {
         return;
       }
@@ -1186,13 +1206,11 @@ export class Threads {
         continue;
       }
       const { messages, running } = await this.messages(thread);
-      said.push(...this.saidIn(workspaceId, thread, messages));
+      said.push(...this.saidIn(thread, messages));
       if (running) {
         continue;
       }
-      if (thread.id === orchestrator?.id) {
-        orchestratorAnswered = true;
-      } else {
+      if (thread.ownerId === null) {
         const through = briefs.through(thread.id);
         const fresh = messages.filter(
           (message) => Number(message.id) > through
@@ -1202,46 +1220,96 @@ export class Threads {
           waiting.set(thread.id, fresh.at(-1)!.time);
           this.unbriefed.set(thread.channelId, waiting);
         }
+      } else {
+        answered.push(thread);
       }
       this.caughtUp.set(thread.id, version);
     }
-    memory.add(said);
-    if (orchestratorAnswered && orchestrator) {
+    this.remember(orchestrators, said);
+    for (const orchestrator of answered) {
       await this.compactWhenLong(
-        workspaceId,
+        orchestrator,
         await this.session(workspaceId),
         await this.conversation(orchestrator),
-        memory
+        this.memoryOf(orchestrator)
       );
     }
     this.briefWhenQuiet(workspaceId, briefs);
   }
 
-  /** Adds the orchestrator's finished messages to the memory now, for a compaction in the middle of its turn. */
-  private async rememberOrchestrator(workspaceId: string): Promise<void> {
-    const orchestrator = this.registry.orchestratorOf(workspaceId);
-    if (orchestrator) {
-      const { messages } = await this.messages(orchestrator);
-      this.memories
-        .get(workspaceId)
-        ?.add(this.saidIn(workspaceId, orchestrator, messages));
+  /** Adds messages to the memory of each orchestrator: its own, and those of the channels' threads. */
+  private remember(
+    orchestrators: readonly (ThreadSummary & ThreadRef)[],
+    said: readonly Said[]
+  ): void {
+    const personal = new Set(orchestrators.map((thread) => thread.id));
+    for (const orchestrator of orchestrators) {
+      this.memoryOf(orchestrator).add(
+        said.filter(
+          (message) =>
+            message.threadId === orchestrator.id ||
+            !personal.has(message.threadId)
+        )
+      );
     }
   }
 
   /**
+   * The memory of an orchestrator, opened at its first use. The one person who had the workspace's orchestrator
+   * before each person had one keeps its memory, `memory.sqlite`; another's begins empty and takes in every thread of
+   * the channels.
+   */
+  private memoryOf(orchestrator: ThreadSummary & ThreadRef): Memory {
+    let memory = this.memories.get(orchestrator.id);
+    if (!memory) {
+      const directory = join(
+        this.dataDirectory,
+        "workspaces",
+        orchestrator.workspaceId
+      );
+      mkdirSync(join(directory, "memories"), { recursive: true });
+      memory = new Memory(
+        join(directory, "memories", `${orchestrator.id}.sqlite`),
+        (threadId, messageId) => this.said(orchestrator, threadId, messageId),
+        (systemPrompt, text, signal) =>
+          this.llm.complete(systemPrompt, text, signal),
+        () => this.rememberOrchestrator(orchestrator),
+        {
+          path: join(directory, "memory.sqlite"),
+          orchestratorId: orchestrator.id,
+        }
+      );
+      this.memories.set(orchestrator.id, memory);
+      const threads = this.registry.threadsIn(orchestrator.workspaceId);
+      memory.keep(new Set(threads.map((thread) => thread.id)));
+      // The new memory missed the messages caught up before it: they come again, and each memory adds only new ones.
+      for (const thread of threads) {
+        this.caughtUp.delete(thread.id);
+      }
+    }
+    return memory;
+  }
+
+  /** Adds the orchestrator's finished messages to its memory now, for a compaction in the middle of its turn. */
+  private async rememberOrchestrator(
+    orchestrator: ThreadSummary & ThreadRef
+  ): Promise<void> {
+    const { messages } = await this.messages(orchestrator);
+    this.memories
+      .get(orchestrator.id)
+      ?.add(this.saidIn(orchestrator, messages));
+  }
+
+  /**
    * The messages of a thread as the memory reads them, up to an answer that the agent still writes; a message of a
-   * thread other than the orchestrator starts with the thread's link.
+   * thread other than an orchestrator starts with the thread's link.
    */
   private saidIn(
-    workspaceId: string,
     thread: ThreadSummary & ThreadRef,
     messages: readonly Message[]
   ): Said[] {
     const writing = messages.findIndex((message) => message.streaming);
-    const where =
-      thread.id === this.registry.orchestratorOf(workspaceId)?.id
-        ? ""
-        : `${threadLink(thread)} `;
+    const where = thread.ownerId === null ? `${threadLink(thread)} ` : "";
     return messages
       .slice(0, writing === -1 ? undefined : writing)
       .map((message) => ({
@@ -1344,10 +1412,7 @@ export class Threads {
       const channel = this.registry
         .channelsIn(workspaceId)
         .find((candidate) => candidate.id === thread?.channelId);
-      if (
-        !(thread && channel) ||
-        thread.id === this.registry.orchestratorOf(workspaceId)?.id
-      ) {
+      if (!(thread && channel) || thread.ownerId !== null) {
         return;
       }
       const brief = this.briefs.get(workspaceId)?.latest(channel.id);
@@ -1373,20 +1438,23 @@ export class Threads {
   }
 
   private async compactWhenLong(
-    workspaceId: string,
+    orchestrator: ThreadRef,
     harness: Harness,
     conversation: Conversation,
     memory: Memory
   ): Promise<void> {
     const count = memory.count();
-    if (count - (this.compacted.get(workspaceId) ?? 0) < COMPACTION_MESSAGES) {
+    if (
+      count - (this.compacted.get(orchestrator.id) ?? 0) <
+      COMPACTION_MESSAGES
+    ) {
       return;
     }
     const { messages } = await conversation.context(BACKGROUND_CONTEXT);
     if (JSON.stringify(messages).length / 4 < ORCHESTRATOR_TOKENS) {
       return;
     }
-    this.compacted.set(workspaceId, count);
+    this.compacted.set(orchestrator.id, count);
     const task = await conversation.compact(undefined, BACKGROUND_CONTEXT);
     const { outcome } = (await harness.waitForTask(task, BACKGROUND_CONTEXT))
       .state;
@@ -1428,28 +1496,24 @@ export class Threads {
       workspaceId,
       "session.sqlite"
     );
-    // The storage makes the workspace's folder, which the memory is in.
+    // The storage makes the workspace's folder, which the briefs are in.
     const storage = await openNodeSqliteStorage(path);
-    const memoryPath = join(
-      this.dataDirectory,
-      "workspaces",
-      workspaceId,
-      "memory.sqlite"
+    const briefs = new Briefs(
+      join(this.dataDirectory, "workspaces", workspaceId, "memory.sqlite"),
+      (systemPrompt, text, signal) =>
+        this.llm.complete(systemPrompt, text, signal)
     );
-    const summarize = (
-      systemPrompt: string,
-      text: string,
-      signal: AbortSignal
-    ) => this.llm.complete(systemPrompt, text, signal);
-    const memory = new Memory(
-      memoryPath,
-      (threadId, messageId) => this.said(workspaceId, threadId, messageId),
-      summarize,
-      () => this.rememberOrchestrator(workspaceId)
-    );
-    this.memories.set(workspaceId, memory);
-    this.forget(workspaceId);
-    this.briefs.set(workspaceId, new Briefs(memoryPath, summarize));
+    this.briefs.set(workspaceId, briefs);
+    const memory = memoryExtension(async (conversationId) => {
+      const orchestrator = this.registry
+        .threadsIn(workspaceId)
+        .find(
+          (thread) =>
+            thread.conversationId === conversationId && thread.ownerId !== null
+        );
+      return orchestrator && this.memoryOf(orchestrator);
+    });
+    this.memoryExtensions.set(workspaceId, memory);
     const golem = await this.golemExtension(workspaceId);
     const extension = createCodemodeExtension({
       sandbox: this.sandbox,
@@ -1465,8 +1529,8 @@ export class Threads {
     this.registries.set(workspaceId, registry);
     registry.install(golem);
     registry.install(codemode);
-    registry.install(memory.extension);
-    // Only the orchestrator selects the memory.
+    registry.install(memory);
+    // Only the orchestrators select the memory.
     const harness = await Harness.open(
       storage,
       {
@@ -1476,7 +1540,7 @@ export class Threads {
       },
       BACKGROUND_CONTEXT
     ).catch((error) => {
-      memory.close();
+      briefs.close();
       throw error;
     });
     const changes = await harness.watchTaskGraph(BACKGROUND_CONTEXT);
@@ -1555,15 +1619,15 @@ export class Threads {
   }
 
   /**
-   * Takes the messages of threads that are gone, such as those of a deleted channel, out of the workspace's memory,
-   * when it is open; it also does so when it opens.
+   * Takes the messages of threads that are gone, such as those of a deleted channel, out of the open memories of the
+   * workspace; a memory also does so when it opens.
    */
   forget(workspaceId: string): void {
-    this.memories
-      .get(workspaceId)
-      ?.keep(
-        new Set(this.registry.threadsIn(workspaceId).map((thread) => thread.id))
-      );
+    const threads = this.registry.threadsIn(workspaceId);
+    const live = new Set(threads.map((thread) => thread.id));
+    for (const thread of threads) {
+      this.memories.get(thread.id)?.keep(live);
+    }
   }
 
   /**
@@ -1699,23 +1763,23 @@ export class Threads {
     });
   }
 
-  /** One message of a thread whole, for zoom in the workspace's memory. */
+  /** One message of a thread whole, for zoom in an orchestrator's memory: of a channel's thread, or its own. */
   private async said(
-    workspaceId: string,
+    orchestrator: ThreadRef,
     threadId: string,
     messageId: number
   ): Promise<{ text: string; time: number } | undefined> {
     const thread = this.registry
-      .threadsIn(workspaceId)
+      .threadsIn(orchestrator.workspaceId)
       .find((candidate) => candidate.id === threadId);
-    if (!thread) {
+    if (!thread || (thread.ownerId !== null && thread.id !== orchestrator.id)) {
       return undefined;
     }
     const { messages } = await this.messages(thread);
     const index = messages.findIndex(
       (candidate) => Number(candidate.id) === messageId
     );
-    const said = this.saidIn(workspaceId, thread, messages)[index];
+    const said = this.saidIn(thread, messages)[index];
     return said && { text: said.text, time: messages[index]!.time };
   }
 
@@ -1736,13 +1800,20 @@ export class Threads {
         ),
       }),
       replay: "safe",
-      execute: async (args) => {
+      execute: async (args, api) => {
+        // An orchestrator recalls its own messages too; a thread of a channel recalls no person's own thread.
+        const personId = this.threadOf(workspaceId, api.conversationId).ownerId;
         const { results } = await this.hooks.recall(
           workspaceId,
           args.query,
-          args.limit ?? 8
+          args.limit ?? 8,
+          personId
         );
-        const threads = this.registry.threadsIn(workspaceId);
+        const threads = this.registry
+          .threadsIn(workspaceId)
+          .filter(
+            (thread) => thread.ownerId === null || thread.ownerId === personId
+          );
         const text = results.length
           ? results
               .map((result, number) => {
@@ -1890,10 +1961,18 @@ export class Threads {
         ),
       }),
       replay: "safe",
-      execute: async (args) => {
-        const { messages } = await this.messages(
-          this.threadIn(workspaceId, args.thread)
-        );
+      execute: async (args, api) => {
+        const thread = this.threadIn(workspaceId, args.thread);
+        // A person's own thread is private: only its own agent reads it.
+        if (
+          thread.ownerId !== null &&
+          thread.conversationId !== api.conversationId
+        ) {
+          throw new Error(
+            `There is no thread ${args.thread} in this workspace.`
+          );
+        }
+        const { messages } = await this.messages(thread);
         const text =
           messages
             .filter((message) => !message.streaming)
@@ -1958,6 +2037,7 @@ export class Threads {
             }),
             workspaceId,
             conversationId: conversation.id,
+            ownerId: null,
           };
         }
         await this.deliver(
@@ -1997,6 +2077,12 @@ export class Threads {
         const target = this.threadIn(workspaceId, args.thread);
         if (target.id === from.id) {
           throw new Error("That is this thread. Answer here instead.");
+        }
+        // A thread of a channel reports back to a person's own thread; one person's never talks to another's.
+        if (target.ownerId !== null && from.ownerId !== null) {
+          throw new Error(
+            `There is no thread ${args.thread} in this workspace.`
+          );
         }
         await this.deliver(
           workspaceId,
@@ -2411,11 +2497,14 @@ export class Threads {
     const view = await conversation.watch(BACKGROUND_CONTEXT);
     await view.stop();
     const stored = view.value.docs["pi.agent"] as AgentState | undefined;
-    const instructions =
-      this.registry.orchestratorOf(workspaceId)?.conversationId ===
-      conversation.id
-        ? `${INSTRUCTIONS} ${ORCHESTRATOR}`
-        : INSTRUCTIONS;
+    const instructions = this.registry
+      .threadsIn(workspaceId)
+      .some(
+        (thread) =>
+          thread.conversationId === conversation.id && thread.ownerId !== null
+      )
+      ? `${INSTRUCTIONS} ${ORCHESTRATOR}`
+      : INSTRUCTIONS;
     if (
       stored?.model?.provider !== model.provider ||
       stored.model.modelId !== model.modelId ||

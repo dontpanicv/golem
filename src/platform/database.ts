@@ -262,6 +262,11 @@ const migrations = [
   // hands and routines: standing approvals, unused since dcg alone decides what waits for a person; drop both.
   "ALTER TABLE machine ADD COLUMN trusted_members TEXT NOT NULL DEFAULT '[]';",
   "ALTER TABLE routine ADD COLUMN machine_ids TEXT NOT NULL DEFAULT '[]';",
+  // workspaces: each member has an orchestrator of their own, and its `created_by` is that member. The workspace's one
+  // orchestrator from before becomes the own of the person who made the workspace, who made its first channel.
+  `UPDATE thread SET created_by = (SELECT c.created_by FROM channel c WHERE c.workspace_id = thread.workspace_id ORDER BY c.created_at, c.rowid LIMIT 1) WHERE orchestrator = 1;
+	DROP INDEX thread_orchestrator;
+	CREATE UNIQUE INDEX thread_own_orchestrator ON thread (workspace_id, created_by) WHERE orchestrator = 1;`,
 ];
 
 export function openDatabase(path: string): Database {

@@ -28,8 +28,9 @@ async function memoryOf(
     prompts.push(prompt);
     return await answer(prompt);
   };
+  const path = join(directory, `${name}.sqlite`);
   const memory = new Memory(
-    join(directory, `${name}.sqlite`),
+    path,
     async (threadId, messageId) => {
       const found = said.find(
         (candidate) =>
@@ -44,7 +45,7 @@ async function memoryOf(
     },
     summarize
   );
-  return { memory, prompts };
+  return { memory, prompts, path };
 }
 
 /** The lines of a view, after its header. */
@@ -126,6 +127,34 @@ test("the messages of all threads come in the order they came, and each thread a
     ].join("\n")
   );
   memory.close();
+});
+
+test("a new memory takes the lines of the workspace's earlier memory only when they include its orchestrator", async () => {
+  const said = [message(1, "user", "Hello"), message(3, "assistant", "Hi")];
+  const earlier = await memoryOf(said, () => "unused");
+  earlier.memory.add(said);
+  earlier.memory.close();
+  const { path } = earlier;
+  const read = async () => undefined;
+  const summarize = async () => "unused";
+  const kept = new Memory(
+    join(directory, "kept.sqlite"),
+    read,
+    summarize,
+    undefined,
+    { path, orchestratorId: "orchestrator" }
+  );
+  expect(kept.view(2)).toContain("0+1|Alice: Hello\n1+1|Golem: Hi");
+  const fresh = new Memory(
+    join(directory, "fresh.sqlite"),
+    read,
+    summarize,
+    undefined,
+    { path, orchestratorId: "another" }
+  );
+  expect(fresh.count()).toBe(0);
+  kept.close();
+  fresh.close();
 });
 
 test("the messages of a deleted thread leave the memory, and the lines over them are written again", async () => {
