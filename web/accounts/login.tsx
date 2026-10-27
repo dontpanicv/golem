@@ -59,13 +59,17 @@ export function LoginPage() {
   );
 }
 
-/** Signs out on this device and forgets what the app saved. */
+/** Signs out on this device and forgets what the app saved. When Golem does not confirm it, the page stays. */
 export async function signOut(): Promise<void> {
-  await fetch("/api/auth/sign-out", {
+  const response = await fetch("/api/auth/sign-out", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",
-  });
+  }).catch(() => null);
+  if (!response?.ok) {
+    showToast("error", "Sign-out failed. Try again.");
+    return;
+  }
   await clearCache();
   location.assign("/login");
 }
