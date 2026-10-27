@@ -20,13 +20,13 @@ function setup(
   migrate(database);
   const workspaces = {
     requireMember(workspaceId: string, user: User) {
-      if (workspaceId !== "home" || user.id !== alice.id) {
+      if (workspaceId !== "home" || ![alice.id, bob.id].includes(user.id)) {
         throw new Error("Not found");
       }
       return { id: "home", name: "Home", role: "owner" };
     },
     members(workspaceId: string, user: User) {
-      if (workspaceId !== "home" || user.id !== alice.id) {
+      if (workspaceId !== "home" || ![alice.id, bob.id].includes(user.id)) {
         throw new Error("Not found");
       }
       return [
@@ -36,6 +36,7 @@ function setup(
           email: alice.email,
           role: "owner",
         },
+        { userId: bob.id, name: bob.name, email: bob.email, role: "member" },
       ];
     },
     agentMember() {
@@ -61,12 +62,21 @@ function setup(
     "agentMember" | "requireMember" | "members" | "threadsIn"
   >;
   const calls: string[] = [];
+  const requesters: (string | null)[] = [];
+  const asking = { requester };
   const threads = {
-    instruct: async (_thread: unknown, _text: string, requestId: string) => {
+    instruct: async (
+      _thread: unknown,
+      _text: string,
+      requestId: string,
+      _notify: unknown,
+      requesterId: string | null
+    ) => {
       calls.push(requestId);
+      requesters.push(requesterId);
       return answer(requestId);
     },
-    requester: async () => requester,
+    requester: async () => asking.requester,
   } as unknown as Pick<Threads, "instruct" | "requester">;
   return {
     database,
@@ -74,6 +84,8 @@ function setup(
     threads,
     reminders: new Reminders(database, workspaces, threads),
     calls,
+    requesters,
+    asking,
   };
 }
 
@@ -81,6 +93,7 @@ test("one-time reminders run once, also when the machine starts after their due 
   const { database, workspaces, threads, reminders, calls } = setup();
   const reminder = reminders.create("home", alice, "thread", alice.id, {
     id: "first",
+    createdBy: alice.id,
     text: "Review the document",
     ...time,
   });
@@ -105,11 +118,13 @@ test("a failed reminder retries and a cancelled reminder stays quiet", async () 
   });
   const first = reminders.create("home", alice, "thread", alice.id, {
     id: "retry",
+    createdBy: alice.id,
     text: "Call grandma",
     ...time,
   });
   const second = reminders.create("home", alice, "thread", alice.id, {
     id: "cancel",
+    createdBy: alice.id,
     text: "Buy milk",
     ...time,
   });
@@ -135,20 +150,24 @@ test("reminders stay in their workspace and reject a wrong time-zone offset", ()
   expect(() =>
     reminders.create("home", alice, "thread", alice.id, {
       id: "wrong-zone",
+      createdBy: alice.id,
       text: "Call grandma",
       at: "2090-11-01T09:00:00+02:00",
       timeZone: "Europe/Prague",
     })
   ).toThrow("UTC offset");
   expect(() =>
-    reminders.create("home", alice, "thread", bob.id, {
+    reminders.create("home", alice, "thread", "eve", {
       id: "wrong-person",
+      createdBy: alice.id,
       text: "Call grandma",
       ...time,
     })
   ).toThrow("Not found");
   expect(() => reminders.list("other", alice)).toThrow("Not found");
-  expect(() => reminders.get("home", bob, "wrong-person")).toThrow("Not found");
+  expect(() =>
+    reminders.get("home", { ...bob, id: "eve" }, "wrong-person")
+  ).toThrow("Not found");
   database.close();
 });
 
@@ -218,5 +237,48 @@ test("an agent without a current person can name a workspace recipient", async (
     {} as never
   );
   expect(reminders.list("home", alice)).toHaveLength(1);
+  database.close();
+});
+
+test("a reminder runs as the person who asked for it or last changed it, not as its recipient", async () => {
+  const { database, reminders, requesters, asking } = setup();
+  const tool = (name: string) =>
+    reminders.tools("home").find((candidate) => candidate.name === name)!;
+  await tool("reminders_create").execute(
+    { text: "Send the invoice", recipient: "Bob", ...time },
+    { conversationId: 1, taskId: 6 } as never,
+    {} as never
+  );
+  const [reminder] = reminders.list("home", alice);
+  expect(reminder).toMatchObject({ recipientId: bob.id, createdBy: alice.id });
+  await Promise.all(reminders.tick(reminder!.dueAt));
+  expect(requesters).toEqual([alice.id]);
+
+  const second = reminders.create("home", alice, "thread", alice.id, {
+    id: "changed",
+    createdBy: alice.id,
+    text: "Pay rent",
+    ...time,
+  });
+  asking.requester = bob;
+  await tool("reminders_update").execute(
+    { reminder: second.id, text: "Pay rent to me", ...time },
+    { conversationId: 1, taskId: 7 } as never,
+    {} as never
+  );
+  await Promise.all(reminders.tick(second.dueAt));
+  expect(requesters).toEqual([alice.id, bob.id]);
+
+  const older = reminders.create("home", alice, "thread", alice.id, {
+    id: "older",
+    createdBy: alice.id,
+    text: "Water the plants",
+    ...time,
+  });
+  database
+    .query("UPDATE reminder SET created_by = NULL WHERE id = ?")
+    .run(older.id);
+  await Promise.all(reminders.tick(older.dueAt));
+  expect(requesters).toEqual([alice.id, bob.id, null]);
   database.close();
 });

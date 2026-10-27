@@ -10,6 +10,8 @@ export interface Reminder {
   readonly workspaceId: string;
   readonly threadId: string;
   readonly recipientId: string;
+  /** The person who asked for the reminder or last changed it; its turn runs as them. */
+  readonly createdBy: string | null;
   readonly text: string;
   readonly dueAt: number;
   readonly timeZone: string;
@@ -25,6 +27,8 @@ export interface ReminderInput {
   /** A local ISO date and time with its UTC offset, such as 2026-11-01T09:00:00+01:00. */
   readonly at: string;
   readonly timeZone: string;
+  /** The person who asks, or null for the agent alone. */
+  readonly createdBy: string | null;
 }
 
 type ReminderWorkspaces = Pick<
@@ -75,13 +79,14 @@ export class Reminders {
     const dueAt = dueTime(input.at, input.timeZone, now);
     this.database
       .query(
-        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, text, due_at, time_zone, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         input.id,
         workspaceId,
         threadId,
         recipientId,
+        input.createdBy,
         required(input.text, "Reminder"),
         dueAt,
         input.timeZone,
@@ -143,10 +148,11 @@ export class Reminders {
     const dueAt = dueTime(input.at, input.timeZone, now);
     this.database
       .query(
-        "UPDATE reminder SET text = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
+        "UPDATE reminder SET text = ?, created_by = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
       )
       .run(
         required(input.text, "Reminder"),
+        input.createdBy,
         dueAt,
         input.timeZone,
         dueAt,
@@ -222,8 +228,8 @@ export class Reminders {
         `One-time reminder ${reminder.id} was due at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}). It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. Answer in this thread.`,
         `reminder:${reminder.id}:${reminder.attempts}`,
         [reminder.recipientId],
-        // The turn is the recipient's, with their own integrations.
-        reminder.recipientId
+        // The turn is the asker's, with their own integrations: the text is theirs, not the recipient's.
+        reminder.createdBy
       );
       if (!answer) {
         throw new Error("The agent gave no reminder.");
@@ -277,7 +283,7 @@ export class Reminders {
 }
 
 const COLUMNS =
-  "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, text, due_at AS dueAt, time_zone AS timeZone, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
+  "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
 
 function dueTime(at: string, timeZone: string, now: number): number {
   const match =

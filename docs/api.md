@@ -313,7 +313,7 @@ Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the works
 Where a person connects an integration says whose turns use it. A workspace's credentials serve the turns of every
 member there; every member sees and deletes them. A person's own serve only their turns, in each of their workspaces;
 only they see and delete them. A turn is for the author of the message it answers, the person whose request another
-thread passes on, the creator of a routine, or the recipient of a reminder. Each tool call uses the newest credential
+thread passes on, the creator of a routine, or the person who asked for a reminder or last changed it. Each tool call uses the newest credential
 of that person, else the workspace's newest, unless the call names another of their accounts in its `account`
 argument; `<integrationId>_accounts` lists them. The agents of a workspace get the tools of each integration that the
 workspace or one of its members connected. Secrets never leave the server.
@@ -345,7 +345,9 @@ People create and change routines by asking an agent in a thread: agents have th
 
 Agents in every thread of a workspace, including its orchestrator, have `reminders_create`, `reminders_list`,
 `reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source thread. It runs once when
-its saved UTC time is due, or when Golem starts again after that time. Reminders have no user-facing web or JSON routes.
+its saved UTC time is due, or when Golem starts again after that time. Its turn is for the person who asked for it or
+last changed it, not for its recipient; a reminder from before this rule uses only the workspace's credentials.
+Reminders have no user-facing web or JSON routes.
 
 ### Machines (`src/hands/`)
 
