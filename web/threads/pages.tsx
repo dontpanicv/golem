@@ -1,18 +1,18 @@
 import { eq, isNull, not, useLiveQuery } from "@tanstack/react-db";
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { fileHref } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
 import type { Approval, ThreadSummary } from "../app/types.ts";
 import { ArtifactList, ArtifactPreview } from "../artifacts/panel.tsx";
-import {
-  Button,
-  Dialog,
-  Empty,
-  Tooltip,
-  WorkingSpinner,
-} from "../ui/components.tsx";
+import { Button, Dialog, Empty, WorkingSpinner } from "../ui/components.tsx";
 import { previewLink } from "../ui/file-preview.tsx";
 import { dayTime, size } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
@@ -259,8 +259,11 @@ function ApprovalCard({
 
 const channelRoute = getRouteApi("/signed-in/w/$workspaceId/c/$channelId");
 
-/** A channel: its threads, settled ones folded away, and the panel with its files and artifacts. */
-export function ChannelPage() {
+/**
+ * A channel: its threads, settled ones folded away, in up to the top half; its details under them; and the panel with
+ * the files and artifacts of all its threads.
+ */
+export function ChannelPage({ details }: { details: ReactNode }) {
   const { workspaceId, channelId } = channelRoute.useParams();
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
@@ -325,16 +328,6 @@ export function ChannelPage() {
             </>
           }
         >
-          <Tooltip label="Channel details">
-            <Link
-              aria-label="Channel details"
-              className="button ghost icon-only"
-              params={{ workspaceId, channelId }}
-              to="/w/$workspaceId/c/$channelId/details"
-            >
-              <Icon name="info" />
-            </Link>
-          </Tooltip>
           <Button
             icon="trash"
             label="Delete channel"
@@ -344,32 +337,35 @@ export function ChannelPage() {
           />
           <PanelToggle />
         </PanelHeader>
-        <div className="transcript">
-          {active.length + settled.length > 0 ? (
-            <div className="list">
-              {active.map((thread) => (
-                <ThreadRow
-                  key={thread.id}
-                  thread={thread}
-                  workspaceId={workspaceId}
-                />
-              ))}
-              {settled.length > 0 ? (
-                <details className="settled-threads">
-                  <summary>Settled ({settled.length})</summary>
-                  {settled.map((thread) => (
-                    <ThreadRow
-                      key={thread.id}
-                      thread={thread}
-                      workspaceId={workspaceId}
-                    />
-                  ))}
-                </details>
-              ) : null}
-            </div>
-          ) : (
-            <Empty icon="compose" title="No threads yet" />
-          )}
+        <div className="channel">
+          <div className="channel-threads">
+            {active.length + settled.length > 0 ? (
+              <div className="list">
+                {active.map((thread) => (
+                  <ThreadRow
+                    key={thread.id}
+                    thread={thread}
+                    workspaceId={workspaceId}
+                  />
+                ))}
+                {settled.length > 0 ? (
+                  <details className="settled-threads">
+                    <summary>Settled ({settled.length})</summary>
+                    {settled.map((thread) => (
+                      <ThreadRow
+                        key={thread.id}
+                        thread={thread}
+                        workspaceId={workspaceId}
+                      />
+                    ))}
+                  </details>
+                ) : null}
+              </div>
+            ) : (
+              <Empty icon="compose" title="No threads yet" />
+            )}
+          </div>
+          <div className="channel-details">{details}</div>
         </div>
         <Composer
           onSend={async (text, files) => {

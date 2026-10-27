@@ -1090,6 +1090,29 @@ a {
   overflow-y: auto;
 }
 
+/* A channel's threads take what they need, up to half; its details fill the rest. */
+.channel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.channel-threads {
+  flex: none;
+  max-height: 50%;
+  padding: var(--space-xl) var(--space-xxl);
+  overflow-y: auto;
+  border-bottom: 0.5px solid var(--color-border);
+}
+.channel-details {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 48px;
+  padding: var(--space-xxl);
+  overflow-y: auto;
+}
+
 .message {
   display: flex;
   gap: var(--space-lg);

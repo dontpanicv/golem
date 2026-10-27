@@ -72,8 +72,8 @@ Caddy, in front of Golem on the mesh.
   agent in plain words; it writes the schedule, the instructions, and, for work that is the same every time, a script
   that collects what is new. The script runs in a code mode sandbox and calls the connectors' tools; when it finds
   nothing, the run ends without the LLM. Otherwise the agent of the routine's thread judges what the script found,
-  and posts in that thread or stays quiet. When a script fails, the agent repairs it. The channel's details page
-  shows its summary, its routines, and their runs.
+  and posts in that thread or stays quiet. When a script fails, the agent repairs it. The channel's page shows its
+  summary, its routines, and their runs under its threads.
 - **Settings.** `/settings` connects the LLM provider and chooses the model, for everyone. Each workspace's settings
   hold its members, its machines, and its integrations.
 

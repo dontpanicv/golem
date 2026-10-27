@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { LoginPage } from "../accounts/login.tsx";
 import { InboxPage } from "../notifications/page.tsx";
-import { ChannelDetailsPage } from "../routines/details.tsx";
+import { ChannelDetails } from "../routines/details.tsx";
 import { SearchPage } from "../search/page.tsx";
 import { SettingsPage, WorkspaceSettingsPage } from "../settings/pages.tsx";
 import { ChannelPage, ThreadPage } from "../threads/pages.tsx";
@@ -101,13 +101,8 @@ const channel = createRoute({
   getParentRoute: () => workspace,
   path: "/c/$channelId",
   validateSearch: withArtifact,
-  component: ChannelPage,
-});
-
-const channelDetails = createRoute({
-  getParentRoute: () => workspace,
-  path: "/c/$channelId/details",
-  component: ChannelDetailsPage,
+  // The channel's details come from the routines module, which comes after threads.
+  component: () => <ChannelPage details={<ChannelDetails />} />,
 });
 
 const thread = createRoute({
@@ -147,7 +142,6 @@ export const router = createRouter({
         workspaceHome,
         orchestrator,
         channel,
-        channelDetails,
         thread,
         inbox,
         searchRoute,

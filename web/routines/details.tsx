@@ -13,7 +13,6 @@ import {
   Button,
   Empty,
   Menu,
-  PageContent,
   PageSection,
   SettingsCard,
   SettingsRow,
@@ -23,7 +22,6 @@ import { weekdayTime } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { showError, showToast } from "../ui/toast.tsx";
 import { channelsOf } from "../workspaces/data.ts";
-import { FloatingSidebarButton } from "../workspaces/shell.tsx";
 
 const OUTCOMES: Record<
   RoutineOutcome,
@@ -80,13 +78,13 @@ const routinesOf = keyed((key: string) =>
   )
 );
 
-const route = getRouteApi("/signed-in/w/$workspaceId/c/$channelId/details");
+const route = getRouteApi("/signed-in/w/$workspaceId/c/$channelId");
 
 /**
- * A channel's summary and brief, its routines, and their newest runs. People create routines by asking an agent; the
- * model writes the summary and the brief from the channel's threads.
+ * A channel's summary and brief, its routines, and their newest runs, under its threads. People create routines by
+ * asking an agent; the model writes the summary and the brief from the channel's threads.
  */
-export function ChannelDetailsPage() {
+export function ChannelDetails() {
   const { workspaceId, channelId } = route.useParams();
   const key = `${workspaceId}/${channelId}`;
   const navigate = useNavigate();
@@ -119,135 +117,125 @@ export function ChannelDetailsPage() {
     }
   };
   return (
-    <section className="conversation">
-      <FloatingSidebarButton />
-      <PageContent
-        title={
-          <>
-            <span className="breadcrumb"># </span>
-            {channel?.name}
-          </>
-        }
-      >
-        {channel?.summary ? (
-          <PageSection title="Summary">
-            <p className="page-text">{channel.summary}</p>
-          </PageSection>
-        ) : null}
-        {brief ? (
-          <PageSection title="Brief">
-            <div className="page-text prose">
-              <AgentText
-                // The brief's headings sit under the section's own heading.
-                text={brief.text.replace(/^#{1,2} /gm, "### ")}
-                workspaceId={workspaceId}
-              />
-            </div>
-          </PageSection>
-        ) : null}
-        <PageSection title="Routines">
-          {rows.length > 0 ? (
-            <SettingsCard>
-              {rows.map((routine) => (
-                <SettingsRow
-                  description={
-                    routine.nextRunAt === null
-                      ? "Paused"
-                      : `Next ${weekdayTime(routine.nextRunAt)}`
+    <>
+      {channel?.summary ? (
+        <PageSection title="Summary">
+          <p className="page-text">{channel.summary}</p>
+        </PageSection>
+      ) : null}
+      {brief ? (
+        <PageSection title="Brief">
+          <div className="page-text prose">
+            <AgentText
+              // The brief's headings sit under the section's own heading.
+              text={brief.text.replace(/^#{1,2} /gm, "### ")}
+              workspaceId={workspaceId}
+            />
+          </div>
+        </PageSection>
+      ) : null}
+      <PageSection title="Routines">
+        {rows.length > 0 ? (
+          <SettingsCard>
+            {rows.map((routine) => (
+              <SettingsRow
+                description={
+                  routine.nextRunAt === null
+                    ? "Paused"
+                    : `Next ${weekdayTime(routine.nextRunAt)}`
+                }
+                key={routine.id}
+                label={routine.name}
+                lead={<Icon name="play" />}
+              >
+                <Switch
+                  checked={routine.enabled}
+                  label={`Run ${routine.name}`}
+                  onChange={(enabled) =>
+                    routines
+                      .update(routine.id, (draft) => {
+                        draft.enabled = enabled;
+                      })
+                      .isPersisted.promise.catch(showError)
                   }
-                  key={routine.id}
-                  label={routine.name}
-                  lead={<Icon name="play" />}
-                >
-                  <Switch
-                    checked={routine.enabled}
-                    label={`Run ${routine.name}`}
-                    onChange={(enabled) =>
-                      routines
-                        .update(routine.id, (draft) => {
-                          draft.enabled = enabled;
-                        })
-                        .isPersisted.promise.catch(showError)
-                    }
-                  />
-                  <Menu
-                    entries={[
-                      ...(routine.threadId
-                        ? [
-                            {
-                              kind: "action" as const,
-                              label: "Open thread",
-                              icon: "compose" as const,
-                              onSelect: () =>
-                                navigate({
-                                  to: "/w/$workspaceId/t/$threadId",
-                                  params: {
-                                    workspaceId,
-                                    threadId: routine.threadId!,
-                                  },
-                                }),
-                            },
-                          ]
-                        : []),
-                      {
-                        kind: "action",
-                        label: "Run now",
-                        icon: "play",
-                        onSelect: () => runNow(routine),
-                      },
-                      {
-                        kind: "action",
-                        label: "Delete",
-                        icon: "trash",
-                        onSelect: () =>
-                          routines
-                            .delete(routine.id)
-                            .isPersisted.promise.then(() =>
-                              showToast("success", `${routine.name} deleted`)
-                            )
-                            .catch(showError),
-                      },
-                    ]}
-                    trigger={
-                      <Button
-                        icon="more"
-                        label={`${routine.name} actions`}
-                        size="icon"
-                        variant="ghost"
-                      />
-                    }
-                  />
-                </SettingsRow>
-              ))}
-            </SettingsCard>
-          ) : (
-            <Empty icon="play" title="No routines yet" />
-          )}
-        </PageSection>
-        <PageSection title="Runs">
-          {runs.length > 0 ? (
-            <SettingsCard>
-              {runs.map((run) => (
-                <SettingsRow
-                  compact
-                  description={[weekdayTime(run.startedAt), run.error]
-                    .filter(Boolean)
-                    .join(" · ")}
-                  key={run.id}
-                  label={run.routineName}
-                >
-                  <Badge
-                    label={OUTCOMES[run.outcome].label}
-                    tone={OUTCOMES[run.outcome].tone}
-                  />
-                </SettingsRow>
-              ))}
-            </SettingsCard>
-          ) : (
-            <Empty icon="inbox" title="No runs yet" />
-          )}
-        </PageSection>
-      </PageContent>
-    </section>
+                />
+                <Menu
+                  entries={[
+                    ...(routine.threadId
+                      ? [
+                          {
+                            kind: "action" as const,
+                            label: "Open thread",
+                            icon: "compose" as const,
+                            onSelect: () =>
+                              navigate({
+                                to: "/w/$workspaceId/t/$threadId",
+                                params: {
+                                  workspaceId,
+                                  threadId: routine.threadId!,
+                                },
+                              }),
+                          },
+                        ]
+                      : []),
+                    {
+                      kind: "action",
+                      label: "Run now",
+                      icon: "play",
+                      onSelect: () => runNow(routine),
+                    },
+                    {
+                      kind: "action",
+                      label: "Delete",
+                      icon: "trash",
+                      onSelect: () =>
+                        routines
+                          .delete(routine.id)
+                          .isPersisted.promise.then(() =>
+                            showToast("success", `${routine.name} deleted`)
+                          )
+                          .catch(showError),
+                    },
+                  ]}
+                  trigger={
+                    <Button
+                      icon="more"
+                      label={`${routine.name} actions`}
+                      size="icon"
+                      variant="ghost"
+                    />
+                  }
+                />
+              </SettingsRow>
+            ))}
+          </SettingsCard>
+        ) : (
+          <Empty icon="play" title="No routines yet" />
+        )}
+      </PageSection>
+      <PageSection title="Runs">
+        {runs.length > 0 ? (
+          <SettingsCard>
+            {runs.map((run) => (
+              <SettingsRow
+                compact
+                description={[weekdayTime(run.startedAt), run.error]
+                  .filter(Boolean)
+                  .join(" · ")}
+                key={run.id}
+                label={run.routineName}
+              >
+                <Badge
+                  label={OUTCOMES[run.outcome].label}
+                  tone={OUTCOMES[run.outcome].tone}
+                />
+              </SettingsRow>
+            ))}
+          </SettingsCard>
+        ) : (
+          <Empty icon="inbox" title="No runs yet" />
+        )}
+      </PageSection>
+    </>
   );
 }
