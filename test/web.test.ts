@@ -57,6 +57,10 @@ describe("the web app", () => {
       const page = await golem.call(path);
       expect([path, page.status]).toEqual([path, 200]);
       expect(page.headers.get("cache-control")).toBe("no-cache");
+      const policy = page.headers.get("content-security-policy")!;
+      expect(policy).toContain("img-src 'self' data: blob:");
+      expect(policy).toContain("script-src 'self' 'wasm-unsafe-eval'");
+      expect(policy).toContain("frame-ancestors 'none'");
       const html = await page.text();
       expect(html).toContain('<div id="root"></div>');
       const script = /src="(\/app\/[^"]+\.js)"/.exec(html)![1]!;

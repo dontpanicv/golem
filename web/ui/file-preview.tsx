@@ -352,8 +352,12 @@ function ExternalLink({
 
 function Picture({ bytes, name }: { bytes: ArrayBuffer; name: string }) {
   // The server sends a picture it cannot show safely, such as an SVG, as bytes; a typed blob shows it.
+  const type = imageType(name);
+  // A blob: URL has Golem's origin, so an SVG opened from it as a page would run its scripts here; a data: URL has none.
   const [url] = useState(() =>
-    URL.createObjectURL(new Blob([bytes], { type: imageType(name) }))
+    type === "image/svg+xml"
+      ? `data:${type},${encodeURIComponent(new TextDecoder().decode(bytes))}`
+      : URL.createObjectURL(new Blob([bytes], { type }))
   );
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   // biome-ignore lint/correctness/useImageSize: a file's picture has no known size

@@ -50,6 +50,23 @@ test("an answer's thread links open the thread, its files show, and nothing in i
   }
 });
 
+test("a picture from another site shows as a link, and loads nothing", async () => {
+  const html = await render(
+    <Markdown
+      text={[
+        "![the dog](https://example.com/p.png)",
+        '<img src="https://example.com/q.png">',
+        '<picture><source srcset="https://example.com/r.png"></picture>',
+      ].join("\n\n")}
+      workspaceId="family"
+    />
+  );
+  expect(html).toContain('href="https://example.com/p.png"');
+  expect(html).toContain(">the dog</a>");
+  expect(html).not.toContain('src="https');
+  expect(html).not.toMatch(/srcset/i);
+});
+
 test("an artifact in an answer runs in its own sandboxed page", async () => {
   const html = await render(
     <Markdown text="![Votes](artifact:amber-fox)" workspaceId="family" />

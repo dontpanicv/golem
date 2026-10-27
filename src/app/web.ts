@@ -7,6 +7,23 @@ const publicDirectory = resolve(import.meta.dir, "../../public");
 const appDirectory = resolve(import.meta.dir, "../../dist/web");
 
 /**
+ * What the app's page may load: its own scripts, and pictures, frames, and data only from Golem, so a picture or a
+ * link in what an agent writes cannot send data to another site. Shiki compiles its grammars to WebAssembly; the
+ * previews and Radix add inline styles.
+ */
+const APP_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data: blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+/**
  * The web app's page for every path the app routes in the browser. It has no data: the app loads it from the JSON API
  * and keeps it in the browser.
  */
@@ -21,6 +38,7 @@ export async function appPage(): Promise<Response> {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-cache",
+      "content-security-policy": APP_POLICY,
     },
   });
 }
