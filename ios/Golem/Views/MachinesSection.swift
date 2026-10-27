@@ -1,13 +1,11 @@
 import SwiftUI
 
 /// The machines of a workspace, for every member's turns there, or the person's own for a nil `workspaceID`, for their
-/// turns in each of their workspaces. The member who paired a workspace's machine chooses the members whose turns
-/// change it without asking.
+/// turns in each of their workspaces.
 struct MachinesSection: View {
     let workspaceID: String?
     @Environment(Session.self) private var session
     @State private var machines: [Machine] = []
-    @State private var members: [Member] = []
     @State private var pairing: Pairing?
 
     var body: some View {
@@ -15,16 +13,6 @@ struct MachinesSection: View {
             ForEach(machines) { machine in
                 SettingsRow(machine.name, description: machine.summary) {
                     GolemMenu {
-                        let others = members.filter { $0.userId != session.user?.id }
-                        if machine.pairedBy == session.user?.id, !others.isEmpty {
-                            MenuSectionLabel("Changes without asking")
-                            ForEach(others) { member in
-                                MenuItem(member.name, checked: machine.trustedMemberIds.contains(member.userId)) {
-                                    toggleTrust(member, on: machine)
-                                }
-                            }
-                            MenuSeparator()
-                        }
                         MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }
                     } label: {
                         Label("Machine actions", systemImage: "ellipsis")
@@ -57,25 +45,6 @@ struct MachinesSection: View {
     private func load() async throws {
         let found = try await session.api.machines(workspaceID: workspaceID)
         (machines, pairing) = (found.machines, found.pairing)
-        if let workspaceID {
-            members = try await session.api.members(workspaceID: workspaceID)
-        }
-    }
-
-    private func toggleTrust(_ member: Member, on machine: Machine) {
-        guard let workspaceID else { return }
-        let trusted = machine.trustedMemberIds.contains(member.userId)
-        let userIDs = trusted
-            ? machine.trustedMemberIds.filter { $0 != member.userId }
-            : machine.trustedMemberIds + [member.userId]
-        Task {
-            await session.run {
-                let changed = try await session.api.trustMembers(
-                    workspaceID: workspaceID, machineID: machine.id, userIDs: userIDs
-                )
-                machines = machines.map { $0.id == changed.id ? changed : $0 }
-            }
-        }
     }
 
     private func startPairing() {

@@ -198,8 +198,6 @@ export interface Machine {
   readonly os: string;
   readonly arch: string;
   readonly version: string;
-  readonly pairedBy: string | null;
-  readonly trustedMemberIds: readonly string[];
 }
 
 export interface Pairing {

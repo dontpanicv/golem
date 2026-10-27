@@ -432,6 +432,7 @@ const hooks = {
   tools: async () => [],
 };
 const noMachines = {
+  destructive: async () => null,
   file: () => Promise.reject(new Error("No machines are paired.")),
   put: () => Promise.reject(new Error("No machines are paired.")),
   machineNamed: () => {

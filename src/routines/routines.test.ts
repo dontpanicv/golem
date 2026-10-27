@@ -385,72 +385,6 @@ test("a routine runs as the person who last wrote its script, and not after its 
   routines.delete(routine.id, alice);
 });
 
-test("a run changes the machines its person allowed without asking, until new instructions; a connector's content still asks", async () => {
-  const told: unknown[] = [];
-  const recording = new Routines(
-    golem.app.database,
-    golem.app.workspaces,
-    integrations,
-    {
-      allowRuns: (...args) => golem.app.threads.allowRuns(...args),
-      messages: (thread) => golem.app.threads.messages(thread),
-      requester: (workspace, conversation) =>
-        golem.app.threads.requester(workspace, conversation),
-      startAgentThread: (workspace, channel, title) =>
-        golem.app.threads.startAgentThread(workspace, channel, title),
-      instruct: async (...args) => {
-        told.push(args[5]);
-        return null;
-      },
-    },
-    golem.app.indexer
-  );
-  const routine = recording.create(workspaceId, channelId, {
-    id: crypto.randomUUID(),
-    name: "Backup",
-    schedule: "0 3 * * *",
-    instructions: "Back up the photos.",
-    createdBy: alice.id,
-    machineIds: ["nas"],
-  });
-  const runOnce = () =>
-    recording.tick(recording.get(routine.id, alice).nextRunAt!)[0]!;
-  await runOnce();
-  recording.update(
-    workspaceId,
-    routine.id,
-    { schedule: "0 4 * * *" },
-    alice.id
-  );
-  await runOnce();
-  expect(told).toEqual([
-    { machineIds: ["nas"], exposed: false },
-    { machineIds: ["nas"], exposed: false },
-  ]);
-
-  // The script reads a connector, so what it found is content no member wrote.
-  school.push({ time: 10, text: "The backup drive is full." });
-  recording.update(
-    workspaceId,
-    routine.id,
-    { script: SCRIPT, machineIds: ["nas"] },
-    alice.id
-  );
-  await runOnce();
-  expect(told.at(-1)).toEqual({ machineIds: ["nas"], exposed: true });
-
-  recording.update(
-    workspaceId,
-    routine.id,
-    { instructions: "Back up the music." },
-    alice.id
-  );
-  school.push({ time: 11, text: "The drive has room again." });
-  await runOnce();
-  expect(told.at(-1)).toMatchObject({ machineIds: [] });
-  recording.delete(routine.id, alice);
-});
-
 test("a routine runs at most every 15 minutes, whatever its schedule says", async () => {
   const routine = routines.create(workspaceId, channelId, {
     id: crypto.randomUUID(),
@@ -471,7 +405,6 @@ test("a run that a stop cuts off goes on at the next start, and the agent does i
   let answered: Promise<string | null> | undefined;
   // As Golem stops: the agent got the task, then its harness closes while the run waits for the answer.
   const stopping: RoutineThreads = {
-    allowRuns: (...args) => threads.allowRuns(...args),
     messages: (thread) => threads.messages(thread),
     requester: (workspace, conversation) =>
       threads.requester(workspace, conversation),

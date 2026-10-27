@@ -165,7 +165,6 @@ type Machine = {
 	pairedAt: number;
 	pairedBy: string | null; // the member who paired it; null for a machine paired before Golem kept it
 	workspaceId: string | null; // the workspace it is paired with; null for the own machine of `pairedBy`
-	trustedMemberIds: string[]; // the members whose turns change it without asking `pairedBy`
 };
 type Pairing = { command: string; expiresAt: number }; // run `command` on the machine before `expiresAt`
 type Effort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -211,7 +210,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice?, requestId? }` | `204`; a retry with the same `requestId` sends nothing again |
-| `POST /api/v1/threads/:threadId/approvals/:approvalId` | `{ allow: boolean, scope: "once" \| "turn" }` | `204`; `allow` runs the action once, or with `"turn"` also the rest of the turn's changes on that machine. `403` for a person who is not the approver; `404` when the approval ended or the person is not a member |
+| `POST /api/v1/threads/:threadId/approvals/:approvalId` | `{ allow: boolean, scope: "once" \| "turn" }` | `204`; `allow` runs the command once, or with `"turn"` also the rest of the turn's flagged commands on that machine. `403` for a person who is not the approver; `404` when the approval ended or the person is not a member |
 | `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
 | `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/brief` | | `{ brief: Brief \| null }`: what the channel is for, where it is now, its decisions, its open questions, and what each person wants; `null` before the first |
@@ -388,7 +387,6 @@ Reminders have no user-facing web or JSON routes.
 | `GET /api/v1/workspaces/:workspaceId/machines` | | `{ machines: Machine[], pairing: Pairing \| null }`; poll it while `pairing` is set to see the machine arrive |
 | `POST /api/v1/workspaces/:workspaceId/machines/pairing` | | `Pairing`; replaces the workspace's earlier pairing. `409` when `base_url` is not `https://` or Golem has no hands binaries |
 | `DELETE /api/v1/workspaces/:workspaceId/machines/:machineId` | | `204` |
-| `PUT /api/v1/workspaces/:workspaceId/machines/:machineId/trusted-members` | `{ userIds: string[] }` | `Machine`; only `pairedBy` sets it. `400` for a person who is not a member, `403` for another member |
 
 The same routes without `/workspaces/:workspaceId` are the person's own machines, for their turns in each of their
 workspaces; a person sees and removes only their own. A machine can pair with a workspace and as a person's own: it
@@ -438,14 +436,11 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
 - A machine belongs to a workspace, and every agent in that workspace can use it, whoever the agent works for; or it is
   a person's own, and only the turns of that person use it, in each of their workspaces. The machine trusts the key of
-  that workspace or person, so pairing it with one does not open it to another. A command or
-  a file change on a machine waits for an approval (`ThreadState.approvals`, with a notification) from the member who
-  paired it when the turn is another person's whom that member does not trust (`trustedMemberIds`), and from the
-  turn's person when the turn read a web page, search results, a connected service, or artifact visitor data since
-  their last message, or when nobody watches the turn, such as a reminder or a routine run. A routine's run changes
-  the machines that its person allowed when they wrote it without asking, unless its script read a connector. A
-  command that only reads, one simple command such as `ls`, `cat`, `grep`, or `git status` with no pipe, redirection,
-  or substitution, never waits. Reads stay open to every agent of the workspace.
+  that workspace or person, so pairing it with one does not open it to another. A command on a machine that
+  [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) flags, such as `rm -rf` or
+  `git reset --hard`, waits for an approval (`ThreadState.approvals`, with a notification) from the member who paired
+  the machine when the turn is another person's, and from the turn's person otherwise; a command that dcg cannot judge
+  waits too. Other commands, file reads, and file writes run at once.
 - Agents reach public addresses only: the browser and `save_file` go through Golem's egress proxy, which refuses
   loopback, private, link-local, and other non-public addresses after each DNS answer and redirect. Each person of a
   thread has a browser of their own, with their own logins.

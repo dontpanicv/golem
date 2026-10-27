@@ -77,8 +77,8 @@ addresses, or code and data from employers or clients.
 - The model calls only the core tools of channels, threads, files, and web search directly. Every other tool is
   script-only (`callers: ["tools"]`) and its name starts with its codemode namespace: `NAMESPACES` in
   `src/threads/threads.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.
-- In `src/threads/threads.ts`, a tool that changes a machine is in `CHANGES_MACHINE`, so `approved` gates it, and a
-  tool whose result comes from outside the members is in `EXPOSING` (connectors always are). All web traffic of agents
+- In `src/threads/threads.ts`, a tool that runs a shell command on a machine is in `RUNS_COMMAND`, so `approved` asks a
+  person before a command that dcg (destructive_command_guard) flags; nothing else waits for one. All web traffic of agents
   goes through `Egress` (`src/platform/egress.ts`), never a plain `fetch`.
 
 ## Design System

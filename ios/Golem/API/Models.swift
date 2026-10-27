@@ -283,12 +283,9 @@ struct Machine: Codable, Hashable, Identifiable {
     let system: String
     let arch: String
     let version: String
-    let pairedBy: String?
-    /// The members whose turns change it without asking `pairedBy`.
-    let trustedMemberIds: [String]
 
     enum CodingKeys: String, CodingKey {
-        case id, name, arch, version, pairedBy, trustedMemberIds
+        case id, name, arch, version
         case system = "os"
     }
 

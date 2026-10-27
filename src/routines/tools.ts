@@ -9,12 +9,6 @@ import type {
 } from "./routines.ts";
 
 const routineParameter = Type.String({ description: "The routine id" });
-const machinesParameter = Type.Optional(
-  Type.Array(Type.String(), {
-    description:
-      "The machines whose files and commands its runs change. Its person allows it once now, so its runs do not ask each time; a run that read a connector still asks.",
-  })
-);
 
 /**
  * The tools that let agents create, change, test, and delete the routines of their workspace. People ask in plain
@@ -101,29 +95,20 @@ export function routineTools(
             description: "The channel name; default this thread's channel",
           })
         ),
-        machines: machinesParameter,
       }),
       // The id comes from the task, so a rerun after a crash finds the routine it made before.
       replay: "safe",
-      execute: async ({ machines, ...args }, api, context) => {
+      execute: async (args, api) => {
         const channel = channelOf(args.channel, api.conversationId);
         // Its runs are the turns of the person who asked for it, with their own integrations.
         const requester = await threads.requester(
           workspaceId,
           api.conversationId
         );
-        const machineIds = await threads.allowRuns(
-          workspaceId,
-          api.conversationId,
-          args.name,
-          machines ?? [],
-          context.abortSignal
-        );
         const routine = routines.create(workspaceId, channel.id, {
           ...args,
           id: randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url"),
           createdBy: requester?.id ?? "golem",
-          machineIds,
         });
         return {
           output: [
@@ -138,7 +123,7 @@ export function routineTools(
 
     defineTool({
       name: "routines_update",
-      description: `Change a routine: its name, schedule, instructions, or script, or pause it with enabled false. New instructions or a new script end its runs' permission on machines: pass machines again. ${scheduleHelp}`,
+      description: `Change a routine: its name, schedule, instructions, or script, or pause it with enabled false. ${scheduleHelp}`,
       parameters: Type.Object({
         routine: routineParameter,
         name: Type.Optional(Type.String()),
@@ -151,36 +136,17 @@ export function routineTools(
           })
         ),
         enabled: Type.Optional(Type.Boolean()),
-        machines: machinesParameter,
       }),
       replay: "safe",
-      execute: async (
-        { routine: routineId, machines, ...changes },
-        api,
-        context
-      ) => {
+      execute: async ({ routine: routineId, ...changes }, api) => {
         const requester = await threads.requester(
           workspaceId,
           api.conversationId
         );
-        const name =
-          changes.name ??
-          routines
-            .inWorkspace(workspaceId)
-            .find((candidate) => candidate.id === routineId)?.name;
-        const machineIds =
-          machines &&
-          (await threads.allowRuns(
-            workspaceId,
-            api.conversationId,
-            name ?? routineId,
-            machines,
-            context.abortSignal
-          ));
         const routine = routines.update(
           workspaceId,
           routineId,
-          { ...changes, machineIds },
+          changes,
           requester?.id ?? "golem"
         );
         return {

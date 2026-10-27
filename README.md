@@ -125,6 +125,7 @@ them are there:
 
 ```sh
 brew install ffmpeg poppler tesseract   # media, scanned PDFs, and OCR in search
+brew install dicklesworthstone/tap/dcg  # tells the destructive commands on machines, which wait for a person
 bunx --bun agent-browser install        # Chrome for the agents' browser, if Google Chrome is not installed
 hands/scripts/build-release.sh          # the hands binaries for the machines that pair
 ```

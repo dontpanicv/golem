@@ -1571,7 +1571,7 @@ test("save_file writes text and prints an artifact, and hands_copy_file puts a f
   }
 });
 
-test("a change on a machine waits for a person after the turn read a web page, or on another person's machine, and runs free otherwise", async () => {
+test("a command that dcg flags waits for a person: the turn's, or the one who paired another person's machine", async () => {
   const home = await golem.app.workspaces.create(alice, "Approvals");
   await golem.app.workspaces.addMember(home.id, alice, bob.email);
   const general = golem.app.workspaces.channels(home.id, alice)[0]!;
@@ -1582,14 +1582,14 @@ test("a change on a machine waits for a person after the turn read a web page, o
     () => Promise.reject(new Error("unused")),
     async () => null,
     {
+      destructive: async (command) =>
+        /^(rm|reboot|make install)/.test(command) ? "It is destructive." : null,
       machineNamed: (_workspaceId, _userId, name) =>
         ({
           id: name,
           name,
-          pairedBy: name.startsWith("bobs-") ? bob.id : alice.id,
-          // Bob lets Alice's turns change this one without asking him.
-          trustedMemberIds: name === "bobs-shared" ? [alice.id] : [],
-        }) as unknown as Machine,
+          pairedBy: name === "bobs-mac" ? bob.id : alice.id,
+        }) as Machine,
       tools: () => [
         defineTool({
           name: "hands_exec",
@@ -1640,60 +1640,48 @@ test("a change on a machine waits for a person after the turn read a web page, o
       (state) => state.approvals.length === 1
     ).then((state) => state.approvals[0]!);
   try {
-    // The person's own words and machine: nothing to allow.
-    const own = await start(exec("alices-mac", "ls"));
-    await answeredIn(threads, home.id, own.id);
-    expect(ran).toEqual(["alices-mac: ls"]);
-
-    // A command that only reads never asks, even after a web page; Bob trusts Alice on his shared machine.
-    const reads = await start(
-      `${exec("bobs-shared", "make")} await tools.browser_run({ commands: [] }); ${exec("alices-mac", "git status")}`
+    // Commands that dcg lets run never ask, after a web page and on another person's machine too.
+    const free = await start(
+      `await tools.browser_run({ commands: [] }); ${exec("alices-mac", "make")} ${exec("bobs-mac", "git pull")}`
     );
-    await answeredIn(threads, home.id, reads.id);
-    expect(ran).toEqual([
-      "alices-mac: ls",
-      "bobs-shared: make",
-      "alices-mac: git status",
-    ]);
-    ran.length = 1;
+    await answeredIn(threads, home.id, free.id);
+    expect(ran).toEqual(["alices-mac: make", "bobs-mac: git pull"]);
 
-    // A web page came first, so the turn's person allows it; nobody else answers.
-    const exposed = await start(
-      `await tools.browser_run({ commands: [] }); ${exec("alices-mac", "rm -rf ~/photos")}`
-    );
+    // A flagged command asks the turn's person, even in a turn they watch; nobody else answers.
+    const flagged = await start(exec("alices-mac", "rm -rf ~/photos"));
     const shown: number[] = [];
-    const stop = await threads.watch(exposed, (state) =>
+    const stop = await threads.watch(flagged, (state) =>
       shown.push(state.approvals.length)
     );
-    const asked = await waiting(exposed);
+    const asked = await waiting(flagged);
     expect(asked).toMatchObject({
       tool: "hands_exec",
       text: "Run on alices-mac: rm -rf ~/photos",
       approverId: alice.id,
     });
     expect(() =>
-      threads.answerApproval(exposed.id, asked.id, bob, true, "once")
+      threads.answerApproval(flagged.id, asked.id, bob, true, "once")
     ).toThrow("Only the person it asks can answer");
     expect(() =>
       threads.answerApproval(
-        exposed.id,
+        flagged.id,
         "no-such-approval",
         alice,
         true,
         "once"
       )
     ).toThrow("Not found");
-    threads.answerApproval(exposed.id, asked.id, alice, false, "once");
-    await answeredIn(threads, home.id, exposed.id);
+    threads.answerApproval(flagged.id, asked.id, alice, false, "once");
+    await answeredIn(threads, home.id, flagged.id);
     expect(toolResults.at(-1)).toContain("Alice did not allow this.");
-    expect(ran).toEqual(["alices-mac: ls"]);
+    expect(ran).toHaveLength(2);
     expect(shown).toContain(1);
     expect(shown.at(-1)).toBe(0);
     await stop();
 
-    // Bob paired this machine, so he allows Alice's turn on it; "turn" allows the rest of the turn there.
+    // Bob paired this machine, so he allows Alice's flagged command on it; "turn" allows the rest of the turn there.
     const others = await start(
-      `${exec("bobs-mac", "make")} ${exec("bobs-mac", "make install")}`
+      `${exec("bobs-mac", "make install")} ${exec("bobs-mac", "rm -rf build")}`
     );
     const owner = await waiting(others);
     expect(owner.approverId).toBe(bob.id);
@@ -1702,16 +1690,13 @@ test("a change on a machine waits for a person after the turn read a web page, o
     ).toThrow("Only the person it asks can answer");
     threads.answerApproval(others.id, owner.id, bob, true, "turn");
     await answeredIn(threads, home.id, others.id);
-    expect(ran).toEqual([
-      "alices-mac: ls",
-      "bobs-mac: make",
+    expect(ran.slice(2)).toEqual([
       "bobs-mac: make install",
+      "bobs-mac: rm -rf build",
     ]);
 
     // Stop ends the wait, and the command never runs.
-    const stopped = await start(
-      `await tools.browser_run({ commands: [] }); ${exec("alices-mac", "reboot")}`
-    );
+    const stopped = await start(exec("alices-mac", "reboot"));
     await waiting(stopped);
     await threads.stop(stopped.id, alice);
     await until(
@@ -1719,32 +1704,6 @@ test("a change on a machine waits for a person after the turn read a web page, o
       (state) => !state.running && state.approvals.length === 0
     );
     expect(ran).not.toContain("alices-mac: reboot");
-
-    // A routine's run changes the machines its person allowed for it, unless outside content came with it.
-    const routine = await start("");
-    await answeredIn(threads, home.id, routine.id);
-    await threads.instruct(
-      routine,
-      `Run code: ${exec("alices-mac", "make backup")} text("finished");`,
-      "routine:granted",
-      [],
-      alice.id,
-      { machineIds: ["alices-mac"] }
-    );
-    expect(ran.at(-1)).toBe("alices-mac: make backup");
-    const answered = threads.instruct(
-      routine,
-      `Run code: ${exec("alices-mac", "make restore")} text("finished");`,
-      "routine:exposed",
-      [],
-      alice.id,
-      { machineIds: ["alices-mac"], exposed: true }
-    );
-    const read = await waiting(routine);
-    expect(read.approverId).toBe(alice.id);
-    threads.answerApproval(routine.id, read.id, alice, false, "once");
-    await answered;
-    expect(ran.at(-1)).toBe("alices-mac: make backup");
   } finally {
     await threads.closeAll();
     await rm(dataDirectory, { recursive: true, force: true });
@@ -1815,7 +1774,9 @@ function savingThreads(
     limit: number
   ) => Promise<void>,
   screenshot: () => Promise<Uint8Array | null>,
-  machine: Partial<Pick<ThreadHands, "put" | "machineNamed" | "tools">> = {},
+  machine: Partial<
+    Pick<ThreadHands, "destructive" | "put" | "machineNamed" | "tools">
+  > = {},
   browser: Partial<Pick<ThreadBrowser, "pdf" | "tools">> = {}
 ) {
   // Each save is a tool call and an answer after it.
@@ -1830,15 +1791,11 @@ function savingThreads(
     golem.app.llm,
     golem.app.workspaces,
     {
+      destructive: async () => null,
       file,
       put: () => Promise.reject(new Error("No machines are paired.")),
       machineNamed: (_workspaceId, _userId, name) =>
-        ({
-          id: name,
-          name,
-          pairedBy: null,
-          trustedMemberIds: [],
-        }) as unknown as Machine,
+        ({ id: name, name, pairedBy: null }) as Machine,
       tools: () => [],
       section: () => ({ key: "machines", render: () => undefined }),
       ...machine,

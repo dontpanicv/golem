@@ -44,7 +44,7 @@ import {
 import { randomUUIDv5 } from "bun";
 import type { Artifacts } from "../artifacts/artifacts.ts";
 import type { Browser } from "../browser/browser.ts";
-import { type Hands, type Machine, readOnlyCommand } from "../hands/hands.ts";
+import type { Hands, Machine } from "../hands/hands.ts";
 import type {
   Integrations,
   WorkspaceTool,
@@ -123,11 +123,7 @@ export interface ThreadMessages {
   readonly approvals: readonly Approval[];
 }
 
-/**
- * A serious action that waits for one person: a change on a machine in a turn that read content no member wrote, in
- * a turn that no person watches, or on a machine that another person paired; or a routine's standing permission to
- * change a machine in each run.
- */
+/** A command on a machine that dcg (destructive_command_guard) flags, which waits for one person to allow it. */
 export interface Approval {
   readonly id: string;
   readonly tool: string;
@@ -152,25 +148,10 @@ const RELAYED = "golem.relay";
 const TASK = "golem.task";
 /** Someone stopped the agent; its `at` ends the agent's work in the transcript. */
 const STOPPED = "golem.stopped";
-/** The turn took in content that no member wrote, such as a web page, so changes on machines wait for a person. */
-const EXPOSED = "golem.exposed";
 /** A person allowed the rest of the turn on one machine. */
 const ALLOWED = "golem.allowed";
-/** The tools whose results come from outside the workspace's members. */
-const EXPOSING = new Set([
-  "web_search",
-  "browser_run",
-  "artifacts_data",
-  "routines_test_script",
-]);
-/** The tools that change a machine, which `approved` gates. */
-const CHANGES_MACHINE = new Set([
-  "hands_exec",
-  "hands_job_start",
-  "hands_write",
-  "hands_edit",
-  "hands_copy_file",
-]);
+/** The tools that run a shell command on a machine, which `approved` gates when dcg flags the command. */
+const RUNS_COMMAND = new Set(["hands_exec", "hands_job_start"]);
 /** How long an action waits for a person to allow it. */
 const APPROVAL_WAIT = 10 * 60_000;
 /** The longest a codemode script runs, with its tool calls; above `APPROVAL_WAIT`, so a script outlasts a wait. */
@@ -252,10 +233,6 @@ interface SaveSource {
 interface Task extends JsonObject {
   readonly requesterId: string | null;
   readonly requesterName: string | null;
-  /** The machines whose changes the person allowed for every run of this work, such as a routine. */
-  readonly machineIds: string[];
-  /** Its text has content that no member wrote, such as what a routine's script read from a connector. */
-  readonly exposed: boolean;
 }
 
 interface Relay extends JsonObject {
@@ -265,8 +242,6 @@ interface Relay extends JsonObject {
   readonly text: string;
   readonly requesterId: string | null;
   readonly requesterName: string | null;
-  /** The sending turn took in content that no member wrote, or no person watched it. */
-  readonly exposed: boolean;
 }
 
 export interface ThreadHooks {
@@ -326,7 +301,7 @@ export interface FilePlace {
 /** The machines of a workspace, which its agents use through the hands tools. */
 export type ThreadHands = Pick<
   Hands,
-  "file" | "machineNamed" | "put" | "section" | "tools"
+  "destructive" | "file" | "machineNamed" | "put" | "section" | "tools"
 >;
 
 /** The connectors of a workspace, which its agents use through their tools. */
@@ -513,11 +488,7 @@ export class Threads {
     text: string,
     requestId: string,
     notify: readonly string[] | "everyone",
-    requesterId: string | null,
-    {
-      machineIds = [],
-      exposed = false,
-    }: Partial<Pick<Task, "machineIds" | "exposed">> = {}
+    requesterId: string | null
   ): Promise<string | null> {
     const conversation = await this.conversation(thread);
     await this.useCurrentAgent(thread.workspaceId, conversation);
@@ -528,8 +499,6 @@ export class Threads {
     const task: Task = {
       requesterId: requester?.userId ?? null,
       requesterName: requester?.name ?? null,
-      machineIds,
-      exposed,
     };
     const submission = await conversation.submit(
       {
@@ -1561,21 +1530,14 @@ export class Threads {
       ...[
         this.copyToMachineTool(workspaceId, requesterOf),
         ...this.hands.tools(workspaceId, requesterOf),
-        ...connectors.map((tool) =>
-          this.exposing(workspaceId, connectorTool(tool, requesterOf))
-        ),
+        ...connectors.map((tool) => connectorTool(tool, requesterOf)),
         ...this.artifacts.tools(workspaceId),
         ...this.browser.tools(workspaceId, requesterOf),
         ...hooked,
       ].map(scriptOnly),
-    ].map((tool: ToolRegistration) => {
-      if (EXPOSING.has(tool.name)) {
-        return this.exposing(workspaceId, tool);
-      }
-      return CHANGES_MACHINE.has(tool.name)
-        ? this.approved(workspaceId, tool)
-        : tool;
-    });
+    ].map((tool: ToolRegistration) =>
+      RUNS_COMMAND.has(tool.name) ? this.approved(workspaceId, tool) : tool
+    );
     return defineExtension({
       name: "golem",
       tools,
@@ -1604,38 +1566,10 @@ export class Threads {
       );
   }
 
-  /** A tool whose result comes from outside the workspace's members: its call marks the turn as exposed. */
-  private exposing(workspaceId: string, tool: ToolRegistration) {
-    return {
-      ...tool,
-      execute: async (
-        ...[args, api, context]: Parameters<ToolRegistration["execute"]>
-      ) => {
-        await this.expose(workspaceId, api.conversationId);
-        return tool.execute(args, api, context);
-      },
-    };
-  }
-
-  /** Marks the running turn of a conversation as exposed, in its transcript, so a rerun after a restart sees it too. */
-  private async expose(
-    workspaceId: string,
-    conversationId: ConversationId
-  ): Promise<void> {
-    const conversation = await this.conversation(
-      this.threadOf(workspaceId, conversationId)
-    );
-    await conversation.submit(
-      { type: "write", entry: { kind: EXPOSED, data: { at: Date.now() } } },
-      BACKGROUND_CONTEXT
-    );
-  }
-
   /**
-   * A tool that changes a machine, which waits for a person to allow it when the turn took in content that no member
-   * wrote, when no person watches the turn, or when another person paired the machine and does not trust the turn's
-   * person. A command that only reads never waits. An allowed call keeps its memo, so a rerun after a restart does not
-   * ask again.
+   * A tool that runs a shell command on a machine, which waits for a person to allow the command when dcg flags it,
+   * such as `rm -rf` or `git reset --hard`. An allowed call keeps its memo, so a rerun after a restart does not ask
+   * again.
    */
   private approved(workspaceId: string, tool: ToolRegistration) {
     return {
@@ -1645,28 +1579,19 @@ export class Threads {
       ) => {
         const { machine, command } = args as {
           machine: string;
-          command?: string;
+          command: string;
         };
-        if (
-          !(
-            (command !== undefined && readOnlyCommand(command)) ||
-            (await api.memo<boolean>("approved", context))
-          )
-        ) {
+        const flagged = await this.hands.destructive(command);
+        if (flagged && !(await api.memo<boolean>("approved", context))) {
           const requesterId =
             (await this.requester(workspaceId, api.conversationId))?.id ?? null;
-          const found = this.hands.machineNamed(
-            workspaceId,
-            requesterId,
-            machine
-          );
           await this.allowed(
             workspaceId,
             api.conversationId,
             requesterId,
             tool.name,
-            actionText(tool.name, args as Record<string, unknown>, found.name),
-            found,
+            command,
+            this.hands.machineNamed(workspaceId, requesterId, machine),
             context.abortSignal
           );
           await api.memo("approved", true, context);
@@ -1677,85 +1602,40 @@ export class Threads {
   }
 
   /**
-   * Lets the runs of a routine change machines without asking, which nobody watches: at once when the person writes it
-   * in a turn they started that read nothing from outside, else once its approver allows it, as for a change on each
-   * machine. Returns the machines' ids; throws when nobody allows one.
-   */
-  async allowRuns(
-    workspaceId: string,
-    conversationId: ConversationId,
-    routine: string,
-    machines: readonly string[],
-    signal: AbortSignal | undefined
-  ): Promise<string[]> {
-    const requesterId =
-      (await this.requester(workspaceId, conversationId))?.id ?? null;
-    const ids: string[] = [];
-    for (const name of new Set(machines)) {
-      const machine = this.hands.machineNamed(workspaceId, requesterId, name);
-      await this.allowed(
-        workspaceId,
-        conversationId,
-        requesterId,
-        "routines",
-        `Let routine ${routine} change ${machine.name} in each run`,
-        machine,
-        signal,
-        true
-      );
-      ids.push(machine.id);
-    }
-    return ids;
-  }
-
-  /**
-   * Resolves when the action may run: at once, or once its approver allows it; throws when nobody does. A `standing`
-   * action lasts beyond the turn, so an "allow for this turn" neither covers it nor comes from it.
+   * Resolves when the person allows the command, or at once when they allowed the rest of the turn on its machine;
+   * throws when nobody does. The person who paired the machine allows it for another person's turn.
    */
   private async allowed(
     workspaceId: string,
     conversationId: ConversationId,
     requesterId: string | null,
     tool: string,
-    text: string,
-    machine: Pick<Machine, "id" | "pairedBy" | "trustedMemberIds">,
-    signal: AbortSignal | undefined,
-    standing = false
+    command: string,
+    machine: Pick<Machine, "id" | "name" | "pairedBy">,
+    signal: AbortSignal | undefined
   ): Promise<void> {
     const thread = this.threadOf(workspaceId, conversationId);
     const conversation = await this.conversation(thread);
-    const turn = await turnOf(conversation);
-    if (!standing && turn.allowed.has(machine.id)) {
+    if ((await allowedInTurn(conversation)).has(machine.id)) {
       return;
     }
     const members = this.members(workspaceId).map((member) => member.userId);
-    // The machine's owner allows every change for another person; one who left the workspace owns nothing.
+    // The machine's owner allows the command for another person; one who left the workspace owns nothing.
     const owner =
       machine.pairedBy && members.includes(machine.pairedBy)
         ? machine.pairedBy
         : null;
-    // A routine's run on a machine that its person allowed when they wrote it is as if they watched it.
-    const granted = turn.granted.has(machine.id);
-    const trusted =
-      granted ||
-      (requesterId !== null && machine.trustedMemberIds.includes(requesterId));
-    let approverId: string | null;
-    if (owner && owner !== requesterId && !trusted) {
-      approverId = owner;
-    } else if (turn.exposed || (turn.unattended && !granted)) {
-      approverId = requesterId ?? owner;
-    } else {
-      return;
-    }
+    const approverId =
+      owner && owner !== requesterId ? owner : (requesterId ?? owner);
     const scope = await this.ask(
       thread,
       approverId,
       members,
       tool,
-      text,
+      actionText(command, machine.name),
       signal
     );
-    if (scope === "turn" && !standing) {
+    if (scope === "turn") {
       await conversation.submit(
         {
           type: "write",
@@ -2052,7 +1932,6 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
-        const turn = await turnOf(await this.conversation(from));
         const channels = this.registry.channelsIn(workspaceId);
         const name = args.channel?.replace(/^#/, "").toLowerCase();
         const channel = name
@@ -2084,14 +1963,7 @@ export class Threads {
         await this.deliver(
           workspaceId,
           await this.conversation(thread),
-          relayed(
-            from,
-            args.message,
-            hops,
-            `relay:${api.taskId}`,
-            requester,
-            turn.exposed || turn.unattended
-          )
+          relayed(from, args.message, hops, `relay:${api.taskId}`, requester)
         );
         return {
           output: [
@@ -2122,7 +1994,6 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
-        const turn = await turnOf(await this.conversation(from));
         const target = this.threadIn(workspaceId, args.thread);
         if (target.id === from.id) {
           throw new Error("That is this thread. Answer here instead.");
@@ -2130,14 +2001,7 @@ export class Threads {
         await this.deliver(
           workspaceId,
           await this.conversation(target),
-          relayed(
-            from,
-            args.message,
-            hops,
-            `relay:${api.taskId}`,
-            requester,
-            turn.exposed || turn.unattended
-          )
+          relayed(from, args.message, hops, `relay:${api.taskId}`, requester)
         );
         this.registry.touchThread(target.id);
         return {
@@ -2397,7 +2261,6 @@ export class Threads {
       return args.name || basename(args.path);
     }
     if (args.url) {
-      await this.expose(workspaceId, conversationId);
       const name = await this.browser.download(args.url, path, signal);
       return args.name || name;
     }
@@ -2895,8 +2758,7 @@ function relayed(
   text: string,
   hops: number,
   requestId: string,
-  requester: User | null,
-  exposed: boolean
+  requester: User | null
 ) {
   const data: Relay = {
     fromThreadId: from.id,
@@ -2905,7 +2767,6 @@ function relayed(
     text,
     requesterId: requester?.id ?? null,
     requesterName: requester?.name ?? null,
-    exposed,
   };
   return {
     content: `${minute(Date.now())} UTC Golem from ${threadLink(from)}: ${text}`,
@@ -2919,19 +2780,9 @@ function scriptOnly<Tool extends ToolRegistration>(tool: Tool): Tool {
   return { ...tool, callers: ["tools"] };
 }
 
-/**
- * What the running turn of a conversation did since its input: whether it took in content that no member wrote,
- * whether no person watches it (a task such as a reminder or a routine run), and the machines a person allowed for it.
- */
-async function turnOf(conversation: Conversation): Promise<{
-  exposed: boolean;
-  unattended: boolean;
-  allowed: Set<string>;
-  /** The machines whose changes the person allowed for every run of the turn's work. */
-  granted: Set<string>;
-}> {
+/** The machines on which a person allowed the rest of the running turn of a conversation. */
+async function allowedInTurn(conversation: Conversation): Promise<Set<string>> {
   const allowed = new Set<string>();
-  let exposed = false;
   let cursor: Parameters<Conversation["entries"]>[2];
   do {
     const page = await conversation.entries(
@@ -2941,56 +2792,21 @@ async function turnOf(conversation: Conversation): Promise<{
       BACKGROUND_CONTEXT
     );
     for (const entry of page.items) {
-      if (entry.kind === EXPOSED) {
-        exposed = true;
-      } else if (entry.kind === ALLOWED) {
+      if ([AUTHORED, RELAYED, TASK].includes(entry.kind)) {
+        return allowed;
+      }
+      if (entry.kind === ALLOWED) {
         allowed.add((entry.data as { machineId: string }).machineId);
-      } else if (entry.kind === AUTHORED) {
-        return { exposed, unattended: false, allowed, granted: new Set() };
-      } else if (entry.kind === RELAYED) {
-        const relay = entry.data as unknown as Relay;
-        return {
-          exposed: exposed || relay.exposed,
-          unattended: false,
-          allowed,
-          granted: new Set(),
-        };
-      } else if (entry.kind === TASK) {
-        return taskTurn(exposed, allowed, entry.data as unknown as Task);
       }
     }
     cursor = page.next;
   } while (cursor);
-  return { exposed, unattended: true, allowed, granted: new Set() };
+  return allowed;
 }
 
-/** The turn of a task, such as a routine run, which no person watches. */
-function taskTurn(
-  exposed: boolean,
-  allowed: Set<string>,
-  // Tasks from before routines kept machines have neither field.
-  task: Partial<Task>
-) {
-  return {
-    exposed: exposed || task.exposed === true,
-    unattended: true,
-    allowed,
-    granted: new Set(task.machineIds ?? []),
-  };
-}
-
-/** What a tool that changes a machine is about to do, for the person who allows it. */
-function actionText(
-  tool: string,
-  args: Record<string, unknown>,
-  machine: string
-): string {
-  if (tool === "hands_exec" || tool === "hands_job_start") {
-    return `Run on ${machine}: ${clip(String(args.command))}`;
-  }
-  const verb =
-    { hands_write: "Write", hands_edit: "Edit" }[tool] ?? "Copy a file to";
-  return `${verb} ${String(args.path)} on ${machine}`;
+/** The command that waits, for the person who allows it. */
+function actionText(command: string, machine: string): string {
+  return `Run on ${machine}: ${clip(command)}`;
 }
 
 /**
