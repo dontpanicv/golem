@@ -57,7 +57,7 @@ export interface HandsOptions {
 }
 
 const COLUMNS =
-  "SELECT id, workspace_id AS workspaceId, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt, paired_by AS pairedBy FROM machine WHERE deleted_at IS NULL";
+  "SELECT id, workspace_id AS workspaceId, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt, paired_by AS pairedBy, trusted_members AS trustedMemberIds FROM machine WHERE deleted_at IS NULL";
 /** The machines of a place: a workspace's, or the person's own. */
 const IN_PLACE =
   "workspace_id IS $place AND ($place IS NOT NULL OR paired_by = $userId)";
@@ -83,6 +83,59 @@ const BINARIES = [
   "linux-aarch64",
   "linux-x86_64",
 ] as const;
+
+/**
+ * The commands that only read, by their first word: each refuses the arguments that would make it write or run
+ * another program. A command with any of these is never read-only.
+ */
+const READ_ONLY: Record<string, (args: readonly string[]) => boolean> = {
+  cat: always,
+  df: always,
+  du: always,
+  echo: always,
+  free: always,
+  grep: always,
+  head: always,
+  id: always,
+  ls: always,
+  printenv: always,
+  ps: always,
+  pwd: always,
+  stat: always,
+  tail: always,
+  uname: always,
+  uptime: always,
+  wc: always,
+  which: always,
+  whoami: always,
+  find: (args) =>
+    !args.some((arg) =>
+      /^-(exec|execdir|ok|okdir|delete|fprint|fprint0|fprintf|fls)$/.test(arg)
+    ),
+  rg: (args) => !args.some((arg) => /^--pre(=|$)/.test(arg)),
+  git: (args) => {
+    let rest = args;
+    // `git -C <dir>` reads another repository; any other option before the subcommand may run a program.
+    while (rest[0] === "-C" && rest.length > 1) {
+      rest = rest.slice(2);
+    }
+    return (
+      GIT_READS.has(rest[0] ?? "") &&
+      !rest.some((arg) => /^(--output|--ext-diff)/.test(arg))
+    );
+  },
+};
+const GIT_READS = new Set([
+  "status",
+  "log",
+  "diff",
+  "show",
+  "rev-parse",
+  "ls-files",
+  "blame",
+]);
+/** Pipes, lists, redirections, substitutions, escapes, and subshells, which can hide a second command or a write. */
+const SHELL_SYNTAX = /[;&|<>$`\\(){}\n\r]/;
 
 /** The hands binaries that Golem serves to the machines that pair; Golem checks them before it starts. */
 export async function handsRequirements(
@@ -211,6 +264,40 @@ export class Hands {
       throw notFound();
     }
     this.forget(machineId);
+  }
+
+  /**
+   * Sets the members whose turns change a workspace's machine without asking the member who paired it, which only
+   * that member does.
+   */
+  trustMembers(
+    workspaceId: string,
+    user: User,
+    machineId: string,
+    userIds: readonly string[]
+  ): Machine {
+    const members = this.workspaces
+      .members(workspaceId, user)
+      .map((member) => member.userId);
+    const machine = this.machines(workspaceId, user).find(
+      (candidate) => candidate.id === machineId
+    );
+    if (!machine) {
+      throw notFound();
+    }
+    if (machine.pairedBy !== user.id) {
+      throw new HttpError(403, "Only the person who paired it can change this");
+    }
+    if (userIds.some((userId) => !members.includes(userId))) {
+      throw new HttpError(400, "userIds has a person who is not a member");
+    }
+    const trusted = [...new Set(userIds)].filter(
+      (userId) => userId !== user.id
+    );
+    this.database
+      .query("UPDATE machine SET trusted_members = ? WHERE id = ?")
+      .run(JSON.stringify(trusted), machineId);
+    return { ...machine, trustedMemberIds: trusted };
   }
 
   /** The install script for a pairing code, with Golem's address, pin, and the binaries' SHA-256 filled in. */
@@ -393,11 +480,12 @@ export class Hands {
   private rows(sql: string, params: Record<string, string | null>): Machine[] {
     const rows = this.database.query(sql).all(params) as (Omit<
       Machine,
-      "addresses"
-    > & { addresses: string })[];
+      "addresses" | "trustedMemberIds"
+    > & { addresses: string; trustedMemberIds: string })[];
     return rows.map((row) => ({
       ...row,
       addresses: JSON.parse(row.addresses),
+      trustedMemberIds: JSON.parse(row.trustedMemberIds),
     }));
   }
 
@@ -521,6 +609,30 @@ export class Hands {
     }
     return candidate;
   }
+}
+
+/**
+ * Whether a shell command only reads the machine, so it needs nobody's approval: one simple command from a short list,
+ * with no shell syntax. Anything it cannot tell is not read-only.
+ *
+ * @example
+ * readOnlyCommand("git -C ~/code status --short"); // true
+ * readOnlyCommand("cat notes.md > copy.md"); // false
+ */
+export function readOnlyCommand(command: string): boolean {
+  if (SHELL_SYNTAX.test(command)) {
+    return false;
+  }
+  // Without $ and \, quotes only join words: drop them, so "--output" is seen as --output.
+  const [program = "", ...args] = command
+    .replace(/["']/g, "")
+    .trim()
+    .split(/\s+/);
+  return Object.hasOwn(READ_ONLY, program) && READ_ONLY[program]!(args);
+}
+
+function always(): boolean {
+  return true;
 }
 
 /** One running pairing for each workspace, and one for each person's own machines. */

@@ -1586,8 +1586,10 @@ test("a change on a machine waits for a person after the turn read a web page, o
         ({
           id: name,
           name,
-          pairedBy: name === "bobs-mac" ? bob.id : alice.id,
-        }) as Machine,
+          pairedBy: name.startsWith("bobs-") ? bob.id : alice.id,
+          // Bob lets Alice's turns change this one without asking him.
+          trustedMemberIds: name === "bobs-shared" ? [alice.id] : [],
+        }) as unknown as Machine,
       tools: () => [
         defineTool({
           name: "hands_exec",
@@ -1642,6 +1644,18 @@ test("a change on a machine waits for a person after the turn read a web page, o
     const own = await start(exec("alices-mac", "ls"));
     await answeredIn(threads, home.id, own.id);
     expect(ran).toEqual(["alices-mac: ls"]);
+
+    // A command that only reads never asks, even after a web page; Bob trusts Alice on his shared machine.
+    const reads = await start(
+      `${exec("bobs-shared", "make")} await tools.browser_run({ commands: [] }); ${exec("alices-mac", "git status")}`
+    );
+    await answeredIn(threads, home.id, reads.id);
+    expect(ran).toEqual([
+      "alices-mac: ls",
+      "bobs-shared: make",
+      "alices-mac: git status",
+    ]);
+    ran.length = 1;
 
     // A web page came first, so the turn's person allows it; nobody else answers.
     const exposed = await start(
@@ -1705,6 +1719,32 @@ test("a change on a machine waits for a person after the turn read a web page, o
       (state) => !state.running && state.approvals.length === 0
     );
     expect(ran).not.toContain("alices-mac: reboot");
+
+    // A routine's run changes the machines its person allowed for it, unless outside content came with it.
+    const routine = await start("");
+    await answeredIn(threads, home.id, routine.id);
+    await threads.instruct(
+      routine,
+      `Run code: ${exec("alices-mac", "make backup")} text("finished");`,
+      "routine:granted",
+      [],
+      alice.id,
+      { machineIds: ["alices-mac"] }
+    );
+    expect(ran.at(-1)).toBe("alices-mac: make backup");
+    const answered = threads.instruct(
+      routine,
+      `Run code: ${exec("alices-mac", "make restore")} text("finished");`,
+      "routine:exposed",
+      [],
+      alice.id,
+      { machineIds: ["alices-mac"], exposed: true }
+    );
+    const read = await waiting(routine);
+    expect(read.approverId).toBe(alice.id);
+    threads.answerApproval(routine.id, read.id, alice, false, "once");
+    await answered;
+    expect(ran.at(-1)).toBe("alices-mac: make backup");
   } finally {
     await threads.closeAll();
     await rm(dataDirectory, { recursive: true, force: true });
@@ -1793,7 +1833,12 @@ function savingThreads(
       file,
       put: () => Promise.reject(new Error("No machines are paired.")),
       machineNamed: (_workspaceId, _userId, name) =>
-        ({ id: name, name, pairedBy: null }) as Machine,
+        ({
+          id: name,
+          name,
+          pairedBy: null,
+          trustedMemberIds: [],
+        }) as unknown as Machine,
       tools: () => [],
       section: () => ({ key: "machines", render: () => undefined }),
       ...machine,

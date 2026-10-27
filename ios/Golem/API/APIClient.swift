@@ -123,6 +123,12 @@ final class APIClient {
         _ = try await send("DELETE", "\(Self.machinesBase(workspaceID))/machines/\(machineID)")
     }
 
+    /// Sets the members whose turns change a workspace's machine without asking the member who paired it.
+    func trustMembers(workspaceID: String, machineID: String, userIDs: [String]) async throws -> Machine {
+        let path = "/api/v1/workspaces/\(workspaceID)/machines/\(machineID)/trusted-members"
+        return try decode(try await send("PUT", path, ["userIds": userIDs]).data)
+    }
+
     private static func machinesBase(_ workspaceID: String?) -> String {
         workspaceID.map { "/api/v1/workspaces/\($0)" } ?? "/api/v1"
     }

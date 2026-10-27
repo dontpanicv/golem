@@ -1,6 +1,7 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 import { readText } from "../app/web.ts";
+import { HttpError } from "../platform/errors.ts";
 
 /**
  * The machines of a place: a workspace's under `/workspaces/:workspace`, for every member's turns there, and the
@@ -41,6 +42,27 @@ export const handsApiRoutes: readonly Route[] = [
       ],
     ]
   ),
+  [
+    "PUT",
+    "/api/v1/workspaces/:workspace/machines/:machine/trusted-members",
+    api(async ({ app, user, params, body }) => {
+      const { userIds } = body;
+      if (
+        !Array.isArray(userIds) ||
+        userIds.some((userId) => typeof userId !== "string")
+      ) {
+        throw new HttpError(400, "userIds must be a list of user ids");
+      }
+      return json(
+        app.hands.trustMembers(
+          params.workspace!,
+          user,
+          params.machine!,
+          userIds
+        )
+      );
+    }),
+  ],
   // The machine itself calls these, without an account: the pairing code is the credential.
   [
     "GET",

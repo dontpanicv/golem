@@ -15,6 +15,8 @@ export interface Machine {
   /** The member who started the pairing, who allows what agents do on it; null for a machine paired before. */
   readonly pairedBy: string | null;
   readonly port: number;
+  /** The members whose turns change it without asking `pairedBy`. */
+  readonly trustedMemberIds: readonly string[];
   readonly version: string;
   /** The workspace it is paired with; null for the own machine of `pairedBy`. */
   readonly workspaceId: string | null;

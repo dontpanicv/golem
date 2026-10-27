@@ -46,16 +46,22 @@ export interface RoutineInput {
   readonly schedule: string;
   readonly instructions: string;
   readonly script?: string | null;
+  /** The machines its runs change without asking, which a person allowed for it. */
+  readonly machineIds?: readonly string[];
 }
 
 /** What a script run gave: the text for the agent, or `null` when it found nothing new. */
-export type ScriptResult =
+export type ScriptResult = (
   | {
       readonly ok: true;
       readonly text: string | null;
       readonly store: Record<string, unknown>;
     }
-  | { readonly ok: false; readonly error: string; readonly text: string };
+  | { readonly ok: false; readonly error: string; readonly text: string }
+) & {
+  /** The script called a connector, so its text has content that no member wrote. */
+  readonly exposed: boolean;
+};
 
 export type RoutineWorkspaces = Pick<
   Workspaces,
@@ -63,7 +69,7 @@ export type RoutineWorkspaces = Pick<
 >;
 export type RoutineThreads = Pick<
   Threads,
-  "instruct" | "messages" | "requester" | "startAgentThread"
+  "allowRuns" | "instruct" | "messages" | "requester" | "startAgentThread"
 >;
 export type RoutineSearch = Pick<Indexer, "search">;
 
@@ -92,10 +98,12 @@ interface RoutineRow {
   readonly threadId: string | null;
   /** The member who last wrote its instructions or script, whose turns its runs are; `golem` when nobody did. */
   readonly createdBy: string;
+  /** JSON: the ids of the machines its runs change without asking. */
+  readonly machineIds: string;
 }
 
 const ROUTINE_COLUMNS =
-  "id, workspace_id AS workspaceId, channel_id AS channelId, name, schedule, instructions, script, store, enabled, next_run_at AS nextRunAt, thread_id AS threadId, created_by AS createdBy";
+  "id, workspace_id AS workspaceId, channel_id AS channelId, name, schedule, instructions, script, store, enabled, next_run_at AS nextRunAt, thread_id AS threadId, created_by AS createdBy, machine_ids AS machineIds";
 const RUN_COLUMNS =
   "r.id, r.routine_id AS routineId, t.name AS routineName, r.started_at AS startedAt, r.finished_at AS finishedAt, r.outcome, r.error";
 
@@ -257,7 +265,7 @@ export class Routines {
     const now = Date.now();
     this.database
       .query(
-        "INSERT OR IGNORE INTO routine (id, workspace_id, channel_id, name, schedule, instructions, script, store, enabled, next_run_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 1, ?, ?, ?)"
+        "INSERT OR IGNORE INTO routine (id, workspace_id, channel_id, name, schedule, instructions, script, store, enabled, next_run_at, created_by, created_at, machine_ids) VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 1, ?, ?, ?, ?)"
       )
       .run(
         input.id,
@@ -269,14 +277,16 @@ export class Routines {
         input.script?.trim() || null,
         nextRun(input.schedule, now),
         input.createdBy,
-        now
+        now,
+        JSON.stringify(input.machineIds ?? [])
       );
     return this.routineIn(workspaceId, input.id);
   }
 
   /**
    * Changes a routine for an agent of the workspace. A new schedule moves the next run. The person who writes new
-   * instructions or a new script, `changedBy`, becomes the person its runs are for.
+   * instructions or a new script, `changedBy`, becomes the person its runs are for, and the machines its runs change
+   * without asking are only those of `machineIds`.
    */
   update(
     workspaceId: string,
@@ -292,9 +302,13 @@ export class Routines {
       changes.script === undefined
         ? routine.script
         : changes.script?.trim() || null;
+    const rewritten =
+      changes.script !== undefined || changes.instructions !== undefined;
+    const machineIds =
+      changes.machineIds ?? (rewritten ? [] : JSON.parse(row.machineIds));
     this.database
       .query(
-        "UPDATE routine SET name = ?, schedule = ?, instructions = ?, script = ?, enabled = ?, next_run_at = ?, created_by = ? WHERE id = ?"
+        "UPDATE routine SET name = ?, schedule = ?, instructions = ?, script = ?, enabled = ?, next_run_at = ?, created_by = ?, machine_ids = ? WHERE id = ?"
       )
       .run(
         required(changes.name ?? routine.name, "Name"),
@@ -305,9 +319,8 @@ export class Routines {
         changes.schedule === undefined && changes.enabled === undefined
           ? routine.nextRunAt
           : nextRun(schedule, Date.now()),
-        changes.script === undefined && changes.instructions === undefined
-          ? row.createdBy
-          : changedBy,
+        rewritten ? changedBy : row.createdBy,
+        JSON.stringify(machineIds),
         routineId
       );
     return this.routineIn(workspaceId, routineId);
@@ -344,7 +357,9 @@ export class Routines {
   /** The TypeScript declarations of the tools that scripts of a workspace can call. */
   async declarations(workspaceId: string): Promise<string> {
     return renderDeclarations({
-      tools: await this.scriptTools(workspaceId, null),
+      tools: await this.scriptTools(workspaceId, null, () => {
+        // Declarations only: nothing runs.
+      }),
     });
   }
 
@@ -439,7 +454,12 @@ export class Routines {
       }
     }
     if (!routine.script) {
-      const answer = await this.tell(routine, runId, runTask(routine, null));
+      const answer = await this.tell(
+        routine,
+        runId,
+        runTask(routine, null),
+        false
+      );
       return answer === null ? "quiet" : "posted";
     }
     const result =
@@ -455,25 +475,39 @@ export class Routines {
       .query("UPDATE routine_run SET result = ? WHERE id = ?")
       .run(JSON.stringify(result), runId);
     if (!result.ok) {
-      await this.tell(routine, runId, repairTask(routine, result));
+      await this.tell(
+        routine,
+        runId,
+        repairTask(routine, result),
+        result.exposed
+      );
       throw new Error(result.error);
     }
     // Saved only once the agent has what the script found, so a failed answer finds it again next run.
     const answer =
       result.text === null
         ? null
-        : await this.tell(routine, runId, runTask(routine, result.text));
+        : await this.tell(
+            routine,
+            runId,
+            runTask(routine, result.text),
+            result.exposed
+          );
     this.database
       .query("UPDATE routine SET store = ? WHERE id = ?")
       .run(JSON.stringify(result.store), routine.id);
     return answer === null ? "quiet" : "posted";
   }
 
-  /** Gives the agent of the routine's thread a task, and starts the thread on the first one. */
+  /**
+   * Gives the agent of the routine's thread a task, and starts the thread on the first one. Its changes on the
+   * routine's machines wait for nobody, unless `exposed` text came with it.
+   */
   private async tell(
     routine: RoutineRow,
     runId: string,
-    text: string
+    text: string,
+    exposed: boolean
   ): Promise<string | null> {
     let thread = this.workspaces
       .threadsIn(routine.workspaceId)
@@ -493,7 +527,8 @@ export class Routines {
       text,
       `routine:${runId}`,
       "everyone",
-      routine.createdBy
+      routine.createdBy,
+      { machineIds: JSON.parse(routine.machineIds), exposed }
     );
   }
 
@@ -504,8 +539,11 @@ export class Routines {
     store: Record<string, unknown>,
     userId: string | null
   ): Promise<ScriptResult> {
+    let exposed = false;
     const sandbox = new CodemodeSandbox({
-      tools: await this.scriptTools(workspaceId, userId),
+      tools: await this.scriptTools(workspaceId, userId, () => {
+        exposed = true;
+      }),
       timeoutMs: SCRIPT_TIMEOUT,
       memoryLimitBytes: 256 * 1024 * 1024,
     });
@@ -519,6 +557,7 @@ export class Routines {
           ok: false,
           error: `${result.error.name ?? result.error.kind}: ${result.error.message}`,
           text: printed,
+          exposed,
         };
       }
       for (const key of result.storeWrites.delete) {
@@ -537,6 +576,7 @@ export class Routines {
         ok: true,
         text: text ? cut(text) : null,
         store,
+        exposed,
       };
     } finally {
       await sandbox.close();
@@ -546,7 +586,8 @@ export class Routines {
   /** What scripts call: the connectors' tools, and reading the workspace's channels, threads, and search. */
   private async scriptTools(
     workspaceId: string,
-    userId: string | null
+    userId: string | null,
+    exposing: () => void
   ): Promise<CodemodeTool[]> {
     const connectors = (await this.integrations.tools(workspaceId)).map(
       (tool): CodemodeTool => ({
@@ -554,7 +595,10 @@ export class Routines {
         description: tool.description,
         // A TypeBox schema is a JSON schema.
         inputSchema: { ...tool.parameters },
-        execute: (args, { signal }) => tool.execute(args, { userId, signal }),
+        execute: (args, { signal }) => {
+          exposing();
+          return tool.execute(args, { userId, signal });
+        },
       })
     );
     return [

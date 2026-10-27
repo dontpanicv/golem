@@ -259,6 +259,10 @@ const migrations = [
 	CREATE UNIQUE INDEX machine_own_name ON machine (paired_by, name) WHERE workspace_id IS NULL;`,
   // routines: what a run's script found, kept until the run ends, so a run that a stop cuts off goes on with it.
   "ALTER TABLE routine_run ADD COLUMN result TEXT;",
+  // hands: the members whose turns change a workspace's machine without asking the member who paired it.
+  "ALTER TABLE machine ADD COLUMN trusted_members TEXT NOT NULL DEFAULT '[]';",
+  // routines: the machines that a routine's runs change without asking, which a person allowed when it was written.
+  "ALTER TABLE routine ADD COLUMN machine_ids TEXT NOT NULL DEFAULT '[]';",
 ];
 
 export function openDatabase(path: string): Database {

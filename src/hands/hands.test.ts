@@ -9,7 +9,7 @@ import { startTestApp, type TestApp } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import { Secrets } from "../platform/secrets.ts";
 import { decodeFrame, encodeFrame, sha256Hex } from "./connection.ts";
-import { Hands } from "./hands.ts";
+import { Hands, readOnlyCommand } from "./hands.ts";
 
 let golem: TestApp;
 let hands: Hands;
@@ -283,6 +283,76 @@ describe("own machines", () => {
         )
     ).toEqual(["laptop-2", "server", "server-2"]);
   });
+});
+
+test("the member who paired a workspace's machine trusts other members to change it without asking", async () => {
+  const bob = await person("Bob", "bob@example.com");
+  const shared = (await golem.app.workspaces.create(alice, "Shared")).id;
+  await golem.app.workspaces.addMember(shared, alice, bob.email);
+  const code = codeOf((await hands.startPairing(shared, alice)).command);
+  hands.pair(code, pairingRequest({ certSha256: "c".repeat(64) }));
+  const [machine] = hands.machines(shared, alice);
+  expect(machine!.trustedMemberIds).toEqual([]);
+
+  expect(
+    hands.trustMembers(shared, alice, machine!.id, [bob.id, alice.id])
+  ).toMatchObject({ trustedMemberIds: [bob.id] });
+  expect(
+    hands.machinesIn(shared, bob.id).find((found) => found.id === machine!.id)!
+      .trustedMemberIds
+  ).toEqual([bob.id]);
+  expect(() => hands.trustMembers(shared, bob, machine!.id, [])).toThrow(
+    "Only the person who paired it can change this"
+  );
+  expect(() =>
+    hands.trustMembers(shared, alice, machine!.id, [eve.id])
+  ).toThrow("userIds has a person who is not a member");
+  expect(() => hands.trustMembers(shared, eve, machine!.id, [])).toThrow(
+    "Not found"
+  );
+  hands.trustMembers(shared, alice, machine!.id, []);
+  expect(hands.machines(shared, alice)[0]!.trustedMemberIds).toEqual([]);
+});
+
+test("only a simple command from the short list, with no shell syntax, only reads", () => {
+  for (const command of [
+    "ls -la ~/code",
+    "  cat notes.md",
+    "git status --short",
+    "git -C ~/code log --oneline -5",
+    "find . -name '*.md'",
+    'grep -rn "milk" ~/lists',
+    "df -h",
+    "rg TODO src",
+  ]) {
+    expect([command, readOnlyCommand(command)]).toEqual([command, true]);
+  }
+  for (const command of [
+    "rm -rf ~/photos",
+    "cat notes.md > copy.md",
+    "ls; rm x",
+    "ls && rm x",
+    "ls | sh",
+    "echo $(rm x)",
+    "echo `rm x`",
+    "ls\\nrm x",
+    "ls\nrm x",
+    "find . -delete",
+    "find . -exec rm {} +",
+    "find . '-exec' rm",
+    "git push",
+    "git -c core.pager=sh log",
+    "git log --output=/tmp/x",
+    'git diff "--output=/tmp/x"',
+    "git diff --ext-diff",
+    "rg --pre sh x",
+    "PAGER=sh git log",
+    "constructor",
+    "__proto__",
+    "",
+  ]) {
+    expect([command, readOnlyCommand(command)]).toEqual([command, false]);
+  }
 });
 
 test("a frame whose JSON is not an object is a bad frame", () => {
