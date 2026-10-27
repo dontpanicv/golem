@@ -35,6 +35,9 @@ targets:
       properties:
         # Development-signed builds get their pushes from the APNs sandbox.
         aps-environment: development
+        # Google sign-in returns to the server's https address (`webcredentials`, which
+        # ASWebAuthenticationSession.Callback.https needs). Local.xcconfig sets the host.
+        com.apple.developer.associated-domains: ['webcredentials:$(GOLEM_ASSOCIATED_DOMAIN)']
     info:
       path: Golem/Info.plist
       properties:

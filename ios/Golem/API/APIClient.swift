@@ -14,9 +14,21 @@ final class APIClient {
 
     // MARK: Auth
 
-    /// Opened in a web authentication session; it ends at `golem://signed-in` with `token` or `error`.
-    func googleSignInURL() throws -> URL {
-        try makeRequest("GET", "/api/v1/sign-in/google").url!
+    /// Where a Google sign-in ends, on the server's https address, with `code` or `error`.
+    static let signedInPath = "/api/v1/sign-in/google/signed-in"
+
+    /// Opened in a web authentication session; `challenge` is the base64url SHA-256 of the sign-in's verifier.
+    func googleSignInURL(challenge: String) throws -> URL {
+        try makeRequest("GET", "/api/v1/sign-in/google?challenge=\(challenge)").url!
+    }
+
+    /// Swaps the one-time code of a sign-in, with its verifier, for the session token.
+    func signInToken(code: String, verifier: String) async throws -> String {
+        let body: [String: String] = try await post(
+            "/api/v1/sign-in/google/token", ["code": code, "verifier": verifier]
+        )
+        guard let token = body["token"] else { throw APIError(status: 0, message: "Sign-in failed") }
+        return token
     }
 
     func signOut() async throws {

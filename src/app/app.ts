@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { AppSignIns } from "../accounts/accounts.ts";
 import { Artifacts } from "../artifacts/artifacts.ts";
 import { Browser, browserRequirements } from "../browser/browser.ts";
 import { Hands, handsRequirements } from "../hands/hands.ts";
@@ -25,6 +26,7 @@ export interface App {
   readonly config: Config;
   readonly database: Database;
   readonly auth: Auth;
+  readonly appSignIns: AppSignIns;
   readonly llm: Llm;
   readonly hands: Hands;
   readonly threads: Threads;
@@ -154,6 +156,7 @@ export async function createApp(
     config,
     database,
     auth,
+    appSignIns: new AppSignIns(),
     llm,
     hands,
     threads,

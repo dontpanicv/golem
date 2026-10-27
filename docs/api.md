@@ -11,13 +11,18 @@ tokens; the web app uses better-auth's session cookie. The routes are in `src/ac
 
 | Request | Response |
 | --- | --- |
-| `GET /api/v1/sign-in/google` | Redirect to Google. Open it in a web authentication session that waits for the `golem` scheme. |
-| `GET /api/v1/sign-in/google/done` | Redirect to `golem://signed-in?token=<token>`, or `golem://signed-in?error=<message>` |
+| `GET /api/v1/sign-in/google?challenge=<challenge>` | Redirect to Google. The iOS app opens it in a web authentication session that waits for `https://<server>/api/v1/sign-in/google/signed-in`. `challenge` is the base64url SHA-256 of a random verifier (PKCE, RFC 7636); `400` without one. |
+| `GET /api/v1/sign-in/google/done` | Redirect to `/api/v1/sign-in/google/signed-in?code=<code>`, or `?error=<message>` |
+| `GET /api/v1/sign-in/google/signed-in` | A page that asks a browser without the app to open the app |
+| `POST /api/v1/sign-in/google/token` | `{ code, verifier }` → `{ token }`; `400` when the code is unknown, used, older than 60 seconds, or not of that verifier |
+| `GET /.well-known/apple-app-site-association` | `{ webcredentials: { apps: [ios_app_id] } }`; `404` without `ios_app_id` in `config/golem.toml` |
 | `POST /api/auth/sign-in/social` | `{ provider: "google", callbackURL }` → `{ url }`: the web app opens `url`, and Google sends the person back to `callbackURL` with a session cookie. A failed sign-in comes back to `/login?error=…&error_description=…`. |
 | `POST /api/auth/sign-out` | `{ success }` |
 
-`done` hands over a token only to a sign-in that `GET /api/v1/sign-in/google` started in the same browser session,
-and Google always asks which account to use. This keeps another app that claims `golem://` from getting a token.
+`done` gives a code only to a sign-in that `GET /api/v1/sign-in/google` started in the same browser session, and only
+for the session that the Google step of that sign-in made; Google always asks which account to use. The code gives the
+token once, only with the verifier of the sign-in's challenge. The web authentication session gives the `signed-in`
+address only to the app that the server's apple-app-site-association file names, so the iOS app needs https.
 
 Send `Authorization: Bearer <token>`, or the session cookie, on every `/api/v1` request. A `401` response means the
 token or the session is missing or expired. Golem checks `allowed_emails` on every request: after a restart without

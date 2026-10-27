@@ -65,31 +65,89 @@ test("only allowed emails sign in, and only with Google", async () => {
   expect((await call("/api/v1/me", { token: alice })).status).toBe(200);
 });
 
-test("the iOS app gets a token only from a Google sign-in it started", async () => {
-  const start = await call("/api/v1/sign-in/google");
-  expect(
-    new URL(start.headers.get("location")!).searchParams.get("prompt")
-  ).toBe("select_account");
-  expect(cookies(start)).toContain("golem_app_sign_in=1");
+test("the iOS app gets a token only for a Google sign-in it started, with its verifier, once", async () => {
+  const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+  // RFC 7636, appendix B.
+  const challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+  expect((await call("/api/v1/sign-in/google")).status).toBe(400);
+  const begin = async () => {
+    const start = await call(`/api/v1/sign-in/google?challenge=${challenge}`);
+    expect(
+      new URL(start.headers.get("location")!).searchParams.get("prompt")
+    ).toBe("select_account");
+    const flow = /golem_app_sign_in=([\w-]+)/.exec(cookies(start))![1]!;
+    return `golem_app_sign_in=${flow}`;
+  };
+  const done = async (cookie: string, query = "") => {
+    const response = await call(`/api/v1/sign-in/google/done${query}`, {
+      headers: { cookie },
+    });
+    expect(response.status).toBe(303);
+    const location = new URL(response.headers.get("location")!, "http://x");
+    expect(location.pathname).toBe("/api/v1/sign-in/google/signed-in");
+    return location.searchParams;
+  };
+  const swap = async (
+    given: string | null,
+    withVerifier = verifier
+  ): Promise<Record<string, unknown>> => {
+    const response = await call("/api/v1/sign-in/google/token", {
+      body: { code: given, verifier: withVerifier },
+    });
+    return {
+      status: response.status,
+      ...((await response.json()) as Record<string, unknown>),
+    };
+  };
+  const session = async (token: string) =>
+    `better-auth.session_token=${await signedCookie(token)}`;
 
-  const session = `better-auth.session_token=${await signedCookie(alice)}`;
-  const started = await call("/api/v1/sign-in/google/done", {
-    headers: { cookie: `${session}; golem_app_sign_in=1` },
-  });
+  // A session that the browser had before the sign-in started gets nothing.
+  const older = await done(`${await session(alice)}; ${await begin()}`);
+  expect(older.get("code")).toBeNull();
+  expect(older.get("error")).toBe("Sign-in failed");
+  // Nor does a session without a sign-in that started here.
+  expect((await done(await session(alice))).get("code")).toBeNull();
+
+  // The session that the sign-in's Google step made gives a code, which gives its token once, for the verifier.
+  const flow = await begin();
+  const fresh = await signIn("Alice", "alice@example.com");
+  const code = (await done(`${await session(fresh)}; ${flow}`)).get("code");
+  expect(code).toBeString();
+  expect(await swap(code)).toEqual({ status: 200, token: fresh });
+  expect(await swap(code)).toEqual({ status: 400, error: "Sign in again" });
+  // The flow ended with its code.
   expect(
-    new URL(started.headers.get("location")!).searchParams.get("token")
-  ).toBe(alice);
-  const notStarted = await call("/api/v1/sign-in/google/done", {
-    headers: { cookie: session },
-  });
-  expect(
-    new URL(notStarted.headers.get("location")!).searchParams.get("token")
+    (await done(`${await session(fresh)}; ${flow}`)).get("code")
   ).toBeNull();
-  const failed = await call(
-    "/api/v1/sign-in/google/done?error=EMAIL_NOT_ALLOWED&error_description=No",
-    { headers: { cookie: "golem_app_sign_in=1" } }
+
+  // Another app that catches a code has no verifier, and the code is gone after one try.
+  const caught = await begin();
+  const other = await signIn("Alice", "alice@example.com");
+  const stolen = (await done(`${await session(other)}; ${caught}`)).get("code");
+  expect(await swap(stolen, "x".repeat(43))).toEqual({
+    status: 400,
+    error: "Sign in again",
+  });
+  expect(await swap(stolen)).toEqual({ status: 400, error: "Sign in again" });
+
+  const failed = await done(
+    await begin(),
+    "?error=EMAIL_NOT_ALLOWED&error_description=No"
   );
-  expect(failed.headers.get("location")).toBe("golem://signed-in?error=No");
+  expect(failed.toString()).toBe("error=No");
+
+  // A browser without the app shows a page at the address where the sign-in ends.
+  const page = await call("/api/v1/sign-in/google/signed-in?code=x");
+  expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
+  expect(await page.text()).toContain("Open the Golem app");
+  const association = await call("/.well-known/apple-app-site-association");
+  expect(association.headers.get("content-type")).toStartWith(
+    "application/json"
+  );
+  expect(await association.json()).toEqual({
+    webcredentials: { apps: ["ABCDE12345.dev.golem.test"] },
+  });
 });
 
 test("a new workspace has a general channel", async () => {
