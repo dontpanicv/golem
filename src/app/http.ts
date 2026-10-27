@@ -66,7 +66,11 @@ export function signedIn(
   onSignedOut: () => Response
 ): Handler {
   return async (input) => {
-    const user = await currentUser(input.app.auth, input.request);
+    const user = await currentUser(
+      input.app.auth,
+      input.request,
+      input.app.config.allowedEmails
+    );
     return user ? handler({ ...input, user }) : onSignedOut();
   };
 }

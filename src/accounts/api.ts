@@ -4,7 +4,24 @@ const APP_SIGN_IN = "golem_app_sign_in";
 
 /** better-auth itself, and Google sign-in for the iOS app. */
 export const accountApiRoutes: readonly Route[] = [
-  ["*", "/api/auth/*", ({ app, request }) => app.auth.handler(request)],
+  [
+    "*",
+    "/api/auth/*",
+    async ({ app, request }) => {
+      // A person whose email left the list keeps only sign-out, so no session of theirs reaches better-auth's routes.
+      const session = await app.auth.api.getSession({
+        headers: request.headers,
+      });
+      if (
+        session &&
+        !app.config.allowedEmails.includes(session.user.email.toLowerCase()) &&
+        new URL(request.url).pathname !== "/api/auth/sign-out"
+      ) {
+        return Response.json({ error: "Not signed in" }, { status: 401 });
+      }
+      return app.auth.handler(request);
+    },
+  ],
   // The iOS app opens these in a browser sheet: Google sign-in, then `golem://signed-in` with a token or an error.
   // Any app can claim `golem://`, so only a sign-in started here hands over a token, and Google always asks.
   [

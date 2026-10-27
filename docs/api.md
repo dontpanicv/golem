@@ -20,7 +20,9 @@ tokens; the web app uses better-auth's session cookie. The routes are in `src/ac
 and Google always asks which account to use. This keeps another app that claims `golem://` from getting a token.
 
 Send `Authorization: Bearer <token>`, or the session cookie, on every `/api/v1` request. A `401` response means the
-token or the session is missing or expired.
+token or the session is missing or expired. Golem checks `allowed_emails` on every request: after a restart without
+their email, a person gets `401`, also from every `/api/auth` route except sign-out. A person who leaves a workspace
+stops getting its event streams.
 
 ## Types
 

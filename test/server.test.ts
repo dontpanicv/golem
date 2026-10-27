@@ -34,6 +34,21 @@ test("only allowed emails sign in, and only with Google", async () => {
   await expect(signIn("Old", "old@example.com")).rejects.toThrow(
     "cannot sign in"
   );
+  // A session made before the email left the list signs in nobody, and better-auth's routes refuse it.
+  const now = new Date().toISOString();
+  const later = new Date(Date.now() + 60 * 60_000).toISOString();
+  app.database
+    .query(
+      "INSERT INTO session (id, token, userId, expiresAt, createdAt, updatedAt) VALUES ('old-session', 'old-token', 'old', ?, ?, ?)"
+    )
+    .run(later, now, now);
+  expect((await call("/api/v1/me", { token: "old-token" })).status).toBe(401);
+  expect(
+    (await call("/api/auth/get-session", { token: "old-token" })).status
+  ).toBe(401);
+  expect(
+    (await call("/api/auth/organization/list", { token: "old-token" })).status
+  ).toBe(401);
 
   const body = {
     name: "Mallory",

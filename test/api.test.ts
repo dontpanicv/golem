@@ -450,6 +450,49 @@ test("thread events stream every change until the client leaves", async () => {
   ).toBe(401);
 });
 
+test("a person who leaves a workspace stops getting its thread's events", async () => {
+  golem.faux.setResponses([fauxAssistantMessage("Noted.")]);
+  const leaving = await body(
+    await golem.call("/api/v1/workspaces", {
+      token: alice,
+      body: { name: "Leaving" },
+    })
+  );
+  await golem.call(`/api/v1/workspaces/${leaving.id}/members`, {
+    token: alice,
+    body: { email: "bob@example.com" },
+  });
+  const { channels } = await body(
+    await golem.call(`/api/v1/workspaces/${leaving.id}`, { token: alice })
+  );
+  const thread = await body(
+    await golem.call(`/api/v1/workspaces/${leaving.id}/threads`, {
+      token: alice,
+      body: { channelId: channels[0].id, text: "A secret plan" },
+    })
+  );
+  const stream = threadEvents(
+    await golem.call(`/api/v1/threads/${thread.id}/events`, { token: bob })
+  );
+  await stream.until((state) => state.messages.length === 2 && !state.running);
+  const bobId = (
+    golem.app.database
+      .query("SELECT id FROM user WHERE email = 'bob@example.com'")
+      .get() as { id: string }
+  ).id;
+  golem.app.database
+    .query("DELETE FROM member WHERE organizationId = ? AND userId = ?")
+    .run(leaving.id, bobId);
+  golem.faux.setResponses([fauxAssistantMessage("The new plan.")]);
+  await golem.call(`/api/v1/threads/${thread.id}/messages`, {
+    token: alice,
+    body: { text: "The new secret" },
+  });
+  await expect(stream.until(() => true)).rejects.toThrow(
+    "The event stream closed"
+  );
+});
+
 test("the recall tool says when the workspace has nothing", async () => {
   golem.faux.setResponses([
     fauxAssistantMessage(fauxToolCall("recall", { query: "zebra" }), {

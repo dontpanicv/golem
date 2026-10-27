@@ -62,7 +62,7 @@ export function createAuth(options: AuthOptions) {
     ],
     databaseHooks: {
       user: { create: { before: async (user) => requireAllowed(user.email) } },
-      // Also on every sign-in, so removing an email from the list locks that person out.
+      // Also on every sign-in; `currentUser` checks the list on every request too.
       session: {
         create: {
           before: async (session) => {
@@ -84,13 +84,17 @@ export async function migrateAuth(auth: Auth): Promise<void> {
   await runMigrations();
 }
 
-/** The signed-in user of a request, from its session cookie or bearer token. */
+/**
+ * The signed-in user of a request, from its session cookie or bearer token. A session whose email left
+ * `allowedEmails` signs in nobody.
+ */
 export async function currentUser(
   auth: Auth,
-  request: Request
+  request: Request,
+  allowedEmails: readonly string[]
 ): Promise<User | undefined> {
   const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) {
+  if (!(session && allowedEmails.includes(session.user.email.toLowerCase()))) {
     return undefined;
   }
   return {
