@@ -6,6 +6,8 @@ import type { Connector, ConnectorTool, Device } from "./integrations.ts";
 const READ_MS = 30 * 1000;
 /** How long Golem waits before it starts a stopped sync again. */
 const RESTART_MS = 60 * 1000;
+/** The most messages that wacli asks the phone for at a time. */
+const BACKFILL_BATCH = 500;
 const LIMIT = Type.Optional(
   Type.Integer({
     minimum: 1,
@@ -93,6 +95,23 @@ export function whatsAppConnector(binary: string): Connector {
           ...option("--limit", limit),
         ],
       }),
+      {
+        name: "whatsapp_backfill",
+        description:
+          "Asks the person's phone for messages of a chat older than the oldest that Golem has, and keeps them; then read them with the other tools. The phone must be online. It takes up to two minutes for every 500 messages.",
+        parameters: Type.Object({
+          chat: Type.String({ description: "The chat's JID." }),
+          messages: Type.Optional(
+            Type.Integer({
+              minimum: 1,
+              maximum: 5000,
+              description: "How many older messages; 500 when not given.",
+            })
+          ),
+        }),
+        execute: ({ chat, messages = BACKFILL_BATCH }, store, signal) =>
+          whatsApp.backfill(store, chat, messages, signal),
+      },
       readTool(whatsApp, {
         name: "whatsapp_contacts",
         description: "Contacts whose name or phone number matches.",
@@ -139,6 +158,9 @@ export class WhatsApp implements Device {
     Bun.Subprocess<"ignore", "ignore", "pipe">
   >();
   private readonly restarts = new Map<string, Timer>();
+  /** The last backfill of each store. */
+  private readonly backfills = new Map<string, Promise<unknown>>();
+  private closed = false;
 
   constructor(private readonly binary: string) {}
 
@@ -210,6 +232,7 @@ export class WhatsApp implements Device {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     const stores = [...this.syncs.keys(), ...this.restarts.keys()];
     for (const store of stores) {
       this.stop(store);
@@ -220,17 +243,76 @@ export class WhatsApp implements Device {
   }
 
   /** Runs wacli on the store without changing it, and returns the `data` of its answer. */
-  async read(
+  read(
     store: string,
     command: readonly string[],
     signal: AbortSignal | undefined
   ): Promise<unknown> {
+    return this.run(store, ["--read-only", ...command], READ_MS, signal);
+  }
+
+  /**
+   * Asks the phone for `messages` messages of `chat` older than the store's oldest. The sync holds the store's lock,
+   * so it stops until wacli is done; backfills of one store wait for each other.
+   */
+  backfill(
+    store: string,
+    chat: string,
+    messages: number,
+    signal: AbortSignal | undefined
+  ): Promise<unknown> {
+    const requests = Math.ceil(messages / BACKFILL_BATCH);
+    // wacli waits up to a minute for each answer of the phone, and asks again once.
+    const minutes = requests * 2 + 1;
+    const backfill = (this.backfills.get(store) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(async () => {
+        const syncing = this.syncs.get(store);
+        this.stop(store);
+        await syncing?.exited;
+        try {
+          return await this.run(
+            store,
+            [
+              "--timeout",
+              `${minutes}m`,
+              "history",
+              "backfill",
+              "--chat",
+              chat,
+              "--count",
+              String(Math.min(messages, BACKFILL_BATCH)),
+              "--requests",
+              String(requests),
+            ],
+            minutes * 60 * 1000,
+            signal
+          );
+        } finally {
+          // shortcut: a backfill that runs while Golem closes outlives it and holds the lock until wacli's timeout;
+          // the next Golem's sync retries every minute until then.
+          if (!this.closed) {
+            this.keep(store);
+          }
+        }
+      });
+    this.backfills.set(store, backfill);
+    return backfill;
+  }
+
+  /** Runs a wacli command on the store, and returns the `data` of its answer. */
+  private async run(
+    store: string,
+    command: readonly string[],
+    timeout: number,
+    signal: AbortSignal | undefined
+  ): Promise<unknown> {
     const process = Bun.spawn(
-      [this.binary, "--store", store, "--read-only", "--json", ...command],
+      [this.binary, "--store", store, "--json", ...command],
       {
         stdout: "pipe",
         stderr: "pipe",
-        timeout: READ_MS,
+        timeout,
         ...(signal ? { signal } : {}),
       }
     );

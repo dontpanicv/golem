@@ -484,7 +484,9 @@ case "$*" in
     echo '{"event":"pair_code","data":{"code":"ABCD-1234"}}' >&2
     echo '{"event":"connected"}' >&2
     exec sleep 60 ;;
-  "--events sync --follow") exec sleep 60 ;;
+  "--events sync --follow")
+    echo sync >> "$store/syncs"
+    exec sleep 60 ;;
   "auth logout") touch "$store/logged-out" ;;
   *) printf '{"success":true,"data":{"store":"%s","command":"%s"},"error":null}' "$store" "$*" ;;
 esac
@@ -514,6 +516,7 @@ esac
     "whatsapp_chats",
     "whatsapp_messages",
     "whatsapp_search",
+    "whatsapp_backfill",
     "whatsapp_contacts",
     "whatsapp_draft",
     "whatsapp_accounts",
@@ -524,10 +527,30 @@ esac
     await tools[0]!.execute({ query: "family", unread: true }, turn)
   ).toEqual({
     store,
-    command: "--read-only --json chats list --query family --unread",
+    command: "--json --read-only chats list --query family --unread",
   });
+  // Two backfills at once wait for each other, and the sync starts again after them.
+  const [first, second] = await Promise.all([
+    tools[3]!.execute({ chat: "family@g.us", messages: 1000 }, turn),
+    tools[3]!.execute({ chat: "partner@s.whatsapp.net" }, turn),
+  ]);
+  expect(first).toEqual({
+    store,
+    command:
+      "--json --timeout 5m history backfill --chat family@g.us --count 500 --requests 2",
+  });
+  expect(second).toMatchObject({
+    command: expect.stringContaining(
+      "--chat partner@s.whatsapp.net --count 500 --requests 1"
+    ),
+  });
+  const syncs = join(store, "syncs");
+  for (let tries = 0; tries < 50 && (await readSyncs()) === 0; tries += 1) {
+    await Bun.sleep(20);
+  }
+  expect(await readSyncs()).toBeGreaterThan(0);
   expect(
-    await tools[4]!.execute(
+    await tools[5]!.execute(
       { phone: "+420 123 456 789", text: "On my way & late" },
       turn
     )
@@ -541,11 +564,17 @@ esac
     await Bun.sleep(20);
   }
   expect(await exists(unlinked)).toBe(true);
-  expect(await whatsApp.tools(workspaceId)).toHaveLength(6);
+  expect(await whatsApp.tools(workspaceId)).toHaveLength(7);
   await expect(tools[0]!.execute({}, turn)).rejects.toThrow(
     "WhatsApp is not connected"
   );
   await whatsApp.close();
+
+  async function readSyncs() {
+    return (await exists(syncs))
+      ? (await Bun.file(syncs).text()).trim().split("\n").length
+      : 0;
+  }
 });
 
 /** A second MCP server of the same sign-in, as Google Calendar is Gmail's. */

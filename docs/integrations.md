@@ -85,9 +85,10 @@ not WhatsApp's own API, and WhatsApp can ban a number that uses it.
    type the code.
 4. Click **Done** in Golem.
 
-Your phone then sends Golem about the last three months of chats, and Golem keeps a copy of every new message while it
-runs. The copy and the device's keys are in `data/integrations/<credential-id>/`. Agents read chats and messages,
-search them, and find contacts. For a message, they make a `wa.me` link that opens WhatsApp with the text; you send it.
+Your phone then sends Golem the newest messages of each chat, often only some days, and Golem keeps a copy of every new
+message while it runs. The copy and the device's keys are in `data/integrations/<credential-id>/`. Agents read chats and
+messages, search them, and find contacts. For older messages, ask an agent to load them: it asks your phone, which must
+be online, for up to 5000 older messages of a chat at a time. For a message, they make a `wa.me` link that opens WhatsApp with the text; you send it.
 Deleting the credential removes the device from your number.
 
 ## X
