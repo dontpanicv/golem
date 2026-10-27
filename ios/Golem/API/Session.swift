@@ -59,7 +59,7 @@ final class Session {
         }
         let callback = try await browser.authenticate(
             using: url,
-            callback: .https(host: host, path: APIClient.signedInPath),
+            callback: .https(host: host, path: "/api/v1/sign-in/google/signed-in"),
             preferredBrowserSession: .ephemeral,
             additionalHeaderFields: [:]
         )

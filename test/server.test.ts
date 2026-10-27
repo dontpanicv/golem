@@ -271,6 +271,15 @@ test("credentials belong to the workspace, and secrets never leave the server", 
   ).toEqual({ deleted: 1 });
 });
 
+test("only the server's owner restarts Golem", async () => {
+  const refused = await call("/api/v1/server/restart", {
+    method: "POST",
+    token: bob,
+    body: {},
+  });
+  expect(refused.status).toBe(403);
+});
+
 test("everyone uses the one LLM provider, and only the server's owner changes it", async () => {
   const llm = (await (await call("/api/v1/llm", { token: bob })).json()) as any;
   // The faux model has no reasoning, so the default effort moves to the one level it supports.

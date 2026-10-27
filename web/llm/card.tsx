@@ -21,7 +21,7 @@ const EFFORT_LABELS: Record<LlmStatus["effort"], string> = {
   max: "Max",
 };
 
-const llmQuery = {
+export const llmQuery = {
   queryKey: ["llm"],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
     request<LlmStatus>("/llm", { signal }),

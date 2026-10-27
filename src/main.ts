@@ -57,6 +57,8 @@ HttpRouter.serve(server).pipe(
       idleTimeout: 0,
       // The largest file a person or an agent sends, as the Cloudflare tunnel allows; Bun's own limit is 128 MB.
       maxRequestBodySize: 100 * 1024 ** 2,
+      // Open event streams never end by themselves; the stop ends them after this, before launchd kills Golem at 20 s.
+      gracefulShutdownTimeout: "5 seconds",
     })
   ),
   Layer.launch,

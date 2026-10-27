@@ -29,7 +29,7 @@ Program, so your Google Cloud project must be a member.
      `drive.file`.
    - **Clients › Create client**: select **Web application**, and select **Use this client for an AI-powered agent**.
      Add the authorized redirect URI `https://localhost/golem-sign-in`. Do not use the client of Google sign-in.
-4. Add the client to `config/golem.toml`, and restart Golem:
+4. Add the client to `config/golem.toml`, and click **Reload** on Configuration in Settings:
 
    ```toml
    [integrations.google]
@@ -60,7 +60,7 @@ Golem uses Slack's MCP server, which needs a Slack app in your Slack workspace.
    `lists:read`, `reactions:read`, `emoji:read`, and `chat:write`.
 3. In **Agents & AI Apps**, turn on **Model Context Protocol**.
 4. Install the app to the Slack workspace. An administrator may need to approve it.
-5. Copy the **Client ID** and **Client Secret** from **Basic Information** to `config/golem.toml`, and restart Golem:
+5. Copy the **Client ID** and **Client Secret** from **Basic Information** to `config/golem.toml`, and click **Reload** on Configuration in Settings:
 
    ```toml
    [integrations.slack]
@@ -79,7 +79,7 @@ Golem links your number as a device, as WhatsApp Web does, through [wacli](https
 not WhatsApp's own API, and WhatsApp can ban a number that uses it.
 
 1. Install wacli 0.25 or later on the Golem machine, in the `PATH` of the Golem service, for example with
-   `brew install openclaw/tap/wacli`, and restart Golem.
+   `brew install openclaw/tap/wacli`, and click **Reload** on Configuration in Settings.
 2. In Settings, click **Link number** on WhatsApp, type your number, and click **Get code**.
 3. On your phone, open WhatsApp › **Linked devices** › **Link a device** › **Link with phone number instead**, and
    type the code.

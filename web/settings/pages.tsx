@@ -1,8 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { signOut } from "../accounts/login.tsx";
+import { request } from "../app/api.ts";
 import { MachinesSection } from "../hands/machines.tsx";
 import { IntegrationsSection } from "../integrations/section.tsx";
-import { LlmCard } from "../llm/card.tsx";
+import { LlmCard, llmQuery } from "../llm/card.tsx";
 import {
   Avatar,
   Button,
@@ -11,6 +13,7 @@ import {
   SettingsCard,
   SettingsRow,
 } from "../ui/components.tsx";
+import { showError, showToast } from "../ui/toast.tsx";
 import { lastOpened, useMe } from "../workspaces/data.ts";
 import { MembersSection, WorkspaceSection } from "../workspaces/settings.tsx";
 import { FloatingSidebarButton, Shell } from "../workspaces/shell.tsx";
@@ -49,6 +52,7 @@ export function WorkspaceSettingsPage() {
 /** The LLM provider and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
 export function SettingsPage() {
   const { user, workspaces } = useMe();
+  const { data: llm } = useQuery(llmQuery);
   const last = lastOpened();
   const workspace =
     workspaces.find((candidate) => candidate.id === last?.workspaceId) ??
@@ -64,6 +68,15 @@ export function SettingsPage() {
           <PageSection title="Integrations">
             <IntegrationsSection workspaceId={null} />
           </PageSection>
+          {llm?.owner ? (
+            <PageSection title="Server">
+              <SettingsCard>
+                <SettingsRow label="Configuration">
+                  <Button label="Reload" onClick={reload} />
+                </SettingsRow>
+              </SettingsCard>
+            </PageSection>
+          ) : null}
           <PageSection title="Account">
             <SettingsCard>
               <SettingsRow
@@ -83,4 +96,14 @@ export function SettingsPage() {
       </section>
     </Shell>
   );
+}
+
+/** Restarts Golem, which then reads config/golem.toml again. */
+async function reload() {
+  try {
+    await request("/server/restart", { method: "POST" });
+    showToast("success", "Golem restarts");
+  } catch (error) {
+    showError(error);
+  }
 }

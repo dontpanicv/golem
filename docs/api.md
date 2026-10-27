@@ -399,6 +399,12 @@ the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 Only the server's owner, the first email in `allowed_emails`, logs in, logs out, and chooses the model and the effort;
 these routes answer `403` to other people.
 
+### Server (`src/app/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `POST /api/v1/server/restart` | | `202`; Golem stops, and its service starts it again with the configuration of `config/golem.toml`. Turns continue after the restart. `403` for a person who is not the server's owner. |
+
 Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 ## Isolation
