@@ -314,7 +314,9 @@ final class Listener {
         audio += samples
         classifier?.analyze(samples)
         framesFed += Int64(samples.count)
-        level = level * 0.6 + min(1, rms * 8) * 0.4
+        // Dictation records with no gain (measurement mode), so speech is quiet: a meter in decibels, -50…-15 dBFS.
+        let decibels = 20 * log10(max(rms, 1e-5))
+        level = level * 0.6 + min(1, max(0, (decibels + 50) / 35)) * 0.4
         // Before speech, only what the classifier's first window and the pre-roll can reach back to is needed.
         if !speech.heard, Double(audio.count) / Self.sampleRate > 4 { dropAudio(before: now - 2) }
     }
