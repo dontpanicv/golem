@@ -1548,8 +1548,8 @@ export class Threads {
       this.saveFileTool(workspaceId),
       ...this.llm.tools(),
       ...[
-        this.copyToMachineTool(workspaceId),
-        ...this.hands.tools(workspaceId),
+        this.copyToMachineTool(workspaceId, requesterOf),
+        ...this.hands.tools(workspaceId, requesterOf),
         ...connectors.map((tool) =>
           this.exposing(workspaceId, connectorTool(tool, requesterOf))
         ),
@@ -1569,7 +1569,7 @@ export class Threads {
       name: "golem",
       tools,
       sections: [
-        this.hands.section(workspaceId),
+        this.hands.section(workspaceId, requesterOf),
         this.channelSection(workspaceId),
       ],
     });
@@ -1633,12 +1633,15 @@ export class Threads {
       ) => {
         if (!(await api.memo<boolean>("approved", context))) {
           const { machine } = args as { machine: string };
+          const requesterId =
+            (await this.requester(workspaceId, api.conversationId))?.id ?? null;
           await this.allowed(
             workspaceId,
             api.conversationId,
+            requesterId,
             tool.name,
             args as Record<string, unknown>,
-            this.hands.machineNamed(workspaceId, machine),
+            this.hands.machineNamed(workspaceId, requesterId, machine),
             context.abortSignal
           );
           await api.memo("approved", true, context);
@@ -1652,6 +1655,7 @@ export class Threads {
   private async allowed(
     workspaceId: string,
     conversationId: ConversationId,
+    requesterId: string | null,
     tool: string,
     args: Record<string, unknown>,
     machine: Pick<Machine, "id" | "name" | "pairedBy">,
@@ -1663,8 +1667,6 @@ export class Threads {
     if (turn.allowed.has(machine.id)) {
       return;
     }
-    const requesterId =
-      (await this.requester(workspaceId, conversationId))?.id ?? null;
     const members = this.members(workspaceId).map((member) => member.userId);
     // The machine's owner allows every change for another person; one who left the workspace owns nothing.
     const owner =
@@ -2320,6 +2322,7 @@ export class Threads {
     if (args.machine && args.path) {
       await this.hands.file(
         workspaceId,
+        (await this.requester(workspaceId, conversationId))?.id ?? null,
         args.machine,
         args.path,
         path,
@@ -2359,7 +2362,10 @@ export class Threads {
   }
 
   /** Lets the agent work on a file of the workspace on a machine, such as to convert it or fill in a form. */
-  private copyToMachineTool(workspaceId: string) {
+  private copyToMachineTool(
+    workspaceId: string,
+    requesterOf: (conversationId: ConversationId) => Promise<string | null>
+  ) {
     return defineTool({
       name: "hands_copy_file",
       description:
@@ -2372,7 +2378,7 @@ export class Threads {
         }),
       }),
       replay: "safe",
-      execute: async (args) => {
+      execute: async (args, api) => {
         const { path, name } = await this.fileIn(workspaceId, args.file).catch(
           () => {
             throw new Error(
@@ -2382,6 +2388,7 @@ export class Threads {
         );
         const target = await this.hands.put(
           workspaceId,
+          await requesterOf(api.conversationId),
           args.machine,
           path,
           args.path

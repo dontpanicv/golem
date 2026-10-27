@@ -154,7 +154,7 @@ type ArtifactRecord = {
 };
 type Machine = {
 	id: string;
-	name: string; // what agents and people call it, unique in the workspace
+	name: string; // what agents and people call it; a new machine does not take a name that a turn sees with it
 	hostname: string | null;
 	addresses: string[];
 	port: number;
@@ -164,6 +164,7 @@ type Machine = {
 	version: string; // hands version when it paired
 	pairedAt: number;
 	pairedBy: string | null; // the member who paired it; null for a machine paired before Golem kept it
+	workspaceId: string | null; // the workspace it is paired with; null for the own machine of `pairedBy`
 };
 type Pairing = { command: string; expiresAt: number }; // run `command` on the machine before `expiresAt`
 type Effort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -386,6 +387,10 @@ Reminders have no user-facing web or JSON routes.
 | `POST /api/v1/workspaces/:workspaceId/machines/pairing` | | `Pairing`; replaces the workspace's earlier pairing. `409` when `base_url` is not `https://` or Golem has no hands binaries |
 | `DELETE /api/v1/workspaces/:workspaceId/machines/:machineId` | | `204` |
 
+The same routes without `/workspaces/:workspaceId` are the person's own machines, for their turns in each of their
+workspaces; a person sees and removes only their own. A machine can pair with a workspace and as a person's own: it
+trusts each key, and a turn of that person shows it once, as their own.
+
 The machine calls these, without an account; the 16-character pairing code in the path is the credential. They follow
 the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 
@@ -428,8 +433,9 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
   `host = "127.0.0.1"` behind Caddy can trust. An IPv6 client is its /48 network. Keep private things in members
   artifacts.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
-- A machine belongs to one workspace, and every agent in that workspace can use it, whoever the agent works for. The
-  machine trusts the workspace's own key, so pairing it with one workspace does not open it to another. A command or
+- A machine belongs to a workspace, and every agent in that workspace can use it, whoever the agent works for; or it is
+  a person's own, and only the turns of that person use it, in each of their workspaces. The machine trusts the key of
+  that workspace or person, so pairing it with one does not open it to another. A command or
   a file change on a machine waits for an approval (`ThreadState.approvals`, with a notification) from the member who
   paired it when the turn is another person's, and from the turn's person when the turn read a web page, search
   results, a connected service, or artifact visitor data since their last message, or when nobody watches the turn,

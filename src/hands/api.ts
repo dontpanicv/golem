@@ -2,33 +2,45 @@ import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 import { readText } from "../app/web.ts";
 
-/** The machines of a workspace, and the endpoints a machine pairs with (hands/docs/pairing.md). */
+/**
+ * The machines of a place: a workspace's under `/workspaces/:workspace`, for every member's turns there, and the
+ * person's own without it, for their turns in each of their workspaces. Then the endpoints a machine pairs with
+ * (hands/docs/pairing.md).
+ */
 export const handsApiRoutes: readonly Route[] = [
-  [
-    "GET",
-    "/api/v1/workspaces/:workspace/machines",
-    api(async ({ app, user, params }) =>
-      json({
-        machines: app.hands.machines(params.workspace!, user),
-        pairing: app.hands.pairing(params.workspace!, user),
-      })
-    ),
-  ],
-  [
-    "POST",
-    "/api/v1/workspaces/:workspace/machines/pairing",
-    api(async ({ app, user, params }) =>
-      json(await app.hands.startPairing(params.workspace!, user))
-    ),
-  ],
-  [
-    "DELETE",
-    "/api/v1/workspaces/:workspace/machines/:machine",
-    api(async ({ app, user, params }) => {
-      app.hands.removeMachine(params.workspace!, user, params.machine!);
-      return new Response(null, { status: 204 });
-    }),
-  ],
+  ...(["/api/v1/workspaces/:workspace", "/api/v1"] as const).flatMap(
+    (base): Route[] => [
+      [
+        "GET",
+        `${base}/machines`,
+        api(async ({ app, user, params }) =>
+          json({
+            machines: app.hands.machines(params.workspace ?? null, user),
+            pairing: app.hands.pairing(params.workspace ?? null, user),
+          })
+        ),
+      ],
+      [
+        "POST",
+        `${base}/machines/pairing`,
+        api(async ({ app, user, params }) =>
+          json(await app.hands.startPairing(params.workspace ?? null, user))
+        ),
+      ],
+      [
+        "DELETE",
+        `${base}/machines/:machine`,
+        api(async ({ app, user, params }) => {
+          app.hands.removeMachine(
+            params.workspace ?? null,
+            user,
+            params.machine!
+          );
+          return new Response(null, { status: 204 });
+        }),
+      ],
+    ]
+  ),
   // The machine itself calls these, without an account: the pairing code is the credential.
   [
     "GET",

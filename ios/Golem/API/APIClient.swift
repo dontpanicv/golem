@@ -110,16 +110,21 @@ final class APIClient {
 
     // MARK: Machines
 
-    func machines(workspaceID: String) async throws -> Machines {
-        try await get("/api/v1/workspaces/\(workspaceID)/machines")
+    /// A workspace's machines, or the person's own for a nil `workspaceID`.
+    func machines(workspaceID: String?) async throws -> Machines {
+        try await get("\(Self.machinesBase(workspaceID))/machines")
     }
 
-    func startPairing(workspaceID: String) async throws -> Pairing {
-        try await post("/api/v1/workspaces/\(workspaceID)/machines/pairing")
+    func startPairing(workspaceID: String?) async throws -> Pairing {
+        try await post("\(Self.machinesBase(workspaceID))/machines/pairing")
     }
 
-    func removeMachine(workspaceID: String, machineID: String) async throws {
-        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/machines/\(machineID)")
+    func removeMachine(workspaceID: String?, machineID: String) async throws {
+        _ = try await send("DELETE", "\(Self.machinesBase(workspaceID))/machines/\(machineID)")
+    }
+
+    private static func machinesBase(_ workspaceID: String?) -> String {
+        workspaceID.map { "/api/v1/workspaces/\($0)" } ?? "/api/v1"
     }
 
     // MARK: Threads

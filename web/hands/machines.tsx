@@ -7,28 +7,39 @@ import { copy, showToast } from "../ui/toast.tsx";
 
 const OS_NAMES: Record<string, string> = { macos: "macOS", linux: "Linux" };
 
-/** The machines of a workspace. While a pairing waits, they load again every 2 seconds, so the machine shows when it arrives. */
-export function MachinesSection({ workspaceId }: { workspaceId: string }) {
-  const queryKey = ["workspaces", workspaceId, "machines"];
+/**
+ * The machines of a workspace, for every member's turns there, or the person's own for a null `workspaceId`, for their
+ * turns in each of their workspaces. While a pairing waits, they load again every 2 seconds, so the machine shows when
+ * it arrives.
+ */
+export function MachinesSection({
+  workspaceId,
+}: {
+  workspaceId: string | null;
+}) {
+  const base = workspaceId ? `/workspaces/${workspaceId}` : "";
+  const queryKey = workspaceId
+    ? ["workspaces", workspaceId, "machines"]
+    : ["machines"];
   const { data } = useQuery({
     queryKey,
     queryFn: ({ signal }) =>
       request<{ machines: Machine[]; pairing: Pairing | null }>(
-        `/workspaces/${workspaceId}/machines`,
+        `${base}/machines`,
         { signal }
       ),
     refetchInterval: (query) => (query.state.data?.pairing ? 2000 : false),
   });
   const pair = useMutation({
     mutationFn: () =>
-      request<Pairing>(`/workspaces/${workspaceId}/machines/pairing`, {
+      request<Pairing>(`${base}/machines/pairing`, {
         method: "POST",
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
   const remove = useMutation({
     mutationFn: (machineId: string) =>
-      request(`/workspaces/${workspaceId}/machines/${machineId}`, {
+      request(`${base}/machines/${machineId}`, {
         method: "DELETE",
       }),
     onSuccess: () => {

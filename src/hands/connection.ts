@@ -1,7 +1,7 @@
 import { createHash, type KeyObject, sign, X509Certificate } from "node:crypto";
 import { connect } from "node:tls";
 
-/** A machine running `hands`, paired with a workspace. */
+/** A machine running `hands`, paired with a workspace or as one person's own. */
 export interface Machine {
   readonly addresses: readonly string[];
   readonly arch: string;
@@ -16,6 +16,8 @@ export interface Machine {
   readonly pairedBy: string | null;
   readonly port: number;
   readonly version: string;
+  /** The workspace it is paired with; null for the own machine of `pairedBy`. */
+  readonly workspaceId: string | null;
 }
 
 export interface Reply {
@@ -23,7 +25,7 @@ export interface Reply {
   readonly payload: Uint8Array;
 }
 
-/** The identity a workspace signs in to its machines with. */
+/** The identity that a workspace, or a person for their own machines, signs in to machines with. */
 export interface Identity {
   readonly privateKey: KeyObject;
   /** The raw 32-byte Ed25519 public key, base64. */
@@ -309,7 +311,7 @@ async function handshake(
   if (answer.type !== "ready") {
     throw new HandsError(
       String(answer.code ?? "unauthorized"),
-      `${machine.name} refused this workspace; pair it again`
+      `${machine.name} refused this pairing; pair it again`
     );
   }
 }

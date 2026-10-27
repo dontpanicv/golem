@@ -49,7 +49,7 @@ export function WorkspaceSettingsPage() {
   );
 }
 
-/** The LLM provider and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
+/** The LLM provider, the person's own machines and integrations, and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
 export function SettingsPage() {
   const { user, workspaces } = useMe();
   const { data: llm } = useQuery(llmQuery);
@@ -64,6 +64,9 @@ export function SettingsPage() {
         <PageContent title="Settings">
           <PageSection title="LLM provider">
             <LlmCard />
+          </PageSection>
+          <PageSection title="Machines">
+            <MachinesSection workspaceId={null} />
           </PageSection>
           <PageSection title="Integrations">
             <IntegrationsSection workspaceId={null} />

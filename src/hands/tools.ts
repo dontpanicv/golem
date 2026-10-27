@@ -1,12 +1,13 @@
 import type { Context } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import {
+  type ConversationId,
   defineTool,
   type PromptSection,
   type ToolExecutionResult,
 } from "@earendil-works/pi-durable";
 import type { HandsConnection, Machine, Reply } from "./connection.ts";
-import type { Hands } from "./hands.ts";
+import type { Hands, RequesterOf } from "./hands.ts";
 
 /** The most of a command's output the agent gets: its tail. */
 const MAX_OUTPUT = 16_000;
@@ -17,21 +18,32 @@ const FILE_PART = 8 * 1024 * 1024;
 
 const machineParameter = Type.String({ description: "Machine name" });
 
-/** The machines of a workspace, named in the system prompt before each request, so agents need not look them up. */
-export function handsSection(hands: Hands, workspaceId: string): PromptSection {
+/**
+ * The machines of a turn, the workspace's and its person's own, named in the system prompt before each request, so
+ * agents need not look them up.
+ */
+export function handsSection(
+  hands: Hands,
+  workspaceId: string,
+  requesterOf: RequesterOf
+): PromptSection {
   return {
     key: "machines",
-    render: () => {
-      const machines = hands.machinesIn(workspaceId);
+    render: async ({ conversationId }) => {
+      // A conversation that is not a thread, or whose person left, sees the workspace's machines only.
+      const machines = hands.machinesIn(
+        workspaceId,
+        await requesterOf(conversationId).catch(() => null)
+      );
       if (machines.length === 0) {
-        return "No machines are paired with this workspace. If someone needs a shell or files on a computer, tell them to add a machine in the workspace settings.";
+        return "No machines are paired with this workspace or with the person of this turn. If someone needs a shell or files on a computer, tell them to add a machine in the workspace settings, or in their own Settings for a computer only they use.";
       }
       const lines = machines.map(
         (machine) =>
-          `- ${machine.name}: ${displayOs(machine.os)} ${machine.arch}; reachable as ${hosts(machine).join(", ")}`
+          `- ${machine.name}: ${displayOs(machine.os)} ${machine.arch}; reachable as ${hosts(machine).join(", ")}${machine.workspaceId ? "" : "; the own machine of the person of this turn"}`
       );
       return [
-        "Machines paired with this workspace. Every hands_* tool takes `machine`: one of these names.",
+        "Machines of this turn: the workspace's, and the person's own. Every hands_* tool takes `machine`: one of these names.",
         ...lines,
         '- People may say "the Mac" or "the server": pick the machine that matches; ask only if two match.',
         "- You can use several machines in one script: `await Promise.all([...])` runs calls on different machines at the same time.",
@@ -49,12 +61,21 @@ export function handsSection(hands: Hands, workspaceId: string): PromptSection {
  * tool task, so `hands_exec` is replay-safe: a rerun after a restart finds the same job instead of starting the
  * command again.
  */
-export function handsTools(hands: Hands, workspaceId: string) {
-  const resolve = (name: string) => machineNamed(hands, workspaceId, name);
+export function handsTools(
+  hands: Hands,
+  workspaceId: string,
+  requesterOf: RequesterOf
+) {
+  const machinesOf = async (api: { conversationId: ConversationId }) =>
+    hands.machinesIn(workspaceId, await requesterOf(api.conversationId));
+  const resolve = async (
+    name: string,
+    api: { conversationId: ConversationId }
+  ) => machineNamed(await machinesOf(api), name);
   const use = <T>(
     machine: Machine,
     body: (connection: HandsConnection) => Promise<T>
-  ) => hands.with(workspaceId, machine, body);
+  ) => hands.with(machine, body);
   // Task ids count per workspace session, and one machine can serve several workspaces.
   const jobKey = (taskId: string) => `golem-${workspaceId}-${taskId}`;
 
@@ -65,8 +86,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
         "List the paired machines and whether each one is reachable right now.",
       parameters: Type.Object({}),
       replay: "safe",
-      execute: async () => {
-        const machines = hands.machinesIn(workspaceId);
+      execute: async (_args, api) => {
+        const machines = await machinesOf(api);
         if (machines.length === 0) {
           return text("No machines are paired.");
         }
@@ -75,7 +96,7 @@ export function handsTools(hands: Hands, workspaceId: string) {
             const head = `${machine.name}: ${displayOs(machine.os)} ${machine.arch}`;
             try {
               // What the machine says now: hands may have been updated since pairing.
-              const { info } = await hands.connection(workspaceId, machine);
+              const { info } = await hands.connection(machine);
               return `${head}, hands ${info.version ?? machine.version}: online, home ${info.home ?? "?"}`;
             } catch (error) {
               return `${head}, hands ${machine.version} when paired: unreachable (${(error as Error).message})`;
@@ -110,7 +131,7 @@ export function handsTools(hands: Hands, workspaceId: string) {
       }),
       replay: "safe",
       execute: async (args, api, context) => {
-        const machine = resolve(args.machine);
+        const machine = await resolve(args.machine, api);
         const key = jobKey(String(api.taskId));
         return use(machine, async (connection) => {
           await startJob(connection, key, args.command, args.cwd);
@@ -148,7 +169,7 @@ export function handsTools(hands: Hands, workspaceId: string) {
       }),
       replay: "safe",
       execute: async (args, api) => {
-        const machine = resolve(args.machine);
+        const machine = await resolve(args.machine, api);
         const key = jobKey(String(api.taskId));
         const started = await use(machine, (connection) =>
           startJob(connection, key, args.command, args.cwd)
@@ -171,8 +192,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
         ),
       }),
       replay: "safe",
-      execute: async (args, _api, context) => {
-        const machine = resolve(args.machine);
+      execute: async (args, api, context) => {
+        const machine = await resolve(args.machine, api);
         return use(machine, (connection) =>
           follow(connection, machine, args.key, args.timeout_s ?? 600, context)
         );
@@ -186,8 +207,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
         machine: machineParameter,
         key: Type.String({ description: "Job key" }),
       }),
-      execute: async (args) => {
-        const machine = resolve(args.machine);
+      execute: async (args, api) => {
+        const machine = await resolve(args.machine, api);
         const status = await use(machine, (connection) =>
           connection.request("job.cancel", { key: args.key })
         );
@@ -200,8 +221,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
       description: "List recent jobs on a machine.",
       parameters: Type.Object({ machine: machineParameter }),
       replay: "safe",
-      execute: async (args) => {
-        const machine = resolve(args.machine);
+      execute: async (args, api) => {
+        const machine = await resolve(args.machine, api);
         const { json } = await use(machine, (connection) =>
           connection.request("job.list")
         );
@@ -224,8 +245,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
         path: Type.String({ description: "File path; ~ is the user's home" }),
       }),
       replay: "safe",
-      execute: async (args) => {
-        const machine = resolve(args.machine);
+      execute: async (args, api) => {
+        const machine = await resolve(args.machine, api);
         const file = await use(machine, async (connection) =>
           readText(connection, absolute(args.path, connection))
         );
@@ -253,8 +274,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
         content: Type.String({ description: "The full file content" }),
       }),
       replay: "safe",
-      execute: async (args) => {
-        const machine = resolve(args.machine);
+      execute: async (args, api) => {
+        const machine = await resolve(args.machine, api);
         const data = Buffer.from(args.content);
         const path = await use(machine, async (connection) => {
           const target = absolute(args.path, connection);
@@ -283,8 +304,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
         }),
         new_text: Type.String({ description: "Replacement" }),
       }),
-      execute: async (args) => {
-        const machine = resolve(args.machine);
+      execute: async (args, api) => {
+        const machine = await resolve(args.machine, api);
         const path = await use(machine, async (connection) => {
           const target = absolute(args.path, connection);
           // The whole file is written back, so it must have been read whole and as it is.
@@ -324,8 +345,8 @@ export function handsTools(hands: Hands, workspaceId: string) {
         path: Type.String({ description: "Folder path" }),
       }),
       replay: "safe",
-      execute: async (args) => {
-        const machine = resolve(args.machine);
+      execute: async (args, api) => {
+        const machine = await resolve(args.machine, api);
         return use(machine, async (connection) => {
           const path = absolute(args.path, connection);
           const reply = await connection.request("listFiles", {
@@ -340,15 +361,13 @@ export function handsTools(hands: Hands, workspaceId: string) {
 }
 
 /**
- * The machine `name` means: its exact name in any case, the same letters and digits ("bender 2" for bender-2), or the
- * start of only one machine's name ("Bender").
+ * The machine of `machines` that `name` means: its exact name in any case, the same letters and digits ("bender 2" for
+ * bender-2), or the start of only one machine's name ("Bender").
  */
 export function machineNamed(
-  hands: Hands,
-  workspaceId: string,
+  machines: readonly Machine[],
   name: string
 ): Machine {
-  const machines = hands.machinesIn(workspaceId);
   const key = (value: string) =>
     value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
   const wanted = key(name);
@@ -453,18 +472,16 @@ async function follow(
  * over `limit` bytes.
  */
 export async function machineFile(
+  machine: Machine,
   hands: Hands,
-  workspaceId: string,
-  machineName: string,
   path: string,
   destination: string,
   limit: number
 ): Promise<void> {
-  const machine = machineNamed(hands, workspaceId, machineName);
   const tooLarge = () =>
     new Error(`${path} on ${machine.name} is over ${size(limit)}`);
   // A new connection after a lost one copies the file again from the start.
-  await hands.with(workspaceId, machine, async (connection) => {
+  await hands.with(machine, async (connection) => {
     const { json } = await connection.request("open", {
       path: absolute(path, connection),
     });
@@ -513,15 +530,13 @@ export async function machineFile(
  * Writes a file of Golem's to `path` on a machine, part by part, creating missing folders; returns the absolute path.
  */
 export function fileToMachine(
+  machine: Machine,
   hands: Hands,
-  workspaceId: string,
-  machineName: string,
   source: string,
   path: string
 ): Promise<string> {
-  const machine = machineNamed(hands, workspaceId, machineName);
   // A new connection after a lost one writes the file again from the start.
-  return hands.with(workspaceId, machine, async (connection) => {
+  return hands.with(machine, async (connection) => {
     const target = absolute(path, connection);
     const file = Bun.file(source);
     let offset = 0;

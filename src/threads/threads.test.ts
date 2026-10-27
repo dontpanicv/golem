@@ -1343,7 +1343,7 @@ test("save_file keeps a machine's file, the browser's screenshot, and a file fro
   const dataDirectory = await mkdtemp(join(tmpdir(), "golem-save-"));
   const threads = savingThreads(
     dataDirectory,
-    async (workspaceId, machine, path, destination, limit) => {
+    async (workspaceId, _userId, machine, path, destination, limit) => {
       asked.push([workspaceId, machine, path, limit]);
       await Bun.write(destination, "machine screen");
     },
@@ -1426,7 +1426,7 @@ test("save_file refuses what is not an http file under 100 MB, stops reading a b
   await truncate(large, 100 * 1024 ** 2 + 1);
   const threads = savingThreads(
     dataDirectory,
-    async (_workspaceId, _machine, _path, destination) => {
+    async (_workspaceId, _userId, _machine, _path, destination) => {
       await Bun.write(destination, "half a file");
       throw new Error("The connection to glados closed");
     },
@@ -1499,7 +1499,8 @@ test("save_file writes text and prints an artifact, and hands_copy_file puts a f
     () => Promise.reject(new Error("unused")),
     async () => null,
     {
-      put: async (workspaceId, machine, source, path) => {
+      put: async (workspaceId, userId, machine, source, path) => {
+        expect(userId).toBe(alice.id);
         copied.push([
           workspaceId,
           machine,
@@ -1581,7 +1582,7 @@ test("a change on a machine waits for a person after the turn read a web page, o
     () => Promise.reject(new Error("unused")),
     async () => null,
     {
-      machineNamed: (_workspaceId, name) =>
+      machineNamed: (_workspaceId, _userId, name) =>
         ({
           id: name,
           name,
@@ -1767,6 +1768,7 @@ function savingThreads(
   dataDirectory: string,
   file: (
     workspaceId: string,
+    userId: string | null,
     machine: string,
     path: string,
     destination: string,
@@ -1790,7 +1792,7 @@ function savingThreads(
     {
       file,
       put: () => Promise.reject(new Error("No machines are paired.")),
-      machineNamed: (_workspaceId, name) =>
+      machineNamed: (_workspaceId, _userId, name) =>
         ({ id: name, name, pairedBy: null }) as Machine,
       tools: () => [],
       section: () => ({ key: "machines", render: () => undefined }),

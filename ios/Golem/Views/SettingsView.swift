@@ -74,6 +74,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            MachinesSection(workspaceID: nil)
             IntegrationsSection(workspaceID: nil)
             if llm?.owner == true {
                 SettingsCard(title: "Server") {

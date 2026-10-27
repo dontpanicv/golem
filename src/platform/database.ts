@@ -233,6 +233,30 @@ const migrations = [
   "ALTER TABLE reminder ADD COLUMN created_by TEXT;",
   // hands: the member who paired a machine, who allows what agents do on it for others.
   "ALTER TABLE machine ADD COLUMN paired_by TEXT;",
+  // hands: a machine without a workspace is the own machine of the person who paired it, for their turns in each of
+  // their workspaces. SQLite cannot drop NOT NULL from a column, so the table is made again with the same rows.
+  `CREATE TABLE machine_next (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT,
+		name TEXT NOT NULL,
+		hostname TEXT,
+		addresses TEXT NOT NULL,
+		port INTEGER NOT NULL,
+		cert_sha256 TEXT NOT NULL,
+		os TEXT NOT NULL,
+		arch TEXT NOT NULL,
+		version TEXT NOT NULL,
+		paired_at INTEGER NOT NULL,
+		deleted_at INTEGER,
+		paired_by TEXT,
+		UNIQUE (workspace_id, cert_sha256),
+		UNIQUE (workspace_id, name)
+	);
+	INSERT INTO machine_next SELECT id, workspace_id, name, hostname, addresses, port, cert_sha256, os, arch, version, paired_at, deleted_at, paired_by FROM machine;
+	DROP TABLE machine;
+	ALTER TABLE machine_next RENAME TO machine;
+	CREATE UNIQUE INDEX machine_own_cert ON machine (paired_by, cert_sha256) WHERE workspace_id IS NULL;
+	CREATE UNIQUE INDEX machine_own_name ON machine (paired_by, name) WHERE workspace_id IS NULL;`,
 ];
 
 export function openDatabase(path: string): Database {

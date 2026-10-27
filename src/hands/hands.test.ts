@@ -193,6 +193,98 @@ describe("pairing", () => {
   });
 });
 
+describe("own machines", () => {
+  let bob: User;
+  let home: string;
+  let office: string;
+
+  beforeAll(async () => {
+    bob = await person("Bob", "bob@example.com");
+    home = (await golem.app.workspaces.create(bob, "Home")).id;
+    office = (await golem.app.workspaces.create(bob, "Office")).id;
+  });
+
+  async function pairIn(place: string | null, fields: Record<string, unknown>) {
+    const code = codeOf((await hands.startPairing(place, bob)).command);
+    return hands.pair(code, pairingRequest(fields));
+  }
+
+  test("a person's own machine is for their turns in each of their workspaces, and only theirs", async () => {
+    const own = await pairIn(null, {
+      name: "laptop",
+      certSha256: "1".repeat(64),
+    });
+    expect(own.phoneName).toBe("Golem · Bob");
+    const workspaceKey = (
+      await pairIn(home, { name: "server", certSha256: "2".repeat(64) })
+    ).publicKey;
+    expect(own.publicKey).not.toBe(workspaceKey);
+
+    expect(hands.machines(null, bob).map((machine) => machine.name)).toEqual([
+      "laptop",
+    ]);
+    expect(hands.machines(null, eve)).toEqual([]);
+    for (const workspaceId of [home, office]) {
+      expect(
+        hands
+          .machinesIn(workspaceId, bob.id)
+          .map((machine) => [machine.name, machine.workspaceId])
+      ).toEqual(
+        workspaceId === home
+          ? [
+              ["laptop", null],
+              ["server", home],
+            ]
+          : [["laptop", null]]
+      );
+    }
+    // A turn of nobody, or of another person, sees only the workspace's.
+    expect(hands.machinesIn(home, null).map((machine) => machine.name)).toEqual(
+      ["server"]
+    );
+    expect(hands.machinesIn(home, alice.id)).toHaveLength(1);
+    expect(() => hands.machineNamed(office, null, "laptop")).toThrow(
+      "No machines are paired."
+    );
+
+    const [laptop] = hands.machines(null, bob);
+    expect(() => hands.removeMachine(null, eve, laptop!.id)).toThrow(
+      "Not found"
+    );
+    expect(() => hands.removeMachine(home, bob, laptop!.id)).toThrow(
+      "Not found"
+    );
+    hands.removeMachine(null, bob, laptop!.id);
+    expect(hands.machines(null, bob)).toEqual([]);
+  });
+
+  test("a machine paired in a workspace and as one's own shows once in that person's turns, as their own", async () => {
+    await pairIn(home, { name: "nas", certSha256: "3".repeat(64) });
+    await pairIn(null, { name: "nas", certSha256: "3".repeat(64) });
+    expect(
+      hands
+        .machinesIn(home, bob.id)
+        .filter((machine) => machine.certSha256 === "3".repeat(64))
+        .map((machine) => [machine.name, machine.workspaceId])
+    ).toEqual([["nas", null]]);
+    expect(hands.machineNamed(home, null, "nas").workspaceId).toBe(home);
+  });
+
+  test("another machine does not take a name that a turn sees with it", async () => {
+    await pairIn(null, { name: "server", certSha256: "4".repeat(64) });
+    await pairIn(office, { name: "laptop", certSha256: "5".repeat(64) });
+    await pairIn(null, { name: "laptop", certSha256: "6".repeat(64) });
+    expect(
+      hands
+        .machinesIn(home, bob.id)
+        .map((machine) => machine.name)
+        .filter(
+          (name) => name.startsWith("server") || name.startsWith("laptop")
+        )
+    ).toEqual(["laptop-2", "server", "server-2"]);
+  });
+});
+
 test("a frame whose JSON is not an object is a bad frame", () => {
   for (const json of ["null", "[]", "5", '"text"']) {
     const body = Buffer.from(json);
@@ -240,14 +332,14 @@ describe("the hands tools", () => {
 
   function tool(name: string) {
     return hands
-      .tools(toolsWorkspace)
+      .tools(toolsWorkspace, async () => alice.id)
       .find((candidate) => candidate.name === name)!;
   }
 
   async function run(name: string, args: Record<string, unknown>) {
     const result = await tool(name).execute(
       args as never,
-      { taskId: "task-1" } as never,
+      { taskId: "task-1", conversationId: 1 } as never,
       BACKGROUND_CONTEXT
     );
     return result.output
@@ -304,6 +396,7 @@ describe("the hands tools", () => {
       listener.reads.length = 0;
       await hands.file(
         toolsWorkspace,
+        alice.id,
         "bender",
         "photo.png",
         destination,
@@ -314,7 +407,14 @@ describe("the hands tools", () => {
 
       listener.reads.length = 0;
       await expect(
-        hands.file(toolsWorkspace, "bender", "photo.png", destination, megabyte)
+        hands.file(
+          toolsWorkspace,
+          alice.id,
+          "bender",
+          "photo.png",
+          destination,
+          megabyte
+        )
       ).rejects.toThrow("photo.png on bender is over 1 MB");
       expect(listener.reads).toEqual([]);
     } finally {
@@ -332,6 +432,7 @@ describe("the hands tools", () => {
       expect(
         await hands.put(
           toolsWorkspace,
+          alice.id,
           "bender",
           source,
           "~/Documents/scan.pdf"
@@ -341,7 +442,13 @@ describe("the hands tools", () => {
         listener.files.get("/home/bender/Documents/scan.pdf")?.toString()
       ).toBe(content);
       await Bun.write(source, "");
-      await hands.put(toolsWorkspace, "bender", source, "Documents/scan.pdf");
+      await hands.put(
+        toolsWorkspace,
+        alice.id,
+        "bender",
+        source,
+        "Documents/scan.pdf"
+      );
       expect(listener.files.get("/home/bender/Documents/scan.pdf")).toEqual(
         Buffer.alloc(0)
       );
@@ -350,16 +457,18 @@ describe("the hands tools", () => {
     }
   });
 
-  test("the system prompt names the machines", () => {
+  test("the system prompt names the machines", async () => {
     expect(
-      hands.section(toolsWorkspace).render({} as never, BACKGROUND_CONTEXT)
+      await hands
+        .section(toolsWorkspace, async () => alice.id)
+        .render({ conversationId: 1 } as never, BACKGROUND_CONTEXT)
     ).toContain("- bender: macOS aarch64; reachable as 127.0.0.1");
   });
 
   test("Golem refuses a machine whose certificate is not the pinned one", async () => {
-    const [machine] = hands.machinesIn(toolsWorkspace);
+    const [machine] = hands.machinesIn(toolsWorkspace, alice.id);
     await expect(
-      hands.connection(toolsWorkspace, {
+      hands.connection({
         ...machine!,
         id: "impostor",
         certSha256: "c".repeat(64),
@@ -368,8 +477,8 @@ describe("the hands tools", () => {
   });
 
   test("a machine that sends an error frame whose JSON is null loses its connection", async () => {
-    const [machine] = hands.machinesIn(toolsWorkspace);
-    const connection = await hands.connection(toolsWorkspace, {
+    const [machine] = hands.machinesIn(toolsWorkspace, alice.id);
+    const connection = await hands.connection({
       ...machine!,
       id: "null-error",
     });
@@ -378,22 +487,25 @@ describe("the hands tools", () => {
   });
 
   test("a machine that does not answer hello in time is closed", async () => {
-    const [machine] = hands.machinesIn(toolsWorkspace);
+    const [machine] = hands.machinesIn(toolsWorkspace, alice.id);
     listener.hangHello(true);
     try {
       await expect(
-        hands.connection(toolsWorkspace, { ...machine!, id: "silent" })
+        hands.connection({ ...machine!, id: "silent" })
       ).rejects.toThrow("did not answer in time");
     } finally {
       listener.hangHello(false);
     }
   }, 10_000);
 
-  test("a machine refuses a workspace it did not pair with", async () => {
-    const [machine] = hands.machinesIn(toolsWorkspace);
+  test("a machine refuses a workspace or a person it did not pair with", async () => {
+    const [machine] = hands.machinesIn(toolsWorkspace, alice.id);
     await expect(
-      hands.connection(work, { ...machine!, id: "elsewhere" })
-    ).rejects.toThrow("refused this workspace");
+      hands.connection({ ...machine!, id: "elsewhere", workspaceId: work })
+    ).rejects.toThrow("refused this pairing");
+    await expect(
+      hands.connection({ ...machine!, id: "own", workspaceId: null })
+    ).rejects.toThrow("refused this pairing");
   });
 });
 
