@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { generateKeyPairSync, verify } from "node:crypto";
 import type { User } from "../platform/auth.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
-import { apnsPayload, providerToken } from "./apns.ts";
+import { apnsOutcome, apnsPayload, providerToken } from "./apns.ts";
 import {
   Notifications,
   type NotificationWorkspaces,
@@ -188,4 +188,15 @@ test("APNs gets a provider token signed with the key, and a push that opens the 
     channelId: "general",
     threadId: "flights",
   });
+});
+
+test("an APNs answer whose body is not JSON is an error and not a crash", () => {
+  expect(apnsOutcome(200, "")).toBe("sent");
+  expect(apnsOutcome(502, "<html>")).toBeInstanceOf(Error);
+  expect(apnsOutcome(500, "null")).toBeInstanceOf(Error);
+  expect(apnsOutcome(410, "")).toBe("gone");
+  expect(apnsOutcome(400, '{"reason":"BadDeviceToken"}')).toBe("gone");
+  expect(
+    (apnsOutcome(429, '{"reason":"TooManyRequests"}') as Error).message
+  ).toBe("APNs answered 429: TooManyRequests");
 });

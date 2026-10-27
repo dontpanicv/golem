@@ -57,18 +57,35 @@ export function apnsPush(key: ApnsKey): Push {
       });
       stream.on("error", reject);
       stream.on("end", () => {
-        if (status === 200) {
-          return resolve("sent");
+        const outcome = apnsOutcome(status, body);
+        if (outcome instanceof Error) {
+          return reject(outcome);
         }
-        const { reason } = JSON.parse(body || "{}") as { reason?: string };
-        if (status === 410 || GONE.has(reason ?? "")) {
-          return resolve("gone");
-        }
-        reject(new Error(`APNs answered ${status}: ${reason ?? body}`));
+        resolve(outcome);
       });
       stream.end(JSON.stringify(apnsPayload(message)));
     }).finally(() => session.close());
   };
+}
+
+/** What an APNs answer means; a body that is not JSON, such as a proxy's error page, has no reason. */
+export function apnsOutcome(
+  status: number,
+  body: string
+): "sent" | "gone" | Error {
+  if (status === 200) {
+    return "sent";
+  }
+  let reason: string | undefined;
+  try {
+    reason = (JSON.parse(body) as { reason?: string } | null)?.reason;
+  } catch {
+    reason = undefined;
+  }
+  if (status === 410 || GONE.has(reason ?? "")) {
+    return "gone";
+  }
+  return new Error(`APNs answered ${status}: ${reason ?? body}`);
 }
 
 /** The push: the alert, the app icon's badge, and where a tap goes. */
