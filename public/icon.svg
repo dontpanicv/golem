@@ -1,0 +1,15 @@
+<svg
+  shape-rendering="crispEdges"
+  viewBox="0 0 1024 1024"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <title>Golem</title>
+  <!-- The Prague golem's clay face in an 8 × 8 grid; the dark cell on its forehead is the aleph of אמת. Copies:
+  public/icon.svg and ios/Golem/Assets.xcassets/Mark.imageset/icon.svg; rsvg-convert makes the PNG icons. -->
+  <rect fill="#09090a" height="1024" width="1024" />
+  <g transform="translate(128 128) scale(96)">
+    <path d="M0 0H8V7H7V8H1V7H0Z" fill="#b8703f" />
+    <path d="M3 1H5V2H3ZM2 5H6V6H2Z" fill="#3a1d0c" />
+    <path d="M1 2H3V3H1ZM5 2H7V3H5Z" fill="#ffd27a" />
+  </g>
+</svg>

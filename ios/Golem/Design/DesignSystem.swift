@@ -94,6 +94,19 @@ struct Avatar: View {
     }
 }
 
+/// Golem's own face, the app icon, where Golem speaks or greets.
+struct GolemMark: View {
+    var size = Tokens.Size.avatar
+
+    var body: some View {
+        Image("Mark")
+            .resizable()
+            .frame(width: size, height: size)
+            .clipShape(.rect(cornerRadius: Tokens.Radius.sm))
+            .accessibilityHidden(true)
+    }
+}
+
 struct Badge: View {
     enum Tone { case neutral, accent, success, warning, danger }
 

@@ -1,3 +1,5 @@
+<img alt="Golem" src="design/icon.svg" width="96">
+
 # Golem
 
 A family AI assistant and second brain that runs on our own machines. No cloud and no central server.
@@ -106,7 +108,10 @@ The web app and the iOS app share one design system, modeled on Linear's clean s
   dialogs, toasts, and settings cards, with their motion.
 - Web components are in `public/styles.css` and `web/ui/`; iOS components are in
   `ios/Golem/Design/`.
-- `design/icon.svg` is the app icon and the web favicon, rendered to PNG with Inter.
+- `design/icon.svg` is Golem's face: the clay golem in an 8 × 8 grid, with the aleph of אמת (truth), the letter
+  that gives it life, as the dark cell on its forehead. It is the iOS app icon, the web favicon, and Golem's avatar
+  in both apps. `public/icon.svg` and `ios/Golem/Assets.xcassets/Mark.imageset/` are copies of it, and
+  `rsvg-convert` renders the PNG icons from it.
 - Both use [Inter](https://rsms.me/inter/) (SIL Open Font License) and follow the system light or dark appearance.
 
 ## Development

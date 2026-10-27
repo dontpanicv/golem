@@ -100,7 +100,7 @@ struct ConversationView: View {
                 } label: {
                     if isOrchestrator {
                         HStack(spacing: Tokens.Space.sm) {
-                            Avatar(name: "Golem", agent: true)
+                            GolemMark()
                             HeaderTitle(title: "Golem", caption: state?.running == true ? "Working" : nil)
                         }
                         .padding(.leading, Tokens.Space.sm)

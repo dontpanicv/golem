@@ -356,6 +356,20 @@ export function Avatar({
   );
 }
 
+/** Golem's own face, the app icon, where Golem speaks or greets. */
+export function Mark({ size }: { size?: "small" | "large" }) {
+  return (
+    <img
+      alt=""
+      className={["avatar", "agent", size].filter(Boolean).join(" ")}
+      // The avatar classes set the shown size.
+      height={48}
+      src="/assets/icon.svg"
+      width={48}
+    />
+  );
+}
+
 export function Badge({
   label,
   tone,

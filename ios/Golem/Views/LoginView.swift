@@ -78,7 +78,7 @@ private struct CenteredForm<Fields: View, Footer: View>: View {
             ScrollView {
                 VStack(spacing: Tokens.Space.xxl) {
                     VStack(spacing: Tokens.Space.xl) {
-                        Avatar(name: "Golem", agent: true, size: 48)
+                        GolemMark(size: 48)
                         Text(title)
                             .font(.golem(Tokens.FontSize.xl, Tokens.FontWeight.medium))
                             .foregroundStyle(Tokens.Colors.text)

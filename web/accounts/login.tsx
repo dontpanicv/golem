@@ -2,7 +2,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import { type SubmitEvent, useEffect, useState } from "react";
 import { markSignedOut } from "../app/api.ts";
 import { clearCache } from "../app/query.ts";
-import { Avatar, Button } from "../ui/components.tsx";
+import { Button, Mark } from "../ui/components.tsx";
 import { showToast } from "../ui/toast.tsx";
 
 const route = getRouteApi("/login");
@@ -44,7 +44,7 @@ export function LoginPage() {
     <main className="auth">
       <form aria-busy={busy || undefined} onSubmit={signIn}>
         <div className="mark">
-          <Avatar agent name="Golem" size="large" />
+          <Mark size="large" />
           <h1>Sign in to Golem</h1>
         </div>
         <Button

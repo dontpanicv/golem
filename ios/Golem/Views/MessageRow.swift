@@ -12,8 +12,10 @@ struct MessageRow: View {
         HStack(alignment: .top, spacing: Tokens.Space.lg) {
             if continued {
                 Color.clear.frame(width: Tokens.Mobile.Size.avatar, height: 1)
+            } else if message.agent {
+                GolemMark(size: Tokens.Mobile.Size.avatar)
             } else {
-                Avatar(name: message.author, agent: message.agent, size: Tokens.Mobile.Size.avatar)
+                Avatar(name: message.author, size: Tokens.Mobile.Size.avatar)
             }
             VStack(alignment: .leading, spacing: Tokens.Space.xs) {
                 if !continued {

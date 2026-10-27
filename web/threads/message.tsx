@@ -9,7 +9,7 @@ import {
 } from "react";
 import { fileHref } from "../app/api.ts";
 import type { Message, Step, Work } from "../app/types.ts";
-import { Avatar } from "../ui/components.tsx";
+import { Avatar, Mark } from "../ui/components.tsx";
 import { previewLink } from "../ui/file-preview.tsx";
 import { clockTime, duration } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
@@ -56,7 +56,7 @@ function MessageCard({
     .join(" ");
   return (
     <article className={classes}>
-      <Avatar agent={message.agent} name={message.author} />
+      {message.agent ? <Mark /> : <Avatar name={message.author} />}
       <div className="message-body">
         <div className="message-meta">
           <span className="message-author">{message.author}</span>

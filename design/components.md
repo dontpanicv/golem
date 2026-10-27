@@ -172,7 +172,8 @@ Used by the workspace switcher and action menus.
 - Keycap: min 18 × 17, padding 2, `radius.xs`, 0.5 px `borderSubtle`, `fontSize.xs` `regular` `textTertiary`,
   slashed zero. In menus a shortcut is plain text.
 - Avatar: a 24 px circle with the initial in `fontSize.xs` `medium` `onAccent` on one of the `avatar` colors, picked
-  by the sum of the name's code points. Agents and workspaces use `accent` in a `radius.sm` square.
+  by the sum of the name's code points. Workspaces use `accent` in a `radius.sm` square;
+  Golem shows its face, `design/icon.svg`, in that square.
 
 ## Lists
 

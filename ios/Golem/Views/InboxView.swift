@@ -53,7 +53,7 @@ struct InboxView: View {
             open(notification.destination)
         } label: {
             HStack(alignment: .top, spacing: Tokens.Space.lg) {
-                Avatar(name: "Golem", agent: true, size: Tokens.Mobile.Size.avatar)
+                GolemMark(size: Tokens.Mobile.Size.avatar)
                 VStack(alignment: .leading, spacing: Tokens.Space.xxs) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(notification.title)
