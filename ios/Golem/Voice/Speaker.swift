@@ -4,14 +4,14 @@ import Foundation
 import Observation
 import os
 
-/// Golem's voice in a conversation (``VoiceChat``): Gradium's Phonon 31m (Apache-2.0), converted to Core ML by
-/// FluidInference and run by FluidAudio, the model on the Neural Engine and its audio decoder on the CPU. It is bundled
-/// (ios/scripts/fetch-phonon.sh, ~150 MB) and loads when a conversation starts.
+/// Golem's voice in a conversation (``VoiceChat``): Supertone's Supertonic-3 (BigScience Open RAIL-M), converted to
+/// Core ML by FluidInference and run by FluidAudio on the Neural Engine. It says each sentence in Czech or English,
+/// whichever the sentence is in (``SpokenLanguage``). It is bundled (ios/scripts/fetch-supertonic.sh, ~170 MB) and
+/// loads when a conversation starts.
 ///
-/// Sentences are made one after another as they arrive. Each streams in 80 ms frames that play as soon as they exist,
-/// so the first words play while the rest of the sentence, and of the answer, is still being made. In a conversation
-/// the audio plays through the listener's engine: echo cancellation needs what the speaker plays on the engine that
-/// records.
+/// Sentences are made one after another as they arrive. Each plays as soon as it is made, in 80 ms buffers, while the
+/// next one is being made. In a conversation the audio plays through the listener's engine: echo cancellation needs
+/// what the speaker plays on the engine that records.
 @Observable
 final class Speaker {
     static let shared = Speaker()
@@ -19,27 +19,26 @@ final class Speaker {
     struct Voice: Sendable {
         let id: String
         let name: String
-        let accent: String
     }
 
-    /// The English voices offered in Settings (the bundle has all of Phonon's English ones).
-    static let voices: [Voice] = [
-        Voice(id: "en_us_Easton", name: "Easton", accent: "American"),
-        Voice(id: "en_us_Zoey", name: "Zoey", accent: "American"),
-        Voice(id: "en_us_Juniper", name: "Juniper", accent: "American"),
-        Voice(id: "en_us_Miles", name: "Miles", accent: "American"),
-        Voice(id: "en_gb_Maeve", name: "Maeve", accent: "British"),
-        Voice(id: "en_gb_Hugh", name: "Hugh", accent: "British")
-    ]
+    /// Supertonic-3's voices, offered in Settings. Each speaks both languages.
+    static let voices: [Voice] = Supertonic3Voice.allCases.map { voice in
+        let number = voice.rawValue.dropFirst()
+        return Voice(id: voice.rawValue, name: voice.rawValue.hasPrefix("F") ? "Female \(number)" : "Male \(number)")
+    }
     static let key = "golem.voice"
 
-    nonisolated static let directory = Bundle.main.url(forResource: "Phonon", withExtension: nil)
+    /// The folder FluidAudio finds `supertonic-3-coreml` in.
+    nonisolated static let directory = Bundle.main.url(forResource: "Supertonic", withExtension: nil)
     nonisolated static var isBundled: Bool { directory != nil }
-    nonisolated static let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
+    nonisolated static let format = AVAudioFormat(
+        standardFormatWithSampleRate: Double(Supertonic3Constants.sampleRate), channels: 1)!
+    /// Samples in a buffer: 80 ms, so the level follows the voice.
+    private static let bufferLength = Supertonic3Constants.sampleRate * 2 / 25
 
     /// The voice Golem speaks with, chosen in Settings.
     var voice = UserDefaults.standard.string(forKey: key).flatMap { id in voices.first { $0.id == id }?.id }
-        ?? "en_us_Easton" {
+        ?? Supertonic3Voice.default.rawValue {
         didSet { UserDefaults.standard.set(voice, forKey: Self.key) }
     }
     /// The model is loaded: speech starts at once.
@@ -68,31 +67,35 @@ final class Speaker {
     /// Counts stops: audio scheduled before one finishes into nothing.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var worker: Task<Void, Never>?
-    @ObservationIgnored private var manager: PocketTtsSmallManager?
-    @ObservationIgnored private var loading: Task<PocketTtsSmallManager, Error>?
+    @ObservationIgnored private var manager: Supertonic3Manager?
+    @ObservationIgnored private var loading: Task<Supertonic3Manager, Error>?
+    /// The voices loaded so far, by id.
+    @ObservationIgnored private var styles: [String: Supertonic3VoiceStyle] = [:]
+    /// The language of the last sentence, for one too short to tell.
+    @ObservationIgnored private var language = SpokenLanguage.english
     /// An engine of its own, for a sample in Settings outside a conversation.
     @ObservationIgnored private var ownEngine: AVAudioEngine?
     @ObservationIgnored private let log = Logger(subsystem: "dev.golem", category: "speaker")
 
     // MARK: Model
 
-    /// Loads Phonon and makes a first sentence, so the Neural Engine is warm for the first real one. A load takes a
-    /// moment, except the first after an install, while Core ML prepares the model for this iPhone.
+    /// Loads Supertonic-3 and makes a first sentence, so the Neural Engine is warm for the first real one. A load takes
+    /// a moment, except the first after an install, while Core ML prepares the model for this iPhone.
     @discardableResult
-    func load() async throws -> PocketTtsSmallManager {
+    func load() async throws -> Supertonic3Manager {
         if let manager { return manager }
         if let loading { return try await loading.value }
         guard let directory = Self.directory else {
-            throw VoiceError("This build of Golem doesn't include Phonon (run ios/scripts/fetch-phonon.sh).")
+            throw VoiceError("This build of Golem doesn't include Supertonic (run ios/scripts/fetch-supertonic.sh).")
         }
-        let voice = voice
+        let voiceStyle = try style(voice)
         let task = Task {
             let started = Date.now
-            let manager = PocketTtsSmallManager(model: .phonon31m)
-            try await manager.load(from: directory)
-            _ = try await manager.synthesizeSamples(text: "Okay.", voice: voice, deEss: false)
+            let manager = Supertonic3Manager(directory: directory)
+            try await manager.initialize()
+            _ = try await manager.synthesize(text: "Okay.", language: SpokenLanguage.english, style: voiceStyle)
             Logger(subsystem: "dev.golem", category: "speaker")
-                .notice("phonon loaded in \(Date.now.timeIntervalSince(started), format: .fixed(precision: 2)) s")
+                .notice("supertonic loaded in \(Date.now.timeIntervalSince(started), format: .fixed(precision: 2)) s")
             return manager
         }
         loading = task
@@ -169,8 +172,8 @@ final class Speaker {
             try engine.start()
         }
         player.play()
-        let name = Self.voices.first { $0.id == voice }?.name ?? "Golem"
-        say("Hi, I'm Golem, speaking as \(name). This is how I'll sound when we talk.")
+        say("Hi, I'm Golem. This is how I'll sound when we talk.")
+        say("Ahoj, jsem Golem. Mluvím česky i anglicky.")
     }
 
     private func work() async {
@@ -181,19 +184,34 @@ final class Speaker {
             unstarted = sentence
             do {
                 let manager = try await load()
-                var first = true
-                for try await frame in try await manager.synthesizeStreaming(text: sentence, voice: voice) {
-                    guard !Task.isCancelled, generation == self.generation else { break }
-                    schedule(frame.samples, starting: first ? sentence : nil)
-                    if first { unstarted = nil }
-                    first = false
+                let voiceStyle = try style(voice)
+                language = SpokenLanguage.of(sentence, after: language)
+                let audio = try await manager.synthesize(text: sentence, language: language, style: voiceStyle)
+                if !Task.isCancelled, generation == self.generation {
+                    for start in stride(from: 0, to: audio.samples.count, by: Self.bufferLength) {
+                        let end = min(start + Self.bufferLength, audio.samples.count)
+                        schedule(Array(audio.samples[start..<end]), starting: start == 0 ? sentence : nil)
+                    }
+                    unstarted = nil
                 }
             } catch is CancellationError {
             } catch {
-                log.error("phonon failed on \"\(sentence)\": \(error)")
+                log.error("supertonic failed on \"\(sentence)\": \(error)")
             }
             if generation == self.generation { making = false }
         }
+    }
+
+    /// The voice `id`, from the bundle the first time.
+    private func style(_ id: String) throws -> Supertonic3VoiceStyle {
+        if let style = styles[id] { return style }
+        guard let directory = Self.directory, let voice = Supertonic3Voice(name: id) else {
+            throw VoiceError("Golem has no voice named \(id).")
+        }
+        let style = try Supertonic3VoiceStyle.load(
+            from: directory.appending(path: "supertonic-3-coreml").appending(path: voice.fileName))
+        styles[id] = style
+        return style
     }
 
     private func schedule(_ samples: [Float], starting sentence: String?) {

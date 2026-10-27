@@ -5,7 +5,7 @@ import os
 
 /// Dictation in every composer, on the iPhone itself.
 ///
-/// One listener, for one thread's composer at a time, with Fluid Speech Mini (bundled, English): the words so far are
+/// One listener, for one thread's composer at a time, with Parakeet (bundled, Czech or English): the words so far are
 /// transcribed again every second and at every pause, so the text arrives in short steps, and the final text is always
 /// one pass over everything said. Audio heard before the model has loaded is kept and transcribed once it has.
 ///
@@ -59,8 +59,8 @@ final class Listener {
 
     /// The format the model takes: 16 kHz mono.
     nonisolated static let modelFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32, sampleRate: FluidSpeech.sampleRate, channels: 1, interleaved: false)!
-    nonisolated static let sampleRate = FluidSpeech.sampleRate
+        commonFormat: .pcmFormatFloat32, sampleRate: Parakeet.sampleRate, channels: 1, interleaved: false)!
+    nonisolated static let sampleRate = Parakeet.sampleRate
     /// Audio kept before the window where speech was first heard, for a word's soft start.
     static let preRoll = 0.2
     /// Audio kept after the last speech when a turn is handed over, for a word's soft end.
@@ -87,20 +87,19 @@ final class Listener {
 
     // MARK: Control
 
-    /// Loads Fluid Speech Mini when the app starts, so dictation is transcribed at once. A load takes well under a
-    /// second, except the first after an install or update (about 10 s on an iPhone 17 Pro Max, while Core ML prepares
-    /// it for the Neural Engine).
+    /// Loads Parakeet when the app starts, so dictation is transcribed at once. A load takes well under a second,
+    /// except the first after an install or update, while Core ML prepares it for the Neural Engine.
     static func warm() {
-        guard FluidSpeech.isBundled else { return }
+        guard Parakeet.isBundled else { return }
         Task {
             let log = Logger(subsystem: "dev.golem", category: "listener")
             let started = Date.now
             do {
-                try await FluidSpeech.shared.load()
+                try await Parakeet.shared.load()
                 let seconds = Date.now.timeIntervalSince(started)
-                log.notice("fluid speech loaded in \(seconds, format: .fixed(precision: 2)) s")
+                log.notice("parakeet loaded in \(seconds, format: .fixed(precision: 2)) s")
             } catch {
-                log.error("fluid speech failed to load: \(error)")
+                log.error("parakeet failed to load: \(error)")
             }
         }
     }
@@ -194,7 +193,7 @@ final class Listener {
         // The shown text already covers it all unless the user was still talking.
         if refreshedThrough < speech.lastSpeech + 0.2 {
             do {
-                text = try await FluidSpeech.shared.transcribe(samples(through: cut))
+                text = try await Parakeet.shared.transcribe(samples(through: cut))
             } catch {
                 lastError = error.localizedDescription
             }
@@ -203,7 +202,7 @@ final class Listener {
         return self.turn == turn ? text : ""
     }
 
-    /// Every tenth of a second: Fluid Speech Mini's passes.
+    /// Every tenth of a second: Parakeet's passes.
     private func tick() {
         guard listening else { return }
         refreshIfDue()
@@ -219,7 +218,7 @@ final class Listener {
         return from < upTo ? Array(audio[from..<upTo]) : []
     }
 
-    /// Fluid Speech Mini has no live results: the turn so far is transcribed again every second or so while the user
+    /// Parakeet has no live results: the turn so far is transcribed again every second or so while the user
     /// speaks, and as soon as they pause, so the text is current before a pause ends the turn.
     private func refreshIfDue() {
         guard refreshing == nil, speech.heard else { return }
@@ -235,9 +234,9 @@ final class Listener {
             let started = Date.now
             let words: String?
             do {
-                words = try await FluidSpeech.shared.transcribe(samples)
+                words = try await Parakeet.shared.transcribe(samples)
             } catch {
-                self?.log.error("fluid speech: \(error)")
+                self?.log.error("parakeet: \(error)")
                 words = nil
             }
             guard let self else { return }
@@ -254,9 +253,9 @@ final class Listener {
     private func open(speaker: Speaker?) async {
         state = .preparing
         do {
-            guard FluidSpeech.isBundled else {
+            guard Parakeet.isBundled else {
                 throw VoiceError(
-                    "This build of Golem doesn't include Fluid Speech Mini (run ios/scripts/fetch-fluid-speech.sh).")
+                    "This build of Golem doesn't include Parakeet (run ios/scripts/fetch-parakeet.sh).")
             }
             guard await AVAudioApplication.requestRecordPermission() else {
                 throw VoiceError("Golem needs the microphone. Allow it in Settings → Golem.")

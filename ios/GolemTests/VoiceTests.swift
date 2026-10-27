@@ -89,6 +89,28 @@ struct NarrationTests {
     @Test func abbreviationsAndNumbersDontEndSentences() {
         let (sentences, _) = Narration.sentences(in: "Use e.g. the 3.5 build. J. R. R. Tolkien wrote it. ", final: false)
         #expect(sentences == ["Use e.g. the 3.5 build.", "J. R. R. Tolkien wrote it."])
+        let (czech, _) = Narration.sentences(in: "Kup např. mléko, chleba atd. Pak mi napiš. ", final: false)
+        #expect(czech == ["Kup např. mléko, chleba atd. Pak mi napiš."])
+    }
+}
+
+/// Each sentence is said in its own language: Czech or English.
+@Suite("Spoken language")
+struct SpokenLanguageTests {
+    @Test func eachSentenceIsSaidInItsLanguage() {
+        #expect(SpokenLanguage.of("Zítra máš v deset schůzku s Petrem.", after: "en") == "cs")
+        #expect(SpokenLanguage.of("You have a meeting with Petr at ten tomorrow.", after: "cs") == "en")
+        #expect(SpokenLanguage.of("Hotovo.", after: "en") == "cs")
+        #expect(SpokenLanguage.of("Done.", after: "cs") == "en")
+    }
+
+    @Test func czechNamesDontMakeEnglishCzech() {
+        #expect(SpokenLanguage.of("I found three emails from Jana Nováková.", after: "cs") == "en")
+    }
+
+    @Test func aSentenceTooShortToTellKeepsTheLanguageBefore() {
+        #expect(SpokenLanguage.of("OK.", after: "cs") == "cs")
+        #expect(SpokenLanguage.of("Tesla.", after: "en") == "en")
     }
 }
 
@@ -100,6 +122,9 @@ struct TurnEndTests {
         #expect(TurnEnd.pause(after: "So, um,") == 2.0)
         #expect(TurnEnd.pause(after: "open the logs") == 1.2)
         #expect(TurnEnd.pause(after: "") == .infinity)
+        #expect(TurnEnd.pause(after: "podívej se do pošty a") == 2.0)
+        #expect(TurnEnd.pause(after: "napiš Janě, že") == 2.0)
+        #expect(TurnEnd.pause(after: "Co mám zítra?") == 0.8)
     }
 
     @Test func golemsOwnVoiceIsntTheUser() {
@@ -108,6 +133,7 @@ struct TurnEndTests {
         #expect(Echo.isEcho("logs", of: said))
         #expect(!Echo.isEcho("No, look at the database instead", of: said))
         #expect(!Echo.isEcho("Stop", of: said))
+        #expect(!Echo.isEcho("Počkej", of: said))
     }
 
     /// On the speaker, Golem's voice comes back garbled (these came back on an iPhone 17 Pro Max, 21 Oct 2026), so

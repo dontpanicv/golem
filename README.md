@@ -82,14 +82,14 @@ The iOS app is a thin client with the same functionality; it talks to the JSON A
 On the iPhone you can also talk instead of type, on the device itself:
 
 - **Dictation.** Hold the mic in a composer and talk, then let go to send; slide left to cancel, or slide up or tap
-  to keep it on. The words appear in the field as you speak. It uses
-  [Fluid Speech Mini](https://huggingface.co/FluidVoice-Labs/fluid-speech-mini-coreml) by FluidVoice (CC-BY-4.0),
-  built on NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0) and Moondream's Parakeet Ultra (CC-BY-4.0), run unchanged by
+  to keep it on. The words appear in the field as you speak, in Czech or English. It uses
+  [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) by Moondream (CC-BY-4.0), built on NVIDIA's
+  Parakeet TDT 0.6B v3 (CC-BY-4.0), in FluidInference's Core ML conversion, run by
   [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache-2.0).
 - **Conversation.** The wave button in a thread starts a hands-free conversation: a pause ends your turn, and Golem
-  says its answer aloud as it writes it. Say "stop" or tap the orb to cut in. The voice is
-  [Phonon 31m](https://huggingface.co/gradium/phonon-31m-en) by Gradium (Apache-2.0), in FluidInference's Core ML
-  conversion.
+  says its answer aloud as it writes it, each sentence in Czech or English, whichever it is in. Say "stop" or tap the
+  orb to cut in. The voice is [Supertonic-3](https://huggingface.co/Supertone/supertonic-3) by Supertone (BigScience
+  Open RAIL-M, with use restrictions), in FluidInference's Core ML conversion.
 
 ## Interface
 
@@ -166,7 +166,7 @@ Google sign-in returns to the server's https address, so the server's `config/go
 `GOLEM_ASSOCIATED_DOMAIN = <host>?mode=developer` and turn on Associated Domains Development in the iPhone's Settings >
 Developer.
 
-`ios/scripts/fetch-fluid-speech.sh` (~240 MB) and `ios/scripts/fetch-phonon.sh` (~150 MB) download the voice models
+`ios/scripts/fetch-parakeet.sh` (~630 MB) and `ios/scripts/fetch-supertonic.sh` (~170 MB) download the voice models
 into `ios/Models` (gitignored), and the build puts them in the app. Without them, the app has no dictation and no
 conversation.
 

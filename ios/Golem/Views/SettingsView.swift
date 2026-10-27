@@ -130,7 +130,7 @@ struct SettingsView: View {
     }
 
     private func voiceLabel(_ id: String) -> String {
-        Speaker.voices.first { $0.id == id }.map { "\($0.name), \($0.accent)" } ?? id
+        Speaker.voices.first { $0.id == id }?.name ?? id
     }
 
     private func setModel(_ model: String) {

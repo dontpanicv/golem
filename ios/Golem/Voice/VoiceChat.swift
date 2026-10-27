@@ -8,7 +8,7 @@ import os
 ///   calls   speech. A pause after the user's words ends their turn (short after a finished sentence, long after
 ///   "and…"), and   the words go to the thread as a voice message, which steers a run at work.
 /// - **Speaking.** It follows the thread's events and says each new sentence of the agent's text as it streams (a voice
-///   message asks the agent to say what it is about to do before it uses tools), in Phonon's voice (``Speaker``).
+///   message asks the agent to say what it is about to do before it uses tools), in Supertonic's voice (``Speaker``).
 /// - **Cutting in.** With headphones, the user's words stop the voice at once, and what was left unsaid is dropped.
 ///   On the iPhone's speaker, echo cancellation leaves enough of Golem's voice for the recognizer to turn into words
 ///   (garbled, so they can't be told from the user's), so only "stop", "wait" and the like cut in there. A tap on the
@@ -92,11 +92,11 @@ final class VoiceChat {
         self.api = api
         narration = Narration()
         guard Speaker.isBundled else {
-            return fail("This build of Golem doesn't include its voice (run ios/scripts/fetch-phonon.sh).")
+            return fail("This build of Golem doesn't include its voice (run ios/scripts/fetch-supertonic.sh).")
         }
         // The voice loads while the microphone starts: the user speaks first anyway.
         Task { [speaker, log] in
-            do { try await speaker.load() } catch { log.error("phonon failed to load: \(error)") }
+            do { try await speaker.load() } catch { log.error("supertonic failed to load: \(error)") }
         }
         await listener.start(Self.owner, speaker: speaker)
         if case .failed(let message) = listener.state { return fail(message) }

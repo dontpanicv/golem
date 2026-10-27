@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 // What conversation mode (VoiceChat) says and hears, worked out from text alone. Tested in VoiceTests.
 
@@ -55,9 +56,10 @@ nonisolated struct Narration: Equatable {
 
     private static let terminators: Set<Character> = [".", "!", "?", "…"]
     private static let closers: Set<Character> = ["\"", "'", "”", "’", ")", "]", "*", "_"]
-    /// Words a full stop follows without ending the sentence.
+    /// Words a full stop follows without ending the sentence, in English and Czech.
     private static let abbreviations: Set<String> = [
-        "e.g", "i.e", "etc", "vs", "mr", "mrs", "ms", "dr", "st", "no", "approx"
+        "e.g", "i.e", "etc", "vs", "mr", "mrs", "ms", "dr", "st", "no", "approx",
+        "např", "tj", "tzn", "tzv", "atd", "apod", "resp", "mj", "př", "str", "ing", "mgr"
     ]
 
     /// Whole sentences and lines at the start of `text`, and how many characters they took. A sentence ends at a line
@@ -135,11 +137,37 @@ nonisolated enum SpokenText {
     }
 }
 
+/// The language Golem says a sentence in: Czech or English, both of which its voice speaks.
+nonisolated enum SpokenLanguage {
+    static let english = NLLanguage.english.rawValue
+    static let czech = NLLanguage.czech.rawValue
+
+    /// The language of `sentence` ("en" or "cs"). A sentence too short to tell ("OK.", "Tesla.") keeps the language of
+    /// the one before it, `previous`.
+    static func of(_ sentence: String, after previous: String) -> String {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.languageConstraints = [.english, .czech]
+        recognizer.processString(withoutNames(sentence))
+        guard let (language, probability) = recognizer.languageHypotheses(withMaximum: 1).first, probability >= 0.8
+        else { return previous }
+        return language.rawValue
+    }
+
+    /// `sentence` without its capitalized words after the first: names, whose letters ("Jana Nováková") would say
+    /// Czech in an English sentence.
+    private static func withoutNames(_ sentence: String) -> String {
+        sentence.split(separator: " ").enumerated()
+            .filter { $0.offset == 0 || $0.element.first?.isUppercase != true }
+            .map(\.element).joined(separator: " ")
+    }
+}
+
 /// When the user has finished speaking: how long a pause after their words ends their turn.
 nonisolated enum TurnEnd {
-    /// Words people trail off on mid-thought.
+    /// Words people trail off on mid-thought, in English and Czech.
     private static let unfinished: Set<String> = [
-        "and", "but", "or", "so", "because", "um", "uh", "er", "like", "the", "a", "an", "to", "of", "with", "then"
+        "and", "but", "or", "so", "because", "um", "uh", "er", "like", "the", "a", "an", "to", "of", "with", "then",
+        "ale", "nebo", "protože", "takže", "že", "aby", "když", "ehm", "hm"
     ]
 
     /// Seconds of quiet after `words`: short after a finished sentence, long after "and…", "um" or a comma.
@@ -156,8 +184,10 @@ nonisolated enum TurnEnd {
 
 /// Golem's own voice coming back through the microphone, as far as echo cancellation leaves any.
 nonisolated enum Echo {
-    /// Words that cut Golem off on their own.
-    private static let interruptions: Set<String> = ["stop", "wait", "pause", "quiet", "enough", "golem", "hold"]
+    /// Words that cut Golem off on their own, in English and Czech.
+    private static let interruptions: Set<String> = [
+        "stop", "wait", "pause", "quiet", "enough", "golem", "hold", "počkej", "zastav", "dost", "ticho"
+    ]
 
     /// Whether `heard` is only what Golem `said` (or too little to cut it off for): it takes two words, most of
     /// them not Golem's, or one of the interruptions.

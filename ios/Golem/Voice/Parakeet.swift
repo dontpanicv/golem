@@ -2,16 +2,16 @@ import CoreML
 import FluidAudio
 import Foundation
 
-/// Fluid Speech Mini (CC-BY-4.0, FluidVoice), the dictation model: English, built on NVIDIA's Parakeet TDT 0.6B v3 and
-/// Moondream's Parakeet Ultra, a drop-in Parakeet v3 Core ML package run by FluidAudio (Apache-2.0) on the Neural
-/// Engine. The model (~240 MB) is in the app bundle (ios/scripts/fetch-fluid-speech.sh); it loads when the app starts
-/// and stays loaded.
-actor FluidSpeech {
-    static let shared = FluidSpeech()
+/// Parakeet Ultra (CC-BY-4.0), the dictation model: Moondream's post-training of NVIDIA's Parakeet TDT 0.6B v3, in 25
+/// European languages, Czech and English among them, which it tells apart by itself. FluidInference's Core ML package,
+/// run by FluidAudio (Apache-2.0) on the Neural Engine. The model (~630 MB) is in the app bundle
+/// (ios/scripts/fetch-parakeet.sh); it loads when the app starts and stays loaded.
+actor Parakeet {
+    static let shared = Parakeet()
 
     /// Audio it takes: 16 kHz mono.
     nonisolated static let sampleRate = 16_000.0
-    nonisolated static let directory = Bundle.main.url(forResource: "FluidSpeech", withExtension: nil)
+    nonisolated static let directory = Bundle.main.url(forResource: "Parakeet", withExtension: nil)
     nonisolated static var isBundled: Bool { directory != nil }
 
     private var manager: AsrManager?
@@ -24,10 +24,10 @@ actor FluidSpeech {
         if let loading { return try await loading.value }
         guard let directory = Self.directory else {
             throw VoiceError(
-                "This build of Golem doesn't include Fluid Speech Mini (run ios/scripts/fetch-fluid-speech.sh).")
+                "This build of Golem doesn't include Parakeet (run ios/scripts/fetch-parakeet.sh).")
         }
         let task = Task {
-            let models = try await AsrModels.loadLocal(from: directory, version: .v3)
+            let models = try AsrModels.loadLocal(from: directory, version: .ultra)
             return AsrManager(models: models)
         }
         loading = task
