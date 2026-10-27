@@ -113,7 +113,10 @@ export class Indexer {
     return next;
   }
 
-  /** Searches one workspace. The caller has checked that the person is a member. */
+  /**
+   * Searches one workspace. The caller has checked that the person is a member. Results of a deleted channel or
+   * artifact stay out at once, before the next scan takes them from the index.
+   */
   async search(
     workspaceId: string,
     query: string,
@@ -127,8 +130,22 @@ export class Indexer {
           await this.embedder.embed([queryPrompt(query)]).catch(() => [null])
         )[0] ?? null;
     }
+    const channels = new Set(
+      this.directory.channelsIn(workspaceId).map((channel) => channel.id)
+    );
+    const artifacts = new Set(
+      this.artifacts
+        .inWorkspace(workspaceId)
+        .map((artifact) => `artifact:${artifact.id}`)
+    );
     return {
-      results: index.search(query, vector, limit),
+      results: index
+        .search(query, vector, limit)
+        .filter(
+          (result) =>
+            (result.channelId === null || channels.has(result.channelId)) &&
+            (result.kind !== "artifact" || artifacts.has(result.uri))
+        ),
       semantic: vector !== null,
     };
   }

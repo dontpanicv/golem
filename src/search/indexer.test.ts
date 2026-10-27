@@ -272,6 +272,65 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
   }
 });
 
+test("search leaves out a deleted channel and a deleted artifact at once, before the next scan", async () => {
+  const data = join(dataDirectory, "deleted");
+  const live = { channels: ["c1"], artifacts: true };
+  const thread = {
+    id: "t1",
+    workspaceId: "family",
+    conversationId: 1,
+    channelId: "c1",
+    title: "Holiday",
+    updatedAt: 5,
+    settledAt: null,
+  };
+  const artifact = {
+    id: "amber-fox",
+    channelId: null,
+    threadId: "t1",
+    title: "Island trip",
+    visibility: "members" as const,
+    url: "http://golem.test/a/amber-fox",
+    visitors: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const indexer = new Indexer(
+    data,
+    {
+      ids: () => ["family"],
+      threadsIn: () => [thread],
+      channelsIn: () =>
+        live.channels.map((id) => ({
+          id,
+          name: id,
+          summary: null,
+          threads: [],
+        })),
+    },
+    threadsWith({ t1: [message("m1", "We take the ferry to the island")] }),
+    {
+      inWorkspace: () => (live.artifacts ? [artifact] : []),
+      html: () => "<p>Ferry at 9:00</p>",
+    },
+    null
+  );
+  const found = async () =>
+    (await indexer.search("family", "ferry")).results
+      .map((result) => result.uri)
+      .sort();
+  try {
+    await indexer.scan("family");
+    expect(await found()).toEqual(["artifact:amber-fox", "thread:t1"]);
+    live.channels = [];
+    expect(await found()).toEqual(["artifact:amber-fox"]);
+    live.artifacts = false;
+    expect(await found()).toEqual([]);
+  } finally {
+    await indexer.close();
+  }
+});
+
 test("pictures read while the model is down are read again, and text waits for the background pass", async () => {
   const data = join(dataDirectory, "media");
   const fakeFfmpeg = join(dataDirectory, "ffmpeg");
