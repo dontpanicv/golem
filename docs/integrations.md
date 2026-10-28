@@ -25,7 +25,9 @@ person. Google shows that it has not verified the app; an app that is not verifi
 
 Agents search and read mail, and make drafts that you send from Gmail, with files of the workspace attached; gog blocks
 sending. Agents use only these tools for mail, never a mail app on a machine. They read calendars, find free time, and create, change, and delete events; guests get no email about it, so send updates from Google Calendar.
-They search Drive, read Docs and Sheets, and create Docs, and change only the Docs that they created.
+They search Drive, read Docs and Sheets, create Docs, and change only the Docs that they created. They upload files of
+the workspace to Drive and share the files that they uploaded or created, with anyone who has the link, a person, or a
+domain; Google sends no invitation email.
 
 ## Slack
 

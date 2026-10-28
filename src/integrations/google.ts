@@ -5,7 +5,7 @@ import { type Static, type TSchema, Type } from "@earendil-works/pi-ai";
 import type { Connector, ConnectorTool, FileOf } from "./integrations.ts";
 import { PASTE_ADDRESS, SIGN_IN_ADDRESS } from "./sign-in.ts";
 
-/** What the sign-in asks for: mail to read and draft, events to manage, and files to read and create. */
+/** What the sign-in asks for: mail to read and draft, events to manage, files to read, and files to create and share. */
 const SCOPES = [
   "openid",
   "email",
@@ -35,6 +35,8 @@ const COMMANDS = [
   "calendar.delete",
   "drive.search",
   "drive.get",
+  "drive.upload",
+  "drive.share",
   "docs.cat",
   "docs.create",
   "docs.write",
@@ -73,7 +75,7 @@ const ORIGINAL_START = Type.Optional(
 /**
  * Gmail, Google Calendar, and Google Drive through gog (https://github.com/openclaw/gogcli), which calls Google's APIs
  * with the access token of the person's sign-in. Agents read mail and only draft it, manage events without sending
- * invitations, and read files and create Docs.
+ * invitations, read files, and upload files, create Docs, and share them without sending invitations.
  */
 export function googleConnector(binary: string): Connector {
   const gog = new Gog(binary);
@@ -81,7 +83,7 @@ export function googleConnector(binary: string): Connector {
     id: "google",
     name: "Google",
     description:
-      "Gmail, Google Calendar, and Google Drive of each connected Google account. Search and read mail, and draft mail that the person sends; read calendars, find free time, and create, change, and delete events; find and read files, and create Google Docs.",
+      "Gmail, Google Calendar, and Google Drive of each connected Google account. Search and read mail, and draft mail that the person sends; read calendars, find free time, and create, change, and delete events; find and read files, upload files, create Google Docs, and share them.",
     secretLabel: null,
     oauth: "https://accounts.google.com",
     registered: true,
@@ -165,7 +167,7 @@ export function googleConnector(binary: string): Connector {
           attachments: Type.Optional(
             Type.Array(Type.String(), {
               description:
-                "File ids from list_files or recall, such as a ZIP saved with save_file. For a draft to change, they replace its attachments.",
+                "File ids from list_files or recall, such as a ZIP saved with save_file; together up to 25 MB, else upload them with google_drive_upload, share them, and put the link in the body. For a draft to change, they replace its attachments.",
             })
           ),
         }),
@@ -371,6 +373,84 @@ export function googleConnector(binary: string): Connector {
           file: Type.String({ description: "The file's ID." }),
         }),
         command: ({ file }) => ["drive", "get", "--", file],
+      }),
+      {
+        name: "google_drive_upload",
+        description:
+          "Uploads a file of the workspace to Drive, and gives its ID and link.",
+        parameters: Type.Object({
+          file: Type.String({
+            description:
+              "A file id from list_files or recall, such as a ZIP saved with save_file.",
+          }),
+          name: Type.Optional(
+            Type.String({
+              description: "The name in Drive; the file's own when not given.",
+            })
+          ),
+          folder: Type.Optional(
+            Type.String({ description: "The ID of a Drive folder." })
+          ),
+        }),
+        execute: ({ file: fileId, name, folder }, token, signal, file) =>
+          gog.withLinks([fileId], file, ([path]) =>
+            gog.run(
+              token,
+              [
+                "drive",
+                "upload",
+                ...option("name", name),
+                ...option("parent", folder),
+                "--",
+                path!,
+              ],
+              signal
+            )
+          ),
+      },
+      gogTool(gog, {
+        name: "google_drive_share",
+        description:
+          "Shares a Drive file that Golem uploaded or created: with anyone who has its link, a person, or a domain. Google sends no email; give the link in your answer or in a draft.",
+        parameters: Type.Object({
+          file: Type.String({ description: "The Drive file's ID." }),
+          to: Type.Union(
+            [
+              Type.Literal("anyone"),
+              Type.Literal("user"),
+              Type.Literal("domain"),
+            ],
+            { description: "anyone: everyone with the link." }
+          ),
+          email: Type.Optional(
+            Type.String({
+              description: "The person's email address, for user.",
+            })
+          ),
+          domain: Type.Optional(
+            Type.String({ description: "Such as example.com, for domain." })
+          ),
+          role: Type.Optional(
+            Type.Union(
+              [
+                Type.Literal("reader"),
+                Type.Literal("commenter"),
+                Type.Literal("writer"),
+              ],
+              { description: "reader when not given." }
+            )
+          ),
+        }),
+        command: ({ file, to, email, domain, role }) => [
+          "drive",
+          "share",
+          `--to=${to}`,
+          ...option("email", email),
+          ...option("domain", domain),
+          ...option("role", role),
+          "--",
+          file,
+        ],
       }),
       gogTool(gog, {
         name: "google_docs_read",

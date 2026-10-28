@@ -128,3 +128,26 @@ test("a draft attaches workspace files under their own names", async () => {
     call("google_mail_draft", { subject: "S", body: "B", attachments: ["f1"] })
   ).rejects.toThrow("Only an agent in a thread can attach files.");
 });
+
+test("a workspace file goes to Drive under its own name, and a share sends no invitation", async () => {
+  const stored = join(directory, "0190-report.zip");
+  await Bun.write(stored, "zip");
+  const file: FileOf = async () => ({ path: stored, name: "report.zip" });
+  const uploaded = await call(
+    "google_drive_upload",
+    { file: "f1", folder: "folder-1" },
+    file
+  );
+  expect(uploaded.arguments).toMatch(
+    /drive upload --parent=folder-1 -- \S+\/0\/report\.zip$/
+  );
+  const shared = await call("google_drive_share", {
+    file: "d1",
+    to: "user",
+    email: "anna@example.com",
+  });
+  expect(shared.arguments).toEndWith(
+    "drive share --to=user --email=anna@example.com -- d1"
+  );
+  expect(shared.arguments).not.toContain("--notify");
+});
