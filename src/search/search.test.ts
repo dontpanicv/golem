@@ -427,3 +427,46 @@ test("with many vectors, meaning is measured against the index's own spread", as
   expect(results[0]?.modality).toBe("text");
   index.close();
 });
+
+test("a picture that only stands out among widely spread pictures does not show", async () => {
+  const index = new WorkspaceIndex(":memory:", "model");
+  // A unit vector whose cosine with the query (the first axis) is `similarity`.
+  const scored = (similarity: number) => {
+    const vector = new Float32Array(768);
+    vector[0] = similarity;
+    vector[1] = Math.sqrt(1 - similarity ** 2);
+    return vector;
+  };
+  const media = async (
+    title: string,
+    modality: "image" | "audio",
+    similarity: number
+  ) => {
+    await index.sync(
+      { uri: title, kind: "file", title, version: "1", updatedAt: 0 },
+      async () => ({
+        segments: [
+          {
+            key: "0",
+            hash: title,
+            modality,
+            text: "",
+            vector: scored(similarity),
+          },
+        ],
+      })
+    );
+  };
+  for (let number = 0; number < 60; number += 1) {
+    await media(`sound${number}`, "audio", number % 2 ? 0.58 : 0.62);
+  }
+  for (let number = 0; number < 30; number += 1) {
+    await media(`picture${number}`, "image", number % 2 ? 0.4 : 0.6);
+  }
+  await media("related sound", "audio", 0.7);
+  await media("unrelated picture", "image", 0.75);
+  expect(
+    index.search("query", scored(1), 10).map((result) => result.title)
+  ).toEqual(["related sound"]);
+  index.close();
+});

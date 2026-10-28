@@ -84,13 +84,14 @@ const SCHEMA_VERSION = "2";
  */
 const PRIOR_MINIMUM = 50;
 const PRIORS: Record<Modality, { mean: number; deviation: number }> = {
-  text: { mean: 0.55, deviation: 0.08 },
-  image: { mean: 0.56, deviation: 0.06 },
-  audio: { mean: 0.55, deviation: 0.08 },
-  none: { mean: 0.55, deviation: 0.08 },
+  text: { mean: 0.55, deviation: 0.055 },
+  image: { mean: 0.56, deviation: 0.04 },
+  audio: { mean: 0.55, deviation: 0.055 },
+  none: { mean: 0.55, deviation: 0.055 },
 };
 const MODALITIES: readonly Modality[] = ["text", "image", "audio", "none"];
-const Z_GATE = 2;
+/** In an index of ~2,000 segments, unrelated sources reach z ≈ 3 for short queries; related ones start just above. */
+const Z_GATE = 3;
 const COVERAGE_GATE = 0.5;
 /** Words after these many give a query no more terms, so a long query costs no more SQL. */
 const MAX_QUERY_TERMS = 32;
@@ -439,15 +440,26 @@ export class WorkspaceIndex {
         ? sums[index]! / counts[index]!
         : total / count;
     });
+    const squares = new Float64Array(MODALITIES.length);
     let variance = 0;
     for (let row = 0; row < count; row += 1) {
-      variance += (scores[row]! - means[modalities[row]!]!) ** 2;
+      const square = (scores[row]! - means[modalities[row]!]!) ** 2;
+      squares[modalities[row]!]! += square;
+      variance += square;
     }
-    const spread = Math.max(Math.sqrt(variance / count), 0.02);
+    // Pictures spread wider than text; one shared spread let unrelated pictures through.
+    const spreads = MODALITIES.map((modality, index) => {
+      if (!measured) {
+        return PRIORS[modality].deviation;
+      }
+      const own =
+        counts[index]! >= 20
+          ? squares[index]! / counts[index]!
+          : variance / count;
+      return Math.max(Math.sqrt(own), 0.02);
+    });
     for (let row = 0; row < count; row += 1) {
-      const deviation = measured
-        ? spread
-        : PRIORS[MODALITIES[modalities[row]!]!].deviation;
+      const deviation = spreads[modalities[row]!]!;
       const z = (scores[row]! - means[modalities[row]!]!) / deviation;
       const source = sources[row]!;
       const best = hits.get(source);

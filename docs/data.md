@@ -124,9 +124,9 @@ agents' `recall` tool read only the index of the workspace they are in; there is
   stored as float16 in the `segments` table: no vector database, no extension.
   Queries compare against every vector by brute force, which takes milliseconds at family scale.
 - **Ranking:** after DigUp (github.com/ARahim3/DigUp, MIT). Each source's best cosine becomes a z-score against all
-  scores for the query, centered per kind because pictures and audio score on a different scale than text; keyword
-  coverage is the share of query words a source contains. A source shows when
-  z ≥ 2 or coverage ≥ 0.5, scored `max(z, 0) + 2 × coverage^1.5`; queries made of ids or numbers weigh words more.
+  scores for the query, centered and scaled per kind because pictures and audio score on a different scale than text;
+  keyword coverage is the share of query words a source contains. A source shows when
+  z ≥ 3 or coverage ≥ 0.5, scored `max(z, 0) + 2 × coverage^1.5`; queries made of ids or numbers weigh words more.
 - **Freshness:** Golem rescans a workspace a second after any change to one of its threads, and every minute for
   files. Only changed sources are re-read, and only changed text is re-embedded. A different model or runtime
   re-embeds everything. Until the model runs, search and recall use keywords only.
