@@ -88,7 +88,24 @@ export function withCookies(
 }
 
 export function json(body: unknown, status = 200): Response {
-  return Response.json(body, { status });
+  return new Response(clientJson(body), {
+    status,
+    headers: { "content-type": "application/json;charset=utf-8" },
+  });
+}
+
+/**
+ * JSON that the iOS app can read too. Text cut inside an emoji keeps half of a UTF-16 pair, which Swift's
+ * `JSONDecoder` refuses, so it becomes U+FFFD; and the line ends that `JSON.stringify` leaves, but on which Swift's
+ * `lines` splits an event stream, are escaped.
+ */
+export function clientJson(body: unknown): string {
+  return JSON.stringify(body, (_key, value) =>
+    typeof value === "string" ? value.toWellFormed() : value
+  ).replace(
+    /[\u0085\u2028\u2029]/g,
+    (end) => `\\u${end.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
 }
 
 /** Pictures, PDFs, plain text, audio, and video open in the browser. */

@@ -1,5 +1,11 @@
 import { HttpError } from "../platform/errors.ts";
-import { type AuthedInput, type Handler, json, signedIn } from "./http.ts";
+import {
+  type AuthedInput,
+  clientJson,
+  type Handler,
+  json,
+  signedIn,
+} from "./http.ts";
 import { readForm, readText, rejectCrossOrigin } from "./web.ts";
 
 /** The largest JSON body; files come as `multipart/form-data`. */
@@ -77,7 +83,7 @@ export function eventStream(
       const send = (event: string, data: unknown) => {
         if (!cancelled && allowed()) {
           controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+            encoder.encode(`event: ${event}\ndata: ${clientJson(data)}\n\n`)
           );
         }
       };

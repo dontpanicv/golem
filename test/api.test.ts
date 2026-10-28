@@ -4,6 +4,7 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import { clientJson } from "../src/app/http.ts";
 import { startTestApp, type TestApp, until } from "./harness.ts";
 
 let golem: TestApp;
@@ -38,6 +39,16 @@ async function body(response: Response): Promise<any> {
 async function failure(response: Response) {
   return { status: response.status, ...(await body(response)) };
 }
+
+test("JSON for the apps has no half emoji and no line end that splits an event", () => {
+  // Text cut inside an emoji, as a search result can be, and a caption with a line separator.
+  const text = `donut!${"🥹".slice(0, 1)}… one\u2028two\u0085three\u2029`;
+  const sent = clientJson({ text });
+  expect(sent).not.toMatch(/[\u0085\u2028\u2029]|\\ud83e/);
+  expect(JSON.parse(sent)).toEqual({
+    text: "donut!\ufffd… one\u2028two\u0085three\u2029",
+  });
+});
 
 test("a request body must be a JSON object", async () => {
   const post = (text: string) =>
