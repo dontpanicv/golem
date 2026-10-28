@@ -67,9 +67,15 @@ export interface ConnectorTool<Parameters extends TSchema = TSchema> {
   execute(
     args: Static<Parameters>,
     secret: string,
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
+    file?: FileOf
   ): Promise<unknown>;
 }
+
+/** Finds a file of the workspace by its id, such as one to attach; it throws when there is none. */
+export type FileOf = (
+  fileId: string
+) => Promise<{ readonly path: string; readonly name: string }>;
 
 /**
  * An outside system that agents use: through the tools of its connector, with a secret from Settings, with a device
@@ -137,6 +143,8 @@ export type Place = string | null;
 export interface Turn {
   readonly userId: string | null;
   readonly signal?: AbortSignal;
+  /** The files that its tools can take, such as attachments; a routine has none. */
+  readonly file?: FileOf;
 }
 
 /** A connector tool of one workspace; each call uses the credential of the turn it is part of. */
@@ -550,11 +558,12 @@ export class Integrations {
               name: tool.name,
               description: tool.description,
               parameters: tool.parameters,
-              call: async (args, credential, signal) =>
+              call: async (args, credential, signal, file) =>
                 tool.execute(
                   args as never,
                   await this.secretOf(connector, credential),
-                  signal
+                  signal,
+                  file
                 ),
             }));
         if (own.length === 0) {
@@ -680,7 +689,8 @@ export class Integrations {
         return tool.call(
           rest,
           this.credentialFor(workspaceId, connector, turn.userId, account),
-          turn.signal
+          turn.signal,
+          turn.file
         );
       },
     };
@@ -999,7 +1009,8 @@ interface AccountTool {
   readonly call: (
     args: unknown,
     credential: Credential,
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
+    file?: FileOf
   ) => Promise<unknown>;
 }
 

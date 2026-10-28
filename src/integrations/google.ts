@@ -1,8 +1,8 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Static, type TSchema, Type } from "@earendil-works/pi-ai";
-import type { Connector, ConnectorTool } from "./integrations.ts";
+import type { Connector, ConnectorTool, FileOf } from "./integrations.ts";
 import { PASTE_ADDRESS, SIGN_IN_ADDRESS } from "./sign-in.ts";
 
 /** What the sign-in asks for: mail to read and draft, events to manage, and files to read and create. */
@@ -144,7 +144,7 @@ export function googleConnector(binary: string): Connector {
           ...option("page", page),
         ],
       }),
-      gogTool(gog, {
+      {
         name: "google_mail_draft",
         description:
           "Writes a draft that the person sends from Gmail, or changes the draft `draft`. Give `thread` to reply in a thread.",
@@ -162,20 +162,39 @@ export function googleConnector(binary: string): Connector {
           draft: Type.Optional(
             Type.String({ description: "The ID of a draft to change." })
           ),
+          attachments: Type.Optional(
+            Type.Array(Type.String(), {
+              description:
+                "File ids from list_files or recall, such as a ZIP saved with save_file. For a draft to change, they replace its attachments.",
+            })
+          ),
         }),
-        command: ({ subject, body, to, cc, bcc, thread, draft }) => [
-          "gmail",
-          "drafts",
-          ...(draft ? ["update"] : ["create"]),
-          `--subject=${subject}`,
-          `--body=${body}`,
-          ...option("to", to?.join(",")),
-          ...option("cc", cc?.join(",")),
-          ...option("bcc", bcc?.join(",")),
-          ...option("thread-id", thread),
-          ...(draft ? ["--", draft] : []),
-        ],
-      }),
+        execute: (
+          { subject, body, to, cc, bcc, thread, draft, attachments },
+          token,
+          signal,
+          file
+        ) =>
+          gog.withLinks(attachments ?? [], file, (paths) =>
+            gog.run(
+              token,
+              [
+                "gmail",
+                "drafts",
+                ...(draft ? ["update"] : ["create"]),
+                `--subject=${subject}`,
+                `--body=${body}`,
+                ...option("to", to?.join(",")),
+                ...option("cc", cc?.join(",")),
+                ...option("bcc", bcc?.join(",")),
+                ...option("thread-id", thread),
+                ...paths.map((path) => `--attach=${path}`),
+                ...(draft ? ["--", draft] : []),
+              ],
+              signal
+            )
+          ),
+      },
       gogTool(gog, {
         name: "google_calendars",
         description: "The calendars of the account, with their IDs.",
@@ -485,17 +504,55 @@ class Gog {
   }
 
   /** Runs `use` with a file of `content`, which gog reads, and removes the file after. */
-  async withFile<Result>(
+  withFile<Result>(
     name: string,
     content: string,
     use: (file: string) => Promise<Result>
   ): Promise<Result> {
+    return this.inDirectory(async (directory) => {
+      const file = join(directory, name.replaceAll("/", "-"));
+      writeFileSync(file, content);
+      return await use(file);
+    });
+  }
+
+  /**
+   * Runs `use` with a link to each workspace file, named as the file, so gog attaches it under its own name; removes
+   * the links after.
+   */
+  async withLinks<Result>(
+    fileIds: readonly string[],
+    file: FileOf | undefined,
+    use: (paths: string[]) => Promise<Result>
+  ): Promise<Result> {
+    if (fileIds.length > 0 && !file) {
+      throw new Error("Only an agent in a thread can attach files.");
+    }
+    const files = await Promise.all(fileIds.map((fileId) => file!(fileId)));
+    return this.inDirectory((directory) =>
+      use(
+        files.map(({ path, name }, index) => {
+          // gog splits `--attach` at commas, and two files can have one name.
+          const link = join(
+            directory,
+            String(index),
+            name.replaceAll(",", " ")
+          );
+          mkdirSync(join(directory, String(index)));
+          symlinkSync(path, link);
+          return link;
+        })
+      )
+    );
+  }
+
+  private async inDirectory<Result>(
+    use: (directory: string) => Promise<Result>
+  ): Promise<Result> {
     const directory = join(this.home, crypto.randomUUID());
     mkdirSync(directory);
-    const file = join(directory, name.replaceAll("/", "-"));
-    writeFileSync(file, content);
     try {
-      return await use(file);
+      return await use(directory);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

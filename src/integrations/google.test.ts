@@ -3,6 +3,7 @@ import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { googleConnector } from "./google.ts";
+import type { FileOf } from "./integrations.ts";
 
 const directory = await mkdtemp(join(tmpdir(), "golem-google-test-"));
 const gog = join(directory, "gog");
@@ -13,6 +14,7 @@ await Bun.write(
 for argument; do
   case "$argument" in
     --file=*) content=$(cat "\${argument#--file=}") ;;
+    --attach=*) content="$content$(basename "\${argument#--attach=}")=$(cat "\${argument#--attach=}");" ;;
     fail) echo "Note: Using direct access token" >&2; echo "Google API error (404): not found" >&2; exit 5 ;;
   esac
 done
@@ -25,10 +27,10 @@ const tools = new Map(
 );
 afterAll(() => rm(directory, { recursive: true }));
 
-async function call(name: string, args: object) {
+async function call(name: string, args: object, file?: FileOf) {
   return (await tools
     .get(name)!
-    .execute(args as never, "token-1", undefined)) as {
+    .execute(args as never, "token-1", undefined, file)) as {
     arguments: string;
     token: string;
     content: string;
@@ -95,4 +97,34 @@ test("a Doc comes from a Markdown file that gog reads, and gog's errors reach th
   await expect(call("google_drive_file", { file: "fail" })).rejects.toThrow(
     /^Google API error \(404\): not found$/
   );
+});
+
+test("a draft attaches workspace files under their own names", async () => {
+  const stored = join(directory, "0190-a,b.zip");
+  await Bun.write(stored, "zip");
+  const file: FileOf = async (fileId) => {
+    if (fileId !== "f1") {
+      throw new Error(`There is no file ${fileId}.`);
+    }
+    return { path: stored, name: "a,b.zip" };
+  };
+  const answer = await call(
+    "google_mail_draft",
+    { subject: "S", body: "B", attachments: ["f1", "f1"] },
+    file
+  );
+  expect(answer.content).toBe("a b.zip=zip;a b.zip=zip;");
+  expect(answer.arguments).toMatch(
+    /gmail drafts create --subject=S --body=B --attach=\S+\/0\/a b\.zip --attach=\S+\/1\/a b\.zip$/
+  );
+  await expect(
+    call(
+      "google_mail_draft",
+      { subject: "S", body: "B", attachments: ["f2"] },
+      file
+    )
+  ).rejects.toThrow("There is no file f2.");
+  await expect(
+    call("google_mail_draft", { subject: "S", body: "B", attachments: ["f1"] })
+  ).rejects.toThrow("Only an agent in a thread can attach files.");
 });

@@ -23,8 +23,8 @@ Golem calls Google's APIs through [gog](https://github.com/openclaw/gogcli), wit
 which Golem renews with its refresh token. One client serves all accounts: personal and Google Workspace ones, of every
 person. Google shows that it has not verified the app; an app that is not verified can have up to 100 users.
 
-Agents search and read mail, and make drafts that you send from Gmail; gog blocks sending. They read calendars, find
-free time, and create, change, and delete events; guests get no email about it, so send updates from Google Calendar.
+Agents search and read mail, and make drafts that you send from Gmail, with files of the workspace attached; gog blocks
+sending. Agents use only these tools for mail, never a mail app on a machine. They read calendars, find free time, and create, change, and delete events; guests get no email about it, so send updates from Google Calendar.
 They search Drive, read Docs and Sheets, and create Docs, and change only the Docs that they created.
 
 ## Slack
