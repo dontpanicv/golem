@@ -31,7 +31,13 @@ export interface Channel {
   readonly name: string;
   /** What the channel is for and what goes on in it, as an agent last wrote it. */
   readonly summary: string | null;
+  /** An emoji for the channel, as the model last chose it. */
+  readonly icon: string | null;
   readonly threads: readonly ThreadSummary[];
+}
+/** Facts about the family that its people write by hand; every agent of the workspace reads them. */
+export interface Facts {
+  readonly text: string;
 }
 export interface Member {
   readonly email: string;
@@ -39,6 +45,9 @@ export interface Member {
   readonly role: string;
   readonly userId: string;
 }
+
+/** The longest facts text, so it stays a small part of every agent's instructions. */
+const MAX_FACTS = 20_000;
 
 /** Leaves out the rows of deleted workspaces. */
 const LIVE =
@@ -175,7 +184,7 @@ export class Workspaces {
   channelsIn(workspaceId: string): Channel[] {
     const channels = this.database
       .query(
-        `SELECT id, name, summary FROM channel WHERE workspace_id = ? AND deleted_at IS NULL AND ${LIVE} ORDER BY created_at, rowid`
+        `SELECT id, name, summary, icon FROM channel WHERE workspace_id = ? AND deleted_at IS NULL AND ${LIVE} ORDER BY created_at, rowid`
       )
       .all(workspaceId) as Omit<Channel, "threads">[];
     const threads = this.database
@@ -214,6 +223,7 @@ export class Workspaces {
       id: randomUUID(),
       name: slug,
       summary: null,
+      icon: null,
       threads: [],
     };
     this.database
@@ -272,6 +282,46 @@ export class Workspaces {
         "UPDATE channel SET summary = ? WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL"
       )
       .run(summary.trim() || null, channelId, workspaceId);
+  }
+
+  /** Replaces the emoji of a channel, for an agent that acts for the workspace. */
+  setChannelIcon(workspaceId: string, channelId: string, icon: string): void {
+    this.database
+      .query(
+        "UPDATE channel SET icon = ? WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL"
+      )
+      .run(icon, channelId, workspaceId);
+  }
+
+  /** The facts that the people of the workspace wrote, such as names, birthdays, and places. */
+  facts(workspaceId: string, user: User): Facts {
+    this.requireMember(workspaceId, user);
+    return { text: this.factsOf(workspaceId) };
+  }
+
+  /** The facts of a workspace, for its agents; empty when nobody wrote them. */
+  factsOf(workspaceId: string): string {
+    const row = this.database
+      .query("SELECT text FROM workspace_facts WHERE workspace_id = ?")
+      .get(workspaceId) as { text: string } | null;
+    return row?.text ?? "";
+  }
+
+  /** Replaces the facts of the workspace; every member can write them. */
+  setFacts(workspaceId: string, user: User, text: string): Facts {
+    this.requireMember(workspaceId, user);
+    if (typeof text !== "string" || text.length > MAX_FACTS) {
+      throw new HttpError(
+        400,
+        `Write the facts as text of at most ${MAX_FACTS} characters`
+      );
+    }
+    this.database
+      .query(
+        "INSERT INTO workspace_facts (workspace_id, text, changed_by, changed_at) VALUES (?, ?, ?, ?) ON CONFLICT (workspace_id) DO UPDATE SET text = excluded.text, changed_by = excluded.changed_by, changed_at = excluded.changed_at"
+      )
+      .run(workspaceId, text.trim(), user.id, Date.now());
+    return { text: text.trim() };
   }
 
   /**

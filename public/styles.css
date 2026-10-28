@@ -969,6 +969,13 @@ a {
   width: var(--size-icon-small);
   height: var(--size-icon-small);
 }
+.nav-item .emoji {
+  flex: none;
+  width: var(--size-icon-small);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  text-align: center;
+}
 .nav-item .label {
   flex: 1;
   min-width: 0;
@@ -1965,6 +1972,19 @@ a {
 }
 .settings-row .input {
   width: 180px;
+}
+.settings-text-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+}
+.input.multiline {
+  height: auto;
+  min-height: 160px;
+  line-height: 1.5;
+  resize: vertical;
 }
 .settings-text {
   display: flex;

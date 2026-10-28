@@ -192,12 +192,20 @@ struct NavRow: View {
     var count: Int?
     /// A thread whose agent works shows a spinner.
     var working = false
+    /// Shows in place of the symbol when set.
+    var emoji: String?
 
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
-            Image(systemName: systemImage)
-                .font(.system(size: Tokens.Size.icon * 0.8, weight: .medium))
-                .frame(width: Tokens.Size.icon)
+            Group {
+                if let emoji {
+                    Text(emoji).font(.system(size: Tokens.Size.icon * 0.8))
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: Tokens.Size.icon * 0.8, weight: .medium))
+                }
+            }
+            .frame(width: Tokens.Size.icon)
             Text(title).lineLimit(1)
             if working { ProgressView().controlSize(.mini).accessibilityLabel("Working") }
             Spacer(minLength: 0)

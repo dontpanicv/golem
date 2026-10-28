@@ -222,6 +222,38 @@ test("members are listed, and only people who signed in once can be added once",
   ).toEqual({ status: 403, error: "Only an owner can do this" });
 });
 
+test("every member writes the workspace's facts, and nobody else reads them", async () => {
+  const facts = `/api/v1/workspaces/${workspaceId}/facts`;
+  expect(await body(await golem.call(facts, { token: alice }))).toEqual({
+    text: "",
+  });
+  const text = "Bob: born 2 March 1990\nCottage: Lipno";
+  expect(
+    await body(
+      await golem.call(facts, {
+        token: bob,
+        method: "PUT",
+        body: { text: `  ${text}\n` },
+      })
+    )
+  ).toEqual({ text });
+  expect(await body(await golem.call(facts, { token: alice }))).toEqual({
+    text,
+  });
+  expect(golem.app.workspaces.factsOf(workspaceId)).toBe(text);
+  const eve = await golem.signIn("Eve", "eve@example.com");
+  expect((await golem.call(facts, { token: eve })).status).toBe(404);
+  expect(
+    (
+      await golem.call(facts, {
+        token: alice,
+        method: "PUT",
+        body: { text: "x".repeat(20_001) },
+      })
+    ).status
+  ).toBe(400);
+});
+
 test("an unknown integration is not found", async () => {
   const base = `/api/v1/workspaces/${workspaceId}/integrations/nope`;
   expect(

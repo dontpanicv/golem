@@ -30,6 +30,7 @@ import type { User } from "../platform/auth.ts";
 import { Egress } from "../platform/egress.ts";
 import type { ThreadRef } from "../workspaces/workspaces.ts";
 import {
+  emojiOf,
   scriptWithDeadline,
   type ThreadBrowser,
   type ThreadHands,
@@ -1975,4 +1976,12 @@ test("the model calls the core tools itself, and every other tool from codemode 
   ]) {
     expect(prompt).toContain(`## ${namespace}`);
   }
+});
+
+test("a channel's emoji is the first emoji of the model's answer", () => {
+  expect(emojiOf(" 🏡 Home")).toBe("🏡");
+  expect(emojiOf("👨‍👩‍👧")).toBe("👨‍👩‍👧");
+  expect(emojiOf("🇨🇿")).toBe("🇨🇿");
+  expect(emojiOf("Home 🏡")).toBeNull();
+  expect(emojiOf("")).toBeNull();
 });

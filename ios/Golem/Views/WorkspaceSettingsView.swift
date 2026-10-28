@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// The name, members, machines, and integrations of the open workspace; only an owner renames or deletes it.
+/// The name, members, facts, machines, and integrations of the open workspace; only an owner renames or deletes it.
 struct WorkspaceSettingsView: View {
     @Environment(Session.self) private var session
     @State private var members: [Member] = []
     @State private var email = ""
     @State private var name = ""
     @State private var confirmDelete = false
+    @State private var facts = ""
+    @State private var savedFacts = ""
 
     private var workspaceID: String { session.workspace?.id ?? "" }
     private var renamed: Bool {
@@ -56,6 +58,26 @@ struct WorkspaceSettingsView: View {
                     .padding(Tokens.Space.xl)
                 }
             }
+            SettingsCard(title: "Facts") {
+                VStack(alignment: .trailing, spacing: Tokens.Space.md) {
+                    TextField(
+                        "Facts", text: $facts,
+                        prompt: Text("Names, birthdays, addresses, work")
+                            .foregroundStyle(Tokens.Mobile.Colors.placeholder),
+                        axis: .vertical
+                    )
+                    .lineLimit(6...20)
+                    .font(.golem(Tokens.Mobile.FontSize.body))
+                    .foregroundStyle(Tokens.Mobile.Colors.text)
+                    .tint(Tokens.Colors.accent)
+                    .padding(Tokens.Space.lg)
+                    .background(Tokens.Mobile.Colors.fill, in: .rect(cornerRadius: Tokens.Radius.xl))
+                    Button("Save", action: saveFacts)
+                        .buttonStyle(.secondary)
+                        .disabled(facts == savedFacts)
+                }
+                .padding(Tokens.Space.xl)
+            }
             MachinesSection(workspaceID: workspaceID)
             IntegrationsSection(workspaceID: workspaceID)
         }
@@ -76,7 +98,24 @@ struct WorkspaceSettingsView: View {
     }
 
     private func load() async {
-        await session.run { members = try await session.api.members(workspaceID: workspaceID) }
+        await session.run {
+            async let loadedMembers = session.api.members(workspaceID: workspaceID)
+            async let loadedFacts = session.api.facts(workspaceID: workspaceID)
+            members = try await loadedMembers
+            savedFacts = try await loadedFacts.text
+            facts = savedFacts
+        }
+    }
+
+    private func saveFacts() {
+        let text = facts
+        Task {
+            await session.run {
+                savedFacts = try await session.api.setFacts(workspaceID: workspaceID, text: text).text
+                facts = savedFacts
+                session.show("Saved", .success)
+            }
+        }
     }
 
     private func rename() {

@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { request } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
-import type { Workspace } from "../app/types.ts";
+import type { Facts, Workspace } from "../app/types.ts";
 import {
   Avatar,
   Badge,
@@ -13,7 +13,7 @@ import {
   SettingsRow,
 } from "../ui/components.tsx";
 import { showToast } from "../ui/toast.tsx";
-import { membersQuery, meQuery } from "./data.ts";
+import { factsQuery, membersQuery, meQuery } from "./data.ts";
 
 /** The name of a workspace and a way to delete it, for its owners. */
 export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
@@ -80,6 +80,46 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
         <p>Its channels, threads, files, artifacts, and routines go with it.</p>
       </Dialog>
     </>
+  );
+}
+
+/** The facts that the family writes by hand, such as names, birthdays, and places; every agent reads them. */
+export function FactsSection({ workspaceId }: { workspaceId: string }) {
+  const facts = useQuery(factsQuery(workspaceId));
+  const save = useMutation({
+    mutationFn: (text: string) =>
+      request<Facts>(`/workspaces/${workspaceId}/facts`, {
+        method: "PUT",
+        body: { text },
+      }),
+    onSuccess: (saved) => {
+      showToast("success", "Saved");
+      queryClient.setQueryData(factsQuery(workspaceId).queryKey, saved);
+    },
+  });
+  return (
+    <SettingsCard>
+      <form
+        aria-busy={save.isPending || undefined}
+        className="settings-text-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate(String(new FormData(event.currentTarget).get("text")));
+        }}
+      >
+        <textarea
+          aria-label="Facts"
+          className="input multiline"
+          defaultValue={facts.data?.text}
+          key={facts.data?.text}
+          maxLength={20_000}
+          name="text"
+          placeholder="Names, birthdays, addresses, work"
+          rows={12}
+        />
+        <Button label="Save" type="submit" />
+      </form>
+    </SettingsCard>
   );
 }
 

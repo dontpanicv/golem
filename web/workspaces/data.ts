@@ -6,6 +6,7 @@ import { keyed } from "../app/collections.ts";
 import { queryClient } from "../app/query.ts";
 import type {
   Channel,
+  Facts,
   Inbox,
   Member,
   ThreadSummary,
@@ -128,6 +129,14 @@ export function membersQuery(workspaceId: string) {
     queryKey: ["workspaces", workspaceId, "members"],
     queryFn: ({ signal }) =>
       request<Member[]>(`/workspaces/${workspaceId}/members`, { signal }),
+  });
+}
+
+export function factsQuery(workspaceId: string) {
+  return queryOptions({
+    queryKey: ["workspaces", workspaceId, "facts"],
+    queryFn: ({ signal }) =>
+      request<Facts>(`/workspaces/${workspaceId}/facts`, { signal }),
   });
 }
 

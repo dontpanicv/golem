@@ -6,7 +6,7 @@ import { dirname } from "node:path";
  * Application tables. better-auth owns `user`, `session`, `account`, `verification`, `organization` (workspaces),
  * `member`, and `invitation`; it migrates them itself. Append a migration; never edit one that shipped.
  *
- * Each table has one owner module, and only that module queries it: `workspaces` owns `channel` and `thread` (and reads
+ * Each table has one owner module, and only that module queries it: `workspaces` owns `channel`, `thread`, and `workspace_facts` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential` and its keys in `setting`,
  * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
@@ -273,6 +273,15 @@ const migrations = [
 		integration TEXT PRIMARY KEY,
 		client_id TEXT NOT NULL,
 		secret BLOB NOT NULL,
+		changed_by TEXT NOT NULL,
+		changed_at INTEGER NOT NULL
+	);`,
+  // workspaces: the emoji that the model chose for a channel, which people see before its name.
+  "ALTER TABLE channel ADD COLUMN icon TEXT;",
+  // workspaces: the facts that the people of a workspace write by hand, such as names, birthdays, and places.
+  `CREATE TABLE workspace_facts (
+		workspace_id TEXT PRIMARY KEY,
+		text TEXT NOT NULL,
 		changed_by TEXT NOT NULL,
 		changed_at INTEGER NOT NULL
 	);`,

@@ -27,7 +27,14 @@ struct Channel: Codable, Hashable, Identifiable {
     let id: String
     let name: String
     let summary: String?
+    /// One emoji, shown in place of the # before the name.
+    let icon: String?
     let threads: [ThreadSummary]
+}
+
+/// Facts that the family writes by hand, such as names, birthdays, and places; every agent of the workspace reads them.
+struct Facts: Codable {
+    let text: String
 }
 
 struct Message: Codable, Hashable, Identifiable {

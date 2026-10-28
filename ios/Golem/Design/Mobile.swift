@@ -146,11 +146,17 @@ struct ListRow<Trailing: View>: View {
     var systemImage: String?
     var subtitle: String?
     var working = false
+    /// Shows in place of the symbol when set.
+    var emoji: String?
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
-            if let systemImage {
+            if let emoji {
+                Text(emoji)
+                    .font(.system(size: 15))
+                    .frame(width: 21)
+            } else if let systemImage {
                 Image(systemName: systemImage)
                     .font(.system(size: 15))
                     .foregroundStyle(Tokens.Mobile.Colors.textSecondary)

@@ -378,7 +378,11 @@ function WorkspaceNav({
                 params={{ workspaceId, channelId: channel.id }}
                 to="/w/$workspaceId/c/$channelId"
               >
-                <NavContent icon="hash" label={channel.name} />
+                <NavContent
+                  emoji={channel.icon}
+                  icon="hash"
+                  label={channel.name}
+                />
               </Link>
               <div className="nav-threads">
                 {active
@@ -450,11 +454,14 @@ function ThreadNav({
 
 export function NavContent({
   icon,
+  emoji,
   label,
   threadId,
   count,
 }: {
   icon: IconName;
+  /** Shows in place of the icon when set. */
+  emoji?: string | null;
   label: string;
   /** A thread whose spinner shows while its agent works. */
   threadId?: string;
@@ -463,7 +470,13 @@ export function NavContent({
 }) {
   return (
     <>
-      <Icon name={icon} />
+      {emoji ? (
+        <span aria-hidden className="emoji">
+          {emoji}
+        </span>
+      ) : (
+        <Icon name={icon} />
+      )}
       <span className="label">{label}</span>
       {threadId ? <WorkingSpinner threadId={threadId} /> : null}
       {count ? <span className="count">{count}</span> : null}

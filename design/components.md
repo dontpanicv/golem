@@ -132,7 +132,8 @@ Used by the workspace switcher and action menus.
   `fontSize.md` `strong` with −0.1 px letter spacing, `textSecondary`, and a chevron. Hover and open: `fillHover`.
 - Item: 28 high, 1 px apart, padding 0 × 9 × 0 × 8, `radius.md`, a 14 px icon 6 px before the label,
   `fontSize.md` `medium` `textTertiary`. Hover: `fillHover` at once and `text` in 150 ms. Current: `fillActive`, `text`.
-  Count: `fontSize.xs` `book`.
+  Count: `fontSize.xs` `book`. A channel with an emoji shows it in place of the `#` icon, `fontSize.sm`, centered in
+  the 14 px slot (iOS: in the icon's frame).
 - Groups are 16 px apart. Section header: 28 high, the label 9 px in, `fontSize.sm` `medium` `textTertiary`; its action
   button shows on hover or focus (always on touch screens).
 - Threads sit under their channel, indented 19 px with 6 px inner padding; each shows its settle button on hover or
@@ -163,6 +164,8 @@ Used by the workspace switcher and action menus.
   `textTertiary` 3 px below, control at the right. Compact rows (lists of people, machines, runs) are min 44 high with
   8 px vertical padding.
 - A leading icon sits in a 32 px `fillIcon` square with `radius.sm`; a leading avatar is 24 px.
+- A text field for long text, such as the workspace's facts, fills the card with 16 px padding, min 160 high, a 1.5
+  line height, and its Save button at the bottom right.
 - Text in a section, such as a channel summary: `fontSize.md` `textSecondary` on a 22 px line, with its line breaks.
 
 ## Badge, keycap, and avatar

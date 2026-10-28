@@ -15,12 +15,16 @@ import {
 } from "../ui/components.tsx";
 import { showError, showToast } from "../ui/toast.tsx";
 import { lastOpened, useMe } from "../workspaces/data.ts";
-import { MembersSection, WorkspaceSection } from "../workspaces/settings.tsx";
+import {
+  FactsSection,
+  MembersSection,
+  WorkspaceSection,
+} from "../workspaces/settings.tsx";
 import { FloatingSidebarButton, Shell } from "../workspaces/shell.tsx";
 
 const workspaceRoute = getRouteApi("/signed-in/w/$workspaceId/settings");
 
-/** A workspace's name, members, machines, and integrations. */
+/** A workspace's name, members, facts, machines, and integrations. */
 export function WorkspaceSettingsPage() {
   const { workspaceId } = workspaceRoute.useParams();
   const workspace = useMe().workspaces.find(
@@ -37,6 +41,9 @@ export function WorkspaceSettingsPage() {
         ) : null}
         <PageSection title="Members">
           <MembersSection workspace={workspace} />
+        </PageSection>
+        <PageSection title="Facts">
+          <FactsSection workspaceId={workspaceId} />
         </PageSection>
         <PageSection title="Machines">
           <MachinesSection workspaceId={workspaceId} />

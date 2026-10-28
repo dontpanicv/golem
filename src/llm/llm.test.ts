@@ -508,6 +508,7 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       id: channelId,
       name: channelId,
       summary: null,
+      icon: null,
       threads: [],
     }),
     channelsIn: () => [],
@@ -519,6 +520,8 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       throw new Error("No channels here");
     },
     setChannelSummary: () => undefined,
+    setChannelIcon: () => undefined,
+    factsOf: () => "",
     touchThread: () => undefined,
     renameThread: (threadId: string, title: string) => {
       registered.set(threadId, { ...registered.get(threadId)!, title });

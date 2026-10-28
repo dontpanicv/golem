@@ -34,6 +34,7 @@ function directory(
         id,
         name: id,
         summary: null,
+        icon: null,
         threads: [],
       })),
   };
@@ -312,6 +313,7 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
           id,
           name: id,
           summary: null,
+          icon: null,
           threads: [],
         })),
     },

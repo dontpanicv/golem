@@ -201,7 +201,7 @@ private struct Sidebar: View {
                 row("Search", systemImage: "magnifyingglass", destination: .search)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels) { channel in
-                    row(channel.name, systemImage: "number", destination: .channel(channel.id))
+                    row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon)
                     VStack(spacing: 1) {
                         ForEach(channel.threads.filter { $0.settledAt == nil }) { thread in
                             threadRow(thread)
@@ -287,14 +287,15 @@ private struct Sidebar: View {
     }
 
     private func row(
-        _ title: String, systemImage: String, destination: Destination, working: Bool = false, count: Int? = nil
+        _ title: String, systemImage: String, destination: Destination, working: Bool = false, count: Int? = nil,
+        emoji: String? = nil
     ) -> some View {
         Button {
             open(destination)
         } label: {
             NavRow(
                 title: title, systemImage: systemImage, selected: selection == destination,
-                count: count == 0 ? nil : count, working: working
+                count: count == 0 ? nil : count, working: working, emoji: emoji
             )
         }
         .buttonStyle(.plain)

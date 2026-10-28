@@ -65,6 +65,22 @@ export const workspaceApiRoutes: readonly Route[] = [
   ],
   [
     "GET",
+    "/api/v1/workspaces/:workspace/facts",
+    api(async ({ app, user, params }) =>
+      json(app.workspaces.facts(params.workspace!, user))
+    ),
+  ],
+  [
+    "PUT",
+    "/api/v1/workspaces/:workspace/facts",
+    api(async ({ app, user, params, body }) =>
+      json(
+        app.workspaces.setFacts(params.workspace!, user, body.text as string)
+      )
+    ),
+  ],
+  [
+    "GET",
     "/api/v1/workspaces/:workspace/members",
     api(async ({ app, user, params }) =>
       json(app.workspaces.members(params.workspace!, user))

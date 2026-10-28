@@ -128,7 +128,7 @@ struct HomeView: View {
         let open = channel.threads.filter { $0.settledAt == nil }
         return Button { self.open(.channel(channel.id)) } label: {
             ListRow(title: channel.name, systemImage: "number",
-                    working: open.contains { session.working.contains($0.id) }) {
+                    working: open.contains { session.working.contains($0.id) }, emoji: channel.icon) {
                 if !open.isEmpty {
                     Text("\(open.count)")
                         .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))

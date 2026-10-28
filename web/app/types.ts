@@ -26,8 +26,13 @@ export interface Channel {
   readonly id: string;
   readonly name: string;
   readonly summary: string | null;
+  readonly icon: string | null;
   /** Newest first. */
   readonly threads: readonly ThreadSummary[];
+}
+
+export interface Facts {
+  readonly text: string;
 }
 
 export interface Member {

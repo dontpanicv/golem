@@ -40,6 +40,7 @@ type Channel = {
 	id: string;
 	name: string;
 	summary: string | null; // what the channel is for and what goes on in it, as the model last wrote it with the brief
+	icon: string | null; // one emoji, shown in place of the # before the name; the model chooses it for a new channel and again at each new thread
 	threads: ThreadSummary[]; // newest first
 };
 type Notification = {
@@ -197,6 +198,8 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `DELETE /api/v1/workspaces/:workspaceId` | | `204`; its channels, threads, files, artifacts, and routines go with it; `403` for a member who is not an owner |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
 | `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrators move to the next channel; `409` for the last channel |
+| `GET /api/v1/workspaces/:workspaceId/facts` | | `{ text }`: facts that the family writes by hand, such as names, birthdays, and places; every agent of the workspace reads them; `""` until someone writes them |
+| `PUT /api/v1/workspaces/:workspaceId/facts` | `{ text }` | `{ text }`; every member can write them; `400` over 20,000 characters |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
 | `POST /api/v1/workspaces/:workspaceId/members` | `{ email }` | `Member`; the person must have signed in once; `403` for a member who is not an owner |
 

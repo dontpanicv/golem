@@ -362,3 +362,14 @@ extension APIClient {
         _ = try await send("DELETE", "/api/v1/devices/\(token)")
     }
 }
+
+/// The facts that the family writes by hand; every agent of the workspace reads them.
+extension APIClient {
+    func facts(workspaceID: String) async throws -> Facts {
+        try await get("/api/v1/workspaces/\(workspaceID)/facts")
+    }
+
+    func setFacts(workspaceID: String, text: String) async throws -> Facts {
+        try decode(try await send("PUT", "/api/v1/workspaces/\(workspaceID)/facts", ["text": text]).data)
+    }
+}
