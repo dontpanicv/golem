@@ -83,7 +83,7 @@ type Work = {
 type Step = {
 	kind: "thinking" | "text" | "tool"; // a thought, words between tool calls, or a tool call
 	text: string; // for a tool call, the thread link in its result, or else the values of its arguments on one line
-	tool: string | null; // the tool's name, such as "web_search"
+	tool: string | null; // the tool's name, such as "web_search"; "from_thread" is what another thread's agent sent, which started the work: its text the link to that thread, its output the whole message
 	input: string | null; // a tool call's arguments as JSON, cut at 1000 characters
 	output: string | null; // the start of a tool call's result, cut at 1000 characters; null until it has one
 	running: boolean;

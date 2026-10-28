@@ -2672,7 +2672,7 @@ async function earlierEntries(
 /**
  * The messages of a thread: the entries a compaction left out of the view first, then the view's. The agent's work
  * after a message, up to the next one, is one answer: its last words are the text, and the thoughts, tool calls, and
- * words before them are its work.
+ * words before them are its work. A message from another thread's agent is the first step of the work it starts.
  */
 export function threadMessages(
   view: ConversationView,
@@ -2716,19 +2716,22 @@ export function threadMessages(
         work: null,
       });
     } else if (entry.kind === RELAYED) {
+      // What another thread's agent sent is for this agent: it shows in the work of the answer it starts.
       const data = entry.data as unknown as Relay;
-      messages.push({
+      turn = {
         id: String(entry.id),
-        authorId: null,
-        author: "Golem",
-        agent: true,
-        text: `From ${threadLink({ id: data.fromThreadId, title: data.fromTitle })}: ${data.text}`,
-        files: [],
-        time: startedAt,
-        failed: false,
-        streaming: false,
-        work: null,
-      });
+        responses: [],
+        results: new Map(),
+        relay: {
+          kind: "tool",
+          text: threadLink({ id: data.fromThreadId, title: data.fromTitle }),
+          tool: "from_thread",
+          input: null,
+          output: data.text,
+          running: false,
+          failed: false,
+        },
+      };
     } else if (model?.role === "assistant") {
       turn ??= { id: String(entry.id), responses: [], results: new Map() };
       turn.responses.push(model);
@@ -2773,6 +2776,8 @@ interface Turn {
   readonly id: string;
   readonly responses: AssistantMessage[];
   readonly results: Map<string, ToolResultMessage>;
+  /** The message from another thread that started the turn. */
+  readonly relay?: Step;
   /** When someone stopped the agent. */
   stoppedAt?: number;
 }
@@ -2832,7 +2837,7 @@ function turnMessage(
 
 /** The thoughts, words, and tool calls of a turn in order; words that follow each other are one step. */
 function turnSteps(turn: Turn, streaming: boolean): Step[] {
-  const steps: Step[] = [];
+  const steps: Step[] = turn.relay ? [turn.relay] : [];
   const add = (kind: Step["kind"], text: string) =>
     steps.push({
       kind,

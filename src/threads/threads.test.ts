@@ -33,6 +33,7 @@ import {
   scriptWithDeadline,
   type ThreadBrowser,
   type ThreadHands,
+  type ThreadMessages,
   Threads,
   threadMessages,
 } from "./threads.ts";
@@ -305,20 +306,27 @@ test("an agent starts a thread in another channel, gets the answer back, and can
   const dinner = started.find((channel) => channel.id === food.id)!.threads[0]!;
   expect(dinner.title).toBe("What's for dinner?");
 
+  // What one agent sends another is the first step of the answer's work, not a message of its own.
+  const fromThread = (state: ThreadMessages) =>
+    state.messages.flatMap((message) =>
+      (message.work?.steps ?? [])
+        .filter((step) => step.tool === "from_thread")
+        .map((step) => [step.text, step.output])
+    );
   const answered = await idle(family.id, dinner.id);
-  expect(
-    answered.messages.map((message) => [message.author, message.text])
-  ).toEqual([
-    [
-      "Golem",
-      `From [Ask #food what's for dinner](thread:${asked.id}): What's for dinner?`,
-    ],
-    ["Golem", "Done."],
+  expect(answered.messages.map((message) => message.text)).toEqual(["Done."]);
+  expect(answered.messages[0]!.work!.steps[0]!.tool).toBe("from_thread");
+  expect(fromThread(answered)).toEqual([
+    [`[Ask #food what's for dinner](thread:${asked.id})`, "What's for dinner?"],
   ]);
-  const pasta = `From [What's for dinner?](thread:${dinner.id}): Pasta`;
   await until(
     () => idle(family.id, asked.id),
-    (state) => state.messages.some((message) => message.text === pasta)
+    (state) =>
+      fromThread(state).some(
+        ([link, text]) =>
+          link === `[What's for dinner?](thread:${dinner.id})` &&
+          text === "Pasta"
+      )
   );
   await until(
     async () => toolResults,
