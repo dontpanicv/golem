@@ -86,8 +86,6 @@ struct InboxNotification: Codable, Hashable, Identifiable {
     let text: String
     let createdAt: Double
     let readAt: Double?
-
-    var destination: Destination { threadId.map { .thread($0) } ?? .channel(channelId) }
 }
 
 struct Inbox: Codable, Hashable {

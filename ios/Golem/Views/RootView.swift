@@ -141,12 +141,22 @@ private struct SplitView: View {
             showArtifacts = sizeClass == .regular
             openHome()
             openTapped()
+            openDictation()
         }
         .onChange(of: session.workspace?.id) {
             openHome()
             openTapped()
+            openDictation()
         }
         .onChange(of: Push.shared.tapped) { openTapped() }
+        .onChange(of: Dictation.shared.requested) { openDictation() }
+    }
+
+    /// Opens the Golem thread, whose composer then starts dictating.
+    private func openDictation() {
+        if let orchestrator = session.orchestrator, Dictation.shared.take(for: orchestrator.id) {
+            open(.thread(orchestrator.id))
+        }
     }
 
     private func openTapped() {

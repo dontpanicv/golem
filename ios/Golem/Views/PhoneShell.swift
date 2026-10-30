@@ -60,13 +60,25 @@ struct PhoneShell: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(.smooth(duration: Tokens.Duration.normal)) { bar.keyboard = false }
         }
-        .onAppear(perform: openTapped)
+        .onAppear {
+            openTapped()
+            openDictation()
+        }
         .onChange(of: session.workspace?.id) {
             paths = [:]
             bar.tab = .home
             openTapped()
+            openDictation()
         }
         .onChange(of: Push.shared.tapped) { openTapped() }
+        .onChange(of: Dictation.shared.requested) { openDictation() }
+    }
+
+    /// Opens the Golem thread, whose composer then starts dictating.
+    private func openDictation() {
+        if let orchestrator = session.orchestrator, Dictation.shared.take(for: orchestrator.id) {
+            open(.thread(orchestrator.id))
+        }
     }
 
     private func openTapped() {

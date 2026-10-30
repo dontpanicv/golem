@@ -90,3 +90,7 @@ struct InboxView: View {
         .transition(.opacity)
     }
 }
+
+extension InboxNotification {
+    var destination: Destination { threadId.map { .thread($0) } ?? .channel(channelId) }
+}

@@ -60,7 +60,7 @@ struct FileChips: View {
 /// A message box with the files picked, or dropped on it, to send with it, and dictation into it (``MicButton``):
 /// a glass field as Linear's comment field, with the add button at the start, the mic at the end, and the send
 /// button once there is something to send. `owner` keys the dictation: the thread, or the channel of a new thread.
-/// While `sending`, the send button spins.
+/// While `sending`, the send button spins. The Golem thread's composer starts dictating on a ``Dictation`` request.
 struct Composer: View {
     let owner: String
     let placeholder: String
@@ -135,9 +135,17 @@ struct Composer: View {
             files += dropped.map(\.url)
             return true
         }
+        // The field pastes text itself; pictures and files it cannot paste come here.
+        .pasteDestination(for: PickedFile.self) { pasted in files += pasted.map(\.url) }
         .sensoryFeedback(.impact, trigger: gesture)
         .onChange(of: active) { _, active in
             if !active, gesture == .locked { gesture = nil }
+        }
+        .onChange(of: Dictation.shared.thread, initial: true) { _, thread in
+            guard thread == owner else { return }
+            Dictation.shared.thread = nil
+            gesture = .locked
+            startListening()
         }
         .onDisappear {
             // A conversation keeps the listener when a composer goes away.
@@ -244,33 +252,5 @@ struct AttachMenu<Label: View>: View {
                 add(urls)
             }
         }
-    }
-}
-
-/// A file from the photo library or dropped on Golem, copied to the temporary folder.
-struct PickedFile: Transferable {
-    let url: URL
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .item) { received in
-            guard let url = pickedCopy(received.file) else { throw CocoaError(.fileReadUnknown) }
-            return PickedFile(url: url)
-        }
-    }
-}
-
-/// A copy of a picked file in the temporary folder: the picked file is readable only while its security scope is open.
-nonisolated func pickedCopy(_ url: URL) -> URL? {
-    let scoped = url.startAccessingSecurityScopedResource()
-    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-    let copy = FileManager.default.temporaryDirectory
-        .appending(path: UUID().uuidString)
-        .appending(path: url.lastPathComponent)
-    do {
-        try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: url, to: copy)
-        return copy
-    } catch {
-        return nil
     }
 }

@@ -12,7 +12,7 @@ final class Session {
     let api = APIClient()
     var serverURL: String {
         didSet {
-            UserDefaults.standard.set(serverURL, forKey: Keys.serverURL)
+            Keychain.serverURL = serverURL
             api.baseURL = serverURL
         }
     }
@@ -35,7 +35,7 @@ final class Session {
     var dialogs = 0
 
     init() {
-        let serverURL = UserDefaults.standard.string(forKey: Keys.serverURL)
+        let serverURL = Keychain.serverURL
             ?? Bundle.main.object(forInfoDictionaryKey: "GolemServerURL") as? String ?? ""
         let token = Keychain.token
         self.serverURL = serverURL
@@ -273,35 +273,6 @@ final class Session {
     }
 
     private enum Keys {
-        static let serverURL = "serverURL"
         static let workspaceID = "workspaceID"
-    }
-}
-
-/// The session token in the Keychain.
-enum Keychain {
-    private static let query: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: Bundle.main.bundleIdentifier ?? "Golem",
-        kSecAttrAccount as String: "token"
-    ]
-
-    static var token: String? {
-        get {
-            var result: AnyObject?
-            var search = query
-            search[kSecReturnData as String] = true
-            guard SecItemCopyMatching(search as CFDictionary, &result) == errSecSuccess,
-                  let data = result as? Data else { return nil }
-            return String(data: data, encoding: .utf8)
-        }
-        set {
-            SecItemDelete(query as CFDictionary)
-            guard let newValue else { return }
-            var item = query
-            item[kSecValueData as String] = Data(newValue.utf8)
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            SecItemAdd(item as CFDictionary, nil)
-        }
     }
 }
