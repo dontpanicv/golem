@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// The open workspace, as Slack's Home: its open threads, newest first, and its channels, in sections that fold. The
-/// workspace's name opens the workspace panel, the person's avatar the settings, and the round button starts a thread
-/// or a channel.
+/// The open workspace, as Slack's Home: its newest open threads, and its channels, in sections that fold. The round
+/// button starts a thread or a channel.
 struct HomeView: View {
     let open: (Destination) -> Void
-    let showWorkspaces: () -> Void
     @Environment(Session.self) private var session
     @State private var threadsFolded = false
+    @State private var allThreads = false
     @State private var channelsFolded = false
     @State private var privateFolded = false
     @State private var newChannel = false
@@ -21,7 +20,15 @@ struct HomeView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if !openThreads.isEmpty {
                     FoldingSection(title: "Threads", folded: $threadsFolded) {
-                        ForEach(openThreads) { threadRow($0) }
+                        ForEach(allThreads ? openThreads : Array(openThreads.prefix(3))) { threadRow($0) }
+                        // Only the newest threads show, so many threads do not push the channels down.
+                        if openThreads.count > 3 {
+                            Button { withAnimation(.snappy) { allThreads.toggle() } } label: {
+                                ListRow(allThreads ? "Show less" : "Show more",
+                                        systemImage: allThreads ? "chevron.up" : "chevron.down")
+                            }
+                            .buttonStyle(.row)
+                        }
                     }
                     ListSeparator()
                 }
@@ -46,14 +53,7 @@ struct HomeView: View {
         .phoneTabBar()
         .mobileBackground()
         .navigationTitle(session.workspace?.name ?? "Home")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(removing: .title)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { workspaceButton }
-                .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .topBarTrailing) { profileMenu }
-                .sharedBackgroundVisibility(.hidden)
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $newChannel) {
             NewChannelDialog { name, isPrivate in
                 if let channel = try await session.createChannel(name: name, isPrivate: isPrivate) {
@@ -61,36 +61,6 @@ struct HomeView: View {
                 }
             }
         }
-    }
-
-    /// The workspace's avatar and name, as Slack's: a tap opens the workspace panel.
-    private var workspaceButton: some View {
-        Button(action: showWorkspaces) {
-            HStack(spacing: Tokens.Space.md) {
-                Avatar(name: session.workspace?.name ?? "G", agent: true, size: Tokens.Mobile.Size.avatar)
-                Text(session.workspace?.name ?? "")
-                    .font(.golem(Tokens.Mobile.FontSize.detailTitle, Tokens.FontWeight.semibold))
-                    .foregroundStyle(Tokens.Mobile.Colors.title)
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-            .padding(.leading, -Tokens.Space.md)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Menu")
-        .accessibilityValue(session.workspace?.name ?? "")
-    }
-
-    private var profileMenu: some View {
-        Menu {
-            Section(session.user?.name ?? "") {
-                Button("Settings", systemImage: "gearshape") { open(.settings) }
-                Button("Workspace settings", systemImage: "person.2") { open(.workspaceSettings) }
-            }
-        } label: {
-            Avatar(name: session.user?.name ?? "", size: Tokens.Mobile.Size.avatar)
-        }
-        .accessibilityLabel("Profile")
     }
 
     /// The round button over the bar, as Slack's: a new thread in a channel, or a new channel.

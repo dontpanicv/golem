@@ -281,21 +281,17 @@ iPad keeps the sidebar with the same screens.
   `textSecondary` for unselected pills and icons, `textTertiary` for captions, `textQuaternary` for section titles and
   chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
 - Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt glass capsule 20 pt
-  from the screen edges and 24 pt above the bottom: Home, Golem, Activity, and Search, each an 18 pt icon over its
-  `tabLabel` name; the open one is `title` on a `tabSelected` capsule that slides to the tab tapped, the others
-  `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
+  from the screen edges and 24 pt above the bottom: Home, Golem, Activity, Search, and You, each an 18 pt icon over its
+  `tabLabel` name. You opens a native menu with Settings and Workspace settings. The open one is `title` on a
+  `tabSelected` capsule that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
   screen. The keyboard covers the bar.
 - Tabs keep their own stacks and fade into each other in 200 ms. Golem, Activity, and Search open in their tabs; a
   channel or a thread opens on the open tab's stack. Settings and Workspace settings open as sheets with a close
   button.
-- Home: as Slack's. The workspace's avatar and name at the leading edge open the workspace panel; the person's avatar
-  at the trailing edge opens a native menu with Settings and Workspace settings. Open threads, newest first, with their
-  channel under the title, then the channels with their count of open threads and Add channel, then the private channels, each with a
-  lock, in sections whose title folds them. A 48 pt accent glass circle over the bar opens a native menu: New thread in a channel, or New channel.
-- Workspace panel: as Slack's. It slides in from the leading edge, up to 340 wide with radius 36 at the trailing
-  corners, over a 40 % black dim: the workspace's name in `fontSize.detailTitle`, then Workspace settings and
-  Settings. A tap on the dim or a swipe
-  back closes it.
+- Home: as Slack's, with no navigation bar. The three newest open threads with their channel under the title, and
+  Show more for the rest, then the channels with their count of open threads and Add channel, then the private
+  channels, each with a lock, in sections whose title folds them. A 48 pt accent glass circle over the bar opens a
+  native menu: New thread in a channel, or New channel.
 - Screen title: top-level screens put it in the navigation bar at its leading edge, 12 pt from the screen edge, level
   with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Channels and threads show the round
   glass back button and a title capsule beside it, as Slack's: the title in `fontSize.row` `semibold` over a `caption`

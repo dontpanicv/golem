@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The iPhone app, as Slack's iOS app: Home, Golem, Activity, and Search in a floating glass tab bar that stays under
-/// every screen and its composer, a panel from the leading edge that switches workspaces, and the settings in sheets.
+/// every screen and its composer, with a fifth item, You, whose menu opens the settings in sheets.
 /// Each tab keeps its own stack; screens leave room for the bar with ``View/phoneTabBar()`` or ``ComposerRow``.
 struct PhoneShell: View {
     enum Tab: CaseIterable { case home, golem, activity, search }
@@ -9,7 +9,6 @@ struct PhoneShell: View {
     @Environment(Session.self) private var session
     @State private var bar = PhoneTabBar()
     @State private var paths: [Tab: [Destination]] = [:]
-    @State private var showWorkspaces = false
     @State private var sheet: Destination?
 
     var body: some View {
@@ -25,13 +24,10 @@ struct PhoneShell: View {
         }
         .animation(Tokens.Easing.ease(Tokens.Duration.normal), value: bar.tab)
         .overlay(alignment: .bottom) {
-            TabBar(bar: bar, unread: session.inbox?.unread ?? 0, select: select)
+            TabBar(bar: bar, unread: session.inbox?.unread ?? 0, select: select, open: open)
                 // The keyboard covers the bar, as it covers Slack's.
                 .ignoresSafeArea(.keyboard)
                 .opacity(bar.keyboard ? 0 : 1)
-        }
-        .overlay {
-            WorkspacePanel(isPresented: $showWorkspaces, open: open)
         }
         .environment(\.phoneTabBar, bar)
         // Glass buttons and menus are plain white or black; fields keep the accent for their cursor.
@@ -101,7 +97,7 @@ struct PhoneShell: View {
     private func root(_ tab: Tab) -> some View {
         switch tab {
         case .home:
-            HomeView(open: open) { withAnimation(.snappy) { showWorkspaces = true } }.id(session.workspace?.id)
+            HomeView(open: open).id(session.workspace?.id)
         case .golem:
             if let orchestrator = session.orchestrator {
                 WithArtifacts { ConversationView(threadID: orchestrator.id, showArtifacts: $0, open: open) }
@@ -143,7 +139,6 @@ struct PhoneShell: View {
     /// Opens a screen: Golem, Activity, and Search in their tabs, the settings in a sheet, anything else on the open
     /// tab's stack.
     private func open(_ destination: Destination) {
-        withAnimation(.snappy) { showWorkspaces = false }
         switch destination {
         case .thread(session.orchestrator?.id ?? ""):
             paths[.golem] = []
@@ -220,17 +215,21 @@ extension PhoneShell.Tab {
 }
 
 /// The bar, as Slack's: a glass capsule across the screen of four tabs with their names, the open one on a filled
-/// capsule that slides to the tab tapped, and the count of unread notifications on Activity.
+/// capsule that slides to the tab tapped, and the count of unread notifications on Activity; then You, a native menu
+/// with both settings.
 private struct TabBar: View {
     let bar: PhoneTabBar
     let unread: Int
     let select: (PhoneShell.Tab) -> Void
+    let open: (Destination) -> Void
+    @Environment(Session.self) private var session
     @Namespace private var selection
     @State private var taps: [PhoneShell.Tab: Int] = [:]
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(PhoneShell.Tab.allCases, id: \.self) { item($0) }
+            you
         }
         .padding(Tokens.Space.xs)
         .frame(height: Tokens.Mobile.Size.tabBar)
@@ -239,6 +238,27 @@ private struct TabBar: View {
         .padding(.bottom, Tokens.Mobile.Size.tabBarBottom - Tokens.Mobile.Size.homeIndicator)
         .animation(.snappy, value: bar.tab)
         .animation(.snappy, value: unread)
+    }
+
+    private var you: some View {
+        Menu {
+            Section(session.user?.name ?? "") {
+                Button("Settings", systemImage: "gearshape") { open(.settings) }
+                Button("Workspace settings", systemImage: "person.2") { open(.workspaceSettings) }
+            }
+        } label: {
+            VStack(spacing: Tokens.Space.xxs) {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(height: 22)
+                Text("You").font(.golem(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.medium))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+        .accessibilityLabel("You")
     }
 
     private func item(_ tab: PhoneShell.Tab) -> some View {
@@ -283,66 +303,5 @@ private struct TabBar: View {
         .accessibilityLabel(tab.title)
         .accessibilityValue(tab == .activity && unread > 0 ? "\(unread) unread" : "")
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// The workspace, as Slack's panel: it slides in from the leading edge over a dimmed screen with the workspace's name
-/// and both settings. A tap on the dimmed screen or a swipe back closes it.
-private struct WorkspacePanel: View {
-    @Binding var isPresented: Bool
-    let open: (Destination) -> Void
-    @Environment(Session.self) private var session
-    @State private var drag: CGFloat = 0
-
-    var body: some View {
-        ZStack(alignment: .leading) {
-            if isPresented {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture(perform: close)
-                    .transition(.opacity)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel("Close")
-                panel
-                    .offset(x: min(0, drag))
-                    .gesture(
-                        DragGesture()
-                            .onChanged { drag = $0.translation.width }
-                            .onEnded { value in
-                                if value.predictedEndTranslation.width < -100 { close() }
-                                withAnimation(.snappy) { drag = 0 }
-                            }
-                    )
-                    .transition(.move(edge: .leading))
-            }
-        }
-    }
-
-    private var panel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(session.workspace?.name ?? "Golem")
-                .font(.golem(Tokens.Mobile.FontSize.detailTitle, Tokens.FontWeight.semibold))
-                .foregroundStyle(Tokens.Mobile.Colors.title)
-                .padding(.horizontal, Tokens.Mobile.Size.margin)
-                .padding(.vertical, Tokens.Space.lg)
-                .accessibilityAddTraits(.isHeader)
-            row("Workspace settings", systemImage: "person.2") { open(.workspaceSettings) }
-            row("Settings", systemImage: "gearshape") { open(.settings) }
-        }
-        .padding(.bottom, Tokens.Space.lg)
-        .frame(maxWidth: 340, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            UnevenRoundedRectangle(bottomTrailingRadius: 36, topTrailingRadius: 36)
-                .fill(Tokens.Mobile.Colors.background)
-                .ignoresSafeArea()
-        }
-    }
-
-    private func row(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { ListRow(title, systemImage: systemImage) }.buttonStyle(.row)
-    }
-
-    private func close() {
-        withAnimation(.snappy) { isPresented = false }
     }
 }
