@@ -1847,6 +1847,50 @@ test("a command that dcg flags waits for a person: the turn's, or the one who pa
   }
 });
 
+test("a script gets a connector tool's long answer whole, and an error for one that is too big", async () => {
+  const home = await golem.app.workspaces.create(alice, "Long answers");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-long-"));
+  const threads = savingThreads(
+    dataDirectory,
+    () => Promise.reject(new Error("unused")),
+    async () => null,
+    {},
+    {},
+    {
+      namespaces: () => [
+        { name: "notes", prefix: "notes_", description: "Notes." },
+      ],
+      tools: async () => [
+        {
+          name: "notes_lines",
+          description: "Lines of a note",
+          parameters: Type.Object({ lines: Type.Integer() }),
+          // More than the harness's own 50 KB and 2000 lines.
+          execute: async (args) =>
+            "line\n".repeat((args as { lines: number }).lines),
+        },
+      ],
+    }
+  );
+  try {
+    const summary = await threads.create(
+      home.id,
+      alice,
+      general.id,
+      'Run code: text(String((await tools.notes_lines({ lines: 60000 })).length)); try { await tools.notes_lines({ lines: 300000 }); } catch (error) { text(String(error)); } text("finished");'
+    );
+    await answeredIn(threads, home.id, summary.id);
+    expect(toolResults.at(-1)).toContain("300000");
+    expect(toolResults.at(-1)).toContain(
+      "notes_lines answered with 1500000 bytes, more than 1048576"
+    );
+  } finally {
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test("a connector tool that acts as a person asks before every call, and never for the rest of the turn", async () => {
   const home = await golem.app.workspaces.create(alice, "Sending");
   const general = golem.app.workspaces.channels(home.id, alice)[0]!;

@@ -110,8 +110,31 @@ export function slackConnector(binary: string): Connector {
         name: "slack_unread",
         description:
           "The conversations with unread messages, and those messages and thread replies.",
-        parameters: Type.Object({}),
-        command: () => ["conversations", "unread", "--messages"],
+        parameters: Type.Object({
+          conversations: Type.Optional(
+            Type.Integer({
+              minimum: 1,
+              maximum: 100,
+              description:
+                "At most this many conversations; 10 when not given.",
+            })
+          ),
+          limit: Type.Optional(
+            Type.Integer({
+              minimum: 1,
+              maximum: 200,
+              description:
+                "At most this many messages of each conversation or thread; 20 when not given.",
+            })
+          ),
+        }),
+        command: ({ conversations, limit }) => [
+          "conversations",
+          "unread",
+          "--messages",
+          ...option("max-conversations", conversations),
+          ...option("limit", limit),
+        ],
       }),
       slackTool(slack, {
         name: "slack_people",
