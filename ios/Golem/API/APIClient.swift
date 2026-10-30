@@ -11,6 +11,7 @@ final class APIClient {
     var baseURL = ""
     var token: String?
     var onUnauthorized: () -> Void = {}
+    var session = URLSession.shared
 
     // MARK: Auth
 
@@ -151,7 +152,7 @@ final class APIClient {
     /// Downloads a file of the workspace to a temporary folder under its own name, for Quick Look.
     func download(workspaceID: String, file: FileRef) async throws -> URL {
         let request = try makeRequest("GET", "/api/v1/workspaces/\(workspaceID)/files/\(file.id)")
-        let (location, response) = try await URLSession.shared.download(for: request)
+        let (location, response) = try await session.download(for: request)
         try check(response, data: Data())
         let folder = FileManager.default.temporaryDirectory.appending(path: file.id)
         try? FileManager.default.removeItem(at: folder)
@@ -197,7 +198,7 @@ final class APIClient {
         var request = try makeRequest("GET", path)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 24 * 60 * 60
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let (bytes, response) = try await session.bytes(for: request)
         try check(response, data: Data())
         var event = ""
         // `lines` drops empty lines, so each `data:` line is one event; the server sends its JSON on one line.
@@ -282,7 +283,7 @@ final class APIClient {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         return (data, try check(response, data: data))
     }
 
@@ -309,7 +310,7 @@ final class APIClient {
             part("\(disposition)\r\nContent-Type: application/octet-stream", try Data(contentsOf: file))
         }
         body.append(Data("--\(boundary)--\r\n".utf8))
-        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+        let (data, response) = try await session.upload(for: request, from: body)
         return (data, try check(response, data: data))
     }
 

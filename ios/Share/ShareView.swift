@@ -126,6 +126,11 @@ struct ShareView: View {
         api.baseURL = Keychain.serverURL
             ?? Bundle.main.object(forInfoDictionaryKey: "GolemServerURL") as? String ?? ""
         api.token = Keychain.token
+        // iOS can give a share sheet no network for a moment, which failed at once as "offline"; wait for it.
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForResource = 120
+        api.session = URLSession(configuration: configuration)
         return api
     }
 
