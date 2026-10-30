@@ -38,6 +38,10 @@ addresses, or code and data from employers or clients.
   app is a React single-page app in `web/`; the server sends it for every app path and has no other pages.
 - Reminders are agent-only: their create, list, change, and cancel operations are tools, with no user routes.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
+- Golem has one workspace, the family's; nobody makes or deletes one. A private channel (`channel.owner_id`) and all
+  of it belong to one member. Every read of channels, threads, files, artifacts, routines, reminders, search, or memory
+  names the `Realm` it serves: the person, or for an agent its thread's `ThreadRef.realm`, so a thread that every
+  member reads never sees a private channel. Only background work that acts for no person uses the `all…` reads.
 - An orchestrator (`ThreadRef.ownerId` set) belongs to one member: every route, tool, search, and memory that reads
   threads leaves out the orchestrators of other people.
 - Serve HTML that an agent or a person wrote only from `/a/:id/content`, with its `sandbox` content policy; never run

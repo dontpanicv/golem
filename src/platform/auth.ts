@@ -19,7 +19,7 @@ export interface User {
 }
 
 /**
- * Accounts and workspaces. Workspaces are better-auth organizations, so one person can belong to several.
+ * Accounts and the workspace. The workspace is a better-auth organization; Golem has one, the family's.
  * People sign in only with Google, and only with an allowed email; there is no other way to create an account.
  */
 export function createAuth(options: AuthOptions) {
@@ -48,7 +48,8 @@ export function createAuth(options: AuthOptions) {
     onAPIError: { errorURL: `${options.baseUrl}/login` },
     plugins: [
       organization({
-        // Deletes are soft: `Workspaces.delete` sets `deletedAt`, and better-auth's own delete would remove the rows.
+        // Golem has one workspace, which only the server makes; deletes are soft, and better-auth's would remove rows.
+        allowUserToCreateOrganization: false,
         disableOrganizationDeletion: true,
         schema: {
           organization: {

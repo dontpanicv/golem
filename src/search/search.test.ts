@@ -21,6 +21,9 @@ import {
   WorkspaceIndex,
 } from "./workspace-index.ts";
 
+/** Every source is visible: these tests check ranking, not who sees what. */
+const all = () => true;
+
 /** Stands in for EmbeddingGemma: a hashed bag of words, so shared words mean similar vectors. */
 function bagOfWords(input: string): Float32Array {
   const text = input
@@ -149,11 +152,11 @@ test("an index finds by meaning and by words, and re-embeds when the model chang
   );
   expect(
     index
-      .search("dentist tuesday", bagOfWords("dentist tuesday"), 5)
+      .search("dentist tuesday", bagOfWords("dentist tuesday"), 5, all)
       .map((result) => result.title)
   ).toEqual(["Dentist"]);
   expect(
-    index.search("insurance", null, 5).map((result) => result.title)
+    index.search("insurance", null, 5, all).map((result) => result.title)
   ).toEqual(["Car"]);
   index.close();
   const reopened = new WorkspaceIndex(path, "model-b");
@@ -303,16 +306,16 @@ test("a changed source keeps the vectors of unchanged segments and replaces the 
       .toSorted((first, second) => first.localeCompare(second))
   ).toEqual([prose("attic"), prose("bathroom")]);
   embedWaiting(index);
-  const meaning = index.search("garden", bagOfWords(prose("garden")), 5);
+  const meaning = index.search("garden", bagOfWords(prose("garden")), 5, all);
   expect(meaning.map((result) => result.snippet)).toEqual([prose("garden")]);
   expect(meaning[0]?.title).toBe("Cleaning");
   expect(index.waiting(10).some((segment) => segment.id === garden)).toBe(
     false
   );
   // The new title reaches unchanged segments too; the old title and the removed segment are gone.
-  expect(index.search("chores", null, 5)).toEqual([]);
-  expect(index.search("garage", null, 5)).toEqual([]);
-  expect(index.search("cleaning", null, 5).length).toBe(1);
+  expect(index.search("chores", null, 5, all)).toEqual([]);
+  expect(index.search("garage", null, 5, all)).toEqual([]);
+  expect(index.search("cleaning", null, 5, all).length).toBe(1);
   index.close();
 });
 
@@ -328,7 +331,7 @@ test("a picture without a vector is read again until the model gives one, and ag
   expect(await sync(index, "files/beach.jpg", "1", [picture], "beach")).toBe(
     true
   );
-  expect(index.search("picture", bagOfWords("picture"), 5)).toEqual([]);
+  expect(index.search("picture", bagOfWords("picture"), 5, all)).toEqual([]);
   expect(await sync(index, "files/beach.jpg", "1", [picture], "beach")).toBe(
     true
   );
@@ -343,17 +346,17 @@ test("a picture without a vector is read again until the model gives one, and ag
     false
   );
 
-  const found = index.search("photo", bagOfWords("picture"), 5);
+  const found = index.search("photo", bagOfWords("picture"), 5, all);
   expect(found.map((result) => [result.title, result.modality])).toEqual([
     ["beach", "image"],
   ]);
   // A picture's label is not a keyword; its title is.
-  expect(index.search("picture", null, 5)).toEqual([]);
-  expect(index.search("beach", null, 5).length).toBe(1);
+  expect(index.search("picture", null, 5, all)).toEqual([]);
+  expect(index.search("beach", null, 5, all).length).toBe(1);
   index.close();
 
   index = new WorkspaceIndex(path, "model-b");
-  expect(index.search("photo", bagOfWords("picture"), 5).length).toBe(1);
+  expect(index.search("photo", bagOfWords("picture"), 5, all).length).toBe(1);
   expect(await sync(index, "files/beach.jpg", "1", [picture], "beach")).toBe(
     true
   );
@@ -372,9 +375,9 @@ test("prune removes sources that are gone, with their keywords", async () => {
   expect(index.counts().sources).toBe(2);
   index.prune(new Set(["notes/keep.md"]));
   expect(index.counts()).toEqual({ sources: 1, segments: 1, waiting: 0 });
-  expect(index.search("violin", null, 5).map((result) => result.uri)).toEqual([
-    "notes/keep.md",
-  ]);
+  expect(
+    index.search("violin", null, 5, all).map((result) => result.uri)
+  ).toEqual(["notes/keep.md"]);
   index.close();
 });
 
@@ -382,9 +385,11 @@ test("search handles stop words, a text without vectors, and long excerpts", asy
   const index = new WorkspaceIndex(":memory:", "model");
   const long = `${"Morning routine and breakfast. ".repeat(10)}The passport is in the blue folder. ${"Evening routine and dinner. ".repeat(10)}`;
   await sync(index, "notes/long.md", "1", [{ key: "0", text: long }]);
-  expect(index.search("the and of", null, 5)).toEqual([]);
-  expect(index.search("passport", bagOfWords("passport"), 5).length).toBe(1);
-  const [result] = index.search("passport", null, 5);
+  expect(index.search("the and of", null, 5, all)).toEqual([]);
+  expect(index.search("passport", bagOfWords("passport"), 5, all).length).toBe(
+    1
+  );
+  const [result] = index.search("passport", null, 5, all);
   expect(result?.snippet.startsWith("…")).toBe(true);
   expect(result?.snippet.endsWith("…")).toBe(true);
   expect(result?.snippet).toContain("The passport is in the blue folder.");
@@ -398,10 +403,12 @@ test("a query of 500 words uses only its first 32 terms", async () => {
     { key: "0", text: "The passport is in the blue folder." },
   ]);
   const words = Array.from({ length: 500 }, (_, number) => `word${number}`);
-  expect(index.search(["passport", ...words].join(" "), null, 5)).toHaveLength(
-    1
+  expect(
+    index.search(["passport", ...words].join(" "), null, 5, all)
+  ).toHaveLength(1);
+  expect(index.search([...words, "passport"].join(" "), null, 5, all)).toEqual(
+    []
   );
-  expect(index.search([...words, "passport"].join(" "), null, 5)).toEqual([]);
   index.close();
 });
 
@@ -422,7 +429,12 @@ test("with many vectors, meaning is measured against the index's own spread", as
     );
   }
   embedWaiting(index);
-  const results = index.search("which note", bagOfWords(prose("topicqb")), 5);
+  const results = index.search(
+    "which note",
+    bagOfWords(prose("topicqb")),
+    5,
+    all
+  );
   expect(results[0]?.title).toBe("topicqb");
   expect(results[0]?.modality).toBe("text");
   index.close();
@@ -466,7 +478,7 @@ test("a picture that only stands out among widely spread pictures does not show"
   await media("related sound", "audio", 0.7);
   await media("unrelated picture", "image", 0.75);
   expect(
-    index.search("query", scored(1), 10).map((result) => result.title)
+    index.search("query", scored(1), 10, all).map((result) => result.title)
   ).toEqual(["related sound"]);
   index.close();
 });

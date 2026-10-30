@@ -6,16 +6,13 @@ export const workspaceApiRoutes: readonly Route[] = [
   [
     "GET",
     "/api/v1/me",
-    api(async ({ app, user }) =>
-      json({ user, workspaces: app.workspaces.list(user) })
-    ),
-  ],
-  [
-    "POST",
-    "/api/v1/workspaces",
-    api(async ({ app, user, body }) =>
-      json(await app.workspaces.create(user, body.name as string))
-    ),
+    api(async ({ app, user }) => {
+      // Golem has one workspace; the first person to sign in starts it.
+      if (app.workspaces.ids().length === 0) {
+        await app.workspaces.create(user, "Golem");
+      }
+      return json({ user, workspaces: app.workspaces.list(user) });
+    }),
   ],
   [
     "GET",
@@ -35,14 +32,6 @@ export const workspaceApiRoutes: readonly Route[] = [
     ),
   ],
   [
-    "DELETE",
-    "/api/v1/workspaces/:workspace",
-    api(async ({ app, user, params }) => {
-      app.workspaces.delete(params.workspace!, user);
-      return new Response(null, { status: 204 });
-    }),
-  ],
-  [
     "POST",
     "/api/v1/workspaces/:workspace/channels",
     api(async ({ app, user, params, body }) =>
@@ -50,7 +39,8 @@ export const workspaceApiRoutes: readonly Route[] = [
         app.workspaces.createChannel(
           params.workspace!,
           user,
-          body.name as string
+          body.name as string,
+          body.private === true
         )
       )
     ),

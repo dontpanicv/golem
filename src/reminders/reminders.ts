@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { User } from "../platform/auth.ts";
 import { notFound, required } from "../platform/errors.ts";
 import type { Threads } from "../threads/threads.ts";
-import type { Workspaces } from "../workspaces/workspaces.ts";
+import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { reminderTools } from "./tools.ts";
 
 export interface Reminder {
@@ -33,7 +33,12 @@ export interface ReminderInput {
 
 type ReminderWorkspaces = Pick<
   Workspaces,
-  "agentMember" | "requireMember" | "members" | "threadsIn"
+  | "agentMember"
+  | "allThreadsIn"
+  | "requireMember"
+  | "members"
+  | "threadOf"
+  | "threadsIn"
 >;
 type ReminderThreads = Pick<Threads, "instruct" | "requester">;
 
@@ -73,7 +78,13 @@ export class Reminders {
     input: ReminderInput & { readonly id: string }
   ): Reminder {
     this.workspaces.requireMember(workspaceId, actor);
-    this.requireThread(workspaceId, threadId);
+    const thread = this.workspaces
+      .allThreadsIn(workspaceId)
+      .find((candidate) => candidate.id === threadId);
+    // The reminder is in its thread, so its recipient must see the thread.
+    if (!thread || (thread.realm !== null && thread.realm !== recipientId)) {
+      throw notFound();
+    }
     this.requireRecipient(workspaceId, actor, recipientId);
     const now = Date.now();
     const dueAt = dueTime(input.at, input.timeZone, now);
@@ -94,13 +105,14 @@ export class Reminders {
         now,
         now
       );
-    return this.get(workspaceId, actor, input.id);
+    return this.get(workspaceId, actor, thread.realm, input.id);
   }
 
-  list(workspaceId: string, actor: User): Reminder[] {
+  /** The reminders in the threads that `realm` sees. */
+  list(workspaceId: string, actor: User, realm: Realm): Reminder[] {
     this.workspaces.requireMember(workspaceId, actor);
     const threads = new Set(
-      this.workspaces.threadsIn(workspaceId).map((thread) => thread.id)
+      this.workspaces.threadsIn(workspaceId, realm).map((thread) => thread.id)
     );
     return (
       this.database
@@ -111,7 +123,7 @@ export class Reminders {
     ).filter((reminder) => threads.has(reminder.threadId));
   }
 
-  get(workspaceId: string, actor: User, id: string): Reminder {
+  get(workspaceId: string, actor: User, realm: Realm, id: string): Reminder {
     this.workspaces.requireMember(workspaceId, actor);
     const reminder = this.database
       .query(
@@ -123,7 +135,7 @@ export class Reminders {
     }
     if (
       !this.workspaces
-        .threadsIn(workspaceId)
+        .threadsIn(workspaceId, realm)
         .some((thread) => thread.id === reminder.threadId)
     ) {
       throw notFound();
@@ -134,10 +146,11 @@ export class Reminders {
   update(
     workspaceId: string,
     actor: User,
+    realm: Realm,
     id: string,
     input: ReminderInput
   ): Reminder {
-    const reminder = this.get(workspaceId, actor, id);
+    const reminder = this.get(workspaceId, actor, realm, id);
     if (this.running.has(id)) {
       throw new Error("This reminder is running now.");
     }
@@ -160,11 +173,11 @@ export class Reminders {
         id,
         workspaceId
       );
-    return this.get(workspaceId, actor, id);
+    return this.get(workspaceId, actor, realm, id);
   }
 
-  cancel(workspaceId: string, actor: User, id: string): Reminder {
-    const reminder = this.get(workspaceId, actor, id);
+  cancel(workspaceId: string, actor: User, realm: Realm, id: string): Reminder {
+    const reminder = this.get(workspaceId, actor, realm, id);
     if (this.running.has(id)) {
       throw new Error("This reminder is running now.");
     }
@@ -176,7 +189,7 @@ export class Reminders {
         "UPDATE reminder SET cancelled_at = ?, updated_at = ? WHERE id = ? AND workspace_id = ? AND cancelled_at IS NULL"
       )
       .run(Date.now(), Date.now(), id, workspaceId);
-    return this.get(workspaceId, actor, id);
+    return this.get(workspaceId, actor, realm, id);
   }
 
   /** Runs due reminders, also after the machine was off at their due time. */
@@ -201,7 +214,7 @@ export class Reminders {
           return false;
         }
         return this.workspaces
-          .threadsIn(reminder.workspaceId)
+          .allThreadsIn(reminder.workspaceId)
           .some((thread) => thread.id === reminder.threadId);
       })
       .map((reminder) => this.run(reminder, now));
@@ -211,7 +224,7 @@ export class Reminders {
     this.running.add(reminder.id);
     try {
       const thread = this.workspaces
-        .threadsIn(reminder.workspaceId)
+        .allThreadsIn(reminder.workspaceId)
         .find((candidate) => candidate.id === reminder.threadId)!;
       const member = this.workspaces
         .members(reminder.workspaceId, {
@@ -254,16 +267,6 @@ export class Reminders {
         );
     } finally {
       this.running.delete(reminder.id);
-    }
-  }
-
-  private requireThread(workspaceId: string, threadId: string): void {
-    if (
-      !this.workspaces
-        .threadsIn(workspaceId)
-        .some((thread) => thread.id === threadId)
-    ) {
-      throw notFound();
     }
   }
 

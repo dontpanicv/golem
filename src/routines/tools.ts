@@ -24,8 +24,13 @@ export function routineTools(
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const scriptHelp = `A script is JavaScript that runs in a sandbox at the start of every run, before an agent sees anything. It is the body of an async function: it calls tools as \`await tools.<name>(args)\`, keeps JSON values between runs with \`store(key, value)\` and \`load(key)\` (only a run that succeeds saves them), and returns what is new. It has no fetch, timers, or modules. When it returns nothing (undefined, null, or an empty array) and prints nothing, the run ends quietly, at no cost. Otherwise the agent of the routine's thread gets what it returned and printed, with the instructions. Use a script for work that is the same every time, such as collecting new items since the last run; leave it out when the work needs judgement from the start. The tools scripts can call:\n${declarations}`;
   const scheduleHelp = `A cron expression in ${zone} time: minute hour day-of-month month day-of-week, such as "0 7 * * 1-5" for weekdays at 7:00. A routine runs at most every 15 minutes.`;
+  const realmOf = (conversationId: number) =>
+    workspaces.threadOf(workspaceId, conversationId)?.realm ?? null;
   const channelOf = (name: string | undefined, conversationId: number) => {
-    const channels = workspaces.channelsIn(workspaceId);
+    const channels = workspaces.channelsIn(
+      workspaceId,
+      realmOf(conversationId)
+    );
     if (name) {
       const channel = channels.find(
         (candidate) => candidate.name === name.replace(/^#/, "").toLowerCase()
@@ -37,9 +42,7 @@ export function routineTools(
       }
       return channel;
     }
-    const thread = workspaces
-      .threadsIn(workspaceId)
-      .find((candidate) => candidate.conversationId === conversationId);
+    const thread = workspaces.threadOf(workspaceId, conversationId);
     const channel = channels.find(
       (candidate) => candidate.id === thread?.channelId
     );
@@ -56,11 +59,12 @@ export function routineTools(
         "List the routines of this workspace: what runs on a schedule in each channel, and how its last run went.",
       parameters: Type.Object({}),
       replay: "safe",
-      execute: async () => {
-        const channels = workspaces.channelsIn(workspaceId);
+      execute: async (_args, api) => {
+        const realm = realmOf(api.conversationId);
+        const channels = workspaces.channelsIn(workspaceId, realm);
         const text =
           routines
-            .inWorkspace(workspaceId)
+            .inWorkspace(workspaceId, realm)
             .map((routine) =>
               describe(
                 routine,
@@ -145,6 +149,7 @@ export function routineTools(
         );
         const routine = routines.update(
           workspaceId,
+          realmOf(api.conversationId),
           routineId,
           changes,
           requester?.id ?? "golem"
@@ -162,8 +167,12 @@ export function routineTools(
       description: "Delete a routine. Its thread stays.",
       parameters: Type.Object({ routine: routineParameter }),
       replay: "safe",
-      execute: async (args) => {
-        const routine = routines.remove(workspaceId, args.routine);
+      execute: async (args, api) => {
+        const routine = routines.remove(
+          workspaceId,
+          realmOf(api.conversationId),
+          args.routine
+        );
         return {
           output: [{ type: "text", text: `Deleted ${routine.name}.` }],
         };
@@ -190,6 +199,7 @@ export function routineTools(
         );
         const result = await routines.test(
           workspaceId,
+          realmOf(api.conversationId),
           args.script,
           args.routine,
           requester?.id ?? null

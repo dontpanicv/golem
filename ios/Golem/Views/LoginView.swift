@@ -39,30 +39,17 @@ struct LoginView: View {
     }
 }
 
-/// Shown when the user is not a member of any workspace.
-struct CreateWorkspaceView: View {
+/// Shown to a person who signed in before a family member added them.
+struct NotMemberView: View {
     @Environment(Session.self) private var session
-    @State private var name = ""
-    @State private var busy = false
 
     var body: some View {
-        CenteredForm(title: "Create a workspace") {
-            GolemTextField("Name", text: $name).onSubmit(create)
-            Button("Create workspace", action: create)
+        CenteredForm(title: "Ask a family member to add you") {
+            Button("Try again") { Task { await session.load() } }
                 .buttonStyle(.golem(.primary, .large))
-                .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
                 .padding(.top, Tokens.Space.xs)
         } footer: {
             Button("Sign out") { Task { await session.signOut() } }.buttonStyle(.link)
-        }
-    }
-
-    private func create() {
-        guard !busy, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        busy = true
-        Task {
-            await session.run { try await session.createWorkspace(name: name) }
-            busy = false
         }
     }
 }

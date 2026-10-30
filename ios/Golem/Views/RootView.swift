@@ -12,7 +12,7 @@ struct RootView: View {
             } else if session.user == nil {
                 LoadingView()
             } else if session.workspaces.isEmpty {
-                CreateWorkspaceView()
+                NotMemberView()
             } else {
                 MainView()
             }
@@ -191,7 +191,6 @@ private struct Sidebar: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var newChannel = false
-    @State private var newWorkspace = false
     @State private var showSettled = false
 
     private var settledThreads: [ThreadSummary] {
@@ -202,7 +201,7 @@ private struct Sidebar: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 1) {
-                workspaceMenu
+                workspaceHeader
                 if let orchestrator = session.orchestrator {
                     row("Golem", systemImage: "tray", destination: .thread(orchestrator.id),
                         working: session.working.contains(orchestrator.id))
@@ -211,7 +210,8 @@ private struct Sidebar: View {
                 row("Search", systemImage: "magnifyingglass", destination: .search)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels) { channel in
-                    row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon)
+                    row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon,
+                        locked: channel.ownerId != nil)
                     VStack(spacing: 1) {
                         ForEach(channel.threads.filter { $0.settledAt == nil }) { thread in
                             threadRow(thread)
@@ -255,57 +255,38 @@ private struct Sidebar: View {
         .background(Tokens.Colors.canvas)
         .navigationTitle("Golem")
         .sheet(isPresented: $newChannel) {
-            NameDialog(title: "New channel") { name in
-                if let channel = try await session.createChannel(name: name) { open(.channel(channel.id)) }
+            NewChannelDialog { name, isPrivate in
+                if let channel = try await session.createChannel(name: name, isPrivate: isPrivate) {
+                    open(.channel(channel.id))
+                }
             }
-            .textInputAutocapitalization(.never)
-        }
-        .sheet(isPresented: $newWorkspace) {
-            NameDialog(title: "New workspace") { name in try await session.createWorkspace(name: name) }
         }
     }
 
-    private var workspaceMenu: some View {
-        GolemMenu {
-            MenuSectionLabel("Workspaces")
-            ForEach(session.workspaces) { workspace in
-                MenuItem(workspace.name, checked: workspace.id == session.workspace?.id) {
-                    Task { await session.run { try await session.open(workspace) } }
-                }
-            }
-            MenuSeparator()
-            MenuItem("New workspace", systemImage: "plus") { newWorkspace = true }
-        } label: {
-            HStack(spacing: Tokens.Space.md) {
-                Avatar(name: session.workspace?.name ?? "G", agent: true)
-                Text(session.workspace?.name ?? "Workspaces")
-                    .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.semibold))
-                    .foregroundStyle(Tokens.Colors.text)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: Tokens.Size.icon * 0.7, weight: .medium))
-                    .foregroundStyle(Tokens.Colors.textTertiary)
-            }
-            .padding(.horizontal, Tokens.Space.sm)
-            .frame(minHeight: Tokens.Size.listRow)
-            .contentShape(.rect)
+    private var workspaceHeader: some View {
+        HStack(spacing: Tokens.Space.md) {
+            Avatar(name: session.workspace?.name ?? "G", agent: true)
+            Text(session.workspace?.name ?? "Golem")
+                .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.semibold))
+                .foregroundStyle(Tokens.Colors.text)
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Workspace")
-        .accessibilityValue(session.workspace?.name ?? "")
+        .padding(.horizontal, Tokens.Space.sm)
+        .frame(minHeight: Tokens.Size.listRow)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func row(
         _ title: String, systemImage: String, destination: Destination, working: Bool = false, count: Int? = nil,
-        emoji: String? = nil
+        emoji: String? = nil, locked: Bool = false
     ) -> some View {
         Button {
             open(destination)
         } label: {
             NavRow(
                 title: title, systemImage: systemImage, selected: selection == destination,
-                count: count == 0 ? nil : count, working: working, emoji: emoji
+                count: count == 0 ? nil : count, working: working, emoji: emoji, locked: locked
             )
         }
         .buttonStyle(.plain)
@@ -334,19 +315,23 @@ private struct Sidebar: View {
     }
 }
 
-/// A dialog that asks for a name: new channel and new workspace. It stays open when creating fails.
-struct NameDialog: View {
-    let title: String
-    let create: (String) async throws -> Void
+/// A dialog that asks for a new channel's name, and whether only the person sees it. It stays open when creating
+/// fails.
+struct NewChannelDialog: View {
+    let create: (String, Bool) async throws -> Void
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    @State private var isPrivate = false
     @State private var busy = false
 
     var body: some View {
-        Dialog(title: title) {
+        Dialog(title: "New channel") {
             GolemTextField("Name", text: $name, autofocus: true)
                 .onSubmit(submit)
+                .textInputAutocapitalization(.never)
+            Toggle(isOn: $isPrivate) { Text("Private") }
+                .toggleStyle(.golemSwitch)
         } actions: {
             Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
             Button("Create", action: submit)
@@ -357,11 +342,12 @@ struct NameDialog: View {
 
     private func submit() {
         let name = name
+        let isPrivate = isPrivate
         guard !busy, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         busy = true
         Task {
             await session.run {
-                try await create(name)
+                try await create(name, isPrivate)
                 dismiss()
             }
             busy = false
@@ -369,7 +355,7 @@ struct NameDialog: View {
     }
 }
 
-/// Asks before a channel or a workspace goes with what it holds. It stays open when deleting fails.
+/// Asks before a channel goes with what it holds. It stays open when deleting fails.
 struct DeleteDialog: View {
     let title: String
     let message: String

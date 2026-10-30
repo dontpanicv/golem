@@ -1,4 +1,7 @@
+import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import {
   fauxAssistantMessage,
@@ -17,12 +20,10 @@ beforeAll(async () => {
   golem = await startTestApp();
   alice = await golem.signIn("Alice", "alice@example.com");
   bob = await golem.signIn("Bob", "bob@example.com");
-  const workspace = await body(
-    await golem.call("/api/v1/workspaces", {
-      token: alice,
-      body: { name: "Family" },
-    })
-  );
+  // The first person to sign in starts Golem's one workspace.
+  const [workspace] = (
+    await body(await golem.call("/api/v1/me", { token: alice }))
+  ).workspaces;
   workspaceId = workspace.id;
   const detail = await body(
     await golem.call(`/api/v1/workspaces/${workspaceId}`, { token: alice })
@@ -34,6 +35,12 @@ afterAll(() => golem.close());
 
 async function body(response: Response): Promise<any> {
   return await response.json();
+}
+
+/** Another workspace, which only the server makes, for a test of what stays apart. */
+async function workspaceOf(token: string, name: string) {
+  const { user } = await body(await golem.call("/api/v1/me", { token }));
+  return golem.app.workspaces.create(user, name);
 }
 
 async function failure(response: Response) {
@@ -53,14 +60,17 @@ test("JSON for the apps has no half emoji and no line end that splits an event",
 test("a request body must be a JSON object", async () => {
   const post = (text: string) =>
     golem.handler(
-      new Request("http://golem.test/api/v1/workspaces", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${alice}`,
-          "content-type": "application/json",
-        },
-        body: text,
-      })
+      new Request(
+        `http://golem.test/api/v1/workspaces/${workspaceId}/channels`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${alice}`,
+            "content-type": "application/json",
+          },
+          body: text,
+        }
+      )
     );
   for (const text of ["{", "[1]", '"Family"', "null"]) {
     expect(await failure(await post(text))).toEqual({
@@ -340,7 +350,7 @@ test("artifacts of a channel open with their runtime, run calls, and change and 
   );
   const artifact = golem.app.artifacts.create(
     golem.app.workspaces
-      .threadsIn(workspaceId)
+      .allThreadsIn(workspaceId)
       .find((t) => t.id === thread.id)!,
     channelId,
     { title: "Quiz", html: "<p>Q</p>", requestKey: "api-test" }
@@ -514,12 +524,7 @@ test("thread events stream every change until the client leaves", async () => {
 
 test("a person who leaves a workspace stops getting its thread's events", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Noted.")]);
-  const leaving = await body(
-    await golem.call("/api/v1/workspaces", {
-      token: alice,
-      body: { name: "Leaving" },
-    })
-  );
+  const leaving = await workspaceOf(alice, "Leaving");
   await golem.call(`/api/v1/workspaces/${leaving.id}/members`, {
     token: alice,
     body: { email: "bob@example.com" },
@@ -570,12 +575,7 @@ test("the recall tool says when the workspace has nothing", async () => {
       );
     },
   ]);
-  const empty = await body(
-    await golem.call("/api/v1/workspaces", {
-      token: alice,
-      body: { name: "Empty" },
-    })
-  );
+  const empty = await workspaceOf(alice, "Empty");
   const emptyDetail = await body(
     await golem.call(`/api/v1/workspaces/${empty.id}`, { token: alice })
   );
@@ -656,13 +656,8 @@ function threadEvents(response: Response) {
   };
 }
 
-test("only an owner renames and deletes a workspace, and a deleted workspace stays in the database, hidden", async () => {
-  const trip = await body(
-    await golem.call("/api/v1/workspaces", {
-      token: alice,
-      body: { name: "Trip" },
-    })
-  );
+test("only an owner renames the workspace, and nobody makes or deletes one", async () => {
+  const trip = await workspaceOf(alice, "Trip");
   const path = `/api/v1/workspaces/${trip.id}`;
   expect(
     (await golem.call(path, { token: bob, method: "PUT", body: { name: "X" } }))
@@ -676,9 +671,6 @@ test("only an owner renames and deletes a workspace, and a deleted workspace sta
     await failure(
       await golem.call(path, { token: bob, method: "PUT", body: { name: "X" } })
     )
-  ).toEqual({ status: 403, error: "Only an owner can do this" });
-  expect(
-    await failure(await golem.call(path, { token: bob, method: "DELETE" }))
   ).toEqual({ status: 403, error: "Only an owner can do this" });
   expect(
     await failure(
@@ -702,27 +694,120 @@ test("only an owner renames and deletes a workspace, and a deleted workspace sta
     (await body(await golem.call("/api/v1/me", { token: bob }))).workspaces
   ).toContainEqual({ id: trip.id, name: "Holiday", role: "member" });
 
-  // better-auth's own delete would remove the rows.
+  // better-auth's own routes neither delete a workspace nor make another.
   await golem.call("/api/auth/organization/delete", {
     token: alice,
     body: { organizationId: trip.id },
   });
   expect((await golem.call(path, { token: alice })).status).toBe(200);
-
+  const before = golem.app.workspaces.ids().length;
+  await golem.call("/api/auth/organization/create", {
+    token: alice,
+    body: { name: "Another", slug: "another" },
+  });
+  await golem.call("/api/v1/workspaces", {
+    token: alice,
+    body: { name: "Another" },
+  });
   expect(
     (await golem.call(path, { token: alice, method: "DELETE" })).status
-  ).toBe(204);
-  expect((await golem.call(path, { token: alice })).status).toBe(404);
+  ).toBe(404);
+  expect(golem.app.workspaces.ids()).toHaveLength(before);
+});
+
+test("a private channel, its threads, search results, and memory lines are its person's alone", async () => {
+  golem.faux.setResponses([
+    fauxAssistantMessage("Noted."),
+    fauxAssistantMessage("Noted."),
+  ]);
+  const base = `/api/v1/workspaces/${workspaceId}`;
+  // Bob is a member already when the earlier tests ran.
+  await golem.call(`${base}/members`, {
+    token: alice,
+    body: { email: "bob@example.com" },
+  });
+  const orchestrators = await Promise.all(
+    [alice, bob].map(async (token) =>
+      body(await golem.call(`${base}/orchestrator`, { token }))
+    )
+  );
+  const channel = await body(
+    await golem.call(`${base}/channels`, {
+      token: alice,
+      body: { name: "surprise", private: true },
+    })
+  );
+  expect(channel.ownerId).toBeString();
+  const shared = await body(
+    await golem.call(`${base}/channels`, {
+      token: alice,
+      body: { name: "together" },
+    })
+  );
+  expect(shared.ownerId).toBeNull();
+  const listed = async (token: string) =>
+    (await body(await golem.call(base, { token }))).channels.map(
+      (candidate: { name: string }) => candidate.name
+    );
+  expect(await listed(alice)).toContain("surprise");
+  expect(await listed(bob)).not.toContain("surprise");
+  expect(await listed(bob)).toContain("together");
+
+  const thread = await body(
+    await golem.call(`${base}/threads`, {
+      token: alice,
+      body: { channelId: channel.id, text: "A zebrafish tank for Bob" },
+    })
+  );
   expect(
-    (await body(await golem.call("/api/v1/me", { token: alice }))).workspaces
-  ).not.toContainEqual(expect.objectContaining({ id: trip.id }));
-  expect(golem.app.workspaces.ids()).not.toContain(trip.id);
-  expect(golem.app.workspaces.channelsIn(trip.id)).toEqual([]);
+    (await golem.call(`/api/v1/threads/${thread.id}`, { token: bob })).status
+  ).toBe(404);
   expect(
-    golem.app.database
-      .query(
-        "SELECT name, deletedAt IS NOT NULL AS deleted FROM organization WHERE id = ?"
-      )
-      .get(trip.id)
-  ).toEqual({ name: "Holiday", deleted: 1 });
+    (
+      await golem.call(`${base}/threads`, {
+        token: bob,
+        body: { channelId: channel.id, text: "Let me in" },
+      })
+    ).status
+  ).toBe(404);
+  expect(
+    (
+      await golem.call(`${base}/channels/${channel.id}`, {
+        token: bob,
+        method: "DELETE",
+      })
+    ).status
+  ).toBe(404);
+
+  await golem.app.indexer.scan(workspaceId);
+  const found = async (token: string) =>
+    (
+      await body(await golem.call(`${base}/search?q=zebrafish`, { token }))
+    ).results.map((result: { threadId: string }) => result.threadId);
+  expect(await found(alice)).toContain(thread.id);
+  expect(await found(bob)).toEqual([]);
+
+  const linesOf = (orchestratorId: string) => {
+    const path = join(
+      golem.dataDirectory,
+      "workspaces",
+      workspaceId,
+      "memories",
+      `${orchestratorId}.sqlite`
+    );
+    if (!existsSync(path)) {
+      return [];
+    }
+    const memory = new Database(path);
+    const rows = memory
+      .query("SELECT thread_id AS threadId FROM line WHERE level = 0")
+      .all() as { threadId: string }[];
+    memory.close();
+    return rows.map((row) => row.threadId);
+  };
+  await until(
+    async () => linesOf(orchestrators[0].id),
+    (threads) => threads.includes(thread.id)
+  );
+  expect(linesOf(orchestrators[1].id)).not.toContain(thread.id);
 });

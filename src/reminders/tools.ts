@@ -8,7 +8,7 @@ import type { Reminder, Reminders } from "./reminders.ts";
 /** Agent tools for the one-time reminders of a workspace. */
 export function reminderTools(
   reminders: Reminders,
-  workspaces: Pick<Workspaces, "agentMember" | "members" | "threadsIn">,
+  workspaces: Pick<Workspaces, "agentMember" | "members" | "threadOf">,
   threads: Pick<Threads, "requester">,
   workspaceId: string
 ) {
@@ -25,7 +25,11 @@ export function reminderTools(
     conversationId: Parameters<Threads["requester"]>[1]
   ) => {
     const asker = await threads.requester(workspaceId, conversationId);
-    return { asker, actor: asker ?? workspaces.agentMember(workspaceId) };
+    return {
+      asker,
+      actor: asker ?? workspaces.agentMember(workspaceId),
+      realm: workspaces.threadOf(workspaceId, conversationId)?.realm ?? null,
+    };
   };
 
   return [
@@ -44,9 +48,7 @@ export function reminderTools(
       replay: "safe",
       execute: async (args, api) => {
         const { actor, asker } = await actorFor(api.conversationId);
-        const source = workspaces
-          .threadsIn(workspaceId)
-          .find((candidate) => candidate.conversationId === api.conversationId);
+        const source = workspaces.threadOf(workspaceId, api.conversationId);
         if (!source) {
           throw new Error("This tool works only in a thread.");
         }
@@ -83,8 +85,8 @@ export function reminderTools(
       parameters: Type.Object({}),
       replay: "safe",
       execute: async (_args, api) => {
-        const { actor } = await actorFor(api.conversationId);
-        const result = reminders.list(workspaceId, actor);
+        const { actor, realm } = await actorFor(api.conversationId);
+        const result = reminders.list(workspaceId, actor, realm);
         return {
           output: [
             {
@@ -101,13 +103,13 @@ export function reminderTools(
       parameters: Type.Object({ reminder, text, at, timeZone }),
       replay: "safe",
       execute: async ({ reminder: id, ...input }, api) => {
-        const { actor, asker } = await actorFor(api.conversationId);
+        const { actor, asker, realm } = await actorFor(api.conversationId);
         return {
           output: [
             {
               type: "text",
               text: describe(
-                reminders.update(workspaceId, actor, id, {
+                reminders.update(workspaceId, actor, realm, id, {
                   ...input,
                   createdBy: asker?.id ?? null,
                 })
@@ -123,12 +125,12 @@ export function reminderTools(
       parameters: Type.Object({ reminder }),
       replay: "safe",
       execute: async ({ reminder: id }, api) => {
-        const { actor } = await actorFor(api.conversationId);
+        const { actor, realm } = await actorFor(api.conversationId);
         return {
           output: [
             {
               type: "text",
-              text: describe(reminders.cancel(workspaceId, actor, id)),
+              text: describe(reminders.cancel(workspaceId, actor, realm, id)),
             },
           ],
         };

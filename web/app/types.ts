@@ -25,6 +25,8 @@ export interface ThreadSummary {
 export interface Channel {
   readonly id: string;
   readonly name: string;
+  /** The person a private channel belongs to; null for one every member sees. */
+  readonly ownerId: string | null;
   readonly summary: string | null;
   readonly icon: string | null;
   /** Newest first. */

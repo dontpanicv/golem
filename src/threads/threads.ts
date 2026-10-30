@@ -58,6 +58,7 @@ import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type {
   Channel,
+  Realm,
   ThreadRef,
   ThreadSummary,
   Workspaces,
@@ -289,6 +290,7 @@ export type ThreadRegistry = Pick<
   | "agentMember"
   | "channel"
   | "channelsIn"
+  | "allChannelsIn"
   | "members"
   | "removeChannel"
   | "orchestratorOf"
@@ -300,6 +302,8 @@ export type ThreadRegistry = Pick<
   | "factsOf"
   | "thread"
   | "threadsIn"
+  | "allThreadsIn"
+  | "threadOf"
   | "touchThread"
 >;
 
@@ -399,7 +403,7 @@ export class Threads {
     text: string | undefined,
     files: readonly File[] = []
   ): Promise<ThreadSummary> {
-    this.registry.requireMember(workspaceId, user);
+    this.registry.channel(workspaceId, channelId, user);
     const message = messageText(text, files);
     const conversation = await this.newConversation(workspaceId);
     const thread = this.registry.registerThread(workspaceId, {
@@ -518,7 +522,7 @@ export class Threads {
   private chooseIcon(workspaceId: string, channelId: string): void {
     const fast = this.llm.llmProvider.fastModel;
     const channel = this.registry
-      .channelsIn(workspaceId)
+      .allChannelsIn(workspaceId)
       .find((candidate) => candidate.id === channelId);
     if (!(fast && channel) || this.choosingIcon.has(channelId)) {
       return;
@@ -563,19 +567,14 @@ export class Threads {
     title: string
   ): Promise<ThreadSummary & ThreadRef> {
     const conversation = await this.newConversation(workspaceId);
-    const thread = this.registry.registerThread(workspaceId, {
+    this.registry.registerThread(workspaceId, {
       id: randomUUID(),
       channelId,
       title: titleOf(title),
       conversationId: conversation.id,
       createdBy: "golem",
     });
-    return {
-      ...thread,
-      workspaceId,
-      conversationId: conversation.id,
-      ownerId: null,
-    };
+    return this.registry.threadOf(workspaceId, conversation.id)!;
   }
 
   /**
@@ -628,7 +627,7 @@ export class Threads {
     }
     const userIds =
       notify === "everyone"
-        ? this.members(thread.workspaceId).map((member) => member.userId)
+        ? this.membersSeeing(thread).map((member) => member.userId)
         : notify;
     for (const userId of userIds) {
       this.notifyAbout(thread, userId, answer.text);
@@ -794,10 +793,10 @@ export class Threads {
     this.hooks.changed(workspaceId);
   }
 
-  /** A file of the person's workspace, in any live channel or in the workspace's own files. */
+  /** A file of the person's workspace, in any channel they see or in the workspace's own files. */
   file(workspaceId: string, user: User, fileId: string) {
     this.registry.requireMember(workspaceId, user);
-    return this.fileIn(workspaceId, fileId);
+    return this.fileIn(workspaceId, user.id, fileId);
   }
 
   async messages(thread: ThreadRef): Promise<ThreadMessages> {
@@ -912,7 +911,7 @@ export class Threads {
       BACKGROUND_CONTEXT
     );
     await conversation.abort(BACKGROUND_CONTEXT);
-    for (const other of this.registry.threadsIn(thread.workspaceId)) {
+    for (const other of this.registry.allThreadsIn(thread.workspaceId)) {
       if (
         !stopped.has(other.id) &&
         working.includes(other.id) &&
@@ -964,7 +963,7 @@ export class Threads {
     threadId: string
   ): Promise<void> {
     const thread = this.registry
-      .threadsIn(workspaceId)
+      .allThreadsIn(workspaceId)
       .find((candidate) => candidate.id === threadId);
     if (!thread) {
       return;
@@ -1011,6 +1010,13 @@ export class Threads {
     );
   }
 
+  /** The members who see a thread: every member, or the one person of its realm. */
+  private membersSeeing(thread: ThreadRef) {
+    return this.members(thread.workspaceId).filter(
+      (member) => thread.realm === null || member.userId === thread.realm
+    );
+  }
+
   /**
    * Calls `listener` with the ids of the threads of a workspace whose agent works, then after every change, until the
    * returned stop is called.
@@ -1025,7 +1031,12 @@ export class Threads {
     const watch = await harness.watchTaskGraph(BACKGROUND_CONTEXT);
     let last: string | undefined;
     const show = async (graph: TaskGraph) => {
-      const threadIds = this.workingIn(workspaceId, graph);
+      const seen = new Set(
+        this.registry.threadsIn(workspaceId, user.id).map((thread) => thread.id)
+      );
+      const threadIds = this.workingIn(workspaceId, graph).filter((id) =>
+        seen.has(id)
+      );
       const key = threadIds.join();
       if (key !== last) {
         last = key;
@@ -1056,7 +1067,7 @@ export class Threads {
         .map((task) => String(task.conversationId))
     );
     return this.registry
-      .threadsIn(workspaceId)
+      .allThreadsIn(workspaceId)
       .filter((thread) => busy.has(String(thread.conversationId)))
       .map((thread) => thread.id);
   }
@@ -1108,9 +1119,12 @@ export class Threads {
     }
   }
 
-  /** The path, name, and place of a file of the workspace; ids are UUIDv7, so one id names one file. */
+  /**
+   * The path, name, and place of a file of the workspace that `realm` sees; ids are UUIDv7, so one id names one file.
+   */
   private async fileIn(
     workspaceId: string,
+    realm: Realm,
     fileId: string
   ): Promise<{
     readonly path: string;
@@ -1120,7 +1134,7 @@ export class Threads {
     const places: FilePlace[] = [
       { workspaceId, channelId: null },
       ...this.registry
-        .channelsIn(workspaceId)
+        .channelsIn(workspaceId, realm)
         .map((channel) => ({ workspaceId, channelId: channel.id })),
     ];
     for (const place of places) {
@@ -1245,7 +1259,7 @@ export class Threads {
     workspaceId: string,
     user: User
   ): Promise<ThreadSummary & ThreadRef> {
-    const [channel] = this.registry.channelsIn(workspaceId);
+    const [channel] = this.registry.channelsIn(workspaceId, null);
     if (!channel) {
       throw notFound();
     }
@@ -1274,6 +1288,7 @@ export class Threads {
       workspaceId,
       conversationId: conversation.id,
       ownerId: user.id,
+      realm: user.id,
     };
     this.catchUp(workspaceId);
     return thread;
@@ -1311,7 +1326,7 @@ export class Threads {
     if (!briefs) {
       return;
     }
-    const threads = this.registry.threadsIn(workspaceId);
+    const threads = this.registry.allThreadsIn(workspaceId);
     const orchestrators = threads.filter((thread) => thread.ownerId !== null);
     for (const orchestrator of orchestrators) {
       this.memoryOf(orchestrator);
@@ -1346,7 +1361,7 @@ export class Threads {
       }
       this.caughtUp.set(thread.id, version);
     }
-    this.remember(orchestrators, said);
+    this.remember(threads, said);
     for (const orchestrator of answered) {
       await this.compactWhenLong(
         orchestrator,
@@ -1356,26 +1371,31 @@ export class Threads {
       );
     }
     this.briefWhenQuiet(workspaceId, briefs);
-    for (const channel of this.registry.channelsIn(workspaceId)) {
+    for (const channel of this.registry.allChannelsIn(workspaceId)) {
       if (!channel.icon) {
         this.chooseIcon(workspaceId, channel.id);
       }
     }
   }
 
-  /** Adds messages to the memory of each orchestrator: its own, and those of the channels' threads. */
+  /**
+   * Adds messages to the memory of each orchestrator: its own, those of the channels every member sees, and those of
+   * its person's private channels.
+   */
   private remember(
-    orchestrators: readonly (ThreadSummary & ThreadRef)[],
+    threads: readonly (ThreadSummary & ThreadRef)[],
     said: readonly Said[]
   ): void {
-    const personal = new Set(orchestrators.map((thread) => thread.id));
-    for (const orchestrator of orchestrators) {
+    const realms = new Map(threads.map((thread) => [thread.id, thread.realm]));
+    for (const orchestrator of threads) {
+      if (orchestrator.ownerId === null) {
+        continue;
+      }
       this.memoryOf(orchestrator).add(
-        said.filter(
-          (message) =>
-            message.threadId === orchestrator.id ||
-            !personal.has(message.threadId)
-        )
+        said.filter((message) => {
+          const realm = realms.get(message.threadId);
+          return realm === null || realm === orchestrator.ownerId;
+        })
       );
     }
   }
@@ -1406,7 +1426,10 @@ export class Threads {
         }
       );
       this.memories.set(orchestrator.id, memory);
-      const threads = this.registry.threadsIn(orchestrator.workspaceId);
+      const threads = this.registry.threadsIn(
+        orchestrator.workspaceId,
+        orchestrator.ownerId
+      );
       memory.keep(new Set(threads.map((thread) => thread.id)));
       // The new memory missed the messages caught up before it: they come again, and each memory adds only new ones.
       for (const thread of threads) {
@@ -1448,7 +1471,7 @@ export class Threads {
   /** Starts the brief of each channel whose threads with new messages are all quiet or settled. */
   private briefWhenQuiet(workspaceId: string, briefs: Briefs): void {
     const now = Date.now();
-    for (const channel of this.registry.channelsIn(workspaceId)) {
+    for (const channel of this.registry.allChannelsIn(workspaceId)) {
       const waiting = this.unbriefed.get(channel.id);
       if (!waiting?.size || this.briefing.has(channel.id)) {
         continue;
@@ -1485,7 +1508,7 @@ export class Threads {
   ): Promise<void> {
     const messages: BriefMessage[] = [];
     const read: string[] = [];
-    for (const thread of this.registry.threadsIn(workspaceId)) {
+    for (const thread of this.registry.allThreadsIn(workspaceId)) {
       if (!waiting.has(thread.id)) {
         continue;
       }
@@ -1543,11 +1566,9 @@ export class Threads {
    */
   private channelSection(workspaceId: string) {
     return section("channel", ({ conversationId }) => {
-      const thread = this.registry
-        .threadsIn(workspaceId)
-        .find((candidate) => candidate.conversationId === conversationId);
+      const thread = this.registry.threadOf(workspaceId, conversationId);
       const channel = this.registry
-        .channelsIn(workspaceId)
+        .allChannelsIn(workspaceId)
         .find((candidate) => candidate.id === thread?.channelId);
       if (!(thread && channel) || thread.ownerId !== null) {
         return;
@@ -1642,13 +1663,8 @@ export class Threads {
     );
     this.briefs.set(workspaceId, briefs);
     const memory = memoryExtension(async (conversationId) => {
-      const orchestrator = this.registry
-        .threadsIn(workspaceId)
-        .find(
-          (thread) =>
-            thread.conversationId === conversationId && thread.ownerId !== null
-        );
-      return orchestrator && this.memoryOf(orchestrator);
+      const orchestrator = this.registry.threadOf(workspaceId, conversationId);
+      return orchestrator?.ownerId ? this.memoryOf(orchestrator) : undefined;
     });
     this.memoryExtensions.set(workspaceId, memory);
     const golem = await this.golemExtension(workspaceId);
@@ -1733,8 +1749,12 @@ export class Threads {
         this.copyToMachineTool(workspaceId, requesterOf),
         ...this.hands.tools(workspaceId, requesterOf),
         ...connectors.map((tool) =>
-          connectorTool(tool, requesterOf, (fileId) =>
-            this.fileIn(workspaceId, fileId).catch(() => {
+          connectorTool(tool, requesterOf, (conversationId, fileId) =>
+            this.fileIn(
+              workspaceId,
+              this.threadOf(workspaceId, conversationId).realm,
+              fileId
+            ).catch(() => {
               throw new Error(
                 `There is no file ${fileId} in this workspace. list_files and recall show files.`
               );
@@ -1770,10 +1790,13 @@ export class Threads {
    * workspace; a memory also does so when it opens.
    */
   forget(workspaceId: string): void {
-    const threads = this.registry.threadsIn(workspaceId);
-    const live = new Set(threads.map((thread) => thread.id));
-    for (const thread of threads) {
-      this.memories.get(thread.id)?.keep(live);
+    for (const thread of this.registry.allThreadsIn(workspaceId)) {
+      if (thread.ownerId !== null) {
+        const seen = this.registry.threadsIn(workspaceId, thread.ownerId);
+        this.memories
+          .get(thread.id)
+          ?.keep(new Set(seen.map((candidate) => candidate.id)));
+      }
     }
   }
 
@@ -1841,7 +1864,7 @@ export class Threads {
     const scope = await this.ask(
       thread,
       approverId,
-      members,
+      this.membersSeeing(thread).map((member) => member.userId),
       tool,
       actionText(command, machine.name),
       signal
@@ -1917,7 +1940,7 @@ export class Threads {
     messageId: number
   ): Promise<{ text: string; time: number } | undefined> {
     const thread = this.registry
-      .threadsIn(orchestrator.workspaceId)
+      .threadsIn(orchestrator.workspaceId, orchestrator.ownerId)
       .find((candidate) => candidate.id === threadId);
     if (!thread || (thread.ownerId !== null && thread.id !== orchestrator.id)) {
       return undefined;
@@ -1948,19 +1971,15 @@ export class Threads {
       }),
       replay: "safe",
       execute: async (args, api) => {
-        // An orchestrator recalls its own messages too; a thread of a channel recalls no person's own thread.
-        const personId = this.threadOf(workspaceId, api.conversationId).ownerId;
+        // A thread recalls what its realm sees: an orchestrator its own messages and its person's private channels too.
+        const { realm } = this.threadOf(workspaceId, api.conversationId);
         const { results } = await this.hooks.recall(
           workspaceId,
           args.query,
           args.limit ?? 8,
-          personId
+          realm
         );
-        const threads = this.registry
-          .threadsIn(workspaceId)
-          .filter(
-            (thread) => thread.ownerId === null || thread.ownerId === personId
-          );
+        const threads = this.registry.threadsIn(workspaceId, realm);
         const text = results.length
           ? results
               .map((result, number) => {
@@ -1984,9 +2003,12 @@ export class Threads {
         "List the channels of this workspace with their summaries, newest threads, and thread ids.",
       parameters: Type.Object({}),
       replay: "safe",
-      execute: async () => {
+      execute: async (_args, api) => {
         const text = this.registry
-          .channelsIn(workspaceId)
+          .channelsIn(
+            workspaceId,
+            this.threadOf(workspaceId, api.conversationId).realm
+          )
           .map(channelText)
           .join("\n");
         return { output: [{ type: "text", text }] };
@@ -2003,11 +2025,14 @@ export class Threads {
         query: Type.String({ description: "Words to look for" }),
       }),
       replay: "safe",
-      execute: async (args) => {
+      execute: async (args, api) => {
         const words = args.query.toLowerCase().split(/\W+/).filter(Boolean);
         const text =
           this.registry
-            .channelsIn(workspaceId)
+            .channelsIn(
+              workspaceId,
+              this.threadOf(workspaceId, api.conversationId).realm
+            )
             .map((channel) => {
               const haystack = [
                 channel.name,
@@ -2040,12 +2065,25 @@ export class Threads {
           description: "Lowercase words joined by dashes, such as trips",
         }),
         summary: Type.Optional(Type.String({ maxLength: 2000 })),
+        private: Type.Optional(
+          Type.Boolean({
+            description:
+              "Only the person of this thread sees it; only in their own thread or private channel. Default false",
+          })
+        ),
       }),
-      execute: async (args) => {
+      execute: async (args, api) => {
+        const { realm } = this.threadOf(workspaceId, api.conversationId);
+        if (args.private && realm === null) {
+          throw new Error(
+            "Every member sees this thread, so it cannot make a private channel."
+          );
+        }
         const channel = this.registry.addChannel(
           workspaceId,
           args.name,
-          "golem"
+          "golem",
+          args.private ? realm : null
         );
         if (args.summary) {
           this.registry.setChannelSummary(
@@ -2071,10 +2109,11 @@ export class Threads {
       parameters: Type.Object({
         channel: Type.String({ description: "The channel name" }),
       }),
-      execute: async (args) => {
+      execute: async (args, api) => {
+        const { realm } = this.threadOf(workspaceId, api.conversationId);
         const name = args.channel.replace(/^#/, "").toLowerCase();
         const channel = this.registry
-          .channelsIn(workspaceId)
+          .channelsIn(workspaceId, realm)
           .find((candidate) => candidate.name === name);
         if (!channel) {
           throw new Error(
@@ -2082,7 +2121,7 @@ export class Threads {
           );
         }
         try {
-          this.registry.removeChannel(workspaceId, channel.id);
+          this.registry.removeChannel(workspaceId, channel.id, realm);
         } catch (error) {
           throw new Error(`#${name} stays: ${(error as Error).message}.`, {
             cause: error,
@@ -2110,7 +2149,11 @@ export class Threads {
       }),
       replay: "safe",
       execute: async (args, api) => {
-        const thread = this.threadIn(workspaceId, args.thread);
+        const thread = this.threadIn(
+          workspaceId,
+          this.threadOf(workspaceId, api.conversationId).realm,
+          args.thread
+        );
         // A person's own thread is private: only its own agent reads it.
         if (
           thread.ownerId !== null &&
@@ -2162,7 +2205,7 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
-        const channels = this.registry.channelsIn(workspaceId);
+        const channels = this.registry.channelsIn(workspaceId, from.realm);
         const name = args.channel?.replace(/^#/, "").toLowerCase();
         const channel = name
           ? channels.find((candidate) => candidate.name === name)
@@ -2174,7 +2217,7 @@ export class Threads {
         }
         const id = randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url");
         let thread = this.registry
-          .threadsIn(workspaceId)
+          .allThreadsIn(workspaceId)
           .find((candidate) => candidate.id === id);
         if (!thread) {
           const conversation = await this.newConversation(workspaceId);
@@ -2189,6 +2232,7 @@ export class Threads {
             workspaceId,
             conversationId: conversation.id,
             ownerId: null,
+            realm: channel.ownerId,
           };
           if (args.title) {
             this.chooseIcon(workspaceId, channel.id);
@@ -2230,7 +2274,21 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
-        const target = this.threadIn(workspaceId, args.thread);
+        // A thread of a channel may report back to an orchestrator; any other target is one its realm sees.
+        const target = this.registry
+          .allThreadsIn(workspaceId)
+          .find(
+            (candidate) =>
+              candidate.id === args.thread &&
+              (candidate.ownerId !== null ||
+                candidate.realm === null ||
+                candidate.realm === from.realm)
+          );
+        if (!target) {
+          throw new Error(
+            `There is no thread ${args.thread} in this workspace.`
+          );
+        }
         if (target.id === from.id) {
           throw new Error("That is this thread. Answer here instead.");
         }
@@ -2279,7 +2337,7 @@ export class Threads {
       }),
       execute: async (args, api) => {
         const thread = this.threadOf(workspaceId, api.conversationId);
-        const members = this.members(workspaceId);
+        const members = this.membersSeeing(thread);
         const requester = await this.requester(workspaceId, api.conversationId);
         const recipients = args.to?.length
           ? args.to.map((name) => {
@@ -2351,14 +2409,16 @@ export class Threads {
         file: Type.String({ description: "The file id" }),
       }),
       replay: "safe",
-      execute: async (args) => {
-        const { path, name } = await this.fileIn(workspaceId, args.file).catch(
-          () => {
-            throw new Error(
-              `There is no file ${args.file} in this workspace. list_files and recall show files.`
-            );
-          }
-        );
+      execute: async (args, api) => {
+        const { path, name } = await this.fileIn(
+          workspaceId,
+          this.threadOf(workspaceId, api.conversationId).realm,
+          args.file
+        ).catch(() => {
+          throw new Error(
+            `There is no file ${args.file} in this workspace. list_files and recall show files.`
+          );
+        });
         const type = Bun.file(path).type.split(";")[0]!;
         if (type.startsWith("image/")) {
           this.images ??= createNodePhotonImages();
@@ -2525,7 +2585,12 @@ export class Threads {
       return args.name;
     }
     if (args.artifact) {
-      const title = await this.printArtifact(workspaceId, args.artifact, path);
+      const title = await this.printArtifact(
+        workspaceId,
+        this.threadOf(workspaceId, conversationId).realm,
+        args.artifact,
+        path
+      );
       return args.name || `${title}.pdf`;
     }
     if (args.browser_screenshot) {
@@ -2560,14 +2625,15 @@ export class Threads {
     );
   }
 
-  /** Writes a PDF of an artifact of the workspace to `path`; returns the artifact's title. */
+  /** Writes a PDF of an artifact of the workspace that `realm` sees to `path`; returns the artifact's title. */
   private async printArtifact(
     workspaceId: string,
+    realm: Realm,
     artifactId: string,
     path: string
   ): Promise<string> {
     const artifact = this.artifacts
-      .inWorkspace(workspaceId)
+      .inWorkspace(workspaceId, realm)
       .find((candidate) => candidate.id === artifactId);
     if (!artifact) {
       throw new Error(
@@ -2599,13 +2665,15 @@ export class Threads {
       }),
       replay: "safe",
       execute: async (args, api) => {
-        const { path, name } = await this.fileIn(workspaceId, args.file).catch(
-          () => {
-            throw new Error(
-              `There is no file ${args.file} in this workspace. list_files and recall show files.`
-            );
-          }
-        );
+        const { path, name } = await this.fileIn(
+          workspaceId,
+          this.threadOf(workspaceId, api.conversationId).realm,
+          args.file
+        ).catch(() => {
+          throw new Error(
+            `There is no file ${args.file} in this workspace. list_files and recall show files.`
+          );
+        });
         const target = await this.hands.put(
           workspaceId,
           await requesterOf(api.conversationId),
@@ -2666,22 +2734,21 @@ export class Threads {
     workspaceId: string,
     conversationId: ConversationId
   ): ThreadSummary & ThreadRef {
-    const thread = this.registry
-      .threadsIn(workspaceId)
-      .find((candidate) => candidate.conversationId === conversationId);
+    const thread = this.registry.threadOf(workspaceId, conversationId);
     if (!thread) {
       throw new Error("This tool works only in a thread.");
     }
     return thread;
   }
 
-  /** A thread of this workspace, by the id an agent gave. */
+  /** A thread of this workspace that `realm` sees, by the id an agent gave. */
   private threadIn(
     workspaceId: string,
+    realm: Realm,
     threadId: string
   ): ThreadSummary & ThreadRef {
     const thread = this.registry
-      .threadsIn(workspaceId)
+      .threadsIn(workspaceId, realm)
       .find((candidate) => candidate.id === threadId);
     if (!thread) {
       throw new Error(`There is no thread ${threadId} in this workspace.`);
@@ -2702,12 +2769,8 @@ export class Threads {
     const view = await conversation.watch(BACKGROUND_CONTEXT);
     await view.stop();
     const stored = view.value.docs["pi.agent"] as AgentState | undefined;
-    const instructions = this.registry
-      .threadsIn(workspaceId)
-      .some(
-        (thread) =>
-          thread.conversationId === conversation.id && thread.ownerId !== null
-      )
+    const instructions = this.registry.threadOf(workspaceId, conversation.id)
+      ?.ownerId
       ? `${INSTRUCTIONS} ${ORCHESTRATOR}`
       : INSTRUCTIONS;
     if (
@@ -3155,7 +3218,7 @@ export function scriptWithDeadline(source: string): string {
 function connectorTool(
   tool: WorkspaceTool,
   requesterOf: (conversationId: ConversationId) => Promise<string | null>,
-  file: FileOf
+  fileOf: (conversationId: ConversationId, fileId: string) => ReturnType<FileOf>
 ) {
   return defineTool({
     name: tool.name,
@@ -3166,7 +3229,7 @@ function connectorTool(
       const result = await tool.execute(args, {
         userId: await requesterOf(api.conversationId),
         signal: context.abortSignal,
-        file,
+        file: (fileId) => fileOf(api.conversationId, fileId),
       });
       const text =
         typeof result === "string"
@@ -3188,7 +3251,8 @@ function channelText(channel: Channel): string {
     .slice(0, 5)
     .map((thread) => `- ${threadLink(thread)} (${day(thread.updatedAt)})`);
   const summary = channel.summary ? `: ${channel.summary}` : "";
-  return [`#${channel.name}${summary}`, ...threads].join("\n");
+  const only = channel.ownerId ? " (private)" : "";
+  return [`#${channel.name}${only}${summary}`, ...threads].join("\n");
 }
 
 /** A thread as the agent writes it, `[title](thread:<id>)`, which the web and iOS show as a link to the thread. */

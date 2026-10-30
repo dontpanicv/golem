@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// The name, members, facts, machines, and integrations of the open workspace; only an owner renames or deletes it.
+/// The name, members, facts, machines, and integrations of the workspace; only an owner renames it.
 struct WorkspaceSettingsView: View {
     @Environment(Session.self) private var session
     @State private var members: [Member] = []
     @State private var email = ""
     @State private var name = ""
-    @State private var confirmDelete = false
     @State private var facts = ""
     @State private var savedFacts = ""
 
@@ -28,10 +27,6 @@ struct WorkspaceSettingsView: View {
                             .disabled(!renamed)
                     }
                     .padding(Tokens.Space.xl)
-                    SettingsRow("Delete workspace") {
-                        Button("Delete") { confirmDelete = true }
-                            .buttonStyle(.golem(.danger, .small))
-                    }
                 }
             }
             SettingsCard(title: "Members") {
@@ -86,15 +81,6 @@ struct WorkspaceSettingsView: View {
         .task { await load() }
         .onAppear { name = session.workspace?.name ?? "" }
         .refreshable { await load() }
-        .sheet(isPresented: $confirmDelete) {
-            DeleteDialog(
-                title: "Delete \(session.workspace?.name ?? "")?",
-                message: "Its channels, threads, files, artifacts, and routines go with it.",
-                submit: "Delete workspace"
-            ) {
-                try await session.deleteWorkspace()
-            }
-        }
     }
 
     private func load() async {

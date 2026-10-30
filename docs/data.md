@@ -16,7 +16,7 @@ data/
 ├── golem.sqlite                     The directory: accounts, sessions, workspaces, members, channels,
 │                                    the thread registry, settings, and encrypted credentials.
 ├── workspaces/
-│   └── <workspace-id>/              One folder per workspace, and nothing of a workspace outside it.
+│   └── <workspace-id>/              The folder of Golem's one workspace, the family's.
 │       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per thread
 │       │                            (transcript, runs, tasks).
 │       ├── memory.sqlite            The brief of each channel, every version; and the workspace's one memory
@@ -53,15 +53,17 @@ data/
   moves to `channels/<id>/deleted/`. A deleted channel hides its threads, files, artifacts, and routines, and search
   leaves them out at once; in each memory, the lines of its messages become `(deleted)`, and the model writes
   the summaries over them again without them; `session.sqlite` keeps the messages. A deleted
-  workspace (`organization.deletedAt`) hides all of it, and its folder stays. Only an owner deletes a workspace. Deleted
+  workspace (`organization.deletedAt`, from before Golem had one workspace) hides all of it, and its folder stays. Deleted
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
   Artifact records that were deleted still count toward the artifact's limits, until a member clears the data, which
   moves the records aside with `~<time>` after their scope.
-- **Workspaces are separate on disk.** Every byte of a workspace is under `data/workspaces/<workspace-id>/`:
-  its threads, files, notes, captures, tables, and its own search index. A workspace's folder and rows hold all of it.
-  Nothing reads one workspace's folder on behalf of another.
-- **Search never crosses workspaces.** "Search everything" means everything in one workspace: all channels,
-  threads, artifacts, notes, files, and captures. Each workspace has its own `index.sqlite`; there is no shared index.
+- **One workspace, with private channels.** Every byte of the family's data is under `data/workspaces/<workspace-id>/`.
+  A private channel (`channel.owner_id`) belongs to one member: its threads, files, artifacts, routines, and the memory
+  lines of its messages are theirs alone. Every read names whose view it serves (`Realm` in
+  `src/workspaces/workspaces.ts`), and only background work that acts for no person reads all of it.
+- **Search is one index, filtered per person.** "Search everything" means everything the person sees: the channels
+  every member sees, their own private channels, and their own orchestrator. The workspace has one `index.sqlite`, so
+  each source is embedded once; a search leaves out the sources the person may not see before it ranks.
 - **Folders are named by id, not by name.** Renaming a workspace, channel, or thread changes a row, never a path.
   A channel's folder holds only its files; a thread's channel is a column in `golem.sqlite`, and so is an artifact's.
 - **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `memory.sqlite`, `memories/`, `notes/`,
@@ -98,8 +100,8 @@ that snapshots the file system. Keep `config/` in a password manager or another 
 
 ## Search
 
-Each workspace has its own index at `data/workspaces/<workspace-id>/index.sqlite`. Search, the search page, and the
-agents' `recall` tool read only the index of the workspace they are in; there is no search across workspaces.
+The workspace's index is `data/workspaces/<workspace-id>/index.sqlite`. Search, the search page, and the agents'
+`recall` tool find only what their person, or their thread's realm, sees.
 
 - **What is indexed:** every thread's messages, every artifact's text, and every file in the workspace's `notes/`,
   `files/`, `raw/`, and each channel's `files/`. Drop files into those folders; Golem notices within a second. Every file's path is searchable by

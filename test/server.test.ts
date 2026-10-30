@@ -150,10 +150,10 @@ test("the iOS app gets a token only for a Google sign-in it started, with its ve
   });
 });
 
-test("a new workspace has a general channel", async () => {
-  const workspace = (await (
-    await call("/api/v1/workspaces", { token: alice, body: { name: "Family" } })
-  ).json()) as any;
+test("the first person to sign in starts the workspace, with a general channel", async () => {
+  const [workspace] = (
+    (await (await call("/api/v1/me", { token: alice })).json()) as any
+  ).workspaces;
   workspaceId = workspace.id;
   const detail = (await (
     await call(`/api/v1/workspaces/${workspaceId}`, { token: alice })

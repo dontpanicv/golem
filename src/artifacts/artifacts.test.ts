@@ -441,7 +441,7 @@ test("an artifact belongs to its channel: other threads see it after its thread 
 
   workspaces.deleteChannel(workspaceId, alice, recipes.id);
   expect(() => artifacts.get(banana.id, alice)).toThrow("Not found");
-  expect(artifacts.inWorkspace(workspaceId)).toEqual([]);
+  expect(artifacts.allInWorkspace(workspaceId)).toEqual([]);
 });
 
 test("the orchestrator's artifacts belong to the workspace, and an agent puts one in a channel it names", async () => {

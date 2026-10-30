@@ -4,13 +4,21 @@ import type { Auth, User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 
 /**
+ * Whose private data a read sees besides what every member sees: a person's id, or `null` for none. A thread's agent
+ * sees its thread's realm, so what it says in a channel every member reads never comes from a private channel.
+ */
+export type Realm = string | null;
+
+/**
  * What identifies a thread: its id, its workspace, its conversation in that workspace's session, and, for an
- * orchestrator, the person it belongs to; `ownerId` is null for a thread of a channel.
+ * orchestrator, the person it belongs to; `ownerId` is null for a thread of a channel. `realm` is the person of an
+ * orchestrator or of a private channel, and null for a thread of a channel every member sees.
  */
 export interface ThreadRef {
   readonly conversationId: number;
   readonly id: string;
   readonly ownerId: string | null;
+  readonly realm: Realm;
   readonly workspaceId: string;
 }
 export interface Workspace {
@@ -29,6 +37,8 @@ export interface ThreadSummary {
 export interface Channel {
   readonly id: string;
   readonly name: string;
+  /** The person a private channel belongs to, who alone sees it; null for a channel every member sees. */
+  readonly ownerId: string | null;
   /** What the channel is for and what goes on in it, as an agent last wrote it. */
   readonly summary: string | null;
   /** An emoji for the channel, as the model last chose it. */
@@ -52,6 +62,9 @@ const MAX_FACTS = 20_000;
 /** Leaves out the rows of deleted workspaces. */
 const LIVE =
   "workspace_id IN (SELECT id FROM organization WHERE deletedAt IS NULL)";
+/** The columns of a thread as `ThreadSummary & ThreadRef`, from `thread t JOIN channel c`. */
+const THREAD =
+  "t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt, CASE WHEN t.orchestrator = 1 THEN t.created_by END AS ownerId, CASE WHEN t.orchestrator = 1 THEN t.created_by ELSE c.owner_id END AS realm";
 
 /**
  * Workspaces are isolated: every read and write goes through a membership check, and nothing crosses
@@ -152,21 +165,10 @@ export class Workspaces {
     return { ...workspace, name: trimmed };
   }
 
-  /**
-   * Deletes a workspace that `user` owns. Nothing is removed: its rows and its folder stay, and every read leaves
-   * them out, so its channels, threads, files, artifacts, and routines go with it.
-   */
-  delete(workspaceId: string, user: User): Workspace {
-    const workspace = this.requireOwner(workspaceId, user);
-    this.database
-      .query("UPDATE organization SET deletedAt = ? WHERE id = ?")
-      .run(Date.now(), workspaceId);
-    return workspace;
-  }
-
+  /** The channels the person sees: those of every member, and their own private ones. */
   channels(workspaceId: string, user: User): Channel[] {
     this.requireMember(workspaceId, user);
-    return this.channelsIn(workspaceId);
+    return this.channelsIn(workspaceId, user.id);
   }
 
   /** A channel of the person's workspace; not found when it is deleted or in another workspace. */
@@ -180,11 +182,18 @@ export class Workspaces {
     return channel;
   }
 
-  /** The channels of a workspace with their threads, newest first, for agents that act for the workspace. */
-  channelsIn(workspaceId: string): Channel[] {
+  /** The channels of a workspace that `realm` sees, with their threads, newest first, for agents. */
+  channelsIn(workspaceId: string, realm: Realm): Channel[] {
+    return this.allChannelsIn(workspaceId).filter(
+      (channel) => channel.ownerId === null || channel.ownerId === realm
+    );
+  }
+
+  /** Every channel of a workspace, private ones too, for background work that acts for no person. */
+  allChannelsIn(workspaceId: string): Channel[] {
     const channels = this.database
       .query(
-        `SELECT id, name, summary, icon FROM channel WHERE workspace_id = ? AND deleted_at IS NULL AND ${LIVE} ORDER BY created_at, rowid`
+        `SELECT id, name, owner_id AS ownerId, summary, icon FROM channel WHERE workspace_id = ? AND deleted_at IS NULL AND ${LIVE} ORDER BY created_at, rowid`
       )
       .all(workspaceId) as Omit<Channel, "threads">[];
     const threads = this.database
@@ -198,13 +207,32 @@ export class Workspaces {
     }));
   }
 
-  createChannel(workspaceId: string, user: User, name: string): Channel {
+  /** Adds a channel; a `private` one is the person's own. */
+  createChannel(
+    workspaceId: string,
+    user: User,
+    name: string,
+    isPrivate = false
+  ): Channel {
     this.requireMember(workspaceId, user);
-    return this.addChannel(workspaceId, name, user.id);
+    return this.addChannel(
+      workspaceId,
+      name,
+      user.id,
+      isPrivate ? user.id : null
+    );
   }
 
-  /** Adds a channel to a workspace; `createdBy` is a person's id, or `golem` for a channel an agent made. */
-  addChannel(workspaceId: string, name: string, createdBy: string): Channel {
+  /**
+   * Adds a channel to a workspace; `createdBy` is a person's id, or `golem` for a channel an agent made, and `ownerId`
+   * the person of a private channel. Names are unique in the workspace, private ones too.
+   */
+  addChannel(
+    workspaceId: string,
+    name: string,
+    createdBy: string,
+    ownerId: Realm
+  ): Channel {
     const slug = required(name, "Name")
       .toLowerCase()
       .replace(/^#/, "")
@@ -222,36 +250,41 @@ export class Workspaces {
     const channel = {
       id: randomUUID(),
       name: slug,
+      ownerId,
       summary: null,
       icon: null,
       threads: [],
     };
     this.database
       .query(
-        "INSERT INTO channel (id, workspace_id, name, created_by, created_at) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO channel (id, workspace_id, name, owner_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)"
       )
-      .run(channel.id, workspaceId, slug, createdBy, Date.now());
+      .run(channel.id, workspaceId, slug, ownerId, createdBy, Date.now());
     return channel;
   }
 
-  /** Deletes a channel of the person's workspace; see `removeChannel`. */
+  /** Deletes a channel that the person sees; see `removeChannel`. */
   deleteChannel(workspaceId: string, user: User, channelId: string): Channel {
     this.requireMember(workspaceId, user);
-    return this.removeChannel(workspaceId, channelId);
+    return this.removeChannel(workspaceId, channelId, user.id);
   }
 
   /**
-   * Deletes a channel of the workspace, for an agent that acts for it. Nothing is removed: the channel and its threads
+   * Deletes a channel that `realm` sees, for an agent that acts for it. Nothing is removed: the channel and its threads
    * stay in the database, hidden. Its name gets `~<id>`, which no channel name has, so a new channel can take the
-   * name. The orchestrators move to the first other channel, so a workspace keeps one channel at least.
+   * name. The orchestrators move to the first other channel that every member sees, so a workspace keeps one such
+   * channel at least.
    */
-  removeChannel(workspaceId: string, channelId: string): Channel {
-    const channels = this.channelsIn(workspaceId);
-    const channel = channels.find((candidate) => candidate.id === channelId);
+  removeChannel(workspaceId: string, channelId: string, realm: Realm): Channel {
+    const channel = this.channelsIn(workspaceId, realm).find(
+      (candidate) => candidate.id === channelId
+    );
     if (!channel) {
       throw notFound();
     }
-    const next = channels.find((candidate) => candidate.id !== channelId);
+    const next = this.channelsIn(workspaceId, null).find(
+      (candidate) => candidate.id !== channelId
+    );
     if (!next) {
       throw new HttpError(409, "A workspace keeps one channel at least");
     }
@@ -368,11 +401,14 @@ export class Workspaces {
     return { id: thread.id, channelId, title, updatedAt: now, settledAt: null };
   }
 
-  /** The thread if `user` is a member of its workspace; an orchestrator only for its own person. */
+  /**
+   * The thread if `user` is a member of its workspace; an orchestrator, or a thread of a private channel, only for its
+   * own person.
+   */
   thread(threadId: string, user: User): ThreadSummary & ThreadRef {
     const thread = this.database
       .query(
-        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt, CASE WHEN t.orchestrator = 1 THEN t.created_by END AS ownerId FROM thread t JOIN member m ON m.organizationId = t.workspace_id JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.id = ? AND m.userId = ? AND (t.orchestrator = 0 OR t.created_by = m.userId) AND t.${LIVE}`
+        `SELECT ${THREAD} FROM thread t JOIN member m ON m.organizationId = t.workspace_id JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.id = ? AND m.userId = ? AND (t.orchestrator = 0 OR t.created_by = m.userId) AND (c.owner_id IS NULL OR c.owner_id = m.userId) AND t.${LIVE}`
       )
       .get(threadId, user.id) as (ThreadSummary & ThreadRef) | null;
     if (!thread) {
@@ -381,13 +417,38 @@ export class Workspaces {
     return thread;
   }
 
-  /** The threads of a workspace, but those of deleted channels, for background work that acts for no person. */
-  threadsIn(workspaceId: string): (ThreadSummary & ThreadRef)[] {
+  /**
+   * The threads of a workspace that `realm` sees: those of its channels, and the orchestrator of its person. Those of
+   * deleted channels are left out.
+   */
+  threadsIn(workspaceId: string, realm: Realm): (ThreadSummary & ThreadRef)[] {
+    return this.allThreadsIn(workspaceId).filter(
+      (thread) => thread.realm === null || thread.realm === realm
+    );
+  }
+
+  /**
+   * Every thread of a workspace, every person's orchestrator and private channels too, but those of deleted channels,
+   * for background work that acts for no person.
+   */
+  allThreadsIn(workspaceId: string): (ThreadSummary & ThreadRef)[] {
     return this.database
       .query(
-        `SELECT t.id, t.workspace_id AS workspaceId, t.conversation_id AS conversationId, t.channel_id AS channelId, t.title, t.updated_at AS updatedAt, t.settled_at AS settledAt, CASE WHEN t.orchestrator = 1 THEN t.created_by END AS ownerId FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ? AND t.${LIVE}`
+        `SELECT ${THREAD} FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ? AND t.${LIVE}`
       )
       .all(workspaceId) as (ThreadSummary & ThreadRef)[];
+  }
+
+  /** The thread of a conversation of the workspace, for the tools of its agent; null for one no thread has. */
+  threadOf(
+    workspaceId: string,
+    conversationId: number
+  ): (ThreadSummary & ThreadRef) | null {
+    return this.database
+      .query(
+        `SELECT ${THREAD} FROM thread t JOIN channel c ON c.id = t.channel_id AND c.deleted_at IS NULL WHERE t.workspace_id = ? AND t.conversation_id = ? AND t.${LIVE}`
+      )
+      .get(workspaceId, conversationId) as (ThreadSummary & ThreadRef) | null;
   }
 
   /** The person's thread of the workspace that never ends, if they have one yet; `Threads.orchestrator` makes it. */
@@ -397,7 +458,7 @@ export class Workspaces {
   ): (ThreadSummary & ThreadRef) | null {
     return this.database
       .query(
-        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt, created_by AS ownerId FROM thread WHERE workspace_id = ? AND created_by = ? AND orchestrator = 1"
+        "SELECT id, workspace_id AS workspaceId, conversation_id AS conversationId, channel_id AS channelId, title, updated_at AS updatedAt, settled_at AS settledAt, created_by AS ownerId, created_by AS realm FROM thread WHERE workspace_id = ? AND created_by = ? AND orchestrator = 1"
       )
       .get(workspaceId, personId) as (ThreadSummary & ThreadRef) | null;
   }

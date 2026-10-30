@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import type { User } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
-import type { ThreadRef, Workspaces } from "../workspaces/workspaces.ts";
+import type { Realm, ThreadRef, Workspaces } from "../workspaces/workspaces.ts";
 import { artifactTools } from "./tools.ts";
 
 export type Visibility = "public" | "members";
@@ -59,7 +59,12 @@ export interface Me {
 
 export type ArtifactWorkspaces = Pick<
   Workspaces,
-  "channel" | "channelsIn" | "requireMember" | "threadsIn"
+  | "allChannelsIn"
+  | "channel"
+  | "channelsIn"
+  | "requireMember"
+  | "threadOf"
+  | "threadsIn"
 >;
 
 const MAX_TITLE = 200;
@@ -247,8 +252,21 @@ export class Artifacts {
     return this.artifact(this.row(id)!);
   }
 
-  /** The artifacts of a workspace, newest first. */
-  inWorkspace(workspaceId: string): Artifact[] {
+  /** The artifacts of a workspace that `realm` sees, newest first: the workspace's own and those of its channels. */
+  inWorkspace(workspaceId: string, realm: Realm): Artifact[] {
+    const channels = new Set(
+      this.workspaces
+        .channelsIn(workspaceId, realm)
+        .map((channel) => channel.id)
+    );
+    return this.allInWorkspace(workspaceId).filter(
+      (artifact) =>
+        artifact.channelId === null || channels.has(artifact.channelId)
+    );
+  }
+
+  /** Every live artifact of a workspace, private channels' too, newest first, for background work such as search. */
+  allInWorkspace(workspaceId: string): Artifact[] {
     const channels = this.liveChannels(workspaceId);
     return (
       this.database
@@ -284,14 +302,22 @@ export class Artifacts {
     ).map((row) => this.artifact(row));
   }
 
-  /** An artifact of the person's workspace, to manage it. */
+  /** An artifact of the person's workspace in a place they see, to manage it. */
   get(id: string, user: User): Artifact {
     const row = this.row(id);
     if (!row) {
       throw notFound();
     }
-    this.workspaces.requireMember(row.workspaceId, user);
+    this.requireSeen(row, user);
     return this.artifact(row);
+  }
+
+  /** Not found unless the person is a member and sees the artifact's channel, which a private channel's owner alone does. */
+  private requireSeen(row: ArtifactRow, user: User): void {
+    this.workspaces.requireMember(row.workspaceId, user);
+    if (row.channelId !== null) {
+      this.workspaces.channel(row.workspaceId, row.channelId, user);
+    }
   }
 
   /** The HTML an agent wrote, without Golem's additions. */
@@ -333,7 +359,7 @@ export class Artifacts {
       if (!viewer.user) {
         throw new HttpError(401, "Sign in first");
       }
-      this.workspaces.requireMember(row.workspaceId, viewer.user);
+      this.requireSeen(row, viewer.user);
     }
     return this.artifact(row);
   }
@@ -532,7 +558,7 @@ export class Artifacts {
       const row = this.row(id)!;
       let member = true;
       try {
-        this.workspaces.requireMember(row.workspaceId, viewer.user);
+        this.requireSeen(row, viewer.user);
       } catch {
         member = false;
       }
@@ -611,7 +637,7 @@ export class Artifacts {
 
   private liveChannels(workspaceId: string): Set<string> {
     return new Set(
-      this.workspaces.channelsIn(workspaceId).map((channel) => channel.id)
+      this.workspaces.allChannelsIn(workspaceId).map((channel) => channel.id)
     );
   }
 

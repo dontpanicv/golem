@@ -47,10 +47,11 @@ struct HomeView: View {
                 .sharedBackgroundVisibility(.hidden)
         }
         .sheet(isPresented: $newChannel) {
-            NameDialog(title: "New channel") { name in
-                if let channel = try await session.createChannel(name: name) { open(.channel(channel.id)) }
+            NewChannelDialog { name, isPrivate in
+                if let channel = try await session.createChannel(name: name, isPrivate: isPrivate) {
+                    open(.channel(channel.id))
+                }
             }
-            .textInputAutocapitalization(.never)
         }
     }
 
@@ -68,7 +69,7 @@ struct HomeView: View {
             .padding(.leading, -Tokens.Space.md)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Workspaces")
+        .accessibilityLabel("Menu")
         .accessibilityValue(session.workspace?.name ?? "")
     }
 
@@ -129,6 +130,12 @@ struct HomeView: View {
         return Button { self.open(.channel(channel.id)) } label: {
             ListRow(title: channel.name, systemImage: "number",
                     working: open.contains { session.working.contains($0.id) }, emoji: channel.icon) {
+                if channel.ownerId != nil {
+                    Image(systemName: "lock")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+                        .accessibilityLabel("Private")
+                }
                 if !open.isEmpty {
                     Text("\(open.count)")
                         .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))

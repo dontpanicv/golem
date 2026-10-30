@@ -171,31 +171,11 @@ final class Session {
         UNUserNotificationCenter.current().setBadgeCount(inbox.badge)
     }
 
-    func createWorkspace(name: String) async throws {
-        let workspace = try await api.createWorkspace(name: name)
-        workspaces.append(workspace)
-        try await open(workspace)
-    }
-
     func renameWorkspace(name: String) async throws {
         guard let workspace else { return }
         let renamed = try await api.renameWorkspace(workspace.id, name: name)
         self.workspace = renamed
         workspaces = workspaces.map { $0.id == renamed.id ? renamed : $0 }
-    }
-
-    /// Deletes the open workspace, which the server keeps, hidden, and opens the next one.
-    func deleteWorkspace() async throws {
-        guard let workspace else { return }
-        try await api.deleteWorkspace(workspace.id)
-        workspaces.removeAll { $0.id == workspace.id }
-        if let next = workspaces.first {
-            try await open(next)
-        } else {
-            self.workspace = nil
-            channels = []
-            orchestrator = nil
-        }
     }
 
     /// Follows which threads of the open workspace work, reading the stream again after each error, until cancelled.
@@ -217,9 +197,10 @@ final class Session {
         if let workspace { try await open(workspace) }
     }
 
-    func createChannel(name: String) async throws -> Channel? {
+    /// Adds a channel; a private one only the person sees.
+    func createChannel(name: String, isPrivate: Bool) async throws -> Channel? {
         guard let workspace else { return nil }
-        let channel = try await api.createChannel(workspaceID: workspace.id, name: name)
+        let channel = try await api.createChannel(workspaceID: workspace.id, name: name, isPrivate: isPrivate)
         try await reloadWorkspace()
         return channel
     }

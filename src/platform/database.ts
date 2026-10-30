@@ -285,6 +285,9 @@ const migrations = [
 		changed_by TEXT NOT NULL,
 		changed_at INTEGER NOT NULL
 	);`,
+  // workspaces: a private channel belongs to one member, who alone sees it, its threads, files, artifacts, and
+  // routines; `owner_id` is null for a channel every member sees.
+  "ALTER TABLE channel ADD COLUMN owner_id TEXT;",
 ];
 
 export function openDatabase(path: string): Database {

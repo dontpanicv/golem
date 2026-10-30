@@ -18,9 +18,7 @@ export function artifactTools(
   workspaceId: string
 ) {
   const threadOf = (conversationId: number) => {
-    const thread = workspaces
-      .threadsIn(workspaceId)
-      .find((candidate) => candidate.conversationId === conversationId);
+    const thread = workspaces.threadOf(workspaceId, conversationId);
     if (!thread) {
       throw new Error("This tool works only in a thread.");
     }
@@ -28,13 +26,17 @@ export function artifactTools(
   };
   /** The channel an artifact belongs to: the named one, or the thread's; null, the workspace, for an orchestrator. */
   const placeOf = (
-    thread: { readonly channelId: string; readonly ownerId: string | null },
+    thread: {
+      readonly channelId: string;
+      readonly ownerId: string | null;
+      readonly realm: string | null;
+    },
     channel: string | undefined
   ) => {
     if (channel !== undefined) {
       const name = channel.replace(/^#/, "");
       const named = workspaces
-        .channelsIn(workspaceId)
+        .channelsIn(workspaceId, thread.realm)
         .find((candidate) => candidate.name === name);
       if (!named) {
         throw new Error(
@@ -45,9 +47,10 @@ export function artifactTools(
     }
     return thread.ownerId === null ? thread.channelId : null;
   };
-  const artifactOf = (id: string) => {
+  /** An artifact that the realm of the tool's thread sees. */
+  const artifactOf = (id: string, conversationId: number) => {
     const artifact = artifacts
-      .inWorkspace(workspaceId)
+      .inWorkspace(workspaceId, threadOf(conversationId).realm)
       .find((candidate) => candidate.id === id);
     if (!artifact) {
       throw new Error(
@@ -107,9 +110,9 @@ export function artifactTools(
         visibility,
       }),
       replay: "safe",
-      execute: async ({ id, ...changes }) =>
+      execute: async ({ id, ...changes }, api) =>
         text(
-          `Changed the artifact.\n${describe(artifacts.update(workspaceId, artifactOf(id).id, changes))}`
+          `Changed the artifact.\n${describe(artifacts.update(workspaceId, artifactOf(id, api.conversationId).id, changes))}`
         ),
     }),
 
@@ -122,8 +125,8 @@ export function artifactTools(
         find: Type.String({ description: "Text that occurs exactly once" }),
         replace: Type.String(),
       }),
-      execute: async ({ id, find, replace }) => {
-        const html = artifacts.html(artifactOf(id).id);
+      execute: async ({ id, find, replace }, api) => {
+        const html = artifacts.html(artifactOf(id, api.conversationId).id);
         const count = html.split(find).length - 1;
         if (count !== 1) {
           throw new Error(
@@ -142,7 +145,8 @@ export function artifactTools(
       description: "The HTML of an artifact.",
       parameters: Type.Object({ id: idParameter }),
       replay: "safe",
-      execute: async ({ id }) => text(artifacts.html(artifactOf(id).id)),
+      execute: async ({ id }, api) =>
+        text(artifacts.html(artifactOf(id, api.conversationId).id)),
     }),
 
     defineTool({
@@ -151,21 +155,24 @@ export function artifactTools(
         "List the artifacts of this workspace, newest first, with their links, channels, and the threads that made them.",
       parameters: Type.Object({}),
       replay: "safe",
-      execute: async () => {
-        const channels = workspaces.channelsIn(workspaceId);
-        const threads = workspaces.threadsIn(workspaceId);
-        const list = artifacts.inWorkspace(workspaceId).map((artifact) => {
-          const channel = channels.find(
-            (candidate) => candidate.id === artifact.channelId
-          );
-          const thread = threads.find(
-            (candidate) => candidate.id === artifact.threadId
-          );
-          const place = channel
-            ? `Channel: #${channel.name}`
-            : "The workspace's";
-          return `${describe(artifact)}\n${place}\nMade in: [${thread?.title}](thread:${artifact.threadId})`;
-        });
+      execute: async (_args, api) => {
+        const { realm } = threadOf(api.conversationId);
+        const channels = workspaces.channelsIn(workspaceId, realm);
+        const threads = workspaces.threadsIn(workspaceId, realm);
+        const list = artifacts
+          .inWorkspace(workspaceId, realm)
+          .map((artifact) => {
+            const channel = channels.find(
+              (candidate) => candidate.id === artifact.channelId
+            );
+            const thread = threads.find(
+              (candidate) => candidate.id === artifact.threadId
+            );
+            const place = channel
+              ? `Channel: #${channel.name}`
+              : "The workspace's";
+            return `${describe(artifact)}\n${place}\nMade in: [${thread?.title}](thread:${artifact.threadId})`;
+          });
         return text(list.join("\n\n") || "This workspace has no artifacts.");
       },
     }),
@@ -181,8 +188,11 @@ export function artifactTools(
         ),
       }),
       replay: "safe",
-      execute: async ({ id, prefix }) => {
-        const records = artifacts.records(artifactOf(id).id, prefix);
+      execute: async ({ id, prefix }, api) => {
+        const records = artifacts.records(
+          artifactOf(id, api.conversationId).id,
+          prefix
+        );
         return text(
           records.length
             ? records.map((record) => JSON.stringify(record)).join("\n")
@@ -203,8 +213,8 @@ export function artifactTools(
         }),
       }),
       replay: "safe",
-      execute: async ({ id, key, value }) => {
-        const artifact = artifactOf(id);
+      execute: async ({ id, key, value }, api) => {
+        const artifact = artifactOf(id, api.conversationId);
         if (value === null || value === undefined) {
           artifacts.deleteRecord(artifact.id, "shared", key);
           return text("Deleted the record.");

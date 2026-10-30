@@ -473,8 +473,15 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       channelId: string;
       title: string;
       ownerId: null;
+      realm: null;
     }
   >();
+  const listed = () =>
+    [...registered.values()].map((thread) => ({
+      ...thread,
+      updatedAt: 0,
+      settledAt: null,
+    }));
   const registry = {
     requireMember: (workspaceId: string) => ({
       id: workspaceId,
@@ -490,7 +497,12 @@ function threadsOver(dataDirectory: string, llm: Llm) {
         conversationId: number;
       }
     ) => {
-      registered.set(thread.id, { ...thread, workspaceId, ownerId: null });
+      registered.set(thread.id, {
+        ...thread,
+        workspaceId,
+        ownerId: null,
+        realm: null,
+      });
       return { ...thread, updatedAt: 0, settledAt: null };
     },
     thread: (threadId: string) => ({
@@ -498,20 +510,21 @@ function threadsOver(dataDirectory: string, llm: Llm) {
       updatedAt: 0,
       settledAt: null,
     }),
-    threadsIn: () =>
-      [...registered.values()].map((thread) => ({
-        ...thread,
-        updatedAt: 0,
-        settledAt: null,
-      })),
+    threadsIn: () => listed(),
+    allThreadsIn: () => listed(),
+    threadOf: (_workspaceId: string, conversationId: number) =>
+      listed().find((thread) => thread.conversationId === conversationId) ??
+      null,
     channel: (_workspaceId: string, channelId: string) => ({
       id: channelId,
       name: channelId,
+      ownerId: null,
       summary: null,
       icon: null,
       threads: [],
     }),
     channelsIn: () => [],
+    allChannelsIn: () => [],
     orchestratorOf: () => null,
     addChannel: () => {
       throw new Error("No channels here");

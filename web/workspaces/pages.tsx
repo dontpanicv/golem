@@ -1,15 +1,7 @@
 import { useLiveQuery } from "@tanstack/react-db";
 import { useQuery } from "@tanstack/react-query";
-import { getRouteApi, Navigate, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  Button,
-  PageContent,
-  PageSection,
-  SettingsCard,
-  SettingsRow,
-} from "../ui/components.tsx";
-import { showError } from "../ui/toast.tsx";
+import { getRouteApi, Navigate } from "@tanstack/react-router";
+import { Empty } from "../ui/components.tsx";
 import {
   channelsOf,
   lastOpened,
@@ -17,9 +9,9 @@ import {
   threadsOf,
   useMe,
 } from "./data.ts";
-import { createWorkspace, FloatingSidebarButton, Shell } from "./shell.tsx";
+import { FloatingSidebarButton, Shell } from "./shell.tsx";
 
-/** The app opens on the workspace this browser had open last, or the first one; without one, on a new workspace. */
+/** The app opens on the family's workspace; a person who is not a member yet waits for an owner to add them. */
 export function Home() {
   const { workspaces } = useMe();
   const last = lastOpened();
@@ -33,7 +25,12 @@ export function Home() {
       to="/w/$workspaceId"
     />
   ) : (
-    <Navigate replace to="/workspaces/new" />
+    <Shell workspaceId={undefined}>
+      <section className="conversation">
+        <FloatingSidebarButton />
+        <Empty icon="members" title="Ask a family member to add you" />
+      </section>
+    </Shell>
   );
 }
 
@@ -100,56 +97,4 @@ export function OrchestratorPage() {
       to="/w/$workspaceId/t/$threadId"
     />
   ) : null;
-}
-
-export function NewWorkspacePage() {
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  return (
-    <Shell workspaceId={undefined}>
-      <section className="conversation">
-        <FloatingSidebarButton />
-        <PageContent title="Create a workspace">
-          <PageSection>
-            <form
-              aria-busy={busy || undefined}
-              onSubmit={async (event) => {
-                event.preventDefault();
-                setBusy(true);
-                try {
-                  const workspace = await createWorkspace(
-                    String(new FormData(event.currentTarget).get("name"))
-                  );
-                  navigate({
-                    to: "/w/$workspaceId",
-                    params: { workspaceId: workspace.id },
-                  });
-                } catch (error) {
-                  showError(error);
-                  setBusy(false);
-                }
-              }}
-            >
-              <SettingsCard>
-                <SettingsRow
-                  description="Each workspace has its own channels, threads, members, and integrations."
-                  label="Name"
-                >
-                  <input
-                    aria-label="Name"
-                    autoFocus
-                    className="input"
-                    name="name"
-                    placeholder="Family"
-                    required
-                  />
-                  <Button label="Create" type="submit" variant="primary" />
-                </SettingsRow>
-              </SettingsCard>
-            </form>
-          </PageSection>
-        </PageContent>
-      </section>
-    </Shell>
-  );
 }

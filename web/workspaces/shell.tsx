@@ -16,13 +16,13 @@ import {
 } from "react";
 import { signOut } from "../accounts/login.tsx";
 import { request } from "../app/api.ts";
-import { queryClient } from "../app/query.ts";
 import type { ThreadSummary } from "../app/types.ts";
 import {
   Avatar,
   Button,
   Dialog,
   Menu,
+  Switch,
   TextField,
   WorkingContext,
   WorkingSpinner,
@@ -191,31 +191,13 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
     (candidate) => candidate.id === workspaceId
   );
   const navigate = useNavigate();
-  const [dialog, setDialog] = useState<"workspace" | "channel" | null>(null);
+  const [dialog, setDialog] = useState<"channel" | null>(null);
   return (
     <div className="sidebar-content">
       <div className="sidebar-header">
         <Menu
           align="start"
           entries={[
-            { kind: "label", label: "Workspaces" },
-            ...me.workspaces.map((candidate) => ({
-              kind: "action" as const,
-              label: candidate.name,
-              current: candidate.id === workspaceId,
-              onSelect: () =>
-                navigate({
-                  to: "/w/$workspaceId",
-                  params: { workspaceId: candidate.id },
-                }),
-            })),
-            { kind: "separator" },
-            {
-              kind: "action",
-              label: "New workspace",
-              icon: "plus",
-              onSelect: () => setDialog("workspace"),
-            },
             ...(workspace
               ? [
                   {
@@ -276,10 +258,6 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
           <NavContent icon="settings" label="Settings" />
         </Link>
       </nav>
-      <NewWorkspaceDialog
-        onClose={() => setDialog(null)}
-        open={dialog === "workspace"}
-      />
       {workspace ? (
         <NewChannelDialog
           onClose={() => setDialog(null)}
@@ -382,6 +360,7 @@ function WorkspaceNav({
                   emoji={channel.icon}
                   icon="hash"
                   label={channel.name}
+                  locked={channel.ownerId !== null}
                 />
               </Link>
               <div className="nav-threads">
@@ -458,11 +437,14 @@ export function NavContent({
   label,
   threadId,
   count,
+  locked = false,
 }: {
   icon: IconName;
   /** Shows in place of the icon when set. */
   emoji?: string | null;
   label: string;
+  /** A private channel, which only its person sees. */
+  locked?: boolean;
   /** A thread whose spinner shows while its agent works. */
   threadId?: string;
   /** Shows when it is more than 0. */
@@ -478,63 +460,15 @@ export function NavContent({
         <Icon name={icon} />
       )}
       <span className="label">{label}</span>
+      {locked ? (
+        <span className="lock" title="Private">
+          <Icon name="lock" />
+        </span>
+      ) : null}
       {threadId ? <WorkingSpinner threadId={threadId} /> : null}
       {count ? <span className="count">{count}</span> : null}
     </>
   );
-}
-
-function NewWorkspaceDialog({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  return (
-    <Dialog
-      busy={busy}
-      onClose={onClose}
-      onSubmit={async (form) => {
-        setBusy(true);
-        try {
-          const workspace = await createWorkspace(String(form.get("name")));
-          onClose();
-          navigate({
-            to: "/w/$workspaceId",
-            params: { workspaceId: workspace.id },
-          });
-        } catch (error) {
-          showError(error);
-        } finally {
-          setBusy(false);
-        }
-      }}
-      open={open}
-      submit="Create workspace"
-      title="New workspace"
-    >
-      <TextField
-        autoFocus
-        label="Name"
-        name="name"
-        placeholder="Family"
-        required
-      />
-    </Dialog>
-  );
-}
-
-/** Creates a workspace; its creator is its owner, and it has a `general` channel. */
-export async function createWorkspace(name: string) {
-  const workspace = await request<{ id: string }>("/workspaces", {
-    method: "POST",
-    body: { name },
-  });
-  await queryClient.invalidateQueries({ queryKey: meQuery.queryKey });
-  return workspace;
 }
 
 function NewChannelDialog({
@@ -548,6 +482,7 @@ function NewChannelDialog({
 }) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const [isPrivate, setPrivate] = useState(false);
   return (
     <Dialog
       busy={busy}
@@ -557,7 +492,10 @@ function NewChannelDialog({
         try {
           const channel = await request<{ id: string }>(
             `/workspaces/${workspaceId}/channels`,
-            { method: "POST", body: { name: String(form.get("name")) } }
+            {
+              method: "POST",
+              body: { name: String(form.get("name")), private: isPrivate },
+            }
           );
           await refreshWorkspace(workspaceId);
           onClose();
@@ -582,6 +520,10 @@ function NewChannelDialog({
         placeholder="trips"
         required
       />
+      <div className="field-switch">
+        Private
+        <Switch checked={isPrivate} label="Private" onChange={setPrivate} />
+      </div>
     </Dialog>
   );
 }

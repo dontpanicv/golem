@@ -29,15 +29,22 @@ function directory(
   return {
     ids: () => [...ids],
     threadsIn: () => [...threads],
-    channelsIn: () =>
-      [...new Set(threads.map((thread) => thread.channelId))].map((id) => ({
+    allThreadsIn: () => [...threads],
+    channelsIn: () => channels(),
+    allChannelsIn: () => channels(),
+  };
+  function channels() {
+    return [...new Set(threads.map((thread) => thread.channelId))].map(
+      (id) => ({
         id,
         name: id,
+        ownerId: null,
         summary: null,
         icon: null,
         threads: [],
-      })),
-  };
+      })
+    );
+  }
 }
 
 /** Artifacts with their HTML, instead of the database. */
@@ -46,6 +53,7 @@ function artifactsWith(
 ): ArtifactReader {
   return {
     inWorkspace: () => pages.map((page) => page.artifact),
+    allInWorkspace: () => pages.map((page) => page.artifact),
     html: (id) => pages.find((page) => page.artifact.id === id)!.html,
   };
 }
@@ -186,6 +194,7 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
         updatedAt: 5,
         settledAt: null,
         ownerId: null,
+        realm: null,
       },
       {
         id: "t2",
@@ -196,6 +205,7 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
         updatedAt: 6,
         settledAt: null,
         ownerId: null,
+        realm: null,
       },
     ]
   );
@@ -291,6 +301,7 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
     updatedAt: 5,
     settledAt: null,
     ownerId: null,
+    realm: null,
   };
   const artifact = {
     id: "amber-fox",
@@ -303,23 +314,28 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
     createdAt: 1,
     updatedAt: 1,
   };
+  const liveChannels = () =>
+    live.channels.map((id) => ({
+      id,
+      name: id,
+      ownerId: null,
+      summary: null,
+      icon: null,
+      threads: [],
+    }));
   const indexer = new Indexer(
     data,
     {
       ids: () => ["family"],
       threadsIn: () => [thread],
-      channelsIn: () =>
-        live.channels.map((id) => ({
-          id,
-          name: id,
-          summary: null,
-          icon: null,
-          threads: [],
-        })),
+      allThreadsIn: () => [thread],
+      channelsIn: () => liveChannels(),
+      allChannelsIn: () => liveChannels(),
     },
     threadsWith({ t1: [message("m1", "We take the ferry to the island")] }),
     {
       inWorkspace: () => (live.artifacts ? [artifact] : []),
+      allInWorkspace: () => (live.artifacts ? [artifact] : []),
       html: () => "<p>Ferry at 9:00</p>",
     },
     null

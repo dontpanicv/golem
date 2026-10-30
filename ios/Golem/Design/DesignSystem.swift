@@ -194,6 +194,8 @@ struct NavRow: View {
     var working = false
     /// Shows in place of the symbol when set.
     var emoji: String?
+    /// A private channel, which only its person sees.
+    var locked = false
 
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
@@ -207,6 +209,11 @@ struct NavRow: View {
             }
             .frame(width: Tokens.Size.icon)
             Text(title).lineLimit(1)
+            if locked {
+                Image(systemName: "lock")
+                    .font(.system(size: Tokens.Size.icon * 0.6, weight: .medium))
+                    .accessibilityLabel("Private")
+            }
             if working { ProgressView().controlSize(.mini).accessibilityLabel("Working") }
             Spacer(minLength: 0)
             if let count {

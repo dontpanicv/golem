@@ -13,12 +13,7 @@ import { ChannelPage, ThreadPage } from "../threads/pages.tsx";
 import { TooltipProvider } from "../ui/components.tsx";
 import { FilePreview } from "../ui/file-preview.tsx";
 import { Toasts } from "../ui/toast.tsx";
-import {
-  Home,
-  NewWorkspacePage,
-  OrchestratorPage,
-  WorkspaceHome,
-} from "../workspaces/pages.tsx";
+import { Home, OrchestratorPage, WorkspaceHome } from "../workspaces/pages.tsx";
 import { SignedIn, WorkspaceLayout } from "../workspaces/shell.tsx";
 
 /** A search parameter that is text, or nothing. */
@@ -64,12 +59,6 @@ const home = createRoute({
   getParentRoute: () => signedIn,
   path: "/",
   component: Home,
-});
-
-const newWorkspace = createRoute({
-  getParentRoute: () => signedIn,
-  path: "/workspaces/new",
-  component: NewWorkspacePage,
 });
 
 const settings = createRoute({
@@ -136,7 +125,6 @@ export const router = createRouter({
     login,
     signedIn.addChildren([
       home,
-      newWorkspace,
       settings,
       workspace.addChildren([
         workspaceHome,

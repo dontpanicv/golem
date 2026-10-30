@@ -149,7 +149,7 @@ function agent(context: Context) {
 
 function threadOf(threadId: string | null) {
   return golem.app.workspaces
-    .threadsIn(workspaceId)
+    .allThreadsIn(workspaceId)
     .find((thread) => thread.id === threadId)!;
 }
 
@@ -178,7 +178,7 @@ test("a script that finds nothing ends the run quietly, without the agent or a t
   // A deleted routine stays, hidden, and never runs again.
   expect(() => routines.get(routine.id, alice)).toThrow("Not found");
   expect(
-    routines.inWorkspace(workspaceId).some(({ id }) => id === routine.id)
+    routines.inWorkspace(workspaceId, null).some(({ id }) => id === routine.id)
   ).toBe(false);
   expect(
     golem.app.database
@@ -297,7 +297,7 @@ test("a connector without a credential fails the script", async () => {
     golem.app.threads,
     golem.app.indexer
   );
-  const result = await scripts.test(workspaceId, SCRIPT, undefined, null);
+  const result = await scripts.test(workspaceId, null, SCRIPT, undefined, null);
   expect(result).toMatchObject({ ok: false });
   expect(!result.ok && result.error).toContain(
     "School 2 is not connected. Connect it in your own Settings"
@@ -351,6 +351,7 @@ test("a routine runs as the person who last wrote its script, and not after its 
   secretsSeen.length = 0;
   routines.update(
     workspaceId,
+    null,
     routine.id,
     { schedule: "0 8 * * *" },
     bob.userId
@@ -359,10 +360,11 @@ test("a routine runs as the person who last wrote its script, and not after its 
   expect(secretsSeen).toEqual(["school-password"]);
   // Only the routine's own person tests with the values its runs stored.
   await expect(
-    routines.test(workspaceId, SCRIPT, routine.id, bob.userId)
+    routines.test(workspaceId, null, SCRIPT, routine.id, bob.userId)
   ).rejects.toThrow("Only the person who last wrote this routine");
   routines.update(
     workspaceId,
+    null,
     routine.id,
     { script: `${SCRIPT}\n` },
     bob.userId
@@ -370,7 +372,7 @@ test("a routine runs as the person who last wrote its script, and not after its 
   await runOnce();
   expect(secretsSeen).toEqual(["school-password", "bob-password"]);
   expect(
-    (await routines.test(workspaceId, SCRIPT, routine.id, bob.userId)).ok
+    (await routines.test(workspaceId, null, SCRIPT, routine.id, bob.userId)).ok
   ).toBe(true);
 
   golem.app.database
@@ -561,7 +563,7 @@ test("agents create routines and test scripts", async () => {
     "Created the routine.\nSchool (routine "
   );
   expect(toolResults.at(-1)).toContain("in #school");
-  const [created] = golem.app.routines.inWorkspace(workspaceId);
+  const [created] = golem.app.routines.inWorkspace(workspaceId, null);
   expect(created).toMatchObject({
     name: "School",
     channelId,
@@ -578,7 +580,7 @@ test("agents create routines and test scripts", async () => {
   expect(toolResults.at(-1)).toContain(
     'The schedule "every morning" is not a cron expression'
   );
-  expect(golem.app.routines.inWorkspace(workspaceId)).toHaveLength(1);
+  expect(golem.app.routines.inWorkspace(workspaceId, null)).toHaveLength(1);
 
   await golem.app.threads.send(thread.id, alice, "Test a script");
   await until(

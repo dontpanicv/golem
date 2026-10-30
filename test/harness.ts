@@ -110,6 +110,7 @@ export async function startTestApp() {
 
   return {
     app,
+    dataDirectory,
     faux,
     model,
     handler,

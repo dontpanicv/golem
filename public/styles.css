@@ -291,6 +291,15 @@ a {
   color: var(--color-text-secondary);
 }
 
+.field-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
 .input {
   width: 100%;
   height: var(--size-control);
@@ -982,6 +991,11 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.nav-item .lock {
+  display: flex;
+  flex: none;
+  color: var(--color-text-tertiary);
 }
 .nav-item .count {
   font-size: var(--font-size-xs);

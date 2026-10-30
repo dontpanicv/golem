@@ -39,6 +39,7 @@ type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: 
 type Channel = {
 	id: string;
 	name: string;
+	ownerId: string | null; // the person a private channel belongs to, who alone sees it; null: every member sees it
 	summary: string | null; // what the channel is for and what goes on in it, as the model last wrote it with the brief
 	icon: string | null; // one emoji, shown in place of the # before the name; the model chooses it for a new channel and again at each new thread
 	threads: ThreadSummary[]; // newest first
@@ -183,7 +184,9 @@ type Llm = {
 
 ## Endpoints
 
-Workspace paths answer `404` to users who are not members of the workspace.
+Golem has one workspace, the family's; nobody makes or deletes one. Workspace paths answer `404` to users who are not
+members of the workspace, and the paths of a private channel, its threads, files, artifacts, and routines answer `404`
+to everyone but its person.
 
 Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, tool, or search shows it again.
 
@@ -191,13 +194,11 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[] }` |
-| `POST /api/v1/workspaces` | `{ name }` | `Workspace`; the creator becomes owner, and the workspace gets a `general` channel |
-| `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }` |
+| `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[] }`; the first person to sign in starts Golem's one workspace, with a `general` channel, and is its owner |
+| `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }`: the channels every member sees, and the person's own private ones |
 | `PUT /api/v1/workspaces/:workspaceId` | `{ name }` | `Workspace`; `403` for a member who is not an owner |
-| `DELETE /api/v1/workspaces/:workspaceId` | | `204`; its channels, threads, files, artifacts, and routines go with it; `403` for a member who is not an owner |
-| `POST /api/v1/workspaces/:workspaceId/channels` | `{ name }` | `Channel`; `409` if the name exists |
-| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrators move to the next channel; `409` for the last channel |
+| `POST /api/v1/workspaces/:workspaceId/channels` | `{ name, private? }` | `Channel`; a `private` one is the person's own. `409` if the name exists, also as another person's private channel |
+| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrators move to the next channel that every member sees; `409` for the last such channel |
 | `GET /api/v1/workspaces/:workspaceId/facts` | | `{ text }`: facts that the family writes by hand, such as names, birthdays, and places; every agent of the workspace reads them; `""` until someone writes them |
 | `PUT /api/v1/workspaces/:workspaceId/facts` | `{ text }` | `{ text }`; every member can write them; `400` over 20,000 characters |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
@@ -233,12 +234,12 @@ The agents see each attached file by name and id; `list_files` lists the files o
 any file of the workspace by its id. `save_file` with `replaces` saves a new version of a file of their channel, which
 keeps its id, and `delete_file` deletes a file of their channel.
 
-Each member has an orchestrator of their own in each workspace, their personal assistant: one thread that never ends,
+Each member has an orchestrator of their own in the workspace, their personal assistant: one thread that never ends,
 which the workspace opens on, and whose agent gives work to the threads of the channels. Only its person reads and
 writes it: for anyone else, its routes answer `404`, and search, recall, routines, and other agents leave it out. It is
 in the first channel, but no `Channel.threads` list shows it, and it cannot be settled. Its agent remembers every
-message of its own thread and of every thread of the channels, and no other person's orchestrator: see
-`src/threads/memory.ts`. The workspace's one orchestrator from before each member had one belongs to the person who
+message of its own thread, of every thread of the channels every member sees, and of its person's private channels, and
+no other person's orchestrator or private channel: see `src/threads/memory.ts`. The workspace's one orchestrator from before each member had one belongs to the person who
 made the workspace.
 
 Each channel has a brief, which the model writes again from the new messages of the channel's threads when they are
@@ -437,8 +438,16 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 
 ## Isolation
 
-- Workspaces share nothing except the LLM provider, which the server's owner, the first email in `allowed_emails`,
-  connects once in `/settings`.
+- Every member sees the channels that are not private, with their threads, files, artifacts, and routines. A private
+  channel and all of it is its person's alone. A thread's agent sees what its realm sees: an orchestrator and a thread
+  of a private channel see the channels every member sees and their person's private ones; a thread of another
+  channel sees only the channels every member sees, so what it writes there never comes from a private channel. Its
+  tools, recall, routines, reminders, notifications, and memory follow the same rule. A thread of a channel may still
+  report back to the orchestrator that gave it work.
+- Search is one index of the workspace; each search leaves out what the person may not see before it ranks, so
+  neither the scores nor the limit depend on another person's private data.
+- The LLM provider, which the server's owner, the first email in `allowed_emails`, connects once in `/settings`, serves
+  every member.
 - A public artifact is the one thing that people outside a workspace can open: its page, and the data its visitors
   keep. Its name is four words that people can remember, about 1.6e8 names; names from before have two words and can
   be guessed, so make such an artifact again. A client that opens 20 artifact links in 10 minutes that do not exist,

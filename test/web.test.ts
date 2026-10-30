@@ -41,7 +41,7 @@ describe("the web app", () => {
       "Plan the trip"
     );
     thread = golem.app.workspaces
-      .threadsIn(workspaceId)
+      .allThreadsIn(workspaceId)
       .find((candidate) => candidate.id === summary.id)!;
   });
 

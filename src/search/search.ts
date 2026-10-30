@@ -2,7 +2,7 @@ import { type FSWatcher, mkdirSync, statSync, watch } from "node:fs";
 import { basename, join } from "node:path";
 import type { Artifacts } from "../artifacts/artifacts.ts";
 import type { Threads } from "../threads/threads.ts";
-import type { Workspaces } from "../workspaces/workspaces.ts";
+import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { documentPrompt, type Embedder, queryPrompt } from "./embedder.ts";
 import {
   type ExtractedSegment,
@@ -39,12 +39,15 @@ export interface SearchResponse {
 /** What the indexer reads from the directory in `golem.sqlite`: every workspace, and the channels and threads in one. */
 export type WorkspaceDirectory = Pick<
   Workspaces,
-  "ids" | "channelsIn" | "threadsIn"
+  "ids" | "allChannelsIn" | "allThreadsIn" | "channelsIn" | "threadsIn"
 >;
 /** The indexer reads thread messages; it never writes to a thread. */
 export type ThreadReader = Pick<Threads, "messages" | "version">;
 /** The indexer reads the live artifacts and their HTML. */
-export type ArtifactReader = Pick<Artifacts, "inWorkspace" | "html">;
+export type ArtifactReader = Pick<
+  Artifacts,
+  "allInWorkspace" | "inWorkspace" | "html"
+>;
 
 export class Indexer {
   private readonly indexes = new Map<string, WorkspaceIndex>();
@@ -114,15 +117,15 @@ export class Indexer {
   }
 
   /**
-   * Searches one workspace, for `personId`: their own thread with Golem is in the results, and no other person's.
-   * The caller has checked that the person is a member. Results of a deleted channel or artifact stay out at once,
-   * before the next scan takes them from the index.
+   * Searches one workspace for what `realm` sees: the channels every member sees, and the person's own thread with
+   * Golem and private channels; no other person's. The caller has checked that the person is a member. Results of a
+   * deleted channel or artifact stay out at once, before the next scan takes them from the index.
    */
   async search(
     workspaceId: string,
     query: string,
     limit: number,
-    personId: string | null
+    realm: Realm
   ): Promise<SearchResponse> {
     const index = this.index(workspaceId);
     let vector: Float32Array | null = null;
@@ -133,30 +136,29 @@ export class Indexer {
         )[0] ?? null;
     }
     const channels = new Set(
-      this.directory.channelsIn(workspaceId).map((channel) => channel.id)
+      this.directory.channelsIn(workspaceId, realm).map((channel) => channel.id)
     );
     const othersOwn = new Set(
       this.directory
-        .threadsIn(workspaceId)
-        .filter(
-          (thread) => thread.ownerId !== null && thread.ownerId !== personId
-        )
+        .allThreadsIn(workspaceId)
+        .filter((thread) => thread.ownerId !== null && thread.ownerId !== realm)
         .map((thread) => `thread:${thread.id}`)
     );
     const artifacts = new Set(
       this.artifacts
-        .inWorkspace(workspaceId)
+        .inWorkspace(workspaceId, realm)
         .map((artifact) => `artifact:${artifact.id}`)
     );
     return {
-      results: index
-        .search(query, vector, limit)
-        .filter(
-          (result) =>
-            (result.channelId === null || channels.has(result.channelId)) &&
-            (result.kind !== "artifact" || artifacts.has(result.uri)) &&
-            !othersOwn.has(result.uri)
-        ),
+      results: index.search(
+        query,
+        vector,
+        limit,
+        (source) =>
+          (source.channelId === null || channels.has(source.channelId)) &&
+          (source.kind !== "artifact" || artifacts.has(source.uri)) &&
+          !othersOwn.has(source.uri)
+      ),
       semantic: vector !== null,
     };
   }
@@ -207,7 +209,7 @@ export class Indexer {
     const index = this.index(workspaceId);
     const root = this.workspaceDirectory(workspaceId);
     const seen = new Set<string>();
-    for (const thread of this.directory.threadsIn(workspaceId)) {
+    for (const thread of this.directory.allThreadsIn(workspaceId)) {
       const uri = `thread:${thread.id}`;
       seen.add(uri);
       await index.sync(
@@ -235,7 +237,7 @@ export class Indexer {
         }
       );
     }
-    for (const artifact of this.artifacts.inWorkspace(workspaceId)) {
+    for (const artifact of this.artifacts.allInWorkspace(workspaceId)) {
       const uri = `artifact:${artifact.id}`;
       seen.add(uri);
       await index.sync(
@@ -255,7 +257,7 @@ export class Indexer {
         })
       );
     }
-    for (const channel of this.directory.channelsIn(workspaceId)) {
+    for (const channel of this.directory.allChannelsIn(workspaceId)) {
       await this.syncFolder(
         index,
         seen,

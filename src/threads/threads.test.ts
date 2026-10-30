@@ -277,7 +277,7 @@ function agent(context: Context, options?: SimpleStreamOptions) {
 
 async function idle(workspaceId: string, threadId: string) {
   const thread = golem.app.workspaces
-    .threadsIn(workspaceId)
+    .allThreadsIn(workspaceId)
     .find((candidate) => candidate.id === threadId)!;
   return until(
     () => golem.app.threads.messages(thread),
@@ -408,7 +408,7 @@ test("an answer notifies the person who asked unless a screen of theirs shows th
   ]);
 
   const thread = golem.app.workspaces
-    .threadsIn(home.id)
+    .allThreadsIn(home.id)
     .find((candidate) => candidate.id === asked.id)!;
   await golem.app.threads.instruct(
     thread,
@@ -1148,7 +1148,7 @@ test("the orchestrator gets its own instructions, also after they change, and a 
     "Hi"
   );
   const channelThread = golem.app.workspaces
-    .threadsIn(home.id)
+    .allThreadsIn(home.id)
     .find((candidate) => candidate.id === created.id)!;
   await until(
     () => golem.app.threads.messages(channelThread),
@@ -1333,9 +1333,9 @@ test("an agent creates, searches, and deletes channels, and a deleted channel ke
     "Not found"
   );
   expect(
-    golem.app.workspaces.threadsIn(home.id).map((thread) => thread.id)
+    golem.app.workspaces.allThreadsIn(home.id).map((thread) => thread.id)
   ).toEqual([asked.id]);
-  expect(golem.app.routines.inWorkspace(home.id)).toEqual([]);
+  expect(golem.app.routines.inWorkspace(home.id, null)).toEqual([]);
   expect(golem.app.routines.tick(Date.now() + 3 * 86_400_000)).toEqual([]);
   // Nothing is removed.
   expect(
@@ -1600,7 +1600,10 @@ test("save_file writes text and prints an artifact, and hands_copy_file puts a f
       `Save ${JSON.stringify({ content: "# Shopping\n- milk", name: "list.md" })}`
     );
     const invite = golem.app.artifacts.create(
-      { ...golem.app.workspaces.threadsIn(home.id)[0]!, workspaceId: home.id },
+      {
+        ...golem.app.workspaces.allThreadsIn(home.id)[0]!,
+        workspaceId: home.id,
+      },
       general.id,
       { title: "Party invite", html: "<h1>Party</h1>", requestKey: "invite" }
     );
@@ -1732,7 +1735,7 @@ test("a command that dcg flags waits for a person: the turn's, or the one who pa
       `Run code: ${script} text("finished");`
     );
     return golem.app.workspaces
-      .threadsIn(home.id)
+      .allThreadsIn(home.id)
       .find((candidate) => candidate.id === summary.id)!;
   };
   const waiting = (thread: ThreadRef) =>
@@ -1924,7 +1927,7 @@ function savingThreads(
 
 function answeredIn(threads: Threads, workspaceId: string, threadId: string) {
   const thread = golem.app.workspaces
-    .threadsIn(workspaceId)
+    .allThreadsIn(workspaceId)
     .find((candidate) => candidate.id === threadId)!;
   return until(
     () => threads.messages(thread),

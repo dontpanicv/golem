@@ -86,18 +86,18 @@ test("the orchestrator and a channel thread can both schedule reminders in their
   );
   expect(
     golem.app.reminders
-      .list(workspace.id, alice)
+      .list(workspace.id, alice, alice.id)
       .map((reminder) => reminder.threadId)
       .sort()
   ).toEqual([orchestrator.id, thread.id].sort());
   await golem.app.threads.send(orchestrator.id, alice, "Delegate reminder");
   const delegated = await until(
-    async () => golem.app.reminders.list(workspace.id, alice),
+    async () => golem.app.reminders.list(workspace.id, alice, alice.id),
     (reminders) => reminders.length === 3
   );
   expect(delegated.every((reminder) => reminder.recipientId === alice.id)).toBe(
     true
   );
   const other = await golem.app.workspaces.create(alice, "Other");
-  expect(golem.app.reminders.list(other.id, alice)).toEqual([]);
+  expect(golem.app.reminders.list(other.id, alice, null)).toEqual([]);
 });

@@ -10,7 +10,7 @@ import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type { Indexer } from "../search/search.ts";
 import type { Threads } from "../threads/threads.ts";
-import type { Workspaces } from "../workspaces/workspaces.ts";
+import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { routineTools } from "./tools.ts";
 
 export type RoutineOutcome = "running" | "quiet" | "posted" | "failed";
@@ -59,7 +59,13 @@ export type ScriptResult =
 
 export type RoutineWorkspaces = Pick<
   Workspaces,
-  "channelsIn" | "requireMember" | "threadsIn"
+  | "allChannelsIn"
+  | "allThreadsIn"
+  | "channel"
+  | "channelsIn"
+  | "requireMember"
+  | "threadOf"
+  | "threadsIn"
 >;
 export type RoutineThreads = Pick<
   Threads,
@@ -185,14 +191,7 @@ export class Routines {
     channelId: string,
     user: User
   ): { routines: Routine[]; runs: RoutineRun[] } {
-    this.workspaces.requireMember(workspaceId, user);
-    if (
-      !this.workspaces
-        .channelsIn(workspaceId)
-        .some((channel) => channel.id === channelId)
-    ) {
-      throw notFound();
-    }
+    this.workspaces.channel(workspaceId, channelId, user);
     const rows = this.database
       .query(
         `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE channel_id = ? AND deleted_at IS NULL ORDER BY created_at`
@@ -234,17 +233,16 @@ export class Routines {
     });
   }
 
-  /** The routines of a workspace, for its agents. */
-  inWorkspace(workspaceId: string): Routine[] {
-    return (
+  /** The routines of a workspace in the channels `realm` sees, for its agents. */
+  inWorkspace(workspaceId: string, realm: Realm): Routine[] {
+    return this.live(
       this.database
         .query(
           `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY created_at`
         )
-        .all(workspaceId) as RoutineRow[]
-    )
-      .filter((row) => this.live([row]).length > 0)
-      .map((row) => this.routineOf(row));
+        .all(workspaceId) as RoutineRow[],
+      realm
+    ).map((row) => this.routineOf(row));
   }
 
   /** Adds a routine to a channel for an agent of the workspace. Creating it again with the same id changes nothing. */
@@ -271,7 +269,7 @@ export class Routines {
         input.createdBy,
         now
       );
-    return this.routineIn(workspaceId, input.id);
+    return this.routineOf(this.row(workspaceId, input.id));
   }
 
   /**
@@ -280,11 +278,12 @@ export class Routines {
    */
   update(
     workspaceId: string,
+    realm: Realm,
     routineId: string,
     changes: Partial<RoutineInput> & { readonly enabled?: boolean },
     changedBy: string
   ): Routine {
-    const row = this.row(workspaceId, routineId);
+    const row = this.row(workspaceId, routineId, realm);
     const routine = this.routineOf(row);
     const schedule = changes.schedule ?? routine.schedule;
     const enabled = changes.enabled ?? routine.enabled;
@@ -310,12 +309,12 @@ export class Routines {
           : changedBy,
         routineId
       );
-    return this.routineIn(workspaceId, routineId);
+    return this.routineOf(this.row(workspaceId, routineId));
   }
 
-  /** Deletes a routine for an agent of the workspace; its thread stays. */
-  remove(workspaceId: string, routineId: string): Routine {
-    const routine = this.routineIn(workspaceId, routineId);
+  /** Deletes a routine in a channel `realm` sees, for an agent of the workspace; its thread stays. */
+  remove(workspaceId: string, realm: Realm, routineId: string): Routine {
+    const routine = this.routineOf(this.row(workspaceId, routineId, realm));
     this.softDelete(routineId);
     return routine;
   }
@@ -327,24 +326,27 @@ export class Routines {
    */
   async test(
     workspaceId: string,
+    realm: Realm,
     script: string,
     routineId: string | undefined,
     userId: string | null
   ): Promise<ScriptResult> {
-    const routine = routineId ? this.row(workspaceId, routineId) : undefined;
+    const routine = routineId
+      ? this.row(workspaceId, routineId, realm)
+      : undefined;
     if (routine && routine.createdBy !== (userId ?? "golem")) {
       throw new Error(
         "Only the person who last wrote this routine can test with its stored values. Test without the routine."
       );
     }
     const store = routine ? JSON.parse(routine.store) : {};
-    return this.execute(workspaceId, script, store, userId);
+    return this.execute(workspaceId, script, store, userId, realm);
   }
 
   /** The TypeScript declarations of the tools that scripts of a workspace can call. */
   async declarations(workspaceId: string): Promise<string> {
     return renderDeclarations({
-      tools: await this.scriptTools(workspaceId, null),
+      tools: await this.scriptTools(workspaceId, null, null),
     });
   }
 
@@ -448,7 +450,8 @@ export class Routines {
         routine.workspaceId,
         routine.script,
         JSON.parse(routine.store),
-        routine.createdBy
+        routine.createdBy,
+        this.realmOf(routine)
       ));
     // A run that a stop cuts off goes on with this result: a new script run could find other things.
     this.database
@@ -476,7 +479,7 @@ export class Routines {
     text: string
   ): Promise<string | null> {
     let thread = this.workspaces
-      .threadsIn(routine.workspaceId)
+      .allThreadsIn(routine.workspaceId)
       .find((candidate) => candidate.id === routine.threadId);
     if (!thread) {
       thread = await this.threads.startAgentThread(
@@ -497,15 +500,16 @@ export class Routines {
     );
   }
 
-  /** Runs a script with the integrations of the person `userId`'s turns use. */
+  /** Runs a script with the integrations of the person `userId`'s turns use, and what `realm` sees. */
   private async execute(
     workspaceId: string,
     script: string,
     store: Record<string, unknown>,
-    userId: string | null
+    userId: string | null,
+    realm: Realm
   ): Promise<ScriptResult> {
     const sandbox = new CodemodeSandbox({
-      tools: await this.scriptTools(workspaceId, userId),
+      tools: await this.scriptTools(workspaceId, userId, realm),
       timeoutMs: SCRIPT_TIMEOUT,
       memoryLimitBytes: 256 * 1024 * 1024,
     });
@@ -543,10 +547,23 @@ export class Routines {
     }
   }
 
-  /** What scripts call: the connectors' tools, and reading the workspace's channels, threads, and search. */
+  /** The person of a routine's private channel; null for a channel every member sees. */
+  private realmOf(routine: RoutineRow): Realm {
+    return (
+      this.workspaces
+        .allChannelsIn(routine.workspaceId)
+        .find((channel) => channel.id === routine.channelId)?.ownerId ?? null
+    );
+  }
+
+  /**
+   * What scripts call: the connectors' tools, and reading the channels, threads, and search of the workspace that
+   * `realm` sees.
+   */
   private async scriptTools(
     workspaceId: string,
-    userId: string | null
+    userId: string | null,
+    realm: Realm
   ): Promise<CodemodeTool[]> {
     const connectors = (await this.integrations.tools(workspaceId)).map(
       (tool): CodemodeTool => ({
@@ -565,7 +582,7 @@ export class Routines {
           "The channels of the workspace with their summaries and threads, newest thread first.",
         inputSchema: { type: "object", properties: {} },
         execute: () =>
-          this.workspaces.channelsIn(workspaceId).map((channel) => ({
+          this.workspaces.channelsIn(workspaceId, realm).map((channel) => ({
             name: channel.name,
             summary: channel.summary,
             threads: channel.threads.map(({ id, title, updatedAt }) => ({
@@ -592,9 +609,9 @@ export class Routines {
             thread: string;
             limit?: number;
           };
-          // A routine runs for the whole workspace, so it reads no person's own thread.
+          // A script reads no person's own thread.
           const thread = this.workspaces
-            .threadsIn(workspaceId)
+            .threadsIn(workspaceId, realm)
             .find(
               (candidate) =>
                 candidate.id === threadId && candidate.ownerId === null
@@ -624,7 +641,7 @@ export class Routines {
         execute: async (args) => {
           const { query, limit } = args as { query: string; limit?: number };
           return (
-            await this.search.search(workspaceId, query, limit ?? 10, null)
+            await this.search.search(workspaceId, query, limit ?? 10, realm)
           ).results;
         },
       },
@@ -651,10 +668,6 @@ export class Routines {
     };
   }
 
-  private routineIn(workspaceId: string, routineId: string): Routine {
-    return this.routineOf(this.row(workspaceId, routineId));
-  }
-
   /** Nothing is removed: a deleted routine stays, hidden, and never runs again. */
   private softDelete(routineId: string): void {
     this.database
@@ -662,16 +675,20 @@ export class Routines {
       .run(Date.now(), routineId);
   }
 
-  /** The routines among `rows` whose channel is not deleted; a deleted channel's routines rest with it. */
-  private live(rows: RoutineRow[]): RoutineRow[] {
+  /**
+   * The routines among `rows` whose channel is not deleted, and that `realm` sees when given; a deleted channel's
+   * routines rest with it.
+   */
+  private live(rows: RoutineRow[], realm?: Realm): RoutineRow[] {
     const channels = new Map<string, Set<string>>();
     return rows.filter((row) => {
       let ids = channels.get(row.workspaceId);
       if (!ids) {
         ids = new Set(
-          this.workspaces
-            .channelsIn(row.workspaceId)
-            .map((channel) => channel.id)
+          (realm === undefined
+            ? this.workspaces.allChannelsIn(row.workspaceId)
+            : this.workspaces.channelsIn(row.workspaceId, realm)
+          ).map((channel) => channel.id)
         );
         channels.set(row.workspaceId, ids);
       }
@@ -679,13 +696,18 @@ export class Routines {
     });
   }
 
-  private row(workspaceId: string, routineId: string): RoutineRow {
+  private row(
+    workspaceId: string,
+    routineId: string,
+    realm?: Realm
+  ): RoutineRow {
     const [row] = this.live(
       this.database
         .query(
           `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
         )
-        .all(routineId, workspaceId) as RoutineRow[]
+        .all(routineId, workspaceId) as RoutineRow[],
+      realm
     );
     if (!row) {
       throw new Error(
@@ -706,7 +728,7 @@ export class Routines {
     if (!row) {
       throw notFound();
     }
-    this.workspaces.requireMember(row.workspaceId, user);
+    this.workspaces.channel(row.workspaceId, row.channelId, user);
     return row;
   }
 }

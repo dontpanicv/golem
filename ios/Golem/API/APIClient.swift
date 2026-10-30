@@ -34,15 +34,9 @@ final class APIClient {
     // MARK: Workspaces
 
     func me() async throws -> Profile { try await get("/api/v1/me") }
-    func createWorkspace(name: String) async throws -> Workspace {
-        try await post("/api/v1/workspaces", ["name": name])
-    }
     func workspace(_ id: String) async throws -> WorkspaceDetail { try await get("/api/v1/workspaces/\(id)") }
     func renameWorkspace(_ id: String, name: String) async throws -> Workspace {
         try decode(try await send("PUT", "/api/v1/workspaces/\(id)", ["name": name]).data)
-    }
-    func deleteWorkspace(_ id: String) async throws {
-        _ = try await send("DELETE", "/api/v1/workspaces/\(id)")
     }
 
     /// The workspace's thread that never ends; the first call makes it.
@@ -50,8 +44,8 @@ final class APIClient {
         try await get("/api/v1/workspaces/\(workspaceID)/orchestrator")
     }
 
-    func createChannel(workspaceID: String, name: String) async throws -> Channel {
-        try await post("/api/v1/workspaces/\(workspaceID)/channels", ["name": name])
+    func createChannel(workspaceID: String, name: String, isPrivate: Bool) async throws -> Channel {
+        try await post("/api/v1/workspaces/\(workspaceID)/channels", ["name": name, "private": isPrivate])
     }
 
     func deleteChannel(workspaceID: String, channelID: String) async throws {

@@ -26,6 +26,8 @@ struct ThreadSummary: Codable, Hashable, Identifiable {
 struct Channel: Codable, Hashable, Identifiable {
     let id: String
     let name: String
+    /// The person a private channel belongs to, who alone sees it; nil for a channel every member sees.
+    let ownerId: String?
     let summary: String?
     /// One emoji, shown in place of the # before the name.
     let icon: String?

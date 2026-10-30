@@ -286,13 +286,12 @@ private struct TabBar: View {
     }
 }
 
-/// The workspaces, as Slack's panel: it slides in from the leading edge over a dimmed screen with every workspace,
-/// the open one lit, then New workspace and both settings. A tap on the dimmed screen or a swipe back closes it.
+/// The workspace, as Slack's panel: it slides in from the leading edge over a dimmed screen with the workspace's name
+/// and both settings. A tap on the dimmed screen or a swipe back closes it.
 private struct WorkspacePanel: View {
     @Binding var isPresented: Bool
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
-    @State private var newWorkspace = false
     @State private var drag: CGFloat = 0
 
     var body: some View {
@@ -303,7 +302,7 @@ private struct WorkspacePanel: View {
                     .onTapGesture(perform: close)
                     .transition(.opacity)
                     .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel("Close workspaces")
+                    .accessibilityLabel("Close")
                 panel
                     .offset(x: min(0, drag))
                     .gesture(
@@ -317,26 +316,16 @@ private struct WorkspacePanel: View {
                     .transition(.move(edge: .leading))
             }
         }
-        .sheet(isPresented: $newWorkspace) {
-            NameDialog(title: "New workspace") { name in try await session.createWorkspace(name: name) }
-        }
     }
 
     private var panel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Workspaces")
+            Text(session.workspace?.name ?? "Golem")
                 .font(.golem(Tokens.Mobile.FontSize.detailTitle, Tokens.FontWeight.semibold))
                 .foregroundStyle(Tokens.Mobile.Colors.title)
                 .padding(.horizontal, Tokens.Mobile.Size.margin)
                 .padding(.vertical, Tokens.Space.lg)
                 .accessibilityAddTraits(.isHeader)
-            ScrollView {
-                VStack(spacing: Tokens.Space.xxs) {
-                    ForEach(session.workspaces) { workspace in workspaceRow(workspace) }
-                }
-            }
-            ListSeparator()
-            row("New workspace", systemImage: "plus") { newWorkspace = true }
             row("Workspace settings", systemImage: "person.2") { open(.workspaceSettings) }
             row("Settings", systemImage: "gearshape") { open(.settings) }
         }
@@ -347,32 +336,6 @@ private struct WorkspacePanel: View {
                 .fill(Tokens.Mobile.Colors.background)
                 .ignoresSafeArea()
         }
-    }
-
-    private func workspaceRow(_ workspace: Workspace) -> some View {
-        let selected = workspace.id == session.workspace?.id
-        return Button {
-            close()
-            if !selected { Task { await session.run { try await session.open(workspace) } } }
-        } label: {
-            HStack(spacing: Tokens.Space.lg) {
-                Avatar(name: workspace.name, agent: true, size: Tokens.Mobile.Size.avatar)
-                Text(workspace.name)
-                    .font(.golem(Tokens.Mobile.FontSize.menu, Tokens.FontWeight.medium))
-                    .foregroundStyle(Tokens.Mobile.Colors.title)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Tokens.Space.lg)
-            .frame(minHeight: Tokens.Mobile.Size.row + Tokens.Space.md)
-            .background(
-                selected ? Tokens.Mobile.Colors.menuSelected : .clear, in: .rect(cornerRadius: Tokens.Radius.xl)
-            )
-            .padding(.horizontal, Tokens.Space.md)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.row)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func row(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {

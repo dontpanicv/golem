@@ -18,6 +18,22 @@ function setup(
 ) {
   const database = openDatabase(":memory:");
   migrate(database);
+  const threadsOf = (workspaceId: string) =>
+    workspaceId === "home"
+      ? [
+          {
+            id: "thread",
+            workspaceId,
+            channelId: "general",
+            conversationId: 1,
+            title: "Plans",
+            updatedAt: 0,
+            settledAt: null,
+            ownerId: null,
+            realm: null,
+          },
+        ]
+      : [];
   const workspaces = {
     requireMember(workspaceId: string, user: User) {
       if (workspaceId !== "home" || ![alice.id, bob.id].includes(user.id)) {
@@ -42,24 +58,20 @@ function setup(
     agentMember() {
       return alice;
     },
-    threadsIn(workspaceId: string) {
-      return workspaceId === "home"
-        ? [
-            {
-              id: "thread",
-              workspaceId,
-              channelId: "general",
-              conversationId: 1,
-              title: "Plans",
-              updatedAt: 0,
-              settledAt: null,
-            },
-          ]
-        : [];
-    },
+    threadsIn: (workspaceId: string) => threadsOf(workspaceId),
+    allThreadsIn: (workspaceId: string) => threadsOf(workspaceId),
+    threadOf: (workspaceId: string, conversationId: number) =>
+      threadsOf(workspaceId).find(
+        (thread) => thread.conversationId === conversationId
+      ) ?? null,
   } as unknown as Pick<
     Workspaces,
-    "agentMember" | "requireMember" | "members" | "threadsIn"
+    | "agentMember"
+    | "allThreadsIn"
+    | "requireMember"
+    | "members"
+    | "threadOf"
+    | "threadsIn"
   >;
   const calls: string[] = [];
   const requesters: (string | null)[] = [];
@@ -102,7 +114,7 @@ test("one-time reminders run once, also when the machine starts after their due 
   const restarted = new Reminders(database, workspaces, threads);
   await Promise.all(restarted.tick(reminder.dueAt + 60_000));
   expect(calls).toEqual(["reminder:first:0"]);
-  expect(reminders.get("home", alice, "first").deliveredAt).toBeNumber();
+  expect(reminders.get("home", alice, null, "first").deliveredAt).toBeNumber();
   expect(reminders.tick(reminder.dueAt + 120_000)).toEqual([]);
   database.close();
 });
@@ -128,13 +140,13 @@ test("a failed reminder retries and a cancelled reminder stays quiet", async () 
     text: "Buy milk",
     ...time,
   });
-  reminders.cancel("home", alice, second.id);
+  reminders.cancel("home", alice, null, second.id);
   await Promise.all(reminders.tick(first.dueAt));
-  const pending = reminders.get("home", alice, first.id);
+  const pending = reminders.get("home", alice, null, first.id);
   expect(pending.attempts).toBe(1);
   expect(pending.deliveredAt).toBeNull();
   await Promise.all(reminders.tick(pending.nextAttemptAt));
-  expect(reminders.get("home", alice, first.id).deliveredAt).toBeNumber();
+  expect(reminders.get("home", alice, null, first.id).deliveredAt).toBeNumber();
   expect(calls).toEqual(["reminder:retry:0", "reminder:retry:1"]);
   database.close();
 });
@@ -164,9 +176,9 @@ test("reminders stay in their workspace and reject a wrong time-zone offset", ()
       ...time,
     })
   ).toThrow("Not found");
-  expect(() => reminders.list("other", alice)).toThrow("Not found");
+  expect(() => reminders.list("other", alice, null)).toThrow("Not found");
   expect(() =>
-    reminders.get("home", { ...bob, id: "eve" }, "wrong-person")
+    reminders.get("home", { ...bob, id: "eve" }, null, "wrong-person")
   ).toThrow("Not found");
   database.close();
 });
@@ -185,7 +197,7 @@ test("the agent tool creates a workspace reminder for the person who asked", asy
     type: "text",
     text: expect.stringContaining("01/11/2090, 09:00 Europe/Prague"),
   });
-  const [reminder] = reminders.list("home", alice);
+  const [reminder] = reminders.list("home", alice, null);
   expect(reminder).toMatchObject({
     threadId: "thread",
     recipientId: alice.id,
@@ -212,7 +224,7 @@ test("the agent tool creates a workspace reminder for the person who asked", asy
     { conversationId: 1, taskId: 5 } as never,
     {} as never
   );
-  expect(reminders.get("home", alice, reminder!.id)).toMatchObject({
+  expect(reminders.get("home", alice, null, reminder!.id)).toMatchObject({
     text: "Review the new document",
     cancelledAt: expect.any(Number),
   });
@@ -236,7 +248,7 @@ test("an agent without a current person can name a workspace recipient", async (
     { conversationId: 1, taskId: 5 } as never,
     {} as never
   );
-  expect(reminders.list("home", alice)).toHaveLength(1);
+  expect(reminders.list("home", alice, null)).toHaveLength(1);
   database.close();
 });
 
@@ -249,7 +261,7 @@ test("a reminder runs as the person who asked for it or last changed it, not as 
     { conversationId: 1, taskId: 6 } as never,
     {} as never
   );
-  const [reminder] = reminders.list("home", alice);
+  const [reminder] = reminders.list("home", alice, null);
   expect(reminder).toMatchObject({ recipientId: bob.id, createdBy: alice.id });
   await Promise.all(reminders.tick(reminder!.dueAt));
   expect(requesters).toEqual([alice.id]);

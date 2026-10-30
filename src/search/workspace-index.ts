@@ -33,6 +33,12 @@ export interface Segment {
   readonly vector?: Float32Array;
 }
 
+/** What decides whether a person may see a source. */
+export interface VisibleSource {
+  readonly channelId: string | null;
+  readonly kind: SearchKind;
+  readonly uri: string;
+}
 export interface SearchResult {
   readonly channelId: string | null;
   readonly kind: SearchKind;
@@ -297,15 +303,29 @@ export class WorkspaceIndex {
   }
 
   /** Ranks sources by meaning (when `queryVector` is given) and keywords; best first. */
+  /**
+   * The best sources for a query among those `visible` lets through. The others take no part: not in the spread of
+   * scores that z-scores measure, and not in the limit.
+   */
   search(
     query: string,
     queryVector: Float32Array | null,
-    limit: number
+    limit: number,
+    visible: (source: VisibleSource) => boolean
   ): SearchResult[] {
+    const allowed = new Set(
+      (
+        this.database
+          .query("SELECT id, uri, kind, channel_id AS channelId FROM sources")
+          .all() as (VisibleSource & { id: number })[]
+      )
+        .filter(visible)
+        .map((source) => source.id)
+    );
     const terms = queryTerms(query);
-    const keywords = this.keywordHits(terms);
+    const keywords = this.keywordHits(terms, allowed);
     const meaning = queryVector
-      ? this.meaningHits(queryVector)
+      ? this.meaningHits(queryVector, allowed)
       : new Map<number, { z: number; segment: number }>();
     const lookup =
       terms.length > 0 &&
@@ -369,7 +389,8 @@ export class WorkspaceIndex {
 
   /** Per source: the share of query terms it contains, and its best-matching segment. */
   private keywordHits(
-    terms: readonly string[]
+    terms: readonly string[],
+    allowed: ReadonlySet<number>
   ): Map<number, { coverage: number; segment: number }> {
     const hits = new Map<number, { coverage: number; segment: number }>();
     if (terms.length === 0) {
@@ -382,7 +403,7 @@ export class WorkspaceIndex {
       )
       .all(match) as { source: number; id: number }[];
     for (const row of ranked) {
-      if (!hits.has(row.source)) {
+      if (allowed.has(row.source) && !hits.has(row.source)) {
         hits.set(row.source, { coverage: 0, segment: row.id });
       }
     }
@@ -407,9 +428,16 @@ export class WorkspaceIndex {
    * score on different scales, so each is centered on its own mean (DigUp does the same).
    */
   private meaningHits(
-    query: Float32Array
+    query: Float32Array,
+    allowed: ReadonlySet<number>
   ): Map<number, { z: number; segment: number }> {
-    const { ids, sources, modalities, matrix } = this.loadVectors();
+    const vectors = this.loadVectors();
+    const rows = Array.from(vectors.ids.keys()).filter((row) =>
+      allowed.has(vectors.sources[row]!)
+    );
+    const ids = rows.map((row) => vectors.ids[row]!);
+    const sources = rows.map((row) => vectors.sources[row]!);
+    const modalities = rows.map((row) => vectors.modalities[row]!);
     const hits = new Map<number, { z: number; segment: number }>();
     const count = ids.length;
     if (count === 0) {
@@ -421,9 +449,9 @@ export class WorkspaceIndex {
     let total = 0;
     for (let row = 0; row < count; row += 1) {
       let dot = 0;
-      const offset = row * DIMENSIONS;
+      const offset = rows[row]! * DIMENSIONS;
       for (let column = 0; column < DIMENSIONS; column += 1) {
-        dot += matrix[offset + column]! * query[column]!;
+        dot += vectors.matrix[offset + column]! * query[column]!;
       }
       scores[row] = dot;
       sums[modalities[row]!]! += dot;
