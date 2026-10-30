@@ -40,7 +40,7 @@ type ReminderWorkspaces = Pick<
   | "threadOf"
   | "threadsIn"
 >;
-type ReminderThreads = Pick<Threads, "instruct" | "requester">;
+type ReminderThreads = Pick<Threads, "instruct" | "realm" | "requester">;
 
 const TICK = 30_000;
 

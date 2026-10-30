@@ -9,7 +9,7 @@ import type { Reminder, Reminders } from "./reminders.ts";
 export function reminderTools(
   reminders: Reminders,
   workspaces: Pick<Workspaces, "agentMember" | "members" | "threadOf">,
-  threads: Pick<Threads, "requester">,
+  threads: Pick<Threads, "realm" | "requester">,
   workspaceId: string
 ) {
   const at = Type.String({
@@ -28,7 +28,7 @@ export function reminderTools(
     return {
       asker,
       actor: asker ?? workspaces.agentMember(workspaceId),
-      realm: workspaces.threadOf(workspaceId, conversationId)?.realm ?? null,
+      realm: await threads.realm(workspaceId, conversationId),
     };
   };
 

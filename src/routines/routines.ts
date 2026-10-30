@@ -69,7 +69,7 @@ export type RoutineWorkspaces = Pick<
 >;
 export type RoutineThreads = Pick<
   Threads,
-  "instruct" | "messages" | "requester" | "startAgentThread"
+  "instruct" | "messages" | "realm" | "requester" | "startAgentThread"
 >;
 export type RoutineSearch = Pick<Indexer, "search">;
 

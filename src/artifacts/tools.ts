@@ -1,5 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool } from "@earendil-works/pi-durable";
+import { type ConversationId, defineTool } from "@earendil-works/pi-durable";
 import type { Artifact, Artifacts, ArtifactWorkspaces } from "./artifacts.ts";
 
 const RUNTIME = `An artifact is one self-contained HTML page: a schedule, an invite, an explainer, a poll, a sign-up list, a game for the kids, or any small app. People open its link on their phones, often from WhatsApp, so make it mobile-first and good-looking. Put the CSS and JavaScript inline; scripts, styles, and fonts may also come from cdn.jsdelivr.net, unpkg.com, cdnjs.cloudflare.com, and Google Fonts. Pictures must be in the page: SVG, CSS, emoji, or data: URLs. The page cannot use fetch or reach other sites: it keeps data only through the \`golem\` object, which is ready when \`await golem.ready\` returns. Every call returns a promise.
@@ -15,7 +15,8 @@ const idParameter = Type.String({ description: "The artifact id" });
 export function artifactTools(
   artifacts: Artifacts,
   workspaces: ArtifactWorkspaces,
-  workspaceId: string
+  workspaceId: string,
+  realmOf: (conversationId: ConversationId) => Promise<string | null>
 ) {
   const threadOf = (conversationId: number) => {
     const thread = workspaces.threadOf(workspaceId, conversationId);
@@ -26,17 +27,14 @@ export function artifactTools(
   };
   /** The channel an artifact belongs to: the named one, or the thread's; null, the workspace, for an orchestrator. */
   const placeOf = (
-    thread: {
-      readonly channelId: string;
-      readonly ownerId: string | null;
-      readonly realm: string | null;
-    },
+    thread: { readonly channelId: string; readonly ownerId: string | null },
+    realm: string | null,
     channel: string | undefined
   ) => {
     if (channel !== undefined) {
       const name = channel.replace(/^#/, "");
       const named = workspaces
-        .channelsIn(workspaceId, thread.realm)
+        .channelsIn(workspaceId, realm)
         .find((candidate) => candidate.name === name);
       if (!named) {
         throw new Error(
@@ -48,9 +46,9 @@ export function artifactTools(
     return thread.ownerId === null ? thread.channelId : null;
   };
   /** An artifact that the realm of the tool's thread sees. */
-  const artifactOf = (id: string, conversationId: number) => {
+  const artifactOf = async (id: string, conversationId: ConversationId) => {
     const artifact = artifacts
-      .inWorkspace(workspaceId, threadOf(conversationId).realm)
+      .inWorkspace(workspaceId, await realmOf(conversationId))
       .find((candidate) => candidate.id === id);
     if (!artifact) {
       throw new Error(
@@ -87,10 +85,14 @@ export function artifactTools(
       replay: "safe",
       execute: async ({ channel, ...args }, api) => {
         const thread = threadOf(api.conversationId);
-        const artifact = artifacts.create(thread, placeOf(thread, channel), {
-          ...args,
-          requestKey: `${workspaceId}:${api.taskId}`,
-        });
+        const artifact = artifacts.create(
+          thread,
+          placeOf(thread, await realmOf(api.conversationId), channel),
+          {
+            ...args,
+            requestKey: `${workspaceId}:${api.taskId}`,
+          }
+        );
         return text(
           `Made the artifact.\n${describe(artifact)}\nShow it in your answer with ![${artifact.title}](artifact:${artifact.id}).`
         );
@@ -112,7 +114,7 @@ export function artifactTools(
       replay: "safe",
       execute: async ({ id, ...changes }, api) =>
         text(
-          `Changed the artifact.\n${describe(artifacts.update(workspaceId, artifactOf(id, api.conversationId).id, changes))}`
+          `Changed the artifact.\n${describe(artifacts.update(workspaceId, (await artifactOf(id, api.conversationId)).id, changes))}`
         ),
     }),
 
@@ -126,7 +128,9 @@ export function artifactTools(
         replace: Type.String(),
       }),
       execute: async ({ id, find, replace }, api) => {
-        const html = artifacts.html(artifactOf(id, api.conversationId).id);
+        const html = artifacts.html(
+          (await artifactOf(id, api.conversationId)).id
+        );
         const count = html.split(find).length - 1;
         if (count !== 1) {
           throw new Error(
@@ -146,7 +150,7 @@ export function artifactTools(
       parameters: Type.Object({ id: idParameter }),
       replay: "safe",
       execute: async ({ id }, api) =>
-        text(artifacts.html(artifactOf(id, api.conversationId).id)),
+        text(artifacts.html((await artifactOf(id, api.conversationId)).id)),
     }),
 
     defineTool({
@@ -156,7 +160,7 @@ export function artifactTools(
       parameters: Type.Object({}),
       replay: "safe",
       execute: async (_args, api) => {
-        const { realm } = threadOf(api.conversationId);
+        const realm = await realmOf(api.conversationId);
         const channels = workspaces.channelsIn(workspaceId, realm);
         const threads = workspaces.threadsIn(workspaceId, realm);
         const list = artifacts
@@ -190,7 +194,7 @@ export function artifactTools(
       replay: "safe",
       execute: async ({ id, prefix }, api) => {
         const records = artifacts.records(
-          artifactOf(id, api.conversationId).id,
+          (await artifactOf(id, api.conversationId)).id,
           prefix
         );
         return text(
@@ -214,7 +218,7 @@ export function artifactTools(
       }),
       replay: "safe",
       execute: async ({ id, key, value }, api) => {
-        const artifact = artifactOf(id, api.conversationId);
+        const artifact = await artifactOf(id, api.conversationId);
         if (value === null || value === undefined) {
           artifacts.deleteRecord(artifact.id, "shared", key);
           return text("Deleted the record.");

@@ -410,6 +410,7 @@ test("a run that a stop cuts off goes on at the next start, and the agent does i
     messages: (thread) => threads.messages(thread),
     requester: (workspace, conversation) =>
       threads.requester(workspace, conversation),
+    realm: (workspace, conversation) => threads.realm(workspace, conversation),
     startAgentThread: (workspace, channel, title) =>
       threads.startAgentThread(workspace, channel, title),
     instruct: (...args) => {

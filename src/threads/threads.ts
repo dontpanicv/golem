@@ -636,6 +636,22 @@ export class Threads {
   }
 
   /**
+   * Whose private data a turn's tools see: its thread's realm, or in a channel every member sees, the person whose
+   * message the turn answers. What the agent then writes there, every member reads; the person chose that.
+   */
+  async realm(
+    workspaceId: string,
+    conversationId: ConversationId
+  ): Promise<Realm> {
+    const thread = this.threadOf(workspaceId, conversationId);
+    return (
+      thread.realm ??
+      (await this.requester(workspaceId, conversationId))?.id ??
+      null
+    );
+  }
+
+  /**
    * The person whose latest request reached an agent, also through a thread relay or a task for them. A turn answers
    * the latest input, as later ones wait in the inbox, so this is the person of the running turn.
    */
@@ -1750,18 +1766,18 @@ export class Threads {
         ...this.hands.tools(workspaceId, requesterOf),
         ...connectors.map((tool) =>
           connectorTool(tool, requesterOf, (conversationId, fileId) =>
-            this.fileIn(
-              workspaceId,
-              this.threadOf(workspaceId, conversationId).realm,
-              fileId
-            ).catch(() => {
-              throw new Error(
-                `There is no file ${fileId} in this workspace. list_files and recall show files.`
-              );
-            })
+            this.realm(workspaceId, conversationId)
+              .then((realm) => this.fileIn(workspaceId, realm, fileId))
+              .catch(() => {
+                throw new Error(
+                  `There is no file ${fileId} in this workspace. list_files and recall show files.`
+                );
+              })
           )
         ),
-        ...this.artifacts.tools(workspaceId),
+        ...this.artifacts.tools(workspaceId, (conversationId) =>
+          this.realm(workspaceId, conversationId)
+        ),
         ...this.browser.tools(workspaceId, requesterOf),
         ...hooked,
       ].map(scriptOnly),
@@ -1972,7 +1988,7 @@ export class Threads {
       replay: "safe",
       execute: async (args, api) => {
         // A thread recalls what its realm sees: an orchestrator its own messages and its person's private channels too.
-        const { realm } = this.threadOf(workspaceId, api.conversationId);
+        const realm = await this.realm(workspaceId, api.conversationId);
         const { results } = await this.hooks.recall(
           workspaceId,
           args.query,
@@ -2007,7 +2023,7 @@ export class Threads {
         const text = this.registry
           .channelsIn(
             workspaceId,
-            this.threadOf(workspaceId, api.conversationId).realm
+            await this.realm(workspaceId, api.conversationId)
           )
           .map(channelText)
           .join("\n");
@@ -2031,7 +2047,7 @@ export class Threads {
           this.registry
             .channelsIn(
               workspaceId,
-              this.threadOf(workspaceId, api.conversationId).realm
+              await this.realm(workspaceId, api.conversationId)
             )
             .map((channel) => {
               const haystack = [
@@ -2073,7 +2089,7 @@ export class Threads {
         ),
       }),
       execute: async (args, api) => {
-        const { realm } = this.threadOf(workspaceId, api.conversationId);
+        const realm = await this.realm(workspaceId, api.conversationId);
         if (args.private && realm === null) {
           throw new Error(
             "Every member sees this thread, so it cannot make a private channel."
@@ -2110,7 +2126,7 @@ export class Threads {
         channel: Type.String({ description: "The channel name" }),
       }),
       execute: async (args, api) => {
-        const { realm } = this.threadOf(workspaceId, api.conversationId);
+        const realm = await this.realm(workspaceId, api.conversationId);
         const name = args.channel.replace(/^#/, "").toLowerCase();
         const channel = this.registry
           .channelsIn(workspaceId, realm)
@@ -2151,7 +2167,7 @@ export class Threads {
       execute: async (args, api) => {
         const thread = this.threadIn(
           workspaceId,
-          this.threadOf(workspaceId, api.conversationId).realm,
+          await this.realm(workspaceId, api.conversationId),
           args.thread
         );
         // A person's own thread is private: only its own agent reads it.
@@ -2205,7 +2221,10 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
-        const channels = this.registry.channelsIn(workspaceId, from.realm);
+        const channels = this.registry.channelsIn(
+          workspaceId,
+          from.realm ?? requester?.id ?? null
+        );
         const name = args.channel?.replace(/^#/, "").toLowerCase();
         const channel = name
           ? channels.find((candidate) => candidate.name === name)
@@ -2274,7 +2293,8 @@ export class Threads {
           api.conversationId
         );
         const requester = await this.requester(workspaceId, api.conversationId);
-        // A thread of a channel may report back to an orchestrator; any other target is one its realm sees.
+        const realm = from.realm ?? requester?.id ?? null;
+        // A thread of a channel may report back to an orchestrator; any other target is one its turn's realm sees.
         const target = this.registry
           .allThreadsIn(workspaceId)
           .find(
@@ -2282,7 +2302,7 @@ export class Threads {
               candidate.id === args.thread &&
               (candidate.ownerId !== null ||
                 candidate.realm === null ||
-                candidate.realm === from.realm)
+                candidate.realm === realm)
           );
         if (!target) {
           throw new Error(
@@ -2412,7 +2432,7 @@ export class Threads {
       execute: async (args, api) => {
         const { path, name } = await this.fileIn(
           workspaceId,
-          this.threadOf(workspaceId, api.conversationId).realm,
+          await this.realm(workspaceId, api.conversationId),
           args.file
         ).catch(() => {
           throw new Error(
@@ -2587,7 +2607,7 @@ export class Threads {
     if (args.artifact) {
       const title = await this.printArtifact(
         workspaceId,
-        this.threadOf(workspaceId, conversationId).realm,
+        await this.realm(workspaceId, conversationId),
         args.artifact,
         path
       );
@@ -2667,7 +2687,7 @@ export class Threads {
       execute: async (args, api) => {
         const { path, name } = await this.fileIn(
           workspaceId,
-          this.threadOf(workspaceId, api.conversationId).realm,
+          await this.realm(workspaceId, api.conversationId),
           args.file
         ).catch(() => {
           throw new Error(

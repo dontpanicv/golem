@@ -89,7 +89,8 @@ function setup(
       return answer(requestId);
     },
     requester: async () => asking.requester,
-  } as unknown as Pick<Threads, "instruct" | "requester">;
+    realm: async () => null,
+  } as unknown as Pick<Threads, "instruct" | "realm" | "requester">;
   return {
     database,
     workspaces,

@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { randomInt } from "node:crypto";
+import type { ConversationId } from "@earendil-works/pi-durable";
 import type { User } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
@@ -179,9 +180,12 @@ export class Artifacts {
     private readonly changed: (workspaceId: string) => void
   ) {}
 
-  /** The agent tools of a workspace. */
-  tools(workspaceId: string) {
-    return artifactTools(this, this.workspaces, workspaceId);
+  /** The agent tools of a workspace; `realmOf` gives whose artifacts a turn sees. */
+  tools(
+    workspaceId: string,
+    realmOf: (conversationId: ConversationId) => Promise<Realm>
+  ) {
+    return artifactTools(this, this.workspaces, workspaceId, realmOf);
   }
 
   /**

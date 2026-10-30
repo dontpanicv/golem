@@ -439,11 +439,12 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
 ## Isolation
 
 - Every member sees the channels that are not private, with their threads, files, artifacts, and routines. A private
-  channel and all of it is its person's alone. A thread's agent sees what its realm sees: an orchestrator and a thread
-  of a private channel see the channels every member sees and their person's private ones; a thread of another
-  channel sees only the channels every member sees, so what it writes there never comes from a private channel. Its
-  tools, recall, routines, reminders, notifications, and memory follow the same rule. A thread of a channel may still
-  report back to the orchestrator that gave it work.
+  channel and all of it is its person's alone. An agent's turn sees the channels every member sees and the private
+  ones of one person: the person of an orchestrator or of a private channel, or in another channel the person whose
+  message the turn answers (also through a relay, routine, or reminder). What that turn writes there, every member
+  reads. Its tools, recall, routines, and reminders follow this rule; notifications and memory follow the thread, so a
+  thread every member reads goes to every orchestrator. A thread of a channel may still report back to the
+  orchestrator that gave it work.
 - Search is one index of the workspace; each search leaves out what the person may not see before it ranks, so
   neither the scores nor the limit depend on another person's private data.
 - The LLM provider, which the server's owner, the first email in `allowed_emails`, connects once in `/settings`, serves

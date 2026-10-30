@@ -811,3 +811,70 @@ test("a private channel, its threads, search results, and memory lines are its p
   );
   expect(linesOf(orchestrators[1].id)).not.toContain(thread.id);
 });
+
+test("in a channel every member sees, a turn finds the private threads of the person it answers, and only theirs", async () => {
+  const base = `/api/v1/workspaces/${workspaceId}`;
+  await golem.call(`${base}/members`, {
+    token: alice,
+    body: { email: "bob@example.com" },
+  });
+  const echoRecall = () => [
+    fauxAssistantMessage(fauxToolCall("recall", { query: "okapi" }), {
+      stopReason: "toolUse" as const,
+    }),
+    (context: { messages: { role: string }[] }) => {
+      const result = context.messages.findLast(
+        (message) => message.role === "toolResult"
+      ) as ToolResultMessage | undefined;
+      const text = result?.content[0];
+      return fauxAssistantMessage(
+        text?.type === "text" ? text.text : "no tool result"
+      );
+    },
+  ];
+  golem.faux.setResponses([fauxAssistantMessage("Noted.")]);
+  const secret = await body(
+    await golem.call(`${base}/channels`, {
+      token: alice,
+      body: { name: "okapi-plans", private: true },
+    })
+  );
+  const hidden = await body(
+    await golem.call(`${base}/threads`, {
+      token: alice,
+      body: { channelId: secret.id, text: "An okapi plush for Bob" },
+    })
+  );
+  await until(
+    async () =>
+      body(await golem.call(`/api/v1/threads/${hidden.id}`, { token: alice })),
+    (state) => !state.running && state.messages.length === 2
+  );
+  await golem.app.indexer.scan(workspaceId);
+
+  const { channels } = await body(await golem.call(base, { token: alice }));
+  const general = channels.find(
+    (channel: { name: string }) => channel.name === "general"
+  );
+  golem.faux.setResponses(echoRecall());
+  const shared = await body(
+    await golem.call(`${base}/threads`, {
+      token: alice,
+      body: { channelId: general.id, text: "What about the okapi?" },
+    })
+  );
+  const answered = async (count: number) =>
+    until(
+      async () =>
+        body(await golem.call(`/api/v1/threads/${shared.id}`, { token: bob })),
+      (state) => !state.running && state.messages.length === count
+    );
+  expect((await answered(2)).messages[1].text).toContain(hidden.id);
+
+  golem.faux.setResponses(echoRecall());
+  await golem.call(`/api/v1/threads/${shared.id}/messages`, {
+    token: bob,
+    body: { text: "And for me, the okapi?" },
+  });
+  expect((await answered(4)).messages[3].text).not.toContain(hidden.id);
+});
