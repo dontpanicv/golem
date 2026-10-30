@@ -207,6 +207,27 @@ export const threadApiRoutes: readonly Route[] = [
     }),
   ],
   [
+    "GET",
+    "/api/v1/workspaces/:workspace/files/:file/picture",
+    api(async ({ app, user, params }) => {
+      const jpeg = await app.threads.picture(
+        params.workspace!,
+        user,
+        params.file!
+      );
+      if (!jpeg) {
+        throw new HttpError(404, "No picture");
+      }
+      return new Response(jpeg, {
+        headers: {
+          "content-type": "image/jpeg",
+          // A changed file keeps its id and address.
+          "cache-control": "no-cache",
+        },
+      });
+    }),
+  ],
+  [
     "DELETE",
     "/api/v1/workspaces/:workspace/files/:file",
     api(async ({ app, user, params }) => {

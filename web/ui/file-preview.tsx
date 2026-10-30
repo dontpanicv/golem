@@ -258,6 +258,17 @@ function Content({ file }: { file: Named }) {
       <audio autoPlay controls src={file.href} />
     );
   }
+  if (imageType(file.name) === "image/heic") {
+    // Most browsers cannot show HEIC, the iPhone's format, so the server sends it as a JPEG.
+    return (
+      // biome-ignore lint/correctness/useImageSize: a file's picture has no known size
+      <img
+        alt={file.name}
+        className="file-preview-media"
+        src={`${file.href}/picture`}
+      />
+    );
+  }
   return <Fetched file={file} kind={kind} />;
 }
 

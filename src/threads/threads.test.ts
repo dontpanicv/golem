@@ -575,7 +575,16 @@ test("files attach to a new thread, a message, and the channel; every thread of 
   expect(html.headers.get("content-type")).toBe("application/octet-stream");
   expect(html.headers.get("content-disposition")).toStartWith("attachment");
 
-  for (const path of [filesPath, filePath(files[0]!.id)]) {
+  // Only a picture has a JPEG for its thumbnail.
+  expect(
+    (await golem.call(`${filePath(files[0]!.id)}/picture`, { token })).status
+  ).toBe(404);
+
+  for (const path of [
+    filesPath,
+    filePath(files[0]!.id),
+    `${filePath(files[0]!.id)}/picture`,
+  ]) {
     expect((await golem.call(path, { token: outsider })).status).toBe(404);
   }
 

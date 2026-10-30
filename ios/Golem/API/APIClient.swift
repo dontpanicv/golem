@@ -161,6 +161,11 @@ final class APIClient {
         return url
     }
 
+    /// A JPEG of a picture file at most 1024 pixels long, for its thumbnail in a message.
+    func picture(workspaceID: String, fileID: String) async throws -> Data {
+        try await send("GET", "/api/v1/workspaces/\(workspaceID)/files/\(fileID)/picture").data
+    }
+
     /// Reads the server-sent events of a thread until the stream ends, the task is cancelled, or an error occurs.
     func threadEvents(_ id: String, onState: (ThreadState) -> Void) async throws {
         try await events("/api/v1/threads/\(id)/events", named: "thread", onEvent: onState)

@@ -224,6 +224,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `GET /api/v1/workspaces/:workspaceId/files` | | `{ files: SavedFile[] }`: the workspace's own files, which the orchestrator keeps, oldest first |
 | `POST /api/v1/workspaces/:workspaceId/files` | multipart `files` | `{ files: SavedFile[] }`: all of the workspace's own files |
 | `GET /api/v1/workspaces/:workspaceId/files/:fileId` | | Any file of the workspace, in a channel or its own. Pictures, PDFs, plain text, audio, and video are `inline`; other kinds are `attachment` and `application/octet-stream`. |
+| `GET /api/v1/workspaces/:workspaceId/files/:fileId/picture` | | A JPEG of a picture file, also HEIC, at most 1024 pixels long, for its thumbnail in a message. `404` for another kind of file. |
 | `DELETE /api/v1/workspaces/:workspaceId/files/:fileId` | | `{ files: SavedFile[] }`: the files left where it was. Messages keep the name of a deleted file. |
 
 Files belong to a channel: every thread of the channel sees them, also after a thread is settled. The orchestrator

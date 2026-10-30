@@ -10,6 +10,7 @@ import {
 import { fileHref } from "../app/api.ts";
 import type { Message, Step, Work } from "../app/types.ts";
 import { Avatar, Mark } from "../ui/components.tsx";
+import { fileKind } from "../ui/file-kind.ts";
 import { previewLink } from "../ui/file-preview.tsx";
 import { clockTime, duration } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
@@ -80,25 +81,56 @@ function MessageCard({
         {message.files.length > 0 ? (
           <div className="file-chips">
             {message.files.map((file, index, files) => (
-              <a
-                className="file-chip"
+              <FileItem
                 key={file.id}
-                {...previewLink(
+                link={previewLink(
                   files.map((each) => ({
                     href: fileHref(workspaceId, each.id),
                     name: each.name,
                   })),
                   index
                 )}
-              >
-                <Icon name="attach" />
-                <span>{file.name}</span>
-              </a>
+                name={file.name}
+                picture={`${fileHref(workspaceId, file.id)}/picture`}
+              />
             ))}
           </div>
         ) : null}
       </div>
     </article>
+  );
+}
+
+/** A file of a message: a picture shows itself, and any other file, or a picture the server cannot convert, a chip. */
+function FileItem({
+  name,
+  link,
+  picture,
+}: {
+  name: string;
+  link: ReturnType<typeof previewLink>;
+  picture: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (fileKind(name) === "image" && !failed) {
+    return (
+      <a className="file-picture" {...link}>
+        {/* biome-ignore lint/correctness/useImageSize: a file's picture has no known size */}
+        {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: a load error is no person's action */}
+        <img
+          alt={name}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          src={picture}
+        />
+      </a>
+    );
+  }
+  return (
+    <a className="file-chip" {...link}>
+      <Icon name="attach" />
+      <span>{name}</span>
+    </a>
   );
 }
 

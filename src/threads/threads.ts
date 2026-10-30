@@ -829,6 +829,18 @@ export class Threads {
     return this.fileIn(workspaceId, user.id, fileId);
   }
 
+  /** A JPEG of a picture file at most 1024 pixels long, which every client can show; `null` for another kind of file. */
+  async picture(
+    workspaceId: string,
+    user: User,
+    fileId: string
+  ): Promise<Uint8Array | null> {
+    const { path } = await this.file(workspaceId, user, fileId);
+    return Bun.file(path).type.startsWith("image/")
+      ? this.hooks.picture(path)
+      : null;
+  }
+
   async messages(thread: ThreadRef): Promise<ThreadMessages> {
     const conversation = await this.conversation(thread);
     const watch = await conversation.watch(BACKGROUND_CONTEXT);

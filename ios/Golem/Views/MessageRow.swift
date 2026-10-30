@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One message, as Slack shows it: the author's avatar at the side, their name and the time over the text. A message
 /// that follows one of the same author within five minutes shows only its text (``continues(_:after:)``).
@@ -34,8 +35,12 @@ struct MessageRow: View {
                         .foregroundStyle(message.failed ? Tokens.Mobile.Colors.danger : Tokens.Mobile.Colors.text)
                         .textSelection(.enabled)
                 }
-                if !message.files.isEmpty {
-                    FileChips(names: message.files.map(\.name)) { openFile(message.files[$0]) }
+                ForEach(message.files.filter(\.isPicture)) { file in
+                    FilePicture(file: file) { openFile(file) }
+                }
+                let others = message.files.filter { !$0.isPicture }
+                if !others.isEmpty {
+                    FileChips(names: others.map(\.name)) { openFile(others[$0]) }
                 }
             }
         }
@@ -257,5 +262,55 @@ struct WorkStep: View {
     /// A tool call's arguments and result, when it has them.
     private var details: [String] {
         [step.input, step.output].compactMap { $0 }.filter { !$0.isEmpty && $0 != "{}" }
+    }
+}
+
+extension FileRef {
+    var isPicture: Bool {
+        UTType(filenameExtension: (name as NSString).pathExtension)?.conforms(to: .image) ?? false
+    }
+}
+
+/// A picture of a message, from its JPEG, at most 320 wide and 240 high; a tap opens it. A picture that the server
+/// cannot convert shows as a chip.
+private struct FilePicture: View {
+    let file: FileRef
+    let open: () -> Void
+    @Environment(Session.self) private var session
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        Button(action: open) {
+            if failed {
+                FileChip(name: file.name)
+            } else if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 320, maxHeight: 240)
+                    .clipShape(.rect(cornerRadius: Tokens.Radius.md))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Tokens.Radius.md)
+                            .strokeBorder(Tokens.Colors.ring, lineWidth: 0.5)
+                    )
+            } else {
+                RoundedRectangle(cornerRadius: Tokens.Radius.md)
+                    .fill(Tokens.Colors.fillSubtle)
+                    .frame(width: 180, height: 135)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(file.name)
+        .task(id: file.id) {
+            guard image == nil, let workspaceID = session.workspace?.id else { return }
+            do {
+                image = UIImage(data: try await session.api.picture(workspaceID: workspaceID, fileID: file.id))
+                failed = image == nil
+            } catch {
+                // The row left the screen; it loads again when it comes back.
+                failed = !Task.isCancelled
+            }
+        }
     }
 }

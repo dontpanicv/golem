@@ -1448,6 +1448,18 @@ a {
   margin-top: var(--space-sm);
 }
 
+.file-picture {
+  display: block;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  box-shadow: var(--ring);
+}
+.file-picture img {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 240px;
+}
+
 .file-chip {
   display: inline-flex;
   align-items: center;

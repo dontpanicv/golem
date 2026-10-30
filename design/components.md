@@ -236,6 +236,8 @@ Used by the workspace switcher and action menus.
 - A file attached to a message, or picked in the composer: 28 high (44 pt touch target on iOS), padding 0 × 10 × 0 × 8,
   `radius.md`, `fillSubtle`, a 0.5 px `ring`, a 14 px paperclip in `textTertiary`, the name in `fontSize.sm`
   `textSecondary`, cut with an ellipsis at 240 wide. Chips wrap with a 4 px gap.
+- In a message a picture shows itself instead of a chip, from its JPEG (`/files/:fileId/picture`): at most 320 wide
+  and 240 high, `radius.md`, a 0.5 px `ring`. A picture that the server cannot convert shows as a chip.
 - In a message the chip opens the file preview; hover (web) turns it `fillHover` and the name `text`. Picked files show
   above the composer's buttons until the message is sent, each with a close icon in `textTertiary` (hover `text`)
   that takes the file out.
