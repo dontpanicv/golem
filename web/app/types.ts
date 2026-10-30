@@ -112,6 +112,8 @@ export interface Approval {
   readonly tool: string;
   readonly text: string;
   readonly approverId: string | null;
+  /** Whether the person may also allow the rest of the turn on its machine. */
+  readonly allowsTurn: boolean;
   readonly expiresAt: number;
 }
 
@@ -151,6 +153,8 @@ export interface Integration {
   readonly connect: "secret" | "sign-in" | "phone";
   /** The name of the secret, for `connect: "secret"`. */
   readonly secretLabel: string | null;
+  /** Whether the person names a credential; else Golem names it from the secret. */
+  readonly labeled: boolean;
   /** Whether the secret also needs the address of the person's own server. */
   readonly address: boolean;
   /** The steps that set it up, in Markdown; empty when Connect is all. */

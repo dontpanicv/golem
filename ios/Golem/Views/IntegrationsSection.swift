@@ -138,21 +138,28 @@ private struct CredentialForm: View {
 
     var body: some View {
         Dialog(title: "Add \(integration.name) credential") {
-            GolemTextField("Label", text: $label, autofocus: true)
+            if integration.labeled {
+                GolemTextField("Label", text: $label, autofocus: true)
+            }
             if integration.address {
                 GolemTextField("Address", text: $address)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
-            GolemTextField(integration.secretLabel ?? "Secret", text: $secret, secure: true)
+            GolemTextField(
+                integration.secretLabel ?? "Secret", text: $secret, secure: true, autofocus: !integration.labeled
+            )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         } actions: {
             Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
             Button("Add", action: save)
                 .buttonStyle(.golem(.primary, .large))
-                .disabled(busy || label.isEmpty || secret.isEmpty || (integration.address && address.isEmpty))
+                .disabled(
+                    busy || (integration.labeled && label.isEmpty) || secret.isEmpty
+                        || (integration.address && address.isEmpty)
+                )
         }
     }
 
@@ -162,7 +169,8 @@ private struct CredentialForm: View {
             await session.run {
                 added(try await session.api.addCredential(
                     workspaceID: workspaceID, integrationID: integration.id,
-                    label: label, secret: secret, address: integration.address ? address : nil
+                    label: integration.labeled ? label : nil, secret: secret,
+                    address: integration.address ? address : nil
                 ))
                 session.show("Credential added", .success)
                 dismiss()

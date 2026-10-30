@@ -5,7 +5,7 @@ import { type Static, type TSchema, Type } from "@earendil-works/pi-ai";
 import type { Connector, ConnectorTool, FileOf } from "./integrations.ts";
 import { PASTE_ADDRESS, SIGN_IN_ADDRESS } from "./sign-in.ts";
 
-/** What the sign-in asks for: mail to read and draft, events to manage, files to read, and files to create and share. */
+/** What the sign-in asks for: mail to read, draft, and send, events to manage, files to read, and files to create and share. */
 const SCOPES = [
   "openid",
   "email",
@@ -19,13 +19,16 @@ const SCOPES = [
 ];
 /** How long one gog command may take. */
 const RUN_MS = 60 * 1000;
-/** The gog commands that Golem runs; gog refuses every other one, such as sending mail. */
+/** The gog commands that Golem runs; gog refuses every other one. */
 const COMMANDS = [
   "gmail.search",
   "gmail.thread.get",
   "gmail.drafts.list",
   "gmail.drafts.create",
   "gmail.drafts.update",
+  "gmail.drafts.get",
+  "gmail.drafts.send",
+  "gmail.send",
   "calendar.calendars",
   "calendar.events",
   "calendar.event",
@@ -42,6 +45,15 @@ const COMMANDS = [
   "docs.write",
   "sheets.get",
 ];
+const RECIPIENTS = Type.Optional(Type.Array(Type.String()));
+const THREAD = Type.Optional(
+  Type.String({ description: "The ID of the thread that it answers." })
+);
+const ATTACHED =
+  "File ids from list_files or recall, such as a ZIP saved with save_file; together up to 25 MB, else upload them with google_drive_upload, share them, and put the link in the body.";
+const ATTACHMENTS = Type.Optional(
+  Type.Array(Type.String(), { description: ATTACHED })
+);
 const MAX = Type.Optional(
   Type.Integer({ minimum: 1, maximum: 100, description: "At most." })
 );
@@ -74,8 +86,9 @@ const ORIGINAL_START = Type.Optional(
 
 /**
  * Gmail, Google Calendar, and Google Drive through gog (https://github.com/openclaw/gogcli), which calls Google's APIs
- * with the access token of the person's sign-in. Agents read mail and only draft it, manage events without sending
- * invitations, read files, and upload files, create Docs, and share them without sending invitations.
+ * with the access token of the person's sign-in. Agents read and draft mail, and send it when the person allows each
+ * one; they manage events without sending invitations, read files, and upload files, create Docs, and share them
+ * without sending invitations.
  */
 export function googleConnector(binary: string): Connector {
   const gog = new Gog(binary);
@@ -83,7 +96,7 @@ export function googleConnector(binary: string): Connector {
     id: "google",
     name: "Google",
     description:
-      "Gmail, Google Calendar, and Google Drive of each connected Google account. Search and read mail, and draft mail that the person sends; read calendars, find free time, and create, change, and delete events; find and read files, upload files, create Google Docs, and share them.",
+      "Gmail, Google Calendar, and Google Drive of each connected Google account. Search and read mail, draft mail, and send mail after the person allows it; read calendars, find free time, and create, change, and delete events; find and read files, upload files, create Google Docs, and share them.",
     secretLabel: null,
     oauth: "https://accounts.google.com",
     registered: true,
@@ -149,25 +162,20 @@ export function googleConnector(binary: string): Connector {
       {
         name: "google_mail_draft",
         description:
-          "Writes a draft that the person sends from Gmail, or changes the draft `draft`. Give `thread` to reply in a thread.",
+          "Writes a draft that the person sends from Gmail, or that google_mail_send_draft sends after they allow it; or changes the draft `draft`. Give `thread` to reply in a thread.",
         parameters: Type.Object({
           subject: Type.String(),
           body: Type.String({ description: "Plain text." }),
-          to: Type.Optional(Type.Array(Type.String())),
-          cc: Type.Optional(Type.Array(Type.String())),
-          bcc: Type.Optional(Type.Array(Type.String())),
-          thread: Type.Optional(
-            Type.String({
-              description: "The ID of the thread that it answers.",
-            })
-          ),
+          to: RECIPIENTS,
+          cc: RECIPIENTS,
+          bcc: RECIPIENTS,
+          thread: THREAD,
           draft: Type.Optional(
             Type.String({ description: "The ID of a draft to change." })
           ),
           attachments: Type.Optional(
             Type.Array(Type.String(), {
-              description:
-                "File ids from list_files or recall, such as a ZIP saved with save_file; together up to 25 MB, else upload them with google_drive_upload, share them, and put the link in the body. For a draft to change, they replace its attachments.",
+              description: `${ATTACHED} For a draft to change, they replace its attachments.`,
             })
           ),
         }),
@@ -196,6 +204,84 @@ export function googleConnector(binary: string): Connector {
               signal
             )
           ),
+      },
+      {
+        name: "google_mail_send",
+        description:
+          "Sends mail as the person, after they allow it; for a draft that they want to read first, use google_mail_draft. Give `thread` to reply in a thread.",
+        parameters: Type.Object({
+          to: Type.Array(Type.String(), { minItems: 1 }),
+          subject: Type.String(),
+          body: Type.String({ description: "Plain text." }),
+          cc: RECIPIENTS,
+          bcc: RECIPIENTS,
+          thread: THREAD,
+          attachments: ATTACHMENTS,
+        }),
+        approval: async (
+          { to, cc, bcc, subject, body, attachments },
+          _token,
+          _signal,
+          file
+        ) =>
+          [
+            `Send mail to ${[...to, ...(cc ?? []), ...(bcc ?? [])].join(", ")}: ${subject}`,
+            body,
+            ...(attachments?.length && file
+              ? [
+                  `Files: ${(await Promise.all(attachments.map(file))).map(({ name }) => name).join(", ")}`,
+                ]
+              : []),
+          ].join("\n\n"),
+        execute: (
+          { to, subject, body, cc, bcc, thread, attachments },
+          token,
+          signal,
+          file
+        ) =>
+          gog.withLinks(attachments ?? [], file, (paths) =>
+            gog.run(
+              token,
+              [
+                "gmail",
+                "send",
+                `--subject=${subject}`,
+                `--body=${body}`,
+                ...option("to", to.join(",")),
+                ...option("cc", cc?.join(",")),
+                ...option("bcc", bcc?.join(",")),
+                ...option("thread-id", thread),
+                ...paths.map((path) => `--attach=${path}`),
+              ],
+              signal,
+              true
+            )
+          ),
+      },
+      {
+        name: "google_mail_send_draft",
+        description:
+          "Sends a draft as it is in Gmail, after the person allows it, and removes the draft. google_mail_drafts lists the drafts.",
+        parameters: Type.Object({
+          draft: Type.String({ description: "The ID of the draft." }),
+        }),
+        approval: async ({ draft }, token, signal) =>
+          `Send this Gmail draft:\n\n${await gog.text(token, ["gmail", "drafts", "get", "--", draft], signal)}`,
+        execute: async ({ draft }, token, signal, _file, allowed) => {
+          // The draft can change while the person reads it; only the draft that they allowed goes.
+          const now = `Send this Gmail draft:\n\n${await gog.text(token, ["gmail", "drafts", "get", "--", draft], signal)}`;
+          if (now !== allowed) {
+            throw new Error(
+              "The draft changed after the person allowed it; nothing was sent. Ask again."
+            );
+          }
+          return gog.run(
+            token,
+            ["gmail", "drafts", "send", "--", draft],
+            signal,
+            true
+          );
+        },
       },
       gogTool(gog, {
         name: "google_calendars",
@@ -541,20 +627,54 @@ class Gog {
     mkdirSync(this.home, { recursive: true });
   }
 
-  /** Runs one of `COMMANDS`, and returns its JSON answer. */
+  /** Runs one of `COMMANDS`, and returns its JSON answer. Only a command that `sends` may send mail. */
   async run(
     token: string,
     command: readonly string[],
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
+    sends = false
   ): Promise<unknown> {
+    const output = await this.spawn(
+      token,
+      [
+        "--json",
+        "--results-only",
+        "--wrap-untrusted",
+        ...(sends ? [] : ["--gmail-no-send"]),
+      ],
+      command,
+      signal
+    );
+    return output.trim() ? JSON.parse(output) : { done: true };
+  }
+
+  /** Runs one of `COMMANDS` that reads, and returns the text that gog writes for people. */
+  async text(
+    token: string,
+    command: readonly string[],
+    signal: AbortSignal | undefined
+  ): Promise<string> {
+    return (
+      await this.spawn(
+        token,
+        ["--color=never", "--gmail-no-send"],
+        command,
+        signal
+      )
+    ).trim();
+  }
+
+  private async spawn(
+    token: string,
+    flags: readonly string[],
+    command: readonly string[],
+    signal: AbortSignal | undefined
+  ): Promise<string> {
     const process = Bun.spawn(
       [
         this.binary,
-        "--json",
-        "--results-only",
+        ...flags,
         "--no-input",
-        "--wrap-untrusted",
-        "--gmail-no-send",
         `--enable-commands-exact=${COMMANDS.join(",")}`,
         ...command,
       ],
@@ -580,7 +700,7 @@ class Gog {
           .join("\n") || `Google failed (gog exited with ${code})`
       );
     }
-    return output.trim() ? JSON.parse(output) : { done: true };
+    return output;
   }
 
   /** Runs `use` with a file of `content`, which gog reads, and removes the file after. */

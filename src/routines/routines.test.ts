@@ -154,7 +154,7 @@ function threadOf(threadId: string | null) {
 }
 
 test("a script that finds nothing ends the run quietly, without the agent or a thread", async () => {
-  integrations.addCredential(workspaceId, alice, "school", {
+  await integrations.addCredential(workspaceId, alice, "school", {
     label: "Anna",
     secret: "school-password",
   });
@@ -331,7 +331,7 @@ test("a routine runs as the person who last wrote its script, and not after its 
     .members(workspaceId, alice)
     .find((member) => member.email === "bob@example.com")!;
   const bobUser: User = { id: bob.userId, name: bob.name, email: bob.email };
-  integrations.addCredential(null, bobUser, "school", {
+  await integrations.addCredential(null, bobUser, "school", {
     label: "Bob",
     secret: "bob-password",
   });

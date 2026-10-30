@@ -29,9 +29,10 @@ extension APIClient {
     }
 
     func addCredential(
-        workspaceID: String?, integrationID: String, label: String, secret: String, address: String?
+        workspaceID: String?, integrationID: String, label: String?, secret: String, address: String?
     ) async throws -> Credential {
-        var body = ["label": label, "secret": secret]
+        var body = ["secret": secret]
+        body["label"] = label
         body["address"] = address
         return try await post(
             "\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/credentials",

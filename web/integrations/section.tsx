@@ -51,7 +51,7 @@ export function IntegrationsSection({
       request(`${base}/integrations/${input.integrationId}/credentials`, {
         method: "POST",
         body: {
-          label: String(input.form.get("label")),
+          label: input.form.get("label") ?? undefined,
           secret: String(input.form.get("secret")),
           address: input.form.get("address") ?? undefined,
         },
@@ -220,13 +220,15 @@ export function IntegrationsSection({
         submit="Add credential"
         title={`Add a ${adding?.name ?? ""} credential`}
       >
-        <TextField
-          autoFocus
-          label="Label"
-          name="label"
-          placeholder="Family account"
-          required
-        />
+        {adding?.labeled !== false && (
+          <TextField
+            autoFocus
+            label="Label"
+            name="label"
+            placeholder="Family account"
+            required
+          />
+        )}
         {adding?.address === true && (
           <TextField
             autoComplete="off"
@@ -239,6 +241,7 @@ export function IntegrationsSection({
         )}
         <TextField
           autoComplete="off"
+          autoFocus={adding?.labeled === false}
           label={adding?.secretLabel ?? "Secret"}
           name="secret"
           required

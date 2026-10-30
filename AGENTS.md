@@ -79,13 +79,15 @@ addresses, or code and data from employers or clients.
   workspaces. A tool call uses the credential of its turn's person first, else the workspace's
   (`src/integrations/integrations.ts`). A person can connect several accounts of one integration; each tool takes an
   `account`.
-- Agents only draft mail and messages as a person: a connector never gives them a tool that sends, and hides such
-  tools of an MCP server with `hiddenTools`.
+- A connector tool that acts as a person, such as one that sends mail or a message, has an `approval`: the owner of
+  its credential allows each call in the thread, and a routine's script cannot call it. An MCP server's tool cannot
+  have one, so a connector hides such tools with `hiddenTools`.
 - The model calls only the core tools of channels, threads, files, and web search directly. Every other tool is
   script-only (`callers: ["tools"]`) and its name starts with its codemode namespace: `NAMESPACES` in
   `src/threads/threads.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.
 - In `src/threads/threads.ts`, a tool that runs a shell command on a machine is in `RUNS_COMMAND`, so `approved` asks a
-  person before a command that dcg (destructive_command_guard) flags; nothing else waits for one. All web traffic of agents
+  person before a command that dcg (destructive_command_guard) flags; besides connector tools with an `approval`,
+  nothing else waits for one. All web traffic of agents
   goes through `Egress` (`src/platform/egress.ts`), never a plain `fetch`.
 
 ## Design System

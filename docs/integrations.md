@@ -3,19 +3,21 @@
 People connect integrations in Settings: in their own Settings for their own turns, or in Workspace settings for the
 turns of every member. A person can connect more than one account of an integration, such as a work and a personal
 Google account. Agents name the account with the `account` argument of each tool, and `<integration>_accounts` lists
-the accounts. Agents only draft: they do not send mail or messages.
+the accounts. Agents draft mail and messages, and send them as you only after you allow each one: the thread shows
+what they send, and you get a notification. The person who added the account allows it, also for the turn of another
+member. A routine's script cannot send.
 
 Settings shows the steps that set up each integration: click ⓘ on it. The steps are the `guide` of its connector, in
 `src/integrations/`.
 
-Google and Slack need an OAuth client of your own, which the server's owner (the first of `allowed_emails`) sets with
-**Client** on the integration; the next sign-in uses it at once. Until then, only the owner sees them. Google also needs
-`gog` on the Golem machine, and WhatsApp `wacli`, in the `PATH` of the Golem service; install them, for example with
-`brew install gogcli` and `brew install openclaw/tap/wacli`, and click **Reload** on Configuration in Settings. Golem
-does not show these integrations without them.
+Google needs an OAuth client of your own, which the server's owner (the first of `allowed_emails`) sets with **Client**
+on the integration; the next sign-in uses it at once. Until then, only the owner sees it. Google also needs `gog` on the
+Golem machine, Slack `slackcli`, and WhatsApp `wacli`, in the `PATH` of the Golem service; install them, for example
+with `brew install gogcli`, `brew install shaharia-lab/tap/slackcli`, and `brew install openclaw/tap/wacli`, and click
+**Reload** on Configuration in Settings. Golem does not show these integrations without them.
 
-The sign-in pages of Google, Slack, and Rohlík end at `https://localhost/golem-sign-in?code=…`. Nothing answers at that
-address, so the browser shows an error page. Copy the address from the address bar and paste it into Golem.
+The sign-in pages of Google, Rohlík, and Plaud end at `https://localhost/golem-sign-in?code=…`. Nothing answers
+at that address, so the browser shows an error page. Copy the address from the address bar and paste it into Golem.
 
 ## Google: Gmail, Calendar, and Drive
 
@@ -23,17 +25,24 @@ Golem calls Google's APIs through [gog](https://github.com/openclaw/gogcli), wit
 which Golem renews with its refresh token. One client serves all accounts: personal and Google Workspace ones, of every
 person. Google shows that it has not verified the app; an app that is not verified can have up to 100 users.
 
-Agents search and read mail, and make drafts that you send from Gmail, with files of the workspace attached; gog blocks
-sending. Agents use only these tools for mail, never a mail app on a machine. They read calendars, find free time, and create, change, and delete events; guests get no email about it, so send updates from Google Calendar.
+Agents search and read mail, make drafts, and send mail or one of your drafts after you allow it, with files of the
+workspace attached; gog blocks sending in every other tool. For a draft, the approval shows the draft as it is in
+Gmail, and Golem sends nothing when the draft changed after you allowed it. Agents use only these tools for mail, never a mail app on a machine. They read calendars, find free time, and create, change, and delete events; guests get no email about it, so send updates from Google Calendar.
 They search Drive, read Docs and Sheets, create Docs, and change only the Docs that they created. They upload files of
 the workspace to Drive and share the files that they uploaded or created, with anyone who has the link, a person, or a
 domain; Google sends no invitation email.
 
 ## Slack
 
-Golem uses Slack's MCP server, which needs a Slack app in your Slack workspace. Agents search and read messages,
-files, canvases, and lists, and make drafts. They do not get Slack's tools that send or schedule messages;
-`chat:write` is for the drafts.
+Golem uses [slackcli](https://github.com/shaharia-lab/slackcli) with the session of your browser, so it needs no Slack
+app and no administrator. In Slack's web app, copy a request to `api/` from the developer tools as cURL, and paste it
+in Golem: slackcli checks the session with Slack, and Golem keeps it encrypted and names the account after the Slack
+workspace. Add each Slack workspace on its own. The session gives the same access as your login, and it ends when you
+sign out of Slack in that browser.
+
+Agents search and read messages, channels, threads, unread messages, and canvases, find people, make drafts that you
+send from Slack, and send messages after you allow each one. Each command runs in a home of its own, which Golem
+removes after it.
 
 ## WhatsApp
 
@@ -43,8 +52,8 @@ not WhatsApp's own API, and WhatsApp can ban a number that uses it.
 Your phone sends Golem the newest messages of each chat, often only some days, and Golem keeps a copy of every new
 message while it runs. The copy and the device's keys are in `data/integrations/<credential-id>/`. Agents read chats and
 messages, search them, and find contacts. For older messages, ask an agent to load them: it asks your phone, which must
-be online, for up to 5000 older messages of a chat at a time. For a message, they make a `wa.me` link that opens
-WhatsApp with the text; you send it. Deleting the credential removes the device from your number.
+be online, for up to 5000 older messages of a chat at a time. They send a text message or a file of the workspace after you allow it, or make a
+`wa.me` link that opens WhatsApp with the text, which you send. Deleting the credential removes the device from your number.
 
 ## X
 

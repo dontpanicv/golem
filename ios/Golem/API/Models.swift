@@ -203,6 +203,8 @@ struct Approval: Codable, Hashable, Identifiable {
     let tool: String
     let text: String
     let approverId: String?
+    /// Whether the person may also allow the rest of the turn on its machine.
+    let allowsTurn: Bool
     let expiresAt: Double
 }
 
@@ -228,6 +230,8 @@ struct Integration: Codable, Hashable, Identifiable {
     let connect: Connection
     /// The name of the secret, for `.secret`.
     let secretLabel: String?
+    /// Whether the person names a credential; else Golem names it from the secret.
+    let labeled: Bool
     /// Whether the secret also needs the address of the person's own server.
     let address: Bool
     /// The steps that set it up, in Markdown; empty when Connect is all.

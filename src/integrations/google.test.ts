@@ -47,9 +47,34 @@ test("each tool runs one allowed gog command, with the token outside its argumen
   expect(answer.token).toBe("token-1");
   expect(answer.arguments).not.toContain("token-1");
   expect(answer.arguments).toStartWith(
-    "--json --results-only --no-input --wrap-untrusted --gmail-no-send --enable-commands-exact=gmail.search,"
+    "--json --results-only --wrap-untrusted --gmail-no-send --no-input --enable-commands-exact=gmail.search,"
   );
-  expect(answer.arguments).not.toContain("gmail.send");
+  // Only the tool that sends may send, after a person allows it.
+  const send = await call("google_mail_send", {
+    to: ["anna@example.com"],
+    subject: "Dinner",
+    body: "At 7",
+  });
+  expect(send.arguments).not.toContain("--gmail-no-send");
+  expect(send.arguments).toEndWith(
+    "gmail send --subject=Dinner --body=At 7 --to=anna@example.com"
+  );
+  expect(
+    await tools.get("google_mail_send")!.approval!(
+      {
+        to: ["anna@example.com"],
+        bcc: ["otto@example.com"],
+        subject: "Dinner",
+        body: "At 7",
+        attachments: ["f1"],
+      } as never,
+      "token-1",
+      undefined,
+      async () => ({ path: "/unused", name: "plan.pdf" })
+    )
+  ).toBe(
+    "Send mail to anna@example.com, otto@example.com: Dinner\n\nAt 7\n\nFiles: plan.pdf"
+  );
   expect(answer.arguments).toEndWith(
     "gmail drafts create --subject=Dinner --body=--see you --to=anna@example.com,otto@example.com --thread-id=t1"
   );
@@ -150,4 +175,37 @@ test("a workspace file goes to Drive under its own name, and a share sends no in
     "drive share --to=user --email=anna@example.com -- d1"
   );
   expect(shared.arguments).not.toContain("--notify");
+});
+
+test("a draft goes only as the person allowed it", async () => {
+  const sendDraft = tools.get("google_mail_send_draft")!;
+  // The approval shows the draft as gog writes it for people, without JSON or a send.
+  const allowed = await sendDraft.approval!(
+    { draft: "d1" } as never,
+    "token-1",
+    undefined
+  );
+  expect(allowed).toStartWith("Send this Gmail draft:\n\n");
+  expect(allowed).toContain(
+    "--color=never --gmail-no-send --no-input --enable-commands-exact="
+  );
+  expect(allowed).toContain(" gmail drafts get -- d1");
+  const sent = (await sendDraft.execute(
+    { draft: "d1" } as never,
+    "token-1",
+    undefined,
+    undefined,
+    allowed
+  )) as { arguments: string };
+  expect(sent.arguments).not.toContain("--gmail-no-send");
+  expect(sent.arguments).toEndWith("gmail drafts send -- d1");
+  await expect(
+    sendDraft.execute(
+      { draft: "d1" } as never,
+      "token-1",
+      undefined,
+      undefined,
+      "Send this Gmail draft:\n\nTo: anna@example.com"
+    )
+  ).rejects.toThrow("The draft changed after the person allowed it");
 });

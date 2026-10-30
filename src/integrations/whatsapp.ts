@@ -4,6 +4,14 @@ import type { Connector, ConnectorTool, Device } from "./integrations.ts";
 
 /** How long a read of the store may take. */
 const READ_MS = 30 * 1000;
+/** How long a send may take; wacli waits a while after it for the receipts. */
+const SEND_MS = 60 * 1000;
+/** How long a send of a file may take, with its upload. */
+const SEND_FILE_MS = 5 * 60 * 1000;
+const RECIPIENT = Type.String({
+  description:
+    "A chat's JID, or a number with its country code, such as +420 777 123 456.",
+});
 /** How long Golem waits before it starts a stopped sync again. */
 const RESTART_MS = 60 * 1000;
 /** The most messages that wacli asks the phone for at a time. */
@@ -19,7 +27,7 @@ const LIMIT = Type.Optional(
 /**
  * WhatsApp through wacli (https://github.com/openclaw/wacli), which links a store as a device of the person's own
  * number, as WhatsApp Web does, and keeps their chats in it. It is not WhatsApp's own API, and WhatsApp can ban a number
- * that uses it. Agents read the store; they only draft messages, as wa.me links that the person sends.
+ * that uses it. Agents read the store, draft messages as wa.me links, and send messages when the person allows each one.
  */
 export function whatsAppConnector(binary: string): Connector {
   const whatsApp = new WhatsApp(binary);
@@ -27,7 +35,7 @@ export function whatsAppConnector(binary: string): Connector {
     id: "whatsapp",
     name: "WhatsApp",
     description:
-      "The person's own WhatsApp chats, from when they linked it: chats, messages, search, and contacts. Draft a message as a wa.me link; the person sends it.",
+      "The person's own WhatsApp chats, from when they linked it: chats, messages, search, and contacts. Draft a message as a wa.me link, or send it after the person allows it.",
     secretLabel: null,
     guide: [
       "Click **Link number**, type your number with its country code, and click **Get code**.",
@@ -143,6 +151,60 @@ export function whatsAppConnector(binary: string): Connector {
           link: draftLink(phone, text),
         }),
       },
+      {
+        name: "whatsapp_send",
+        description:
+          "Sends a text message as the person, after they allow it. Returns the message's id; `sent` means that WhatsApp took it, not that it arrived.",
+        parameters: Type.Object({ to: RECIPIENT, text: Type.String() }),
+        approval: ({ to, text }) => `Send on WhatsApp to ${to}: ${text}`,
+        execute: ({ to, text }, store, signal) =>
+          whatsApp.send(
+            store,
+            ["text", `--to=${to}`, `--message=${text}`],
+            SEND_MS,
+            signal
+          ),
+      },
+      {
+        name: "whatsapp_send_file",
+        description:
+          "Sends a file of the workspace as the person, after they allow it: a picture, video, or audio as itself, any other file as a document.",
+        parameters: Type.Object({
+          to: RECIPIENT,
+          file: Type.String({
+            description: "A file id from list_files or recall.",
+          }),
+          caption: Type.Optional(Type.String()),
+        }),
+        approval: async (
+          { to, file: fileId, caption },
+          _store,
+          _signal,
+          file
+        ) =>
+          [
+            `Send on WhatsApp to ${to}: ${file ? (await file(fileId)).name : fileId}`,
+            ...(caption ? [caption] : []),
+          ].join("\n\n"),
+        execute: async ({ to, file: fileId, caption }, store, signal, file) => {
+          if (!file) {
+            throw new Error("Only an agent in a thread can send files.");
+          }
+          const { path, name } = await file(fileId);
+          return whatsApp.send(
+            store,
+            [
+              "file",
+              `--to=${to}`,
+              `--file=${path}`,
+              `--filename=${name}`,
+              ...(caption ? [`--caption=${caption}`] : []),
+            ],
+            SEND_FILE_MS,
+            signal
+          );
+        },
+      },
     ],
   };
 }
@@ -255,6 +317,16 @@ export class WhatsApp implements Device {
     signal: AbortSignal | undefined
   ): Promise<unknown> {
     return this.run(store, ["--read-only", ...command], READ_MS, signal);
+  }
+
+  /** Runs a `send` command, such as `text`; the running sync of the store sends it, as it holds the store's lock. */
+  send(
+    store: string,
+    command: readonly string[],
+    timeout: number,
+    signal: AbortSignal | undefined
+  ): Promise<unknown> {
+    return this.run(store, ["send", ...command], timeout, signal);
   }
 
   /**

@@ -32,12 +32,12 @@ export const integrationApiRoutes: readonly Route[] = [
         `${base}/integrations/:integration/credentials`,
         api(async ({ app, user, params, body }) =>
           json(
-            app.integrations.addCredential(
+            await app.integrations.addCredential(
               params.workspace ?? null,
               user,
               params.integration!,
               {
-                label: body.label as string,
+                label: body.label as string | undefined,
                 secret: body.secret as string,
                 address: body.address as string | undefined,
               }

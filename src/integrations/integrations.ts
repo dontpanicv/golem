@@ -39,6 +39,8 @@ export interface Integration {
   readonly connect: "secret" | "sign-in" | "phone";
   /** The name of the secret, for `connect: "secret"`. */
   readonly secretLabel: string | null;
+  /** Whether the person names a credential; else Golem names it from the secret, such as by its Slack workspace. */
+  readonly labeled: boolean;
   /** Whether a secret also needs the address of the person's own server, such as their Home Assistant's. */
   readonly address: boolean;
   /** The steps that set it up, in Markdown; empty when Connect is all. */
@@ -68,8 +70,20 @@ export interface ConnectorTool<Parameters extends TSchema = TSchema> {
     args: Static<Parameters>,
     secret: string,
     signal: AbortSignal | undefined,
-    file?: FileOf
+    file?: FileOf,
+    allowed?: string
   ): Promise<unknown>;
+  /**
+   * What a person allows before each call, such as `Send on Slack to #family: Dinner at 7`; `execute` then gets it as
+   * `allowed`. A tool with it acts as the person, such as one that sends; it asks every time.
+   */
+  // biome-ignore lint/style/useConsistentMethodSignatures: a method keeps a tool with typed arguments a ConnectorTool.
+  approval?(
+    args: Static<Parameters>,
+    secret: string,
+    signal: AbortSignal | undefined,
+    file?: FileOf
+  ): string | Promise<string>;
 }
 
 /** Finds a file of the workspace by its id, such as one to attach; it throws when there is none. */
@@ -113,8 +127,15 @@ export interface Connector {
   readonly scope?: string;
   /** More parameters of its sign-in page, such as Google's `access_type=offline` for a refresh token. */
   readonly authorizationParameters?: Readonly<Record<string, string>>;
-  /** The tools of its MCP servers that agents never get, such as sending, because agents only draft. */
+  /** The tools of its MCP servers that agents never get, such as ones that end its sign-in. */
   readonly hiddenTools?: readonly string[];
+  /**
+   * Makes the secret that Golem keeps, and its label, from what the person pastes, such as a cURL command of Slack's
+   * web app; it throws when that does not work. Without it, Golem keeps the pasted secret, and the person names it.
+   */
+  readonly secretFrom?: (
+    input: string
+  ) => Promise<{ readonly secret: string; readonly label: string }>;
   /** The device that Golem links to a person's number, such as WhatsApp's; its tools get the device's store. */
   readonly device?: Device;
 }
@@ -145,6 +166,11 @@ export interface Turn {
   readonly signal?: AbortSignal;
   /** The files that its tools can take, such as attachments; a routine has none. */
   readonly file?: FileOf;
+  /**
+   * Resolves when the person allows the action of `text`, and throws when they do not; `approverId` null lets any
+   * member answer. Only an agent in a thread can ask, so a routine's script cannot act as a person.
+   */
+  readonly approve?: (text: string, approverId: string | null) => Promise<void>;
 }
 
 /** A connector tool of one workspace; each call uses the credential of the turn it is part of. */
@@ -260,6 +286,7 @@ export class Integrations {
         name: connector.name,
         connect: connectionOf(connector),
         secretLabel: connector.secretLabel,
+        labeled: !connector.secretFrom,
         address: connector.address ?? false,
         guide: connector.guide ?? [],
         client: connector.registered ? { clientId, changeable: owner } : null,
@@ -296,18 +323,30 @@ export class Integrations {
       );
   }
 
-  addCredential(
+  async addCredential(
     place: Place,
     user: User,
     integrationId: string,
-    input: { label: string; secret: string; address?: string }
-  ): CredentialSummary {
+    input: { label?: string; secret: string; address?: string }
+  ): Promise<CredentialSummary> {
     this.requireAccess(place, user);
     const connector = this.connector(integrationId);
     if (connectionOf(connector) !== "secret") {
       throw new HttpError(400, "Connect it by signing in");
     }
     const secret = required(input.secret, "Secret");
+    if (connector.secretFrom) {
+      const made = await connector.secretFrom(secret).catch((error: Error) => {
+        throw new HttpError(400, error.message, { cause: error });
+      });
+      return this.insertCredential(
+        place,
+        user,
+        integrationId,
+        made.label,
+        made.secret
+      );
+    }
     return this.insertCredential(
       place,
       user,
@@ -558,12 +597,24 @@ export class Integrations {
               name: tool.name,
               description: tool.description,
               parameters: tool.parameters,
-              call: async (args, credential, signal, file) =>
+              ...(tool.approval
+                ? {
+                    approval: async (args, credential, signal, file) =>
+                      tool.approval!(
+                        args as never,
+                        await this.secretOf(connector, credential),
+                        signal,
+                        file
+                      ),
+                  }
+                : {}),
+              call: async (args, credential, signal, file, allowed) =>
                 tool.execute(
                   args as never,
                   await this.secretOf(connector, credential),
                   signal,
-                  file
+                  file,
+                  allowed
                 ),
             }));
         if (own.length === 0) {
@@ -686,12 +737,31 @@ export class Integrations {
       ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
       execute: async (args, turn) => {
         const { account, ...rest } = args as { account?: string };
-        return tool.call(
+        const credential = this.credentialFor(
+          workspaceId,
+          connector,
+          turn.userId,
+          account
+        );
+        if (!tool.approval) {
+          return tool.call(rest, credential, turn.signal, turn.file);
+        }
+        if (!turn.approve) {
+          throw new Error(
+            `Only an agent in a thread can use ${tool.name}, after a person allows it.`
+          );
+        }
+        const allowed = await tool.approval(
           rest,
-          this.credentialFor(workspaceId, connector, turn.userId, account),
+          credential,
           turn.signal,
           turn.file
         );
+        await turn.approve(
+          allowed,
+          this.approverOf(workspaceId, credential, turn.userId)
+        );
+        return tool.call(rest, credential, turn.signal, turn.file, allowed);
       },
     };
   }
@@ -734,7 +804,11 @@ export class Integrations {
     if (!row) {
       return [];
     }
-    const lister = { id: row.id, secret: this.secrets.decrypt(row.secret) };
+    const lister = {
+      id: row.id,
+      ownerId: row.owner_id,
+      secret: this.secrets.decrypt(row.secret),
+    };
     const prefix = `${connector.id}_`;
     const servers = await Promise.all(
       connector.mcp!.map(async (server) => {
@@ -913,7 +987,25 @@ export class Integrations {
         `${connector.name} has no account ${account}; it has ${rows.map((candidate) => candidate.label).join(", ")}.`
       );
     }
-    return { id: row.id, secret: this.secrets.decrypt(row.secret) };
+    return {
+      id: row.id,
+      ownerId: row.owner_id,
+      secret: this.secrets.decrypt(row.secret),
+    };
+  }
+
+  /**
+   * Who allows a call that acts with a credential: its owner, whom the call acts as, while a member; else the turn's
+   * person. The owner of a workspace's credential allows it for another person's turn, as for a machine.
+   */
+  private approverOf(
+    workspaceId: string,
+    credential: Credential,
+    userId: string | null
+  ): string | null {
+    return this.memberIds(workspaceId).includes(credential.ownerId)
+      ? credential.ownerId
+      : userId;
   }
 
   /** The credentials of a connector that are the own of one of `people`, newest first, then the workspace's. */
@@ -924,7 +1016,7 @@ export class Integrations {
   ): CredentialRow[] {
     return this.database
       .query(
-        `SELECT id, label, workspace_id, secret FROM credential WHERE integration = ? AND deleted_at IS NULL AND (workspace_id = ? OR (workspace_id IS NULL AND owner_id IN (${people.map(() => "?").join(", ")}))) ORDER BY workspace_id IS NOT NULL, created_at DESC, rowid DESC`
+        `SELECT id, label, workspace_id, owner_id, secret FROM credential WHERE integration = ? AND deleted_at IS NULL AND (workspace_id = ? OR (workspace_id IS NULL AND owner_id IN (${people.map(() => "?").join(", ")}))) ORDER BY workspace_id IS NOT NULL, created_at DESC, rowid DESC`
       )
       .all(connector.id, workspaceId, ...people) as CredentialRow[];
   }
@@ -987,9 +1079,10 @@ export class Integrations {
   }
 }
 
-/** A credential as a tool call uses it: its id and its decrypted secret. */
+/** A credential as a tool call uses it: its id, its owner, and its decrypted secret. */
 interface Credential {
   readonly id: string;
+  readonly ownerId: string;
   readonly secret: string;
 }
 
@@ -997,6 +1090,7 @@ interface CredentialRow {
   readonly id: string;
   readonly label: string;
   readonly workspace_id: string | null;
+  readonly owner_id: string;
   readonly secret: Uint8Array;
 }
 
@@ -1006,11 +1100,18 @@ interface AccountTool {
   readonly description: string;
   readonly parameters: TSchema;
   readonly outputSchema?: TSchema;
-  readonly call: (
+  readonly approval?: (
     args: unknown,
     credential: Credential,
     signal: AbortSignal | undefined,
     file?: FileOf
+  ) => Promise<string>;
+  readonly call: (
+    args: unknown,
+    credential: Credential,
+    signal: AbortSignal | undefined,
+    file?: FileOf,
+    allowed?: string
   ) => Promise<unknown>;
 }
 

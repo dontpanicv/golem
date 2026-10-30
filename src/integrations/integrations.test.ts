@@ -179,12 +179,12 @@ function shopServer(): Server {
 
 test("people connect an MCP server by signing in, and agents get its tools", async () => {
   expect(await integrations.tools(workspaceId)).toEqual([]);
-  expect(() =>
+  await expect(
     integrations.addCredential(workspaceId, alice, "shop", {
       label: "Shop",
       secret: "x",
     })
-  ).toThrow("Connect it by signing in");
+  ).rejects.toThrow("Connect it by signing in");
 
   const { url } = (await integrations.connect(workspaceId, alice, "shop")) as {
     url: string;
@@ -325,11 +325,11 @@ test("a turn uses its person's own credential, else the workspace's, in each of 
     const [tool] = await notes.tools(place);
     return tool!.execute({}, { userId });
   };
-  notes.addCredential(workspaceId, bob, "notes", {
+  await notes.addCredential(workspaceId, bob, "notes", {
     label: "Family",
     secret: "family",
   });
-  const own = notes.addCredential(null, alice, "notes", {
+  const own = await notes.addCredential(null, alice, "notes", {
     label: "Mine",
     secret: "alice",
   });
@@ -355,6 +355,87 @@ test("a turn uses its person's own credential, else the workspace's, in each of 
   );
   notes.deleteCredential(null, alice, own.id);
   expect(await token(workspaceId, alice.id)).toBe("family");
+});
+
+test("a tool that acts as a person asks its credential's owner every time, and only an agent in a thread can ask", async () => {
+  const { internalAdapter } = await golem.app.auth.$context;
+  const bobId = (await internalAdapter.findUserByEmail("bob@example.com"))!.user
+    .id;
+  const sent: string[] = [];
+  const messenger = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      directory: join(golem.app.config.dataDirectory, "integrations"),
+      catalog: [
+        {
+          id: "messenger",
+          name: "Messenger",
+          description: "Messages.",
+          secretLabel: "Session",
+          // The secret is made from what the person pastes, and names the credential.
+          secretFrom: async (input) => {
+            if (!input.startsWith("curl ")) {
+              throw new Error("Paste a cURL command");
+            }
+            return { secret: `session of ${input}`, label: "Family chat" };
+          },
+          tools: [
+            {
+              name: "messenger_send",
+              description: "Sends a message",
+              parameters: Type.Object({ text: Type.String() }),
+              approval: ({ text }) => `Send: ${text}`,
+              execute: async ({ text }, secret) => {
+                sent.push(`${secret}: ${text}`);
+                return { sent: true };
+              },
+            },
+          ],
+        },
+      ],
+    }
+  );
+  expect(messenger.list(workspaceId, alice)[0]!.labeled).toBe(false);
+  await expect(
+    messenger.addCredential(workspaceId, alice, "messenger", {
+      secret: "hello",
+    })
+  ).rejects.toThrow("Paste a cURL command");
+  expect(
+    await messenger.addCredential(workspaceId, alice, "messenger", {
+      secret: "curl x",
+    })
+  ).toMatchObject({ label: "Family chat" });
+
+  const [send] = await messenger.tools(workspaceId);
+  const asked: [string, string | null][] = [];
+  // Bob's turn uses Alice's credential of the workspace, so Alice allows it.
+  await send!.execute(
+    { text: "Hi" },
+    {
+      userId: bobId,
+      approve: async (text, approverId) => {
+        asked.push([text, approverId]);
+      },
+    }
+  );
+  await expect(
+    send!.execute(
+      { text: "Again" },
+      {
+        userId: bobId,
+        approve: () => Promise.reject(new Error("Alice did not allow this.")),
+      }
+    )
+  ).rejects.toThrow("Alice did not allow this.");
+  // A routine's script cannot ask.
+  await expect(
+    send!.execute({ text: "From a script" }, { userId: bobId })
+  ).rejects.toThrow("Only an agent in a thread can use messenger_send");
+  expect(asked).toEqual([["Send: Hi", alice.id]]);
+  expect(sent).toEqual(["session of curl x: Hi"]);
 });
 
 test("a secret of a connector with an address keeps its server's address", async () => {
@@ -389,9 +470,9 @@ test("a secret of a connector with an address keeps its server's address", async
       secret: "token",
       ...(address === undefined ? {} : { address }),
     });
-  expect(() => add()).toThrow("Address is required");
-  expect(() => add("file:///etc")).toThrow("http:// or https://");
-  add("http://home.local:8123");
+  await expect(add()).rejects.toThrow("Address is required");
+  await expect(add("file:///etc")).rejects.toThrow("http:// or https://");
+  await add("http://home.local:8123");
   expect(home.list(workspaceId, alice)[0]!.address).toBe(true);
   const [tool] = await home.tools(workspaceId);
   expect(await tool!.execute({}, { userId: alice.id })).toEqual({
@@ -555,15 +636,15 @@ test("a turn picks one of its person's accounts by name, and lists them", async 
       ],
     }
   );
-  notes.addCredential(workspaceId, alice, "mail", {
+  await notes.addCredential(workspaceId, alice, "mail", {
     label: "family@example.com",
     secret: "family",
   });
-  notes.addCredential(null, alice, "mail", {
+  await notes.addCredential(null, alice, "mail", {
     label: "work@example.com",
     secret: "work",
   });
-  notes.addCredential(null, alice, "mail", {
+  await notes.addCredential(null, alice, "mail", {
     label: "me@example.com",
     secret: "me",
   });
@@ -639,6 +720,8 @@ esac
     "whatsapp_backfill",
     "whatsapp_contacts",
     "whatsapp_draft",
+    "whatsapp_send",
+    "whatsapp_send_file",
     "whatsapp_accounts",
   ]);
   const turn = { userId: alice.id };
@@ -677,6 +760,41 @@ esac
   ).toEqual({
     link: "https://wa.me/420123456789?text=On%20my%20way%20%26%20late",
   });
+  const allowed: string[] = [];
+  expect(
+    await tools[6]!.execute(
+      { to: "family@g.us", text: "-Home soon" },
+      {
+        ...turn,
+        approve: async (text, approverId) => {
+          allowed.push(`${approverId}: ${text}`);
+        },
+      }
+    )
+  ).toEqual({
+    store,
+    command: "--json send text --to=family@g.us --message=-Home soon",
+  });
+  expect(
+    await tools[7]!.execute(
+      { to: "family@g.us", file: "f1", caption: "Tonight" },
+      {
+        ...turn,
+        file: async () => ({ path: "/files/f1-menu.pdf", name: "menu.pdf" }),
+        approve: async (text, approverId) => {
+          allowed.push(`${approverId}: ${text}`);
+        },
+      }
+    )
+  ).toEqual({
+    store,
+    command:
+      "--json send file --to=family@g.us --file=/files/f1-menu.pdf --filename=menu.pdf --caption=Tonight",
+  });
+  expect(allowed).toEqual([
+    `${alice.id}: Send on WhatsApp to family@g.us: -Home soon`,
+    `${alice.id}: Send on WhatsApp to family@g.us: menu.pdf\n\nTonight`,
+  ]);
 
   whatsApp.deleteCredential(null, alice, credential.id);
   const unlinked = join(directory, "deleted", credential.id, "logged-out");
@@ -684,7 +802,7 @@ esac
     await Bun.sleep(20);
   }
   expect(await exists(unlinked)).toBe(true);
-  expect(await whatsApp.tools(workspaceId)).toHaveLength(7);
+  expect(await whatsApp.tools(workspaceId)).toHaveLength(9);
   await expect(tools[0]!.execute({}, turn)).rejects.toThrow(
     "WhatsApp is not connected"
   );

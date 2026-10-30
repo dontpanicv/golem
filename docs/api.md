@@ -99,6 +99,7 @@ type Approval = {
 	tool: string; // such as "hands_exec"
 	text: string; // what the action does, such as "Run on bender: make deploy"
 	approverId: string | null; // the person who may answer; null for any member
+	allowsTurn: boolean; // "turn" also allows the rest of the turn's flagged commands on its machine; false for an action as a person, such as sending a message
 	expiresAt: number; // the agent gets an error after this
 };
 type SearchResult = {
@@ -113,7 +114,7 @@ type SearchResult = {
 };
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; ownerName: string; createdAt: number };
-type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; address: boolean; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; address: the secret also needs the address of the person's own server; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
+type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret also needs the address of the person's own server; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
 type RoutineRun = {
 	id: string;
 	routineId: string;
@@ -337,7 +338,7 @@ Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the works
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET …/integrations` | | `Integration[]` |
-| `POST …/integrations/:integrationId/credentials` | `{ label, secret, address? }`; `address` when the integration has `address` | `Credential`; `400` unless `connect` is `"secret"` |
+| `POST …/integrations/:integrationId/credentials` | `{ label?, secret, address? }`; `label` when the integration is `labeled`, `address` when it has `address` | `Credential`; `400` unless `connect` is `"secret"`, or when the integration cannot use the secret, such as a Slack cURL whose session Slack refuses |
 | `POST …/integrations/:integrationId/connect` | `{ phone }` for `"phone"` | `{ url }`: the integration's sign-in page; `{ code }` for `"phone"` |
 | `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`; `400` when the address is not of the person's own sign-in of this place, the sign-in did not finish, or the number did not link within a minute |
 | `DELETE …/credentials/:credentialId` | | `204` |
@@ -355,9 +356,9 @@ unless the call names another of their accounts in its `account` argument; `<int
 agents of a workspace get the tools of each integration that the workspace or one of its members connected. Secrets
 never leave the server.
 
-An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's or Slack's, or an API that
+An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's or Plaud's, or an API that
 Golem's own tools call, such as Google's. The app shows a link to the `url` of `connect`; the person signs in there. Rohlík lets self-registered clients return only to
-loopback addresses, and Slack only to https ones, so the sign-in ends on an error page at
+loopback addresses, so the sign-in ends on an error page at
 `https://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and `sign-in` keeps the tokens as a
 credential, labeled with the account's email when the server gives it. The agents then get the servers' tools as
 `<integrationId>_<tool>`, in the codemode namespace of the integration. Golem lists a server's tools with the
@@ -365,7 +366,7 @@ workspace's sign-in, else with a member's own; the list has only tool names and 
 an access token that Golem renews with the refresh token.
 
 An integration with `client` signs in with Golem's own OAuth client, because its sign-in server does not register
-clients: Google and Slack. The server's owner sets the client in Settings; until then, only the owner sees the
+clients: Google. The server's owner sets the client in Settings; until then, only the owner sees the
 integration, and `connect` answers `400`. `docs/integrations.md` shows how to make the clients.
 
 An integration with `connect: "phone"`, WhatsApp, links the person's number as a device. `connect` gives the code that
@@ -465,6 +466,9 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
   `git reset --hard`, waits for an approval (`ThreadState.approvals`, with a notification) from the member who paired
   the machine when the turn is another person's, and from the turn's person otherwise; a command that dcg cannot judge
   waits too. Other commands, file reads, and file writes run at once.
+- A connector tool that acts as a person, such as `google_mail_send`, `google_mail_send_draft`, `slack_send`,
+  `whatsapp_send`, or `whatsapp_send_file`, waits for an approval before every call, which shows what it sends: from the person who added the credential that it uses while
+  they are a member, else from the turn's person. `"turn"` allows only that call. A routine's script cannot call it.
 - Agents reach public addresses only: the browser and `save_file` go through Golem's egress proxy, which refuses
   loopback, private, link-local, and other non-public addresses after each DNS answer and redirect. Each person of a
   thread has a browser of their own, with their own logins.

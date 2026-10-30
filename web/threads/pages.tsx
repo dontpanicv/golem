@@ -212,7 +212,10 @@ function Thread({
   );
 }
 
-/** An action the agent waits for the person to allow: once, for the rest of the turn on that machine, or not. */
+/**
+ * An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows
+ * that, or not.
+ */
 function ApprovalCard({
   approval,
   threadId,
@@ -239,12 +242,14 @@ function ApprovalCard({
           size="small"
           variant="danger"
         />
-        <Button
-          disabled={busy}
-          label="Allow for this turn"
-          onClick={() => answer(true, "turn")}
-          size="small"
-        />
+        {approval.allowsTurn ? (
+          <Button
+            disabled={busy}
+            label="Allow for this turn"
+            onClick={() => answer(true, "turn")}
+            size="small"
+          />
+        ) : null}
         <Button
           disabled={busy}
           label="Allow"

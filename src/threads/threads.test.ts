@@ -34,6 +34,7 @@ import {
   scriptWithDeadline,
   type ThreadBrowser,
   type ThreadHands,
+  type ThreadIntegrations,
   type ThreadMessages,
   Threads,
   threadMessages,
@@ -1793,6 +1794,7 @@ test("a command that dcg flags waits for a person: the turn's, or the one who pa
       tool: "hands_exec",
       text: "Run on alices-mac: rm -rf ~/photos",
       approverId: alice.id,
+      allowsTurn: true,
     });
     expect(() =>
       threads.answerApproval(flagged.id, asked.id, bob, true, "once")
@@ -1839,6 +1841,70 @@ test("a command that dcg flags waits for a person: the turn's, or the one who pa
       (state) => !state.running && state.approvals.length === 0
     );
     expect(ran).not.toContain("alices-mac: reboot");
+  } finally {
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("a connector tool that acts as a person asks before every call, and never for the rest of the turn", async () => {
+  const home = await golem.app.workspaces.create(alice, "Sending");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const sent: string[] = [];
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-sending-"));
+  const threads = savingThreads(
+    dataDirectory,
+    () => Promise.reject(new Error("unused")),
+    async () => null,
+    {},
+    {},
+    {
+      namespaces: () => [
+        { name: "chat", prefix: "chat_", description: "Messages." },
+      ],
+      tools: async () => [
+        {
+          name: "chat_send",
+          description: "Sends a message",
+          parameters: Type.Object({ text: Type.String() }),
+          execute: async (args, turn) => {
+            const { text } = args as { text: string };
+            await turn.approve!(`Send: ${text}`, turn.userId);
+            sent.push(text);
+            return { sent: true };
+          },
+        },
+      ],
+    }
+  );
+  try {
+    const summary = await threads.create(
+      home.id,
+      alice,
+      general.id,
+      'Run code: await tools.chat_send({ text: "Hi" }); await tools.chat_send({ text: "Bye" }); text("finished");'
+    );
+    const thread = golem.app.workspaces
+      .allThreadsIn(home.id)
+      .find((candidate) => candidate.id === summary.id)!;
+    const waiting = (text: string) =>
+      until(
+        () => threads.messages(thread),
+        (state) => state.approvals[0]?.text === text
+      ).then((state) => state.approvals[0]!);
+    const first = await waiting("Send: Hi");
+    expect(first).toMatchObject({
+      tool: "chat_send",
+      approverId: alice.id,
+      allowsTurn: false,
+    });
+    threads.answerApproval(thread.id, first.id, alice, true, "turn");
+    // "turn" does not allow the next send; it asks again.
+    const second = await waiting("Send: Bye");
+    threads.answerApproval(thread.id, second.id, alice, false, "once");
+    await answeredIn(threads, home.id, thread.id);
+    expect(sent).toEqual(["Hi"]);
+    expect(toolResults.at(-1)).toContain("Alice did not allow this.");
   } finally {
     await threads.closeAll();
     await rm(dataDirectory, { recursive: true, force: true });
@@ -1912,7 +1978,8 @@ function savingThreads(
   machine: Partial<
     Pick<ThreadHands, "destructive" | "put" | "machineNamed" | "tools">
   > = {},
-  browser: Partial<Pick<ThreadBrowser, "pdf" | "tools">> = {}
+  browser: Partial<Pick<ThreadBrowser, "pdf" | "tools">> = {},
+  integrations: ThreadIntegrations = golem.app.integrations
 ) {
   // Each save is a tool call and an answer after it.
   golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
@@ -1935,7 +2002,7 @@ function savingThreads(
       section: () => ({ key: "machines", render: () => undefined }),
       ...machine,
     },
-    golem.app.integrations,
+    integrations,
     golem.app.artifacts,
     {
       pdf: () => Promise.reject(new Error("There is no browser.")),

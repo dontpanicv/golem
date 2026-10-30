@@ -1397,7 +1397,9 @@ a {
     var(--shadow-low);
 }
 .approval p {
+  max-height: 240px;
   margin: 0;
+  overflow-y: auto;
   font-family: var(--font-mono);
   font-size: var(--font-size-md);
   color: var(--color-text-secondary);

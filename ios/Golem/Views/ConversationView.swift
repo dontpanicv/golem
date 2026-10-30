@@ -215,7 +215,8 @@ struct ConversationView: View {
     }
 }
 
-/// An action the agent waits for the person to allow: once, for the rest of the turn on that machine, or not.
+/// An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows
+/// that, or not. A long text, such as the body of an email, scrolls.
 private struct ApprovalCard: View {
     let approval: Approval
     let threadID: String
@@ -224,16 +225,19 @@ private struct ApprovalCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.md) {
-            Text(approval.text)
-                .font(.system(size: Tokens.FontSize.md, design: .monospaced))
-                .foregroundStyle(Tokens.Colors.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            ViewThatFits(in: .vertical) {
+                text
+                ScrollView { text }
+            }
+            .frame(maxHeight: 240)
             HStack(spacing: Tokens.Space.sm) {
                 Spacer()
                 Button("Deny") { answer(false) }
                     .buttonStyle(.golem(.danger, .small))
-                Button("Allow for this turn") { answer(true, scope: "turn") }
-                    .buttonStyle(.golem(.secondary, .small))
+                if approval.allowsTurn {
+                    Button("Allow for this turn") { answer(true, scope: "turn") }
+                        .buttonStyle(.golem(.secondary, .small))
+                }
                 Button("Allow") { answer(true) }
                     .buttonStyle(.golem(.primary, .small))
             }
@@ -241,6 +245,13 @@ private struct ApprovalCard: View {
         }
         .padding(Tokens.Space.lg)
         .raisedCard(ring: Tokens.Colors.ringControl)
+    }
+
+    private var text: some View {
+        Text(approval.text)
+            .font(.system(size: Tokens.FontSize.md, design: .monospaced))
+            .foregroundStyle(Tokens.Colors.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func answer(_ allow: Bool, scope: String = "once") {
