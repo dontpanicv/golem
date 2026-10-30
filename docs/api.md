@@ -249,9 +249,10 @@ list of the channel's threads before each answer: see `src/threads/brief.ts`.
 The web app keeps a text message that it cannot send yet, such as without a connection, and sends it later with a
 `requestId`, so a message that reached Golem before its response was lost stays one message.
 
-`voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud, and
-the message steers a run at work for its author instead of waiting for it to end. A voice message waits for a run at
-work for another person, so that run keeps the credentials of its own person.
+A message steers a run at work for its author: the agent reads it after its current tool calls, instead of after its
+answer. A message waits for a run at work for another person, so that run keeps the credentials of its own person.
+
+`voice: true` marks a message spoken in a conversation on the iPhone: the agent writes its answer to be read aloud.
 
 ### Notifications (`src/notifications/`)
 

@@ -721,6 +721,37 @@ test("a spoken message asks the agent for an answer to read aloud, and the trans
   ]);
 });
 
+test("a text message steers its author's running turn", async () => {
+  const home = await golem.app.workspaces.create(alice, "Steer");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const thread = await golem.app.threads.create(
+    home.id,
+    alice,
+    general.id,
+    "Hold for a voice"
+  );
+  held.release = undefined;
+  held.workspaceId = home.id;
+  held.conversationId = golem.app.workspaces.thread(thread.id, alice)
+    .conversationId as ConversationId;
+  await until(async () => held.release, Boolean);
+  await golem.app.threads.send(thread.id, alice, "Only the kitchen");
+  held.release!();
+  const answered = await until(
+    () =>
+      golem.app.threads.messages(golem.app.workspaces.thread(thread.id, alice)),
+    (state) => !state.running && state.messages.length >= 4
+  );
+  held.release = undefined;
+  // The message joins the turn after its tool call, so the turn gives one answer, not two.
+  expect(answered.messages.map((message) => message.text)).toEqual([
+    "Hold for a voice",
+    "",
+    "Only the kitchen",
+    "Ok.",
+  ]);
+});
+
 test("a voice message steers only its author's running turn; another member's waits for the answer", async () => {
   const home = await golem.app.workspaces.create(alice, "Shared voice");
   await golem.app.workspaces.addMember(home.id, alice, bob.email);

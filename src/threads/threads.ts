@@ -425,8 +425,8 @@ export class Threads {
 
   /**
    * Sends a family member's message and files to a thread of their workspace; the agent answers in the background. A
-   * `voice` message is spoken in a conversation: the agent's answer is read aloud, and it steers a run at work for
-   * the same person.
+   * message steers a run at work for the same person. A `voice` message is spoken in a conversation: the agent's
+   * answer is read aloud.
    */
   async send(
     threadId: string,
@@ -444,23 +444,16 @@ export class Threads {
     const conversation = await this.conversation(thread);
     // A steer joins the running turn, whose later tool calls then act for its author; so only that turn's person steers.
     const steer =
-      voice &&
       (
         await this.requester(thread.workspaceId, conversation.id).catch(
           () => null
         )
       )?.id === user.id;
-    await this.deliver(
-      thread.workspaceId,
-      conversation,
-      voice
-        ? {
-            ...input,
-            content: `${input.content}\n\n${VOICE}`,
-            ...(steer ? { whenBusy: "steer" as const } : {}),
-          }
-        : input
-    );
+    await this.deliver(thread.workspaceId, conversation, {
+      ...input,
+      ...(voice ? { content: `${input.content}\n\n${VOICE}` } : {}),
+      ...(steer ? { whenBusy: "steer" as const } : {}),
+    });
     this.registry.touchThread(thread.id);
   }
 
