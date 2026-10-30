@@ -16,7 +16,7 @@ import {
 } from "react";
 import { signOut } from "../accounts/login.tsx";
 import { request } from "../app/api.ts";
-import type { ThreadSummary } from "../app/types.ts";
+import type { Channel, ThreadSummary } from "../app/types.ts";
 import {
   Avatar,
   Button,
@@ -305,6 +305,34 @@ function WorkspaceNav({
         .where(({ thread }) => not(isNull(thread.settledAt)))
         .orderBy(({ thread }) => thread.settledAt, "desc"),
   });
+  const channelItem = (channel: Omit<Channel, "threads">) => (
+    <div key={channel.id}>
+      <Link
+        activeOptions={{ exact: true, includeSearch: false }}
+        className="nav-item"
+        params={{ workspaceId, channelId: channel.id }}
+        to="/w/$workspaceId/c/$channelId"
+      >
+        <NavContent
+          emoji={channel.icon}
+          icon="hash"
+          label={channel.name}
+          locked={channel.ownerId !== null}
+        />
+      </Link>
+      <div className="nav-threads">
+        {active
+          .filter((thread) => thread.channelId === channel.id)
+          .map((thread) => (
+            <ThreadNav
+              key={thread.id}
+              thread={thread}
+              workspaceId={workspaceId}
+            />
+          ))}
+      </div>
+    </div>
+  );
   return (
     <>
       <div className="sidebar-channels">
@@ -348,35 +376,18 @@ function WorkspaceNav({
               variant="ghost"
             />
           </div>
-          {channels.map((channel) => (
-            <div key={channel.id}>
-              <Link
-                activeOptions={{ exact: true, includeSearch: false }}
-                className="nav-item"
-                params={{ workspaceId, channelId: channel.id }}
-                to="/w/$workspaceId/c/$channelId"
-              >
-                <NavContent
-                  emoji={channel.icon}
-                  icon="hash"
-                  label={channel.name}
-                  locked={channel.ownerId !== null}
-                />
-              </Link>
-              <div className="nav-threads">
-                {active
-                  .filter((thread) => thread.channelId === channel.id)
-                  .map((thread) => (
-                    <ThreadNav
-                      key={thread.id}
-                      thread={thread}
-                      workspaceId={workspaceId}
-                    />
-                  ))}
-              </div>
-            </div>
-          ))}
+          {channels
+            .filter((channel) => channel.ownerId === null)
+            .map(channelItem)}
         </nav>
+        {channels.some((channel) => channel.ownerId !== null) ? (
+          <nav aria-label="Private channels" className="nav">
+            <div className="nav-section">Private</div>
+            {channels
+              .filter((channel) => channel.ownerId !== null)
+              .map(channelItem)}
+          </nav>
+        ) : null}
       </div>
       {settled.length > 0 ? (
         <details className="sidebar-settled">

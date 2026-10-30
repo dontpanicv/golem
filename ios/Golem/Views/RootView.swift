@@ -209,22 +209,18 @@ private struct Sidebar: View {
                 row("Inbox", systemImage: "bell", destination: .inbox, count: session.inbox?.unread)
                 row("Search", systemImage: "magnifyingglass", destination: .search)
                 SectionHeader(title: "Channels")
-                ForEach(session.channels) { channel in
-                    row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon,
-                        locked: channel.ownerId != nil)
-                    VStack(spacing: 1) {
-                        ForEach(channel.threads.filter { $0.settledAt == nil }) { thread in
-                            threadRow(thread)
-                        }
-                    }
-                    .padding(.leading, Tokens.Space.xl)
-                }
+                ForEach(session.channels.filter { $0.ownerId == nil }) { channelRow($0) }
                 Button {
                     newChannel = true
                 } label: {
                     NavRow(title: "New channel", systemImage: "plus")
                 }
                 .buttonStyle(.plain)
+                let privateChannels = session.channels.filter { $0.ownerId != nil }
+                if !privateChannels.isEmpty {
+                    SectionHeader(title: "Private")
+                    ForEach(privateChannels) { channelRow($0) }
+                }
                 SectionHeader(title: "Golem")
                 row("Workspace settings", systemImage: "person.2", destination: .workspaceSettings)
                 row("Settings", systemImage: "gearshape", destination: .settings)
@@ -290,6 +286,19 @@ private struct Sidebar: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func channelRow(_ channel: Channel) -> some View {
+        VStack(spacing: 1) {
+            row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon,
+                locked: channel.ownerId != nil)
+            VStack(spacing: 1) {
+                ForEach(channel.threads.filter { $0.settledAt == nil }) { thread in
+                    threadRow(thread)
+                }
+            }
+            .padding(.leading, Tokens.Space.xl)
+        }
     }
 
     private func threadRow(_ thread: ThreadSummary) -> some View {

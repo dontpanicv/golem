@@ -9,6 +9,7 @@ struct HomeView: View {
     @Environment(Session.self) private var session
     @State private var threadsFolded = false
     @State private var channelsFolded = false
+    @State private var privateFolded = false
     @State private var newChannel = false
 
     private var openThreads: [ThreadSummary] {
@@ -25,9 +26,16 @@ struct HomeView: View {
                     ListSeparator()
                 }
                 FoldingSection(title: "Channels", folded: $channelsFolded) {
-                    ForEach(session.channels) { channelRow($0) }
+                    ForEach(session.channels.filter { $0.ownerId == nil }) { channelRow($0) }
                     Button { newChannel = true } label: { ListRow("Add channel", systemImage: "plus") }
                         .buttonStyle(.row)
+                }
+                let privateChannels = session.channels.filter { $0.ownerId != nil }
+                if !privateChannels.isEmpty {
+                    ListSeparator()
+                    FoldingSection(title: "Private", folded: $privateFolded) {
+                        ForEach(privateChannels) { channelRow($0) }
+                    }
                 }
             }
             .padding(.bottom, Tokens.Mobile.Size.voice + Tokens.Space.xl)

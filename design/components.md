@@ -128,12 +128,14 @@ Used by the workspace switcher and action menus.
 ## Sidebar
 
 - 244 wide on the canvas, 12 px side padding. The header is 44 high, 8 px from the top, level with the panel header.
-- Workspace switcher: 28 high, padding 0 × 9 × 0 × 5, `radius.lg`, a 20 px workspace avatar, the name in
+- Workspace menu: 28 high, padding 0 × 9 × 0 × 5, `radius.lg`, a 20 px workspace avatar, the name in
   `fontSize.md` `strong` with −0.1 px letter spacing, `textSecondary`, and a chevron. Hover and open: `fillHover`.
 - Item: 28 high, 1 px apart, padding 0 × 9 × 0 × 8, `radius.md`, a 14 px icon 6 px before the label,
   `fontSize.md` `medium` `textTertiary`. Hover: `fillHover` at once and `text` in 150 ms. Current: `fillActive`, `text`.
   Count: `fontSize.xs` `book`. A channel with an emoji shows it in place of the `#` icon, `fontSize.sm`, centered in
   the 14 px slot (iOS: in the icon's frame).
+- Private channels are in their own group, Private, after Channels, each with a 14 px lock after its name in
+  `textTertiary` (iOS too). The group shows only when the person has a private channel.
 - Groups are 16 px apart. Section header: 28 high, the label 9 px in, `fontSize.sm` `medium` `textTertiary`; its action
   button shows on hover or focus (always on touch screens).
 - Threads sit under their channel, indented 19 px with 6 px inner padding; each shows its settle button on hover or
@@ -288,11 +290,11 @@ iPad keeps the sidebar with the same screens.
   button.
 - Home: as Slack's. The workspace's avatar and name at the leading edge open the workspace panel; the person's avatar
   at the trailing edge opens a native menu with Settings and Workspace settings. Open threads, newest first, with their
-  channel under the title, then the channels with their count of open threads and Add channel, in sections whose title
-  folds them. A 48 pt accent glass circle over the bar opens a native menu: New thread in a channel, or New channel.
+  channel under the title, then the channels with their count of open threads and Add channel, then the private channels, each with a
+  lock, in sections whose title folds them. A 48 pt accent glass circle over the bar opens a native menu: New thread in a channel, or New channel.
 - Workspace panel: as Slack's. It slides in from the leading edge, up to 340 wide with radius 36 at the trailing
-  corners, over a 40 % black dim: Workspaces in `fontSize.detailTitle`, the workspaces with the open one on a
-  `menuSelected` fill, a hairline, then New workspace, Workspace settings, and Settings. A tap on the dim or a swipe
+  corners, over a 40 % black dim: the workspace's name in `fontSize.detailTitle`, then Workspace settings and
+  Settings. A tap on the dim or a swipe
   back closes it.
 - Screen title: top-level screens put it in the navigation bar at its leading edge, 12 pt from the screen edge, level
   with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Channels and threads show the round
