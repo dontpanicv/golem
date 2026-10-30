@@ -201,7 +201,6 @@ private struct Sidebar: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 1) {
-                workspaceHeader
                 if let orchestrator = session.orchestrator {
                     row("Golem", systemImage: "tray", destination: .thread(orchestrator.id),
                         working: session.working.contains(orchestrator.id))
@@ -257,20 +256,6 @@ private struct Sidebar: View {
                 }
             }
         }
-    }
-
-    private var workspaceHeader: some View {
-        HStack(spacing: Tokens.Space.md) {
-            Avatar(name: session.workspace?.name ?? "G", agent: true)
-            Text(session.workspace?.name ?? "Golem")
-                .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.semibold))
-                .foregroundStyle(Tokens.Colors.text)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, Tokens.Space.sm)
-        .frame(minHeight: Tokens.Size.listRow)
-        .accessibilityAddTraits(.isHeader)
     }
 
     private func row(

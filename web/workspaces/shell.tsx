@@ -14,14 +14,11 @@ import {
   useEffect,
   useState,
 } from "react";
-import { signOut } from "../accounts/login.tsx";
 import { request } from "../app/api.ts";
 import type { Channel, ThreadSummary } from "../app/types.ts";
 import {
-  Avatar,
   Button,
   Dialog,
-  Menu,
   Switch,
   TextField,
   WorkingContext,
@@ -190,51 +187,9 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
   const workspace = me.workspaces.find(
     (candidate) => candidate.id === workspaceId
   );
-  const navigate = useNavigate();
   const [dialog, setDialog] = useState<"channel" | null>(null);
   return (
     <div className="sidebar-content">
-      <div className="sidebar-header">
-        <Menu
-          align="start"
-          entries={[
-            ...(workspace
-              ? [
-                  {
-                    kind: "action" as const,
-                    label: "Workspace settings",
-                    icon: "members" as const,
-                    onSelect: () =>
-                      navigate({
-                        to: "/w/$workspaceId/settings",
-                        params: { workspaceId: workspace.id },
-                      }),
-                  },
-                ]
-              : []),
-            {
-              kind: "action",
-              label: "Settings",
-              icon: "settings",
-              onSelect: () => navigate({ to: "/settings" }),
-            },
-            { kind: "separator" },
-            {
-              kind: "action",
-              label: "Sign out",
-              icon: "logout",
-              onSelect: () => signOut(),
-            },
-          ]}
-          trigger={
-            <button className="workspace-trigger" type="button">
-              <Avatar agent name={workspace?.name ?? "Golem"} size="small" />
-              <span className="name">{workspace?.name ?? "Golem"}</span>
-              <Icon name="chevron" />
-            </button>
-          }
-        />
-      </div>
       {workspace ? (
         <WorkspaceNav
           onNewChannel={() => setDialog("channel")}

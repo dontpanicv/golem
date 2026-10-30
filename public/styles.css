@@ -343,10 +343,6 @@ a {
   display: inline-flex;
   min-width: 0;
 }
-.sidebar-header .popover {
-  flex: 1;
-}
-
 .select-trigger {
   position: relative;
   display: inline-flex;
@@ -885,15 +881,6 @@ a {
   display: contents;
 }
 
-.sidebar-header {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-xs);
-  height: var(--size-header);
-  margin-top: var(--size-inset);
-}
-
 .sidebar-channels {
   display: flex;
   flex: 1;
@@ -905,36 +892,6 @@ a {
   padding-inline: var(--space-lg);
   overflow-y: auto;
   scrollbar-width: none;
-}
-
-.workspace-trigger {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  max-width: 100%;
-  height: var(--size-control-small);
-  padding: 0 9px 0 5px;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-strong);
-  letter-spacing: -0.1px;
-  color: var(--color-text-secondary);
-  user-select: none;
-  transition: background-color var(--duration-fast);
-}
-.workspace-trigger .name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.workspace-trigger .icon {
-  margin-left: -4px;
-}
-.workspace-trigger[aria-expanded="true"] {
-  background: var(--color-fill-hover);
-  transition-duration: 0s;
 }
 
 .nav {
@@ -1070,10 +1027,6 @@ a {
 }
 
 @media (any-hover: hover) and (any-pointer: fine) {
-  .workspace-trigger:hover {
-    background: var(--color-fill-hover);
-    transition-duration: 0s;
-  }
   .nav-item:hover {
     background: var(--color-fill-hover);
     color: var(--color-text);

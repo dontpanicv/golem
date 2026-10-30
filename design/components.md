@@ -127,9 +127,7 @@ Used by the workspace switcher and action menus.
 
 ## Sidebar
 
-- 244 wide on the canvas, 12 px side padding. The header is 44 high, 8 px from the top, level with the panel header.
-- Workspace menu: 28 high, padding 0 × 9 × 0 × 5, `radius.lg`, a 20 px workspace avatar, the name in
-  `fontSize.md` `strong` with −0.1 px letter spacing, `textSecondary`, and a chevron. Hover and open: `fillHover`.
+- 244 wide on the canvas, 12 px side padding. It starts with Golem, with no workspace name above it.
 - Item: 28 high, 1 px apart, padding 0 × 9 × 0 × 8, `radius.md`, a 14 px icon 6 px before the label,
   `fontSize.md` `medium` `textTertiary`. Hover: `fillHover` at once and `text` in 150 ms. Current: `fillActive`, `text`.
   Count: `fontSize.xs` `book`. A channel with an emoji shows it in place of the `#` icon, `fontSize.sm`, centered in
