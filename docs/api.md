@@ -233,7 +233,9 @@ thread's channel, or the workspace for the orchestrator. A message then needs te
 text takes the name of its first file. A message's `FileRef` opens at `/api/v1/workspaces/:workspaceId/files/:fileId`.
 The agents see each attached file by name and id; `list_files` lists the files of their channel, and `read_file` reads
 any file of the workspace by its id. `save_file` with `replaces` saves a new version of a file of their channel, which
-keeps its id, and `delete_file` deletes a file of their channel.
+keeps its id, and `delete_file` deletes a file of their channel. With `channel`, these three work in another channel
+that the turn's realm sees, so a file goes to the channel of its topic without a thread there; another person's private
+channel is never one.
 
 Each member has an orchestrator of their own in the workspace, their personal assistant: one thread that never ends,
 which the workspace opens on, and whose agent gives work to the threads of the channels. Only its person reads and

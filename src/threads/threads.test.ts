@@ -1707,6 +1707,70 @@ test("save_file writes text and prints an artifact, and hands_copy_file puts a f
   }
 });
 
+test("the file tools work in another channel that the thread's person sees, never in another person's private one", async () => {
+  const home = await golem.app.workspaces.create(alice, "Files across");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const work = golem.app.workspaces.createChannel(home.id, alice, "work", true);
+  golem.app.workspaces.createChannel(home.id, bob, "bobs", true);
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-across-"));
+  const threads = savingThreads(
+    dataDirectory,
+    () => Promise.reject(new Error("unused")),
+    async () => null
+  );
+  try {
+    const ask = async (text: string) => {
+      const { id } = await threads.create(home.id, alice, general.id, text);
+      await answeredIn(threads, home.id, id);
+      return toolResults.at(-1);
+    };
+    expect(
+      await ask(
+        `Save ${JSON.stringify({ content: "# Standup", name: "standup.md", channel: "#Work" })}`
+      )
+    ).toMatch(/^Saved standup\.md as file \S+ in #work\.$/);
+    const [saved] = await threads.files({
+      workspaceId: home.id,
+      channelId: work.id,
+    });
+    expect(saved).toMatchObject({ name: "standup.md" });
+    expect(
+      await threads.files({ workspaceId: home.id, channelId: general.id })
+    ).toEqual([]);
+    expect(
+      await ask('Run code: text(await tools.list_files({ channel: "work" }));')
+    ).toContain(`standup.md (file ${saved!.id}`);
+    // replaces and delete_file find the file only in the channel that they name.
+    expect(
+      await ask(
+        `Save ${JSON.stringify({ content: "# Standup 2", replaces: saved!.id })}`
+      )
+    ).toContain(`There is no file ${saved!.id} in this channel.`);
+    expect(
+      await ask(
+        `Save ${JSON.stringify({ content: "# Standup 2", replaces: saved!.id, channel: "work" })}`
+      )
+    ).toContain(
+      `Saved the new version of file ${saved!.id} as standup.md in #work.`
+    );
+    expect(
+      await ask(
+        `Delete ${JSON.stringify({ file: saved!.id, channel: "work" })}`
+      )
+    ).toContain("Deleted standup.md.");
+    // Bob's private channel is not one that Alice's turn sees.
+    expect(
+      await ask(
+        `Save ${JSON.stringify({ content: "x", name: "x.md", channel: "bobs" })}`
+      )
+    ).toContain("There is no channel #bobs.");
+  } finally {
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test("a command that dcg flags waits for a person: the turn's, or the one who paired another person's machine", async () => {
   const home = await golem.app.workspaces.create(alice, "Approvals");
   await golem.app.workspaces.addMember(home.id, alice, bob.email);
