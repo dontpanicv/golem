@@ -15,7 +15,8 @@ struct MarkdownText: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.md) {
             ForEach(Array(Self.blocks(text, size: size, working: working).enumerated()), id: \.offset) { _, block in
-                view(block)
+                // Text measured at one width and placed at another loses lines, and leaves their height empty.
+                view(block).fixedSize(horizontal: false, vertical: true)
             }
         }
         .font(.golem(size))
@@ -35,7 +36,7 @@ struct MarkdownText: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.sm) {
                         Text(item.marker).monospacedDigit().frame(minWidth: size, alignment: .trailing)
-                        Text(item.text)
+                        Text(item.text).fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.leading, CGFloat(item.depth - 1) * Tokens.Space.xl)
                 }
@@ -60,6 +61,7 @@ struct MarkdownText: View {
                             Text(cell)
                                 .fontWeight(index == 0 ? Tokens.FontWeight.medium : nil)
                                 .foregroundStyle(index == 0 ? Tokens.Mobile.Colors.title : Tokens.Mobile.Colors.text)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .gridColumnAlignment(alignments[column])
                         }
                     }
