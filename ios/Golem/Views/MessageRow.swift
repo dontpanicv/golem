@@ -30,11 +30,9 @@ struct MessageRow: View {
                 }
                 if let work = message.work { WorkLog(work: work) }
                 if !message.text.isEmpty {
-                    Text(Self.linked(message.text, working: session.working))
-                        .font(.golem(Tokens.Mobile.FontSize.body))
+                    MarkdownText(text: message.text, size: Tokens.Mobile.FontSize.body, working: session.working)
                         .foregroundStyle(message.failed ? Tokens.Mobile.Colors.danger : Tokens.Mobile.Colors.text)
                         .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if !message.files.isEmpty {
                     FileChips(names: message.files.map(\.name)) { openFile(message.files[$0]) }
@@ -50,7 +48,7 @@ struct MessageRow: View {
             && message.time - previous.time < 5 * 60 * 1000
     }
 
-    /// The text with its inline Markdown (bold, italics, code, links) and each thread link the agent wrote,
+    /// One line of text with its inline Markdown (bold, italics, code, links) and each thread link the agent wrote,
     /// `[title](thread:<id>)`, as a link to `thread:<id>`, followed by "working" while the agent of that thread works.
     static func linked(_ text: String, working: Set<String> = []) -> AttributedString {
         var result = AttributedString()
@@ -250,8 +248,7 @@ struct WorkStep: View {
                 .foregroundStyle(Tokens.Colors.textQuaternary)
                 .textSelection(.enabled)
         default:
-            Text(MessageRow.linked(step.text, working: session.working))
-                .font(.golem(Tokens.FontSize.md))
+            MarkdownText(text: step.text, size: Tokens.FontSize.md, working: session.working)
                 .foregroundStyle(Tokens.Colors.textSecondary)
                 .textSelection(.enabled)
         }

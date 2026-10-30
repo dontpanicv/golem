@@ -31,12 +31,10 @@ struct ChannelDetailsView: View {
             }
             if let brief {
                 SettingsCard(title: "Brief") {
-                    Text(Self.briefText(brief.text))
-                        .font(.golem(Tokens.Mobile.FontSize.row))
+                    MarkdownText(text: brief.text, size: Tokens.Mobile.FontSize.row)
                         .foregroundStyle(Tokens.Mobile.Colors.text)
                         .lineSpacing(4)
                         .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Tokens.Mobile.Size.margin)
                         .padding(.vertical, Tokens.Space.sm)
                 }
@@ -78,16 +76,6 @@ struct ChannelDetailsView: View {
             open(.thread(String(url.absoluteString.dropFirst("thread:".count))))
             return .handled
         })
-    }
-
-    /// The brief's headings in bold and its list items with bullets, then inline Markdown and thread links.
-    static func briefText(_ text: String) -> AttributedString {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
-            if line.hasPrefix("#") { return "**\(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces))**" }
-            if line.hasPrefix("- ") { return "• \(line.dropFirst(2))" }
-            return String(line)
-        }
-        return MessageRow.linked(lines.joined(separator: "\n"))
     }
 
     private func routineRow(_ routine: Binding<Routine>) -> some View {
