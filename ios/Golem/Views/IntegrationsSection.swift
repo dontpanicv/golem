@@ -12,49 +12,52 @@ struct IntegrationsSection: View {
     @State private var settingClient: Integration?
     @State private var guiding: Integration?
 
+    // One card, not a card per integration: modifiers on a `Group` attach to each child, so with no integrations
+    // loaded yet the load never ran, and with several each sheet attached once per integration.
     var body: some View {
-        Group {
+        SettingsCard(title: "Integrations") {
             ForEach($integrations) { $integration in
-                SettingsCard(title: integration.name) {
-                    ForEach(integration.credentials) { credential in
-                        SettingsRow(credential.label, description: "Added by \(credential.ownerName)") {
-                            GolemMenu {
-                                MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
-                                    delete(credential, from: $integration)
-                                }
-                            } label: {
-                                Label("Credential actions", systemImage: "ellipsis")
-                            }
+                if integration.id != integrations.first?.id { ListSeparator() }
+                SettingsRow(integration.name, description: summary(integration)) {
+                    if !integration.guide.isEmpty {
+                        Button("Set up \(integration.name)", systemImage: "info.circle") { guiding = integration }
+                            .labelStyle(.iconOnly)
                             .buttonStyle(.golem(.ghost, .icon))
-                        }
                     }
-                    HStack {
-                        switch integration.connect {
-                        case .signIn:
-                            Button("Connect", systemImage: "link") { connect(integration) }
-                                .buttonStyle(.golem(.ghost, .small))
-                                .disabled(integration.client.map { $0.clientId == nil } ?? false)
-                        case .phone:
-                            Button("Link number", systemImage: "link") { linking = integration }
-                                .buttonStyle(.golem(.ghost, .small))
-                        case .secret:
-                            Button("Add credential", systemImage: "plus") { addingTo = integration }
-                                .buttonStyle(.golem(.ghost, .small))
-                        }
-                        if integration.client?.changeable == true {
-                            Button("Client", systemImage: "key") { settingClient = integration }
-                                .buttonStyle(.golem(.ghost, .small))
-                        }
-                        Spacer()
-                        if !integration.guide.isEmpty {
-                            Button("Set up \(integration.name)", systemImage: "info.circle") { guiding = integration }
-                                .labelStyle(.iconOnly)
-                                .buttonStyle(.golem(.ghost, .icon))
-                        }
-                    }
-                    .padding(.horizontal, Tokens.Space.md)
-                    .padding(.vertical, Tokens.Space.lg)
                 }
+                ForEach(integration.credentials) { credential in
+                    SettingsRow(credential.label, description: "Added by \(credential.ownerName)") {
+                        GolemMenu {
+                            MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
+                                delete(credential, from: $integration)
+                            }
+                        } label: {
+                            Label("Credential actions", systemImage: "ellipsis")
+                        }
+                        .buttonStyle(.golem(.ghost, .icon))
+                    }
+                }
+                HStack {
+                    switch integration.connect {
+                    case .signIn:
+                        Button("Connect", systemImage: "link") { connect(integration) }
+                            .buttonStyle(.golem(.ghost, .small))
+                            .disabled(integration.client.map { $0.clientId == nil } ?? false)
+                    case .phone:
+                        Button("Link number", systemImage: "link") { linking = integration }
+                            .buttonStyle(.golem(.ghost, .small))
+                    case .secret:
+                        Button("Add credential", systemImage: "plus") { addingTo = integration }
+                            .buttonStyle(.golem(.ghost, .small))
+                    }
+                    if integration.client?.changeable == true {
+                        Button("Client", systemImage: "key") { settingClient = integration }
+                            .buttonStyle(.golem(.ghost, .small))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, Tokens.Space.md)
+                .padding(.vertical, Tokens.Space.lg)
             }
         }
         .task { await load() }
@@ -85,6 +88,13 @@ struct IntegrationsSection: View {
                 }
             }
         }
+    }
+
+    /// The count of accounts, and what the secret is, as on the web.
+    private func summary(_ integration: Integration) -> String {
+        let count = integration.credentials.count
+        let accounts = count == 0 ? "Not connected" : count == 1 ? "1 account" : "\(count) accounts"
+        return integration.secretLabel.map { "\(accounts) · \($0)" } ?? accounts
     }
 
     private func load() async {
