@@ -199,6 +199,7 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
         <span className="shimmer">
           Working for <Elapsed since={work.startedAt} />
         </span>
+        <span className="work-now">{stepTitle(work.steps.at(-1))}</span>
       </>
     );
   } else if (work.stopped) {
@@ -260,6 +261,17 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
       ) : null}
     </details>
   );
+}
+
+/** The step the agent is at: the tool it calls, a thought, or the words of its answer. */
+export function stepTitle(step: Step | undefined): string {
+  if (step?.kind === "tool") {
+    return toolWords(step.tool!);
+  }
+  if (step?.kind === "thinking") {
+    return "Thinking";
+  }
+  return step ? "Writing" : "";
 }
 
 /** The steps in runs: each call of a tool that the call before it also made joins that call's run. */

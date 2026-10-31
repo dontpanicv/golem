@@ -1,8 +1,8 @@
 import QuickLook
 import SwiftUI
 
-/// One thread, as a Slack thread: messages with their author's avatar, the live status over the composer, and the
-/// title capsule with the thread's menu. Loads its state, then follows the server-sent events until the view
+/// One thread, as a Slack thread: messages with their author's avatar, the approvals after them, Stop at the top, and
+/// the title capsule with the thread's menu. Loads its state, then follows the server-sent events until the view
 /// disappears.
 struct ConversationView: View {
     let threadID: String
@@ -44,11 +44,19 @@ struct ConversationView: View {
                         .padding(.top, continued ? Tokens.Space.xs : Tokens.Space.lg)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+                // In line with the text of the answer that asks.
+                ForEach(approvals) { approval in
+                    ApprovalCard(approval: approval, threadID: threadID)
+                        .padding(.leading, Tokens.Mobile.Size.avatar + Tokens.Space.lg)
+                        .padding(.top, Tokens.Space.md)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
             }
             .padding(.horizontal, Tokens.Mobile.Size.margin)
             .padding(.bottom, Tokens.Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(.snappy, value: state?.messages.count)
+            .animation(.snappy, value: approvals)
         }
         .scrollDismissesKeyboard(.interactively)
         .overlay {
@@ -117,9 +125,17 @@ struct ConversationView: View {
                 }
                 .accessibilityHint("Shows the thread's menu")
             }
+            // While Golem works, Stop takes Talk's place: at the top, far from Send and the microphone, so that nobody
+            // stops the agent by mistake, and alone, so that the bar does not fold it into a menu.
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Talk with Golem", systemImage: "waveform", action: startTalk)
-                    .disabled(talk.isOn && talk.thread == threadID)
+                if state?.running == true {
+                    Button("Stop", systemImage: "stop.fill") {
+                        Task { await session.run { try await session.api.stopThread(threadID) } }
+                    }
+                } else {
+                    Button("Talk with Golem", systemImage: "waveform", action: startTalk)
+                        .disabled(talk.isOn && talk.thread == threadID)
+                }
             }
         }
         .quickLookPreview($preview)
@@ -153,21 +169,13 @@ struct ConversationView: View {
         state?.messages.last { $0.streaming || ($0.work != nil && $0.work?.endedAt == nil) }
     }
 
-    /// The suggestions and the live status over the composer; a conversation takes the composer's place.
+    /// The suggestions over the composer; a conversation takes the composer's place.
     private var bottomBar: some View {
         ComposerRow {
             VStack(alignment: .leading, spacing: Tokens.Space.sm) {
                 ForEach(suggestions) { suggestion in
                     SuggestionCard(suggestion: suggestion) { suggestions.removeAll { $0.id == suggestion.id } }
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-                if state?.running == true || !approvals.isEmpty {
-                    LiveStatus(
-                        work: working?.work, running: state?.running == true, approvals: approvals, threadID: threadID
-                    ) {
-                        Task { await session.run { try await session.api.stopThread(threadID) } }
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 if talk.isOn, talk.thread == threadID {
                     TalkDock(talk: talk).transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -236,68 +244,9 @@ struct ConversationView: View {
     }
 }
 
-/// What the agent does now, over the composer so that it stays in view: Golem's face, the step it is at, and how long
-/// it has worked, with Stop; and each action that it waits for this person to allow.
-private struct LiveStatus: View {
-    let work: Work?
-    let running: Bool
-    let approvals: [Approval]
-    let threadID: String
-    let stop: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.md) {
-            HStack(spacing: Tokens.Space.md) {
-                GolemFace(mood: approvals.isEmpty ? .working : .waiting, size: 28)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(step.title)
-                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium))
-                        .modifier(Shimmer())
-                    if !step.detail.isEmpty {
-                        Text(step.detail)
-                            .font(.golem(Tokens.Mobile.FontSize.caption))
-                            .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 0)
-                if let work {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(WorkLog.duration(context.date.timeIntervalSince(Date(milliseconds: work.startedAt))))
-                            .monospacedDigit()
-                    }
-                    .font(.golem(Tokens.Mobile.FontSize.caption))
-                    .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
-                }
-                if running {
-                    Button("Stop", systemImage: "stop.fill", action: stop)
-                        .buttonStyle(.golem(.secondary, .tiny))
-                }
-            }
-            ForEach(approvals) { approval in
-                ApprovalCard(approval: approval, threadID: threadID)
-            }
-        }
-        .padding(Tokens.Space.md)
-        .glassEffect(.regular, in: .rect(cornerRadius: Tokens.Mobile.Size.voice / 2))
-        .accessibilityElement(children: .contain)
-    }
-
-    /// The step the agent is at, as a title and a detail: a tool call, a thought, or the words of its answer.
-    private var step: (title: String, detail: String) {
-        if !approvals.isEmpty { return ("Waiting for you", "") }
-        guard let last = work?.steps.last else { return ("Working", "") }
-        switch last.kind {
-        // A thread that the call reached shows as its title.
-        case "tool": return (WorkLog.toolName(last.tool), String(MessageRow.linked(last.text).characters))
-        case "thinking": return ("Thinking", "")
-        default: return ("Writing", "")
-        }
-    }
-}
-
 /// An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows
-/// that, or not; the gold of the icon's eyes at its side. A long text, such as the body of an email, scrolls.
+/// that, or not; the gold of the icon's eyes at its side, and the buttons at the start of the line, far from the
+/// composer's Send. A long text, such as the body of an email, scrolls.
 private struct ApprovalCard: View {
     let approval: Approval
     let threadID: String
@@ -312,15 +261,14 @@ private struct ApprovalCard: View {
             }
             .frame(maxHeight: 240)
             HStack(spacing: Tokens.Space.sm) {
-                Spacer()
-                Button("Deny") { answer(false) }
-                    .buttonStyle(.golem(.danger, .small))
+                Button("Allow") { answer(true) }
+                    .buttonStyle(.golem(.primary, .small))
                 if approval.allowsTurn {
                     Button("Allow for this turn") { answer(true, scope: "turn") }
                         .buttonStyle(.golem(.secondary, .small))
                 }
-                Button("Allow") { answer(true) }
-                    .buttonStyle(.golem(.primary, .small))
+                Button("Deny") { answer(false) }
+                    .buttonStyle(.golem(.danger, .small))
             }
             .disabled(busy)
         }

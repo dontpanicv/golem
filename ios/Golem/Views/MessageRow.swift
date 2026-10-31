@@ -122,6 +122,9 @@ struct WorkLog: View {
                             .monospacedDigit()
                         if working { text.modifier(Shimmer()) } else { text }
                     }
+                    if working, let step = Self.stepTitle(work.steps.last) {
+                        Text("· \(step)").foregroundStyle(Tokens.Colors.textQuaternary).lineLimit(1)
+                    }
                     if !work.steps.isEmpty {
                         Image(systemName: "chevron.right").imageScale(.small).rotationEffect(.degrees(open ? 90 : 0))
                     }
@@ -163,6 +166,16 @@ struct WorkLog: View {
     private func label(_ span: String) -> String {
         if working { return "Working for \(span)" }
         return work.stopped ? "Stopped after \(span)" : "Worked for \(span)"
+    }
+
+    /// The step the agent is at: the tool it calls, a thought, or the words of its answer.
+    static func stepTitle(_ step: Step?) -> String? {
+        guard let step else { return nil }
+        switch step.kind {
+        case "tool": return toolName(step.tool)
+        case "thinking": return "Thinking"
+        default: return "Writing"
+        }
     }
 
     /// The steps in runs: each call of a tool that the call before it also made joins that call's run.

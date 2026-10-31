@@ -27,6 +27,7 @@ import {
   threadsOf,
 } from "../workspaces/data.ts";
 import { PanelHeader } from "../workspaces/shell.tsx";
+import { ApprovalRequest } from "./approval.tsx";
 import { Composer } from "./composer.tsx";
 import {
   filesOf,
@@ -40,7 +41,6 @@ import {
 } from "./data.ts";
 import { followEnd, MessageView } from "./message.tsx";
 import { followed, outbox, sendMessage } from "./outbox.ts";
-import { LiveStatus } from "./status.tsx";
 
 const threadRoute = getRouteApi("/signed-in/w/$workspaceId/t/$threadId");
 
@@ -167,6 +167,15 @@ function Thread({
             )
           }
         >
+          {running ? (
+            // In the header, far from Send, so that nobody stops the agent by mistake.
+            <Button
+              icon="stop"
+              label="Stop"
+              onClick={() => stopThread(threadId).catch(showError)}
+              size="small"
+            />
+          ) : null}
           {isOrchestrator ? null : (
             <Button
               icon={settled ? "inbox" : "check"}
@@ -192,6 +201,13 @@ function Thread({
               workspaceId={workspaceId}
             />
           ))}
+          {mine.map((approval) => (
+            <ApprovalRequest
+              approval={approval}
+              key={approval.id}
+              threadId={threadId}
+            />
+          ))}
           {waiting.map((message) => (
             <MessageView
               key={message.id}
@@ -212,15 +228,6 @@ function Thread({
           onSend={(text, files) => sendMessage(threadId, text, files)}
           placeholder={
             isOrchestrator ? "Message Golem" : `Message #${channel?.name ?? ""}`
-          }
-          status={
-            <LiveStatus
-              approvals={mine}
-              onStop={() => stopThread(threadId).catch(showError)}
-              running={running}
-              threadId={threadId}
-              work={working?.work ?? null}
-            />
           }
         />
       </section>

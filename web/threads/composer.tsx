@@ -1,10 +1,4 @@
-import {
-  type ClipboardEvent,
-  type DragEvent,
-  type ReactNode,
-  useRef,
-  useState,
-} from "react";
+import { type ClipboardEvent, type DragEvent, useRef, useState } from "react";
 import { Button } from "../ui/components.tsx";
 import { Icon } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
@@ -12,19 +6,16 @@ import { showError } from "../ui/toast.tsx";
 /**
  * A message box for text and files. Files are picked, dropped on it, or pasted into it. Enter sends; Shift+Enter adds a
  * line. With `clearAtOnce`, the box clears as the message is sent, as a sent message shows in the thread at once, and
- * gets its text back if it fails; otherwise it is busy until `onSend` ends. `status` shows at its top, such as what the
- * agent does now.
+ * gets its text back if it fails; otherwise it is busy until `onSend` ends.
  */
 export function Composer({
   placeholder,
   onSend,
   clearAtOnce = false,
-  status,
 }: {
   placeholder: string;
   onSend: (text: string, files: readonly File[]) => Promise<unknown>;
   clearAtOnce?: boolean;
-  status?: ReactNode;
 }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<readonly File[]>([]);
@@ -97,7 +88,6 @@ export function Composer({
         send();
       }}
     >
-      {status}
       <textarea
         aria-label="Message"
         onChange={(event) => setText(event.target.value)}

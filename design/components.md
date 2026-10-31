@@ -222,11 +222,13 @@ Used by the workspace switcher and action menus.
   `size.workLog` high, scrolling, and keeping the newest step in view until the person scrolls up: thoughts in
   `textQuaternary`, words in `textSecondary`, and each tool call as a 7 px step pixel (`gold` when it finished,
   `danger` when it failed, the `accent` blinking while it runs), then its name in `medium` `textTertiary` (`danger`
-  when it failed), then the thread it reached or its arguments on one truncated line in `textQuaternary`. A tool call opens to show its arguments and result in `fontSize.sm` monospace on `fillSubtle`,
-  `radius.sm`. Calls of one tool in a row fold into one row, "Web search 4 times", open while one of them runs. The log
-  is open while the agent works and folds when the answer comes; a person's choice to open or fold it stays until
-  then. While it works, the working spinner and a shimmer lead the summary; once done, one step pixel for each tool
-  call (the last 24) follows the arrow, 2 px apart.
+  when it failed), then the thread it reached or its arguments on one truncated line in `textQuaternary`. A tool call
+  opens to show its arguments and result in `fontSize.sm` monospace on `fillSubtle`, `radius.sm`. Calls of one tool in
+  a row fold into one row, "Web search 4 times", open while one of them runs. The log is open while the agent works and
+  folds when the answer comes; a person's choice to open or fold it stays until then. While it works, the working
+  spinner and a shimmer lead the summary, and the step it is at follows in `textQuaternary` after a "·": the tool's
+  name, "Thinking", or "Writing". Once done, one step pixel for each tool call (the last 24) follows the arrow, 2 px
+  apart.
 - Face: Golem's avatar on an answer is the icon's face with the mood of its work, drawn from the icon's 8 × 8 pixels:
   working (eyes glance aside and blink every 3.2 s), waiting for a person (mouth open), done (a smile), failed (eyes
   shut, a frown). An answer without work, or one that a person stopped, shows the icon itself.
@@ -234,17 +236,15 @@ Used by the workspace switcher and action menus.
   the sidebar, in a channel's thread list, after each thread link while that thread's agent works, and in iOS rows.
   iOS writes "· working" after a thread link.
 - Shimmer: the words Golem is at now, in `textTertiary` with a light of `text` running over them every 2.2 s.
-- Live status: at the top of the composer while the agent works or waits for this person, over a 0.5 px `border`
-  hairline: the 20 px face (working, or waiting), the step it is at in `fontSize.md` `medium` with the shimmer (the
-  tool's name, "Thinking", "Writing", or "Waiting for you") and its detail in `textQuaternary` on one truncated line,
-  the time it has worked in `fontSize.sm` `textQuaternary`, and Stop: a tiny secondary button with a stop icon. Stop
-  also stops the threads the agent asked for something, which still work on that message. iOS shows it as a glass
-  card over the composer row, radius 24, with a 28 pt face.
-- Approval: in the live status, for the person it asks only, while the agent waits for them to allow an action.
-  `surfaceRaised`, a 0.5 px `ringControl`, `radius.md`, padding 8 × 12, and a 3 px `gold` edge at its start; the
-  action in `fontSize.md` monospace `textSecondary`, wrapped; 8 px below, at the end, small buttons: danger "Deny",
-  secondary "Allow for this turn", primary "Allow". A push says "Allow? <action>" and opens the thread. iOS has the
-  same card, `radius.xl`, with 44 pt touch targets.
+- Stop: while the agent works, a small secondary button with a stop icon and "Stop" in the thread's header, far from
+  Send, so that nobody stops the agent by mistake. iOS shows a stop icon in Talk's place at the trailing edge of the
+  navigation bar. Stop also stops the threads the agent asked for something, which still work on that message.
+- Approval: in the transcript after the messages, in line with their text, for the person it asks only, while the
+  agent waits for them to allow an action. `surfaceRaised`, a 0.5 px `ringControl`, `radius.md`, padding 8 × 12, and a
+  3 px `gold` edge at its start; the action in `fontSize.md` monospace `textSecondary`, wrapped; 8 px below, at the
+  start, far from the composer's Send, small buttons: primary "Allow", secondary "Allow for this turn", danger
+  "Deny". A push says "Allow? <action>" and opens the thread. iOS has the same card, `radius.xl`, with 44 pt touch
+  targets.
 - Cards: an agent writes a fenced `card` block with a JSON object, or a list of them (`value`, and optionally `title`,
   `detail`, and `icon`). Each shows as a card: `surfaceRaised`, a 0.5 px `ringControl`, shadow `low`, `radius.md`,
   padding 8 × 12, 160 to 280 px wide in a wrapping row 8 px apart; a 28 px pixel icon (temperature, heat, rain, sun,
@@ -252,9 +252,9 @@ Used by the workspace switcher and action menus.
   `textTertiary`, the value in `fontSize.lg` `semibold` `text` with tabular numbers, and the detail in `fontSize.sm`
   `textTertiary`. A block that is not valid shows as code. iOS shows one card in a row on a phone.
 - The sidebar shows the threads and channels that agents start while they work, without a reload.
-- Composer: `surfaceComposer`, `radius.lg`, padding 12, shadow `low`, no focus ring. The live status sits at its top.
-  The text is `fontSize.lg` on a 24 px line with padding 2 × 6; placeholder `textQuaternary`. Actions sit 8 px below:
-  a tiny ghost attach button and a tiny primary send button.
+- Composer: `surfaceComposer`, `radius.lg`, padding 12, shadow `low`, no focus ring. The text is `fontSize.lg` on a
+  24 px line with padding 2 × 6; placeholder `textQuaternary`. Actions sit 8 px below: a tiny ghost attach button and a
+  tiny primary send button.
 
 ## Thread link
 
@@ -343,8 +343,8 @@ iPad keeps the sidebar with the same screens.
 - Conversation: as a Slack thread. Each message has the author's 36 pt avatar at the side, the name in `fontSize.row`
   `semibold` and the time in `caption` over the text; a message of the same author within five minutes shows only its
   text. Text is `fontSize.body` with inline Markdown; links take the accent. New messages slide up and fade in, and
-  the newest stays in view. While Golem works or waits for the person, the live status sits over the composer (see
-  [Conversation](#conversation)). The round voice button is in the bar at the trailing edge.
+  the newest stays in view. The round voice button is in the bar at the trailing edge; while Golem works, Stop takes
+  its place.
 - Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it
   shows. The composer is a glass field, radius 24: add (+), the text, the mic, and the send button once there is
   something to send. Content fades under the glass bars at the top and bottom. Dragging the content closes the

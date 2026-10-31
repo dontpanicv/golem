@@ -1343,6 +1343,14 @@ a {
   background: var(--color-accent);
   animation: blink 1s steps(1) infinite;
 }
+/* The step Golem is at, after "Working for 12s". */
+.work-now:not(:empty)::before {
+  content: "·";
+  margin: 0 var(--space-sm);
+}
+.work-now {
+  color: var(--color-text-quaternary);
+}
 /* Words that Golem is at now; a light runs over them. */
 .shimmer {
   background:
@@ -1498,48 +1506,13 @@ a {
   box-shadow: var(--shadow-low);
 }
 
-/* What Golem does now, at the top of the composer, over a hairline. */
-.live-status {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  padding: 0 0 var(--space-md);
-  border-bottom: 0.5px solid var(--color-border);
-}
-.live-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  min-height: var(--size-control-tiny);
-}
-.live-step {
-  display: flex;
-  flex: 1;
-  align-items: baseline;
-  gap: var(--space-sm);
-  min-width: 0;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-medium);
-}
-.live-step > .shimmer {
-  flex: none;
-  white-space: nowrap;
-}
-.live-detail {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: var(--font-weight-regular);
-  color: var(--color-text-quaternary);
-}
-.live-time {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-quaternary);
-  font-variant-numeric: tabular-nums;
-}
-/* An action that waits for the person: the gold of the icon's eyes at its side. */
+/* An action that waits for the person, in the transcript under the answer that asks, in line with its text: the gold of
+   the icon's eyes at its side. */
 .approval {
   display: flex;
+  align-self: flex-start;
+  max-width: calc(720px - var(--size-avatar) - var(--space-lg));
+  margin-left: calc(var(--size-avatar) + var(--space-lg));
   flex-direction: column;
   gap: var(--space-md);
   padding: var(--space-md) var(--space-lg);
@@ -1561,7 +1534,7 @@ a {
 }
 .approval-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--space-sm);
 }
 

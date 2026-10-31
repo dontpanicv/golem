@@ -9,9 +9,9 @@ import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import type { Message, Work } from "../app/types.ts";
 import { TooltipProvider } from "../ui/components.tsx";
+import { ApprovalRequest } from "./approval.tsx";
 import Markdown from "./markdown.tsx";
 import { MessageView, moodOf } from "./message.tsx";
-import { LiveStatus } from "./status.tsx";
 
 /** The HTML of `node` on a page of the app's router. */
 async function render(node: ReactNode): Promise<string> {
@@ -224,61 +224,42 @@ test("a card block shows its cards; one that is not valid shows as code", async 
   expect(html).toContain("No value");
 });
 
-test("the composer's status says the step Golem is at, or what it waits for the person to allow", async () => {
-  const work = {
-    startedAt: Date.now() - 5000,
-    endedAt: null,
-    stopped: false,
-    steps: [
-      { ...call("living room"), tool: "salus_set_temperature", running: true },
-    ],
-  };
+test("the working summary says the step Golem is at, and an approval puts Allow first", async () => {
   const working = await render(
-    <LiveStatus
-      approvals={[]}
-      onStop={() => undefined}
-      running
-      threadId="t"
-      work={work}
+    <MessageView
+      message={message({
+        startedAt: Date.now() - 5000,
+        endedAt: null,
+        stopped: false,
+        steps: [
+          {
+            ...call("living room"),
+            tool: "salus_set_temperature",
+            running: true,
+          },
+        ],
+      })}
+      workspaceId="w"
     />
   );
   expect(working).toContain(
-    '<span class="shimmer">Salus set temperature</span>'
+    '<span class="work-now">Salus set temperature</span>'
   );
-  expect(working).toContain('<span class="live-detail">living room</span>');
-  expect(working).toContain('class="avatar agent small face working"');
-  expect(working).toContain('aria-label="Stop"');
 
-  const waiting = await render(
-    <LiveStatus
-      approvals={[
-        {
-          id: "a",
-          tool: "home_assistant_call",
-          text: "vacuum.start vacuum.hall",
-          approverId: null,
-          allowsTurn: false,
-          expiresAt: 0,
-        },
-      ]}
-      onStop={() => undefined}
-      running
+  const approval = await render(
+    <ApprovalRequest
+      approval={{
+        id: "a",
+        tool: "home_assistant_call",
+        text: "vacuum.start vacuum.hall",
+        approverId: null,
+        allowsTurn: false,
+        expiresAt: 0,
+      }}
       threadId="t"
-      work={work}
     />
   );
-  expect(waiting).toContain("Waiting for you");
-  expect(waiting).toContain("<p>vacuum.start vacuum.hall</p>");
-  expect(waiting).not.toContain("Allow for this turn");
-
-  const idle = await render(
-    <LiveStatus
-      approvals={[]}
-      onStop={() => undefined}
-      running={false}
-      threadId="t"
-      work={null}
-    />
-  );
-  expect(idle).not.toContain("live-status");
+  expect(approval).toContain("<p>vacuum.start vacuum.hall</p>");
+  expect(approval.indexOf("Allow")).toBeLessThan(approval.indexOf("Deny"));
+  expect(approval).not.toContain("Allow for this turn");
 });
