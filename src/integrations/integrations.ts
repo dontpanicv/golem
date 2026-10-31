@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { type Static, type TSchema, Type } from "@earendil-works/pi-ai";
 import {
@@ -154,6 +154,26 @@ export interface Connector {
   ) => Promise<{ readonly secret: string; readonly label: string }>;
   /** The device that Golem links to a person's number, such as WhatsApp's; its tools get the device's store. */
   readonly device?: Device;
+  /**
+   * Keeps data of each credential in its store while Golem runs, such as Tesla's charge sessions. The tools then get
+   * the secret as JSON `{ store, secret }`.
+   */
+  readonly keeper?: Keeper;
+  /** The PEM public key that its API checks Golem's signed commands with, which Golem serves at its own address. */
+  readonly publicKey?: () => string;
+  /**
+   * Registers Golem with its API when the server's owner sets the client, such as Tesla's partner account for Golem's
+   * domain; Golem keeps the client only when it works.
+   */
+  readonly registerClient?: (client: OAuthClient) => Promise<void>;
+}
+
+/** Keeps data of a connector's credentials while Golem runs, each in the store directory of its credential. */
+export interface Keeper {
+  /** Starts keeping a store; `secret` gives the secret, or a fresh access token, each time. */
+  readonly keep: (store: string, secret: () => Promise<string>) => void;
+  readonly stop: (store: string) => void;
+  readonly close: () => void;
 }
 
 /** A device that Golem links to a person's account, such as a WhatsApp number, and keeps in a store directory. */
@@ -205,6 +225,8 @@ export interface IntegrationsOptions {
   readonly directory: string;
   /** The email address of the server's owner, who alone sets Golem's own OAuth clients. */
   readonly owner?: string | null;
+  /** Golem's own address, where an API such as Tesla's reads Golem's public key. */
+  readonly baseUrl?: string;
   /** Called when the connector tools of a workspace may change: a credential there changed. */
   readonly changed?: (workspaceId: string) => void;
   readonly catalog?: readonly Connector[];
@@ -263,19 +285,37 @@ export class Integrations {
     private readonly workspaces: Workspaces,
     private readonly options: IntegrationsOptions
   ) {
-    this.catalog = options.catalog ?? integrationCatalog();
+    this.catalog = options.catalog ?? integrationCatalog(options);
     for (const connector of this.catalog) {
-      if (connector.device) {
+      if (connector.device || connector.keeper) {
         const linked = this.database
           .query(
             "SELECT id FROM credential WHERE integration = ? AND deleted_at IS NULL"
           )
           .all(connector.id) as { id: string }[];
         for (const { id } of linked) {
-          connector.device.keep(this.store(id));
+          this.keep(connector, id);
         }
       }
     }
+  }
+
+  /** Keeps a device's store current, or a keeper's data, while Golem runs. */
+  private keep(connector: Connector, credentialId: string): void {
+    const store = this.store(credentialId);
+    connector.device?.keep(store);
+    connector.keeper?.keep(store, async () =>
+      this.ownSecret(connector, this.liveCredential(credentialId))
+    );
+  }
+
+  /** The PEM public key of an integration's API, such as Tesla's; `null` when it has none. */
+  publicKey(integrationId: string): string | null {
+    return (
+      this.catalog
+        .find((connector) => connector.id === integrationId)
+        ?.publicKey?.() ?? null
+    );
   }
 
   /** The integrations, with the credentials that the person sees in the workspace: the shared ones and their own. */
@@ -330,12 +370,26 @@ export class Integrations {
    * Sets Golem's own OAuth client of an integration whose sign-in server does not register clients; only the server's
    * owner does. The next sign-in uses it; the sign-ins before keep the client they signed in with.
    */
-  setClient(user: User, integrationId: string, client: OAuthClient): void {
+  async setClient(
+    user: User,
+    integrationId: string,
+    client: OAuthClient
+  ): Promise<void> {
     if (!this.isOwner(user)) {
       throw new HttpError(403, "Only the server's owner sets the client");
     }
-    if (!this.connector(integrationId).registered) {
+    const connector = this.connector(integrationId);
+    if (!connector.registered) {
       throw notFound();
+    }
+    try {
+      await connector.registerClient?.({
+        clientId: required(client.clientId, "Client ID").trim(),
+        clientSecret: required(client.clientSecret, "Client secret").trim(),
+      });
+    } catch (error) {
+      // biome-ignore lint/style/useErrorCause: HttpError takes the cause as its third argument.
+      throw new HttpError(502, (error as Error).message, { cause: error });
     }
     this.database
       .query(
@@ -507,13 +561,17 @@ export class Integrations {
     }
     const { provider, connector } = pending;
     await signIn(connector, provider, code);
-    return this.insertCredential(
+    const credential = this.insertCredential(
       workspaceId,
       user,
       connector.id,
       emailOf(provider.grant.tokens?.id_token) ?? connector.name,
       JSON.stringify(provider.grant)
     );
+    if (connector.keeper) {
+      this.keep(connector, credential.id);
+    }
+    return credential;
   }
 
   /** Waits a while for the person's newest link of a device in the workspace, and keeps it as a private credential. */
@@ -654,6 +712,10 @@ export class Integrations {
     if (connector?.device) {
       this.unlink(connector, credentialId);
     }
+    if (connector?.keeper) {
+      connector.keeper.stop(this.store(credentialId));
+      this.moveAside(credentialId);
+    }
     this.options.changed?.(workspaceId);
   }
 
@@ -704,7 +766,10 @@ export class Integrations {
     return tools.flat();
   }
 
-  /** What a connector's own tool gets of a credential: a device's store, a fresh access token, or the secret. */
+  /**
+   * What a connector's own tool gets of a credential: a device's store, else a fresh access token or the secret, with
+   * the store for a keeper.
+   */
   private async secretOf(
     connector: Connector,
     credential: Credential
@@ -712,9 +777,41 @@ export class Integrations {
     if (connector.device) {
       return this.store(credential.id);
     }
+    const secret = await this.ownSecret(connector, credential);
+    return connector.keeper
+      ? JSON.stringify({ store: this.store(credential.id), secret })
+      : secret;
+  }
+
+  /** A fresh access token of a sign-in, else the secret. */
+  private async ownSecret(
+    connector: Connector,
+    credential: Credential
+  ): Promise<string> {
     return connector.oauth
       ? (await this.accessToken(connector, credential)).token
       : credential.secret;
+  }
+
+  /** A credential that nobody deleted; a keeper that still runs for a deleted one gets an error. */
+  private liveCredential(credentialId: string): Credential {
+    const row = this.database
+      .query(
+        "SELECT id, owner_id, secret FROM credential WHERE id = ? AND deleted_at IS NULL"
+      )
+      .get(credentialId) as {
+      id: string;
+      owner_id: string;
+      secret: Uint8Array;
+    } | null;
+    if (!row) {
+      throw new Error("The credential was deleted");
+    }
+    return {
+      id: row.id,
+      ownerId: row.owner_id,
+      secret: this.secrets.decrypt(row.secret),
+    };
   }
 
   /**
@@ -786,6 +883,7 @@ export class Integrations {
     await Promise.allSettled([
       ...clients.map(async (client) => (await client).close()),
       ...this.catalog.map((connector) => connector.device?.close()),
+      ...this.catalog.map((connector) => connector.keeper?.close()),
     ]);
   }
 
@@ -1012,17 +1110,23 @@ export class Integrations {
 
   /** Ends a device's link, and moves its store aside, as deleted files are. */
   private unlink(connector: Connector, credentialId: string): void {
-    const store = this.store(credentialId);
     connector
-      .device!.unlink(store)
-      .then(() => {
-        const deleted = join(this.options.directory, "deleted");
-        mkdirSync(deleted, { recursive: true });
-        renameSync(store, join(deleted, credentialId));
-      })
+      .device!.unlink(this.store(credentialId))
+      .then(() => this.moveAside(credentialId))
       .catch((error: unknown) =>
         console.error(`unlinking ${connector.name} failed`, error)
       );
+  }
+
+  /** Moves the store of a deleted credential aside, as deleted files are. */
+  private moveAside(credentialId: string): void {
+    const store = this.store(credentialId);
+    if (!existsSync(store)) {
+      return;
+    }
+    const deleted = join(this.options.directory, "deleted");
+    mkdirSync(deleted, { recursive: true });
+    renameSync(store, join(deleted, credentialId));
   }
 
   private store(credentialId: string): string {

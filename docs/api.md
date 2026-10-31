@@ -413,7 +413,8 @@ to put that host on the internet while the rest of Golem stays private.
 | `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`, private; `400` when the address is not of the person's own sign-in in this workspace, the sign-in did not finish, or the number did not link within a minute |
 | `PUT …/credentials/:credentialId` | `{ shared }` | `Credential`; `404` unless it is the person's own |
 | `DELETE …/credentials/:credentialId` | | `204`; `404` unless it is the person's own |
-| `PUT /api/v1/integrations/:integrationId/client` | `{ clientId, clientSecret }` | `204`; the next sign-in uses it, at once. `403` unless the person is the server's owner, `404` unless the integration has `client` |
+| `PUT /api/v1/integrations/:integrationId/client` | `{ clientId, clientSecret }` | `204`; the next sign-in uses it, at once. `403` unless the person is the server's owner, `404` unless the integration has `client`, `502` with the reason when the integration's API refuses the client, such as Tesla's when it cannot register Golem's domain |
+| `GET /.well-known/appspecific/com.tesla.3p.public-key.pem` | | The public key that Tesla's Fleet API checks Golem's signed commands with, with no sign-in; `404` without the Tesla integration |
 
 A person connects integrations in Settings. A new credential is private: only the turns of its owner use it. Its owner
 shares it, and then the turns of every member use it, or makes it private again; only its owner deletes it. A turn is
@@ -433,8 +434,9 @@ shared sign-in, else with a private one; the list has only tool names and schema
 an access token that Golem renews with the refresh token.
 
 An integration with `client` signs in with Golem's own OAuth client, because its sign-in server does not register
-clients: Google. The server's owner sets the client in Settings; until then, only the owner sees the
-integration, and `connect` answers `400`. `docs/integrations.md` shows how to make the clients.
+clients: Google, Netatmo, and Tesla. The server's owner sets the client in Settings; until then, only the owner sees
+the integration, and `connect` answers `400`. Tesla registers Golem's domain with the client before Golem keeps it.
+`docs/integrations.md` shows how to make the clients.
 
 An integration with `connect: "phone"`, WhatsApp, links the person's number as a device. `connect` gives the code that
 the person enters on their phone, in Linked devices; then `sign-in` waits up to a minute for the link.

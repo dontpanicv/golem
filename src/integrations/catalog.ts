@@ -6,17 +6,21 @@ import { netatmoConnector } from "./netatmo.ts";
 import { salusConnector } from "./salus.ts";
 import { PASTE_ADDRESS } from "./sign-in.ts";
 import { slackConnector } from "./slack.ts";
+import { teslaConnector } from "./tesla.ts";
 import { whatsAppConnector } from "./whatsapp.ts";
 import { xConnector } from "./x.ts";
 
 /**
  * The connectors that Golem has: ones with a secret, MCP servers that people sign in to, Google when this machine has
- * gog, Slack when it has slackcli, and WhatsApp when it has wacli.
+ * gog, Slack when it has slackcli, WhatsApp when it has wacli, and Tesla when it has tesla-control. Tesla keeps Golem's
+ * signing key in `server.directory`, and reads Golem's public key at `server.baseUrl`.
  */
 export function integrationCatalog(
+  server: { readonly directory: string; readonly baseUrl?: string },
   wacli = Bun.which("wacli"),
   gog = Bun.which("gog"),
-  slackcli = Bun.which("slackcli")
+  slackcli = Bun.which("slackcli"),
+  teslaControl = Bun.which("tesla-control")
 ): readonly Connector[] {
   return [
     homeAssistantConnector(),
@@ -49,5 +53,14 @@ export function integrationCatalog(
     xConnector(),
     instagramConnector(),
     ...(wacli ? [whatsAppConnector(wacli)] : []),
+    ...(teslaControl && server.baseUrl
+      ? [
+          teslaConnector({
+            binary: teslaControl,
+            directory: server.directory,
+            domain: new URL(server.baseUrl).hostname,
+          }),
+        ]
+      : []),
   ];
 }

@@ -1,16 +1,30 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
+import { PUBLIC_KEY_PATH } from "./tesla.ts";
 
 /**
  * The integrations, with the credentials that a person sees in the workspace: the shared ones and their own, which they
  * share or delete. Golem's own OAuth client of an integration is the server's.
  */
 export const integrationApiRoutes: readonly Route[] = [
+  // Tesla's Fleet API reads the key that Golem signs commands with here, at Golem's domain.
+  [
+    "GET",
+    PUBLIC_KEY_PATH,
+    async ({ app }) => {
+      const key = app.integrations.publicKey("tesla");
+      return key
+        ? new Response(key, {
+            headers: { "content-type": "application/x-pem-file" },
+          })
+        : new Response("Not found", { status: 404 });
+    },
+  ],
   [
     "PUT",
     "/api/v1/integrations/:integration/client",
     api(async ({ app, user, params, body }) => {
-      app.integrations.setClient(user, params.integration!, {
+      await app.integrations.setClient(user, params.integration!, {
         clientId: body.clientId as string,
         clientSecret: body.clientSecret as string,
       });

@@ -98,6 +98,7 @@ export async function createApp(
   const integrations = new Integrations(database, resolvedSecrets, workspaces, {
     directory: join(config.dataDirectory, "integrations"),
     owner: config.allowedEmails[0] ?? null,
+    baseUrl: config.baseUrl,
     changed: reloadTools,
   });
   const hands = new Hands(database, resolvedSecrets, workspaces, {

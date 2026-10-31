@@ -572,7 +572,7 @@ test("a sign-in server that does not publish its endpoints signs in at the conne
       owner: "alice@example.com",
     }
   );
-  withOwner.setClient(alice, "station", {
+  await withOwner.setClient(alice, "station", {
     clientId: "own-client",
     clientSecret: "shh",
   });
@@ -625,10 +625,10 @@ test("only the server's owner sets Golem's own client, and its MCP server hides 
   await expect(withOwner.connect(workspaceId, alice, "chat")).rejects.toThrow(
     "The server's owner has not set the client of Chat"
   );
-  expect(() =>
+  await expect(
     withOwner.setClient(notOwner, "chat", { clientId: "x", clientSecret: "y" })
-  ).toThrow("Only the server's owner sets the client");
-  withOwner.setClient(alice, "chat", {
+  ).rejects.toThrow("Only the server's owner sets the client");
+  await withOwner.setClient(alice, "chat", {
     clientId: " own-client ",
     clientSecret: "shh",
   });
@@ -686,7 +686,7 @@ test("the own tools of a sign-in get a fresh access token, which the refresh tok
       owner: "alice@example.com",
     }
   );
-  withOwner.setClient(alice, "google", {
+  await withOwner.setClient(alice, "google", {
     clientId: "own-client",
     clientSecret: "shh",
   });
@@ -722,6 +722,99 @@ test("the own tools of a sign-in get a fresh access token, which the refresh tok
   expect(refreshes()).toBe(before + 1);
   expect(tokenRequests.at(-1)?.get("refresh_token")).toBe("refresh-1");
   withOwner.deleteCredential(workspaceId, alice, credential.id);
+  await withOwner.close();
+});
+
+test("a keeper keeps the store of each credential while Golem runs, and Golem keeps a client that its API took", async () => {
+  const kept: string[] = [];
+  const stopped: string[] = [];
+  const secrets: string[] = [];
+  const registered: string[] = [];
+  const car: Connector = {
+    id: "car",
+    name: "Car",
+    description: "A car.",
+    secretLabel: null,
+    oauth: new URL(signInServer.url).origin,
+    registered: true,
+    scope: "openid email",
+    publicKey: () => "PUBLIC KEY",
+    registerClient: async ({ clientId }) => {
+      if (clientId === "wrong") {
+        throw new Error("Car refused the client");
+      }
+      registered.push(clientId);
+    },
+    keeper: {
+      keep: (store, secret) => {
+        kept.push(store);
+        secret().then((value) => secrets.push(value));
+      },
+      stop: (store) => stopped.push(store),
+      close: () => undefined,
+    },
+    tools: [
+      {
+        name: "car_secret",
+        description: "What the call got.",
+        parameters: Type.Object({}),
+        execute: async (_args, secret) => JSON.parse(secret),
+      },
+    ],
+  };
+  const options = {
+    directory: join(golem.app.config.dataDirectory, "integrations"),
+    catalog: [car],
+    owner: "alice@example.com",
+  };
+  const { database, workspaces } = golem.app;
+  const secretsOfServer = Secrets.forTests();
+  const withOwner = new Integrations(
+    database,
+    secretsOfServer,
+    workspaces,
+    options
+  );
+  expect(withOwner.publicKey("car")).toBe("PUBLIC KEY");
+  expect(withOwner.publicKey("shop")).toBeNull();
+  await expect(
+    withOwner.setClient(alice, "car", { clientId: "wrong", clientSecret: "x" })
+  ).rejects.toThrow("Car refused the client");
+  expect(withOwner.list(workspaceId, alice)[0]!.client?.clientId).toBeNull();
+  await withOwner.setClient(alice, "car", {
+    clientId: "own-client",
+    clientSecret: "shh",
+  });
+  expect(registered).toEqual(["own-client"]);
+
+  const { url } = (await withOwner.connect(workspaceId, alice, "car")) as {
+    url: string;
+  };
+  const credential = await withOwner.finishConnect(
+    workspaceId,
+    alice,
+    "car",
+    `https://localhost/golem-sign-in?code=code-5&state=${new URL(url).searchParams.get("state")}`
+  );
+  const credentialStore = join(options.directory, credential.id);
+  expect(kept).toEqual([credentialStore]);
+  const [carSecret] = await withOwner.tools(workspaceId);
+  expect(await carSecret!.execute({}, { userId: alice.id })).toEqual({
+    store: credentialStore,
+    secret: "access-refreshed",
+  });
+  // After a restart, Golem keeps the store again.
+  const restarted = new Integrations(
+    database,
+    secretsOfServer,
+    workspaces,
+    options
+  );
+  expect(kept).toEqual([credentialStore, credentialStore]);
+  withOwner.deleteCredential(workspaceId, alice, credential.id);
+  expect(stopped).toEqual([credentialStore]);
+  expect(secrets).toContain("access-refreshed");
+  await restarted.close();
   await withOwner.close();
 });
 

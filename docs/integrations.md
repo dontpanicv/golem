@@ -10,13 +10,14 @@ member. A routine's script cannot send.
 Settings shows the steps that set up each integration: click ⓘ on it. The steps are the `guide` of its connector, in
 `src/integrations/`.
 
-Google and Netatmo need an OAuth client of your own, which the server's owner (the first of `allowed_emails`) sets with **Client**
-on the integration; the next sign-in uses it at once. Until then, only the owner sees it. Google also needs `gog` on the
-Golem machine, Slack `slackcli`, and WhatsApp `wacli`, in the `PATH` of the Golem service; install them, for example
-with `brew install gogcli`, `brew install shaharia-lab/tap/slackcli`, and `brew install openclaw/tap/wacli`, and click
-**Reload** on Configuration in Settings. Golem does not show these integrations without them.
+Google, Netatmo, and Tesla need an OAuth client of your own, which the server's owner (the first of `allowed_emails`)
+sets with **Client** on the integration; the next sign-in uses it at once. Until then, only the owner sees it. Google
+also needs `gog` on the Golem machine, Slack `slackcli`, WhatsApp `wacli`, and Tesla `tesla-control`, in the `PATH` of
+the Golem service; install them, for example with `brew install gogcli`, `brew install shaharia-lab/tap/slackcli`, and
+`brew install openclaw/tap/wacli`, and for Tesla see below. Then click **Reload** on Configuration in Settings. Golem
+does not show these integrations without them.
 
-The sign-in pages of Google, Netatmo, Rohlík, and Plaud end at `https://localhost/golem-sign-in?code=…`. Nothing answers
+The sign-in pages of Google, Netatmo, Tesla, Rohlík, and Plaud end at `https://localhost/golem-sign-in?code=…`. Nothing answers
 at that address, so the browser shows an error page. Copy the address from the address bar and paste it into Golem.
 
 ## Google: Gmail, Calendar, and Drive
@@ -99,3 +100,33 @@ salus-it500.com in October 2026, so Golem uses the cloud API of Salus's apps, wh
 The person types the email and password of the RT310i app; Golem signs in at once, and keeps the email and the MD5 of
 the password, which is what Salus's API takes. Salus removes special characters from a new password without a word, so
 Golem tries a refused password again without them.
+
+## Tesla
+
+Agents read the person's Tesla cars through Tesla's Fleet API: the battery, charging, climate, location, locks, doors,
+windows, and tires. They preheat or cool the car, set the seat and steering wheel heaters, start and stop charging, set
+the charge limit and the amps, open and close the charge port, lock the car, close the windows, and turn on Sentry
+Mode. Unlocking, opening the trunk or frunk, venting the windows, and turning off Sentry Mode wait until the person
+allows each one, and a routine's script cannot do them. A command wakes a car that sleeps; reading does not, unless the
+agent asks.
+
+Cars since late 2023 take only commands that are signed with a key that the person added in the Tesla app. Golem
+makes its key once, in `data/integrations/tesla/`, and serves its public key at
+`/.well-known/appspecific/com.tesla.3p.public-key.pem`, where Tesla reads it. So Golem's `base_url` must be an https
+address on the internet, which is the domain of the Tesla app. Golem signs commands with Tesla's
+[tesla-control](https://github.com/teslamotors/vehicle-command). Its module cannot be installed with `go install`, so
+build it from the repository:
+
+```sh
+git clone https://github.com/teslamotors/vehicle-command && cd vehicle-command
+go build -o /opt/homebrew/bin/tesla-control ./cmd/tesla-control
+```
+
+While Golem runs, it logs the charge sessions of each Tesla account in its store: it looks at each car every 30 minutes
+without waking it, and every 5 minutes while the car charges. A session has the place, the battery levels, the kWh into
+the battery, which the car counts, and the kWh from the wall, which Golem adds up from the charger's volts, amps, and
+phases, as TeslaMate does; it is `null` at a fast charger. Golem can see a session up to 30 minutes after it started;
+the kWh still count the whole session.
+
+Tesla bills each call to the Fleet API, after a free credit each month: in 2026, about $10, which covers the log and
+some commands each day for one car. Tesla shows the use on developer.tesla.com.
