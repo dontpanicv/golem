@@ -56,14 +56,21 @@ test("a person's Google picture is copied once at 256 px, and never again after 
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10])
     );
   }) as unknown as typeof fetch);
-  // better-auth's user table, with only the columns that the copy reads.
+  // better-auth's tables, with only the columns that the copy reads. Cy's account was made with a password, and
+  // Google was linked to it later, so only the ID token of the Google account has the picture.
+  const idToken = `x.${Buffer.from(JSON.stringify({ picture: "https://lh3.googleusercontent.com/a/cy=s96-c" })).toString("base64url")}.x`;
   database.run(`CREATE TABLE user (id TEXT PRIMARY KEY, image TEXT);
-	INSERT INTO user VALUES ('ada', 'https://lh3.googleusercontent.com/a/photo=s96-c'), ('bob', 'https://example.com/bob.png');`);
+	CREATE TABLE account (userId TEXT, providerId TEXT, idToken TEXT, updatedAt INTEGER);
+	INSERT INTO user VALUES ('ada', 'https://lh3.googleusercontent.com/a/photo=s96-c'), ('bob', 'https://example.com/bob.png'), ('cy', NULL);
+	INSERT INTO account VALUES ('cy', 'credential', NULL, 1), ('cy', 'google', '${idToken}', 2);`);
   await pictures.importGoogle();
-  expect(asked).toEqual(["https://lh3.googleusercontent.com/a/photo=s256-c"]);
+  expect(asked).toEqual([
+    "https://lh3.googleusercontent.com/a/photo=s256-c",
+    "https://lh3.googleusercontent.com/a/cy=s256-c",
+  ]);
   const id = pictures.ids(["ada", "bob"]).get("ada")!;
   expect(pictures.get(id).contentType).toBe("image/png");
-  expect(pictures.ids(["bob"]).size).toBe(0);
+  expect([...pictures.ids(["bob", "cy"]).keys()]).toEqual(["cy"]);
   pictures.remove("ada");
   await new ProfilePictures(database).importGoogle("ada");
   expect(pictures.ids(["ada"]).size).toBe(0);

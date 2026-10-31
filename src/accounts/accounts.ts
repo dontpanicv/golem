@@ -149,13 +149,20 @@ export class ProfilePictures {
    * person keeps their initial. Golem keeps a copy because the apps show pictures only from Golem.
    */
   async importGoogle(userId?: string): Promise<void> {
+    // better-auth sets `image` only when Google sign-in makes the account; an account that it linked later, as one
+    // made with a password, has the picture only in the ID token of its Google account.
     const people = this.database
       .query(
-        `SELECT id, image FROM user WHERE image IS NOT NULL AND id NOT IN (SELECT user_id FROM profile_picture)${userId ? " AND id = ?" : ""}`
+        `SELECT u.id, u.image, (SELECT a.idToken FROM account a WHERE a.userId = u.id AND a.providerId = 'google' ORDER BY a.updatedAt DESC LIMIT 1) AS idToken FROM user u WHERE u.id NOT IN (SELECT user_id FROM profile_picture)${userId ? " AND u.id = ?" : ""}`
       )
-      .all(...(userId ? [userId] : [])) as { id: string; image: string }[];
+      .all(...(userId ? [userId] : [])) as {
+      id: string;
+      image: string | null;
+      idToken: string | null;
+    }[];
     for (const person of people) {
-      const address = googlePicture(person.image);
+      const image = person.image ?? pictureClaim(person.idToken);
+      const address = image ? googlePicture(image) : undefined;
       if (!address || this.triedGoogle.has(person.id)) {
         continue;
       }
@@ -225,6 +232,18 @@ export class ProfilePictures {
       throw notFound();
     }
     return picture;
+  }
+}
+
+/** The `picture` of a Google ID token, which Google sent to Golem itself at sign-in. */
+function pictureClaim(idToken: string | null): string | undefined {
+  try {
+    const claims = JSON.parse(
+      Buffer.from(idToken?.split(".")[1] ?? "", "base64url").toString()
+    ) as { picture?: unknown };
+    return typeof claims.picture === "string" ? claims.picture : undefined;
+  } catch {
+    return undefined;
   }
 }
 
