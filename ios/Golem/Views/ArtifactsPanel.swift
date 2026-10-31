@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Artifacts, files, and the open artifact of a channel beside the channel or one of its threads, or of the workspace
+/// Files, artifacts, and the open artifact of a channel beside the channel or one of its threads, or of the workspace
 /// beside the orchestrator.
 struct ArtifactsPanel: View {
     enum Tab: String, CaseIterable {
-        case artifacts = "Artifacts", files = "Files"
+        case files = "Files", artifacts = "Artifacts"
 
         var empty: (title: String, systemImage: String) {
             switch self {
@@ -22,7 +22,7 @@ struct ArtifactsPanel: View {
     /// Closes the panel where it is a sheet, on iPhone.
     var close: (() -> Void)?
     @Environment(Session.self) private var session
-    @State private var tab = Tab.artifacts
+    @State private var tab = Tab.files
     @State private var files: [SavedFile] = []
     @State private var uploading = false
     @State private var artifacts: [Artifact] = []

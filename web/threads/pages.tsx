@@ -478,12 +478,12 @@ function PanelToggle() {
 const placeRoute = getRouteApi("/signed-in/w/$workspaceId");
 
 /**
- * The side panel of a place: its artifacts and files in tabs, and the preview of the artifact that `?artifact=` names,
+ * The side panel of a place: its files and artifacts in tabs, and the preview of the artifact that `?artifact=` names,
  * as a list or a search result opens it.
  */
 function PlacePanel({ place }: { place: Place }) {
   const [open, setOpen] = usePanelOpen();
-  const [tab, setTab] = useState<"artifacts" | "files">("artifacts");
+  const [tab, setTab] = useState<"files" | "artifacts">("files");
   const { artifact } = placeRoute.useSearch({
     select: (search) => search as { artifact?: string },
   });
@@ -492,6 +492,8 @@ function PlacePanel({ place }: { place: Place }) {
   useEffect(() => {
     if (artifact) {
       panelOpen.set(true);
+      // Closing the preview goes back to the artifacts it came from.
+      setTab("artifacts");
     }
   }, [artifact]);
   const openArtifact = (artifactId: string | undefined) =>
@@ -515,13 +517,13 @@ function PlacePanel({ place }: { place: Place }) {
           />
         ) : (
           <div className="tabs" role="tablist">
+            <Tab current={tab} id="files" label="Files" onSelect={setTab} />
             <Tab
               current={tab}
               id="artifacts"
               label="Artifacts"
               onSelect={setTab}
             />
-            <Tab current={tab} id="files" label="Files" onSelect={setTab} />
           </div>
         )}
         <Button
