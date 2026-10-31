@@ -2,10 +2,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// One message, as Slack shows it: the author's avatar at the side, their name and the time over the text. A message
-/// that follows one of the same author within five minutes shows only its text (``continues(_:after:)``).
+/// that follows one of the same author within five minutes shows only its text (``continues(_:after:)``). Golem's face
+/// shows the mood of its answer; `waiting` says that it waits for a person to allow an action of this answer's work.
 struct MessageRow: View {
     let message: Message
     var continued = false
+    var waiting = false
     let openFile: (FileRef) -> Void
     @Environment(Session.self) private var session
 
@@ -14,7 +16,11 @@ struct MessageRow: View {
             if continued {
                 Color.clear.frame(width: Tokens.Mobile.Size.avatar, height: 1)
             } else if message.agent {
-                GolemMark(size: Tokens.Mobile.Size.avatar)
+                if let mood = Self.mood(of: message, waiting: waiting) {
+                    GolemFace(mood: mood, size: Tokens.Mobile.Size.avatar)
+                } else {
+                    GolemMark(size: Tokens.Mobile.Size.avatar)
+                }
             } else {
                 Avatar(name: message.author, size: Tokens.Mobile.Size.avatar)
             }
@@ -45,6 +51,16 @@ struct MessageRow: View {
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    /// The face of an agent's message: it failed, it works or waits for a person, or it finished its work; an answer
+    /// with no work, or one that a person stopped, has the icon's own face.
+    static func mood(of message: Message, waiting: Bool) -> GolemFace.Mood? {
+        if message.failed { return .failed }
+        if message.streaming || (message.work != nil && message.work?.endedAt == nil) {
+            return waiting ? .waiting : .working
+        }
+        return message.work.map { $0.stopped ? nil : .done } ?? nil
     }
 
     /// The message follows one of the same author within five minutes, and has no work log to head.
@@ -99,14 +115,17 @@ struct WorkLog: View {
                 withAnimation(.snappy) { chosen = !open }
             } label: {
                 HStack(spacing: Tokens.Space.xs) {
+                    if working { PixelSpinner().padding(.trailing, Tokens.Space.xs) }
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         let end = work.endedAt.map { Date(milliseconds: $0) } ?? context.date
-                        Text(label(Self.duration(end.timeIntervalSince(Date(milliseconds: work.startedAt)))))
+                        let text = Text(label(Self.duration(end.timeIntervalSince(Date(milliseconds: work.startedAt)))))
                             .monospacedDigit()
+                        if working { text.modifier(Shimmer()) } else { text }
                     }
                     if !work.steps.isEmpty {
                         Image(systemName: "chevron.right").imageScale(.small).rotationEffect(.degrees(open ? 90 : 0))
                     }
+                    if !working { StepStrip(steps: work.steps).padding(.leading, Tokens.Space.xs) }
                 }
                 .font(.golem(Tokens.FontSize.md))
                 .foregroundStyle(Tokens.Colors.textTertiary)
@@ -175,6 +194,40 @@ struct WorkLog: View {
     }
 }
 
+/// The pixel of tool calls: gold when they finished, `danger` when one failed, and the blinking accent while one runs.
+private struct StepPixel: View {
+    let steps: [Step]
+
+    var body: some View {
+        if steps.contains(where: \.running) {
+            TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                Rectangle().fill(Tokens.Colors.accent)
+                    .opacity(Int(context.date.timeIntervalSinceReferenceDate * 2) % 2 == 0 ? 1 : 0.25)
+            }
+            .frame(width: 7, height: 7)
+        } else {
+            Rectangle()
+                .fill(steps.contains(where: \.failed) ? Tokens.Colors.danger : Tokens.Colors.gold)
+                .frame(width: 7, height: 7)
+        }
+    }
+}
+
+/// One pixel for each tool call of a finished work, in the gold of the icon's eyes, or `danger` where a call failed.
+private struct StepStrip: View {
+    let steps: [Step]
+
+    var body: some View {
+        // shortcut: a long work shows only its last 24 calls; open the log for all of them.
+        HStack(spacing: 2) {
+            ForEach(Array(steps.filter { $0.kind == "tool" }.suffix(24).enumerated()), id: \.offset) { _, step in
+                StepPixel(steps: [step])
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// Calls of one tool in a row: the tool's name and how many calls, which opens to show each call. It starts open while
 /// one of them runs.
 struct WorkGroup: View {
@@ -189,6 +242,7 @@ struct WorkGroup: View {
                 withAnimation(.snappy) { chosen = !open }
             } label: {
                 HStack(spacing: Tokens.Space.sm) {
+                    StepPixel(steps: steps)
                     Text(WorkLog.toolName(steps[0].tool))
                         .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
                         .foregroundStyle(Tokens.Colors.textTertiary)
@@ -222,7 +276,7 @@ struct WorkStep: View {
             VStack(alignment: .leading, spacing: Tokens.Space.xs) {
                 Button { withAnimation(.snappy) { open.toggle() } } label: {
                     HStack(spacing: Tokens.Space.sm) {
-                        if step.running { ProgressView().controlSize(.mini) }
+                        StepPixel(steps: [step])
                         Text(WorkLog.toolName(step.tool))
                             .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
                             .foregroundStyle(step.failed ? Tokens.Colors.danger : Tokens.Colors.textTertiary)

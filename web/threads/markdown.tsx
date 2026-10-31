@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import { localPath } from "../accounts/login.tsx";
 import { fileHref } from "../app/api.ts";
 import { previewLink } from "../ui/file-preview.tsx";
+import { Cards, parseCards } from "./cards.tsx";
 import { ThreadLink } from "./thread-link.tsx";
 
 /** Where the addresses that agents write go: `thread:<id>`, `file:<id>`, and `artifact:<id>`. */
@@ -41,7 +42,8 @@ function urlTransform(url: string, key: string): string {
 
 /**
  * An agent's Markdown. A link to `thread:<id>` opens the thread, to `file:<id>` the file, and to `artifact:<id>` the
- * artifact in the side panel; a picture of `file:<id>` shows the file, and of `artifact:<id>` the artifact itself.
+ * artifact in the side panel; a picture of `file:<id>` shows the file, and of `artifact:<id>` the artifact itself. A
+ * fenced `card` block shows its cards.
  *
  * @example
  * <Markdown text="See ![the screen](file:0199)" workspaceId={workspaceId} />
@@ -61,6 +63,20 @@ export default function Markdown({
             {children}
           </MarkdownLink>
         ),
+        pre: ({ node, children }) => {
+          const code = node?.children[0];
+          const isCard =
+            code?.type === "element" &&
+            String(code.properties.className).includes("language-card");
+          const cards = isCard
+            ? parseCards(
+                code.children
+                  .map((child) => (child.type === "text" ? child.value : ""))
+                  .join("")
+              )
+            : null;
+          return cards ? <Cards cards={cards} /> : <pre>{children}</pre>;
+        },
         img: ({ src, alt }) => (
           <MarkdownPicture
             alt={alt}

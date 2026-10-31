@@ -9,7 +9,7 @@ import {
 } from "react";
 import { fileHref } from "../app/api.ts";
 import type { Message, Step, Work } from "../app/types.ts";
-import { Avatar, Mark } from "../ui/components.tsx";
+import { Avatar, Mark, type Mood, PixelSpinner } from "../ui/components.tsx";
 import { fileKind } from "../ui/file-kind.ts";
 import { previewLink } from "../ui/file-preview.tsx";
 import { clockTime, duration } from "../ui/format.ts";
@@ -37,15 +37,20 @@ export function AgentText({
 /** A message; an agent's answer is Markdown, a person's message and an error show as they were written. */
 export const MessageView = memo(MessageCard);
 
-/** `pending`: a message in the outbox, which Golem does not have yet; it says so in place of its time. */
+/**
+ * `pending`: a message in the outbox, which Golem does not have yet; it says so in place of its time. `waiting`: the
+ * agent waits for a person to allow an action of this answer's work.
+ */
 function MessageCard({
   message,
   workspaceId,
   pending = false,
+  waiting = false,
 }: {
   message: Message;
   workspaceId: string;
   pending?: boolean;
+  waiting?: boolean;
 }) {
   const classes = [
     "message",
@@ -57,7 +62,11 @@ function MessageCard({
     .join(" ");
   return (
     <article className={classes}>
-      {message.agent ? <Mark /> : <Avatar name={message.author} />}
+      {message.agent ? (
+        <Mark mood={moodOf(message, waiting)} />
+      ) : (
+        <Avatar name={message.author} />
+      )}
       <div className="message-body">
         <div className="message-meta">
           <span className="message-author">{message.author}</span>
@@ -99,6 +108,20 @@ function MessageCard({
       </div>
     </article>
   );
+}
+
+/**
+ * The face of an agent's message: it failed, it works or waits for a person, or it finished its work; an answer with
+ * no work, or one that a person stopped, has the icon's own face.
+ */
+export function moodOf(message: Message, waiting: boolean): Mood | undefined {
+  if (message.failed) {
+    return "failed";
+  }
+  if (message.streaming || message.work?.endedAt === null) {
+    return waiting ? "waiting" : "working";
+  }
+  return message.work && !message.work.stopped ? "done" : undefined;
 }
 
 /** A file of a message: a picture shows itself, and any other file, or a picture the server cannot convert, a chip. */
@@ -172,7 +195,10 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
   if (working) {
     label = (
       <>
-        Working for <Elapsed since={work.startedAt} />
+        <PixelSpinner />
+        <span className="shimmer">
+          Working for <Elapsed since={work.startedAt} />
+        </span>
       </>
     );
   } else if (work.stopped) {
@@ -192,6 +218,7 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
             <Icon name="disclosure" />
           </span>
         ) : null}
+        {working ? null : <StepStrip steps={work.steps} />}
       </summary>
       {groups.length > 0 ? (
         <ol className="work-steps" ref={working ? followEnd : undefined}>
@@ -209,6 +236,7 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
                   open={steps.some((step) => step.running)}
                 >
                   <summary className="work-row">
+                    <StepPixel steps={steps} />
                     <ToolName tool={steps[0]!.tool!} />
                     <span className="work-tool-detail">
                       {steps.length} times
@@ -272,6 +300,7 @@ function WorkStep({ step, workspaceId }: { step: Step; workspaceId: string }) {
     <li>
       <details className={classes}>
         <summary className="work-row">
+          <StepPixel steps={[step]} />
           <ToolName tool={step.tool!} />
           {step.text ? (
             <span className="work-tool-detail">
@@ -287,18 +316,44 @@ function WorkStep({ step, workspaceId }: { step: Step; workspaceId: string }) {
   );
 }
 
-/** A tool's name as words: `web_search` is Web search. */
-function ToolName({ tool }: { tool: string }) {
-  const words = tool.replaceAll("_", " ");
-  return (
-    <span className="work-tool-name">
-      {words.charAt(0).toUpperCase() + words.slice(1)}
+/** One pixel for each tool call of a finished work, in the gold of the icon's eyes, or `danger` where a call failed. */
+function StepStrip({ steps }: { steps: readonly Step[] }) {
+  // shortcut: a long work shows only its last 24 calls; open the log for all of them.
+  const calls = steps.filter((step) => step.kind === "tool").slice(-24);
+  return calls.length > 0 ? (
+    <span aria-hidden="true" className="step-strip">
+      {calls.map((step, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: steps only grow, so their place is their identity
+        <i className={stepState([step])} key={index} />
+      ))}
     </span>
-  );
+  ) : null;
+}
+
+/** The pixel of tool calls: it runs while one of them runs, and fails when one of them failed. */
+function StepPixel({ steps }: { steps: readonly Step[] }) {
+  return <i aria-hidden="true" className={`step-pixel ${stepState(steps)}`} />;
+}
+
+function stepState(steps: readonly Step[]): "running" | "failed" | "done" {
+  if (steps.some((step) => step.running)) {
+    return "running";
+  }
+  return steps.some((step) => step.failed) ? "failed" : "done";
+}
+
+function ToolName({ tool }: { tool: string }) {
+  return <span className="work-tool-name">{toolWords(tool)}</span>;
+}
+
+/** A tool's name as words: `web_search` is Web search. */
+export function toolWords(tool: string): string {
+  const words = tool.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /** The time since `since`, counting up each second. */
-function Elapsed({ since }: { since: number }) {
+export function Elapsed({ since }: { since: number }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);

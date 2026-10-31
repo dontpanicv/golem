@@ -45,4 +45,25 @@ struct MarkdownTextTests {
         }
         #expect(code == "let x = 1")
     }
+
+    @Test func aCardBlockShowsItsCardsAndAnInvalidOneShowsAsCode() {
+        let text = """
+            ```card
+            [{"icon": "battery", "title": "Car", "value": "78 %", "detail": "412 km"}, {"value": "22 °C"}]
+            ```
+
+            ```card
+            {"title": "No value"}
+            ```
+            """
+        let blocks = MarkdownText.blocks(text, size: 16)
+        #expect(blocks.count == 2)
+        guard case .cards(let cards) = blocks[0] else { Issue.record("no cards"); return }
+        #expect(cards == [
+            .init(value: "78 %", title: "Car", detail: "412 km", icon: "battery"),
+            .init(value: "22 °C", title: nil, detail: nil, icon: nil),
+        ])
+        guard case .code(let code) = blocks[1] else { Issue.record("no code"); return }
+        #expect(code == #"{"title": "No value"}"#)
+    }
 }

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { fileHref } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
-import type { Approval, ThreadSummary } from "../app/types.ts";
+import type { ThreadSummary } from "../app/types.ts";
 import { ArtifactList, ArtifactPreview } from "../artifacts/panel.tsx";
 import { Button, Dialog, Empty, WorkingSpinner } from "../ui/components.tsx";
 import { previewLink } from "../ui/file-preview.tsx";
@@ -29,7 +29,6 @@ import {
 import { PanelHeader } from "../workspaces/shell.tsx";
 import { Composer } from "./composer.tsx";
 import {
-  answerApproval,
   filesOf,
   messagesOf,
   type Place,
@@ -41,6 +40,7 @@ import {
 } from "./data.ts";
 import { followEnd, MessageView } from "./message.tsx";
 import { followed, outbox, sendMessage } from "./outbox.ts";
+import { LiveStatus } from "./status.tsx";
 
 const threadRoute = getRouteApi("/signed-in/w/$workspaceId/t/$threadId");
 
@@ -135,6 +135,12 @@ function Thread({
   });
   const { running, approvals } = useThreadStream(threadId, placeChanged);
   const me = useQuery(meQuery).data?.user.id;
+  const mine = approvals.filter(
+    ({ approverId }) => approverId === null || approverId === me
+  );
+  const working = messages.findLast(
+    (message) => message.work?.endedAt === null || message.streaming
+  );
   useEffect(() => {
     followed.add(threadId);
     return () => {
@@ -182,6 +188,7 @@ function Thread({
             <MessageView
               key={message.id}
               message={message}
+              waiting={message === working && mine.length > 0}
               workspaceId={workspaceId}
             />
           ))}
@@ -199,78 +206,26 @@ function Thread({
             </div>
           ) : null}
         </section>
-        {approvals
-          .filter(({ approverId }) => approverId === null || approverId === me)
-          .map((approval) => (
-            <ApprovalCard
-              approval={approval}
-              key={approval.id}
-              threadId={threadId}
-            />
-          ))}
         {cards}
         <Composer
           clearAtOnce
           onSend={(text, files) => sendMessage(threadId, text, files)}
-          onStop={() => stopThread(threadId).catch(showError)}
           placeholder={
             isOrchestrator ? "Message Golem" : `Message #${channel?.name ?? ""}`
           }
-          running={running}
+          status={
+            <LiveStatus
+              approvals={mine}
+              onStop={() => stopThread(threadId).catch(showError)}
+              running={running}
+              threadId={threadId}
+              work={working?.work ?? null}
+            />
+          }
         />
       </section>
       <PlacePanel place={place} />
     </>
-  );
-}
-
-/**
- * An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows
- * that, or not.
- */
-function ApprovalCard({
-  approval,
-  threadId,
-}: {
-  approval: Approval;
-  threadId: string;
-}) {
-  const [busy, setBusy] = useState(false);
-  const answer = (allow: boolean, scope?: "once" | "turn") => {
-    setBusy(true);
-    answerApproval(threadId, approval.id, allow, scope).catch((error) => {
-      setBusy(false);
-      showError(error);
-    });
-  };
-  return (
-    <section aria-label="Approval" className="approval">
-      <p>{approval.text}</p>
-      <div className="approval-actions">
-        <Button
-          disabled={busy}
-          label="Deny"
-          onClick={() => answer(false)}
-          size="small"
-          variant="danger"
-        />
-        {approval.allowsTurn ? (
-          <Button
-            disabled={busy}
-            label="Allow for this turn"
-            onClick={() => answer(true, "turn")}
-            size="small"
-          />
-        ) : null}
-        <Button
-          disabled={busy}
-          label="Allow"
-          onClick={() => answer(true, "once")}
-          size="small"
-          variant="primary"
-        />
-      </div>
-    </section>
   );
 }
 

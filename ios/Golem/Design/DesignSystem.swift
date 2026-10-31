@@ -214,7 +214,7 @@ struct NavRow: View {
                     .font(.system(size: Tokens.Size.icon * 0.6, weight: .medium))
                     .accessibilityLabel("Private")
             }
-            if working { ProgressView().controlSize(.mini).accessibilityLabel("Working") }
+            if working { PixelSpinner() }
             Spacer(minLength: 0)
             if let count {
                 Text("\(count)").font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.book))

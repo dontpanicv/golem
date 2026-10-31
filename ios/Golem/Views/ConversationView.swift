@@ -1,7 +1,7 @@
 import QuickLook
 import SwiftUI
 
-/// One thread, as a Slack thread: messages with their author's avatar, the working line over the composer, and the
+/// One thread, as a Slack thread: messages with their author's avatar, the live status over the composer, and the
 /// title capsule with the thread's menu. Loads its state, then follows the server-sent events until the view
 /// disappears.
 struct ConversationView: View {
@@ -37,7 +37,10 @@ struct ConversationView: View {
                 let messages = state?.messages ?? []
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                     let continued = index > 0 && MessageRow.continues(message, after: messages[index - 1])
-                    MessageRow(message: message, continued: continued, openFile: openFile)
+                    MessageRow(
+                        message: message, continued: continued,
+                        waiting: message.id == working?.id && !approvals.isEmpty, openFile: openFile
+                    )
                         .padding(.top, continued ? Tokens.Space.xs : Tokens.Space.lg)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
@@ -145,28 +148,25 @@ struct ConversationView: View {
         (state?.approvals ?? []).filter { $0.approverId == nil || $0.approverId == session.user?.id }
     }
 
-    /// The approvals, the suggestions, and the working line over the composer; a conversation takes the composer's
-    /// place.
+    /// The answer that the agent writes now.
+    private var working: Message? {
+        state?.messages.last { $0.streaming || ($0.work != nil && $0.work?.endedAt == nil) }
+    }
+
+    /// The suggestions and the live status over the composer; a conversation takes the composer's place.
     private var bottomBar: some View {
         ComposerRow {
             VStack(alignment: .leading, spacing: Tokens.Space.sm) {
-                ForEach(approvals) { approval in
-                    ApprovalCard(approval: approval, threadID: threadID)
-                }
                 ForEach(suggestions) { suggestion in
                     SuggestionCard(suggestion: suggestion) { suggestions.removeAll { $0.id == suggestion.id } }
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                if state?.running == true {
-                    HStack {
-                        WorkingLabel()
-                        Spacer()
-                        Button("Stop", systemImage: "stop.fill") {
-                            Task { await session.run { try await session.api.stopThread(threadID) } }
-                        }
-                        .buttonStyle(.golem(.secondary, .tiny))
+                if state?.running == true || !approvals.isEmpty {
+                    LiveStatus(
+                        work: working?.work, running: state?.running == true, approvals: approvals, threadID: threadID
+                    ) {
+                        Task { await session.run { try await session.api.stopThread(threadID) } }
                     }
-                    .padding(.horizontal, Tokens.Space.xs)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 if talk.isOn, talk.thread == threadID {
@@ -236,8 +236,68 @@ struct ConversationView: View {
     }
 }
 
+/// What the agent does now, over the composer so that it stays in view: Golem's face, the step it is at, and how long
+/// it has worked, with Stop; and each action that it waits for this person to allow.
+private struct LiveStatus: View {
+    let work: Work?
+    let running: Bool
+    let approvals: [Approval]
+    let threadID: String
+    let stop: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.md) {
+            HStack(spacing: Tokens.Space.md) {
+                GolemFace(mood: approvals.isEmpty ? .working : .waiting, size: 28)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(step.title)
+                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium))
+                        .modifier(Shimmer())
+                    if !step.detail.isEmpty {
+                        Text(step.detail)
+                            .font(.golem(Tokens.Mobile.FontSize.caption))
+                            .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                if let work {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(WorkLog.duration(context.date.timeIntervalSince(Date(milliseconds: work.startedAt))))
+                            .monospacedDigit()
+                    }
+                    .font(.golem(Tokens.Mobile.FontSize.caption))
+                    .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                }
+                if running {
+                    Button("Stop", systemImage: "stop.fill", action: stop)
+                        .buttonStyle(.golem(.secondary, .tiny))
+                }
+            }
+            ForEach(approvals) { approval in
+                ApprovalCard(approval: approval, threadID: threadID)
+            }
+        }
+        .padding(Tokens.Space.md)
+        .glassEffect(.regular, in: .rect(cornerRadius: Tokens.Mobile.Size.voice / 2))
+        .accessibilityElement(children: .contain)
+    }
+
+    /// The step the agent is at, as a title and a detail: a tool call, a thought, or the words of its answer.
+    private var step: (title: String, detail: String) {
+        if !approvals.isEmpty { return ("Waiting for you", "") }
+        guard let last = work?.steps.last else { return ("Working", "") }
+        switch last.kind {
+        // A thread that the call reached shows as its title.
+        case "tool": return (WorkLog.toolName(last.tool), String(MessageRow.linked(last.text).characters))
+        case "thinking": return ("Thinking", "")
+        default: return ("Writing", "")
+        }
+    }
+}
+
 /// An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows
-/// that, or not. A long text, such as the body of an email, scrolls.
+/// that, or not; the gold of the icon's eyes at its side. A long text, such as the body of an email, scrolls.
 private struct ApprovalCard: View {
     let approval: Approval
     let threadID: String
@@ -265,7 +325,11 @@ private struct ApprovalCard: View {
             .disabled(busy)
         }
         .padding(Tokens.Space.lg)
-        .raisedCard(ring: Tokens.Colors.ringControl)
+        .raisedCard(radius: Tokens.Radius.xl, ring: Tokens.Colors.ringControl)
+        .overlay(alignment: .leading) {
+            Rectangle().fill(Tokens.Colors.gold).frame(width: 3)
+        }
+        .clipShape(.rect(cornerRadius: Tokens.Radius.xl))
     }
 
     private var text: some View {

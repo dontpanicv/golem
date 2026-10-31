@@ -174,7 +174,7 @@ struct ListRow<Trailing: View>: View {
                         .lineLimit(1)
                 }
             }
-            if working { ProgressView().controlSize(.mini).accessibilityLabel("Working") }
+            if working { PixelSpinner() }
             Spacer(minLength: 0)
             trailing
         }
@@ -303,15 +303,13 @@ struct HeaderTitle: View {
     }
 }
 
-/// Golem at work, as Slack's typing line: three dots that light in turn, then the words.
+/// Golem at work, as Slack's typing line: four pixels that light in turn, then the words.
 struct WorkingLabel: View {
     var text = "Golem is working"
 
     var body: some View {
         HStack(spacing: Tokens.Space.sm) {
-            Image(systemName: "ellipsis")
-                .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
-                .foregroundStyle(Tokens.Colors.accent)
+            PixelSpinner()
             Text(text)
         }
         .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))

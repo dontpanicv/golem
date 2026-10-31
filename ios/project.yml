@@ -119,6 +119,7 @@ targets:
       - path: Golem/Views/PickedFile.swift
       - path: Golem/Design/Tokens.swift
       - path: Golem/Design/DesignSystem.swift
+      - path: Golem/Design/Pixels.swift
     entitlements:
       path: Share/Share.entitlements
       properties:
@@ -155,6 +156,7 @@ targets:
       - path: Golem/API/ThreadActivity.swift
       - path: Golem/Design/Tokens.swift
       - path: Golem/Design/DesignSystem.swift
+      - path: Golem/Design/Pixels.swift
       - path: Golem/Resources/InterVariable.ttf
     info:
       path: GolemActivity/Info.plist

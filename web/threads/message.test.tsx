@@ -8,13 +8,17 @@ import {
 import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import type { Message, Work } from "../app/types.ts";
+import { TooltipProvider } from "../ui/components.tsx";
 import Markdown from "./markdown.tsx";
-import { MessageView } from "./message.tsx";
+import { MessageView, moodOf } from "./message.tsx";
+import { LiveStatus } from "./status.tsx";
 
 /** The HTML of `node` on a page of the app's router. */
 async function render(node: ReactNode): Promise<string> {
   const router = createRouter({
-    routeTree: createRootRoute({ component: () => node }),
+    routeTree: createRootRoute({
+      component: () => <TooltipProvider>{node}</TooltipProvider>,
+    }),
     history: createMemoryHistory(),
   });
   await router.load();
@@ -165,4 +169,116 @@ test("calls of one tool in a row fold into one row, and a stopped turn says so",
     '<span class="work-tool-name">Start thread</span><span class="work-tool-detail">2<!-- --> times</span>'
   );
   expect(html).toContain('class="thread-link" href="/w/w/t/d-1">Dinner</a>');
+});
+
+test("a finished work shows one pixel for each tool call, and the face shows how the work went", async () => {
+  const html = await render(
+    <MessageView
+      message={message({
+        startedAt: 1000,
+        endedAt: 4000,
+        stopped: false,
+        steps: [call("a"), { ...call("b"), failed: true }],
+      })}
+      workspaceId="w"
+    />
+  );
+  expect(html).toContain(
+    '<span aria-hidden="true" class="step-strip"><i class="done"></i><i class="failed"></i></span>'
+  );
+  expect(html).toContain('class="avatar agent face done"');
+
+  const work = { startedAt: 0, endedAt: null, stopped: false, steps: [] };
+  expect(moodOf(message(work), false)).toBe("working");
+  expect(moodOf(message(work), true)).toBe("waiting");
+  expect(
+    moodOf(message({ ...work, endedAt: 1, stopped: true }), false)
+  ).toBeUndefined();
+  expect(moodOf({ ...message(work), failed: true }, false)).toBe("failed");
+  expect(
+    moodOf({ ...message(work), streaming: false, work: null }, false)
+  ).toBe(undefined);
+});
+
+test("a card block shows its cards; one that is not valid shows as code", async () => {
+  const html = await render(
+    <Markdown
+      text={[
+        "```card",
+        '[{"icon": "battery", "title": "Car", "value": "78 %", "detail": "412 km"}, {"value": "22 °C"}]',
+        "```",
+        "",
+        "```card",
+        '{"title": "No value"}',
+        "```",
+      ].join("\n")}
+      workspaceId="w"
+    />
+  );
+  expect(html).toContain('<span class="card-title">Car</span>');
+  expect(html).toContain('<strong class="card-value">78 %</strong>');
+  expect(html).toContain('<span class="card-detail">412 km</span>');
+  expect(html).toContain('<strong class="card-value">22 °C</strong>');
+  expect(html.match(/class="card-icon"/g)).toHaveLength(1);
+  expect(html).toContain("<pre><code");
+  expect(html).toContain("No value");
+});
+
+test("the composer's status says the step Golem is at, or what it waits for the person to allow", async () => {
+  const work = {
+    startedAt: Date.now() - 5000,
+    endedAt: null,
+    stopped: false,
+    steps: [
+      { ...call("living room"), tool: "salus_set_temperature", running: true },
+    ],
+  };
+  const working = await render(
+    <LiveStatus
+      approvals={[]}
+      onStop={() => undefined}
+      running
+      threadId="t"
+      work={work}
+    />
+  );
+  expect(working).toContain(
+    '<span class="shimmer">Salus set temperature</span>'
+  );
+  expect(working).toContain('<span class="live-detail">living room</span>');
+  expect(working).toContain('class="avatar agent small face working"');
+  expect(working).toContain('aria-label="Stop"');
+
+  const waiting = await render(
+    <LiveStatus
+      approvals={[
+        {
+          id: "a",
+          tool: "home_assistant_call",
+          text: "vacuum.start vacuum.hall",
+          approverId: null,
+          allowsTurn: false,
+          expiresAt: 0,
+        },
+      ]}
+      onStop={() => undefined}
+      running
+      threadId="t"
+      work={work}
+    />
+  );
+  expect(waiting).toContain("Waiting for you");
+  expect(waiting).toContain("<p>vacuum.start vacuum.hall</p>");
+  expect(waiting).not.toContain("Allow for this turn");
+
+  const idle = await render(
+    <LiveStatus
+      approvals={[]}
+      onStop={() => undefined}
+      running={false}
+      threadId="t"
+      work={null}
+    />
+  );
+  expect(idle).not.toContain("live-status");
 });

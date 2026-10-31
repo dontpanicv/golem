@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Markdown that an agent wrote, as the web shows it: headings, lists, quotes, code blocks, tables, and rules, with
 /// the inline Markdown in each. A link takes the accent; a link to `thread:<id>` is followed by "working" while the
-/// agent of that thread works.
+/// agent of that thread works. A fenced `card` block shows its cards, as the web's `cards.tsx` does.
 ///
 /// ```swift
 /// MarkdownText(text: "## Plan\n- Book the flight", size: Tokens.Mobile.FontSize.body)
@@ -71,6 +71,8 @@ struct MarkdownText: View {
             .font(.golem(Tokens.Mobile.FontSize.small))
         case .rule:
             Divider().overlay(Tokens.Colors.border)
+        case .cards(let cards):
+            CardGrid(cards: cards)
         }
     }
 
@@ -83,6 +85,22 @@ struct MarkdownText: View {
         /// The first row is the header.
         case table([[AttributedString]], alignments: [HorizontalAlignment])
         case rule
+        case cards([Card])
+    }
+
+    /// A card that an agent writes for a value that matters: a fenced `card` block with one JSON object, or a list.
+    struct Card: Decodable, Equatable {
+        let value: String
+        let title: String?
+        let detail: String?
+        let icon: String?
+
+        /// The cards of a `card` block, or nil when it is not valid, so that it shows as code.
+        static func parse(_ json: String) -> [Card]? {
+            let data = Data(json.utf8)
+            if let cards = try? JSONDecoder().decode([Card].self, from: data), !cards.isEmpty { return cards }
+            return (try? JSONDecoder().decode(Card.self, from: data)).map { [$0] }
+        }
     }
 
     struct Item {
@@ -155,7 +173,10 @@ struct MarkdownText: View {
         }
         switch intent.first?.kind {
         case .header(let level): return .heading(text, level: level)
-        case .codeBlock: return .code(String(text.characters).trimmingCharacters(in: .newlines))
+        case .codeBlock(let language):
+            let code = String(text.characters).trimmingCharacters(in: .newlines)
+            if language == "card", let cards = Card.parse(code) { return .cards(cards) }
+            return .code(code)
         case .thematicBreak: return .rule
         default: break
         }
@@ -205,5 +226,52 @@ private extension PresentationIntent.TableColumn.Alignment {
         case .right: .trailing
         default: .leading
         }
+    }
+}
+
+/// The cards of a `card` block: one in a row on a phone, so that a value fits on its line, and more on an iPad.
+private struct CardGrid: View {
+    let cards: [MarkdownText.Card]
+
+    var body: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 200), spacing: Tokens.Space.md, alignment: .top)],
+            alignment: .leading, spacing: Tokens.Space.md
+        ) {
+            ForEach(Array(cards.enumerated()), id: \.offset) { _, card in CardView(card: card) }
+        }
+    }
+}
+
+/// One card of an answer: its pixel icon on the icon's dark tile, its title, its value, and its detail.
+private struct CardView: View {
+    let card: MarkdownText.Card
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Tokens.Space.lg) {
+            if let path = card.icon.flatMap({ PixelIcon.paths[$0] }) { PixelIcon(path: path) }
+            VStack(alignment: .leading, spacing: 1) {
+                if let title = card.title {
+                    Text(title.uppercased())
+                        .font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.medium))
+                        .tracking(0.4)
+                        .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                }
+                Text(card.value)
+                    .font(.golem(Tokens.Mobile.FontSize.menu, Tokens.FontWeight.semibold))
+                    .foregroundStyle(Tokens.Mobile.Colors.title)
+                    .monospacedDigit()
+                if let detail = card.detail {
+                    Text(detail)
+                        .font(.golem(Tokens.Mobile.FontSize.caption))
+                        .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Tokens.Space.lg)
+        .padding(.vertical, Tokens.Space.md)
+        .raisedCard(radius: Tokens.Radius.lg, ring: Tokens.Colors.ringControl)
+        .accessibilityElement(children: .combine)
     }
 }
