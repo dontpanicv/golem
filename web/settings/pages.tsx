@@ -24,7 +24,7 @@ import { FloatingSidebarButton, Shell } from "../workspaces/shell.tsx";
 
 const workspaceRoute = getRouteApi("/signed-in/w/$workspaceId/settings");
 
-/** A workspace's name, members, facts, machines, and integrations. */
+/** A workspace's name, members, and facts; each person's machines and integrations are in Settings. */
 export function WorkspaceSettingsPage() {
   const { workspaceId } = workspaceRoute.useParams();
   const workspace = useMe().workspaces.find(
@@ -45,18 +45,12 @@ export function WorkspaceSettingsPage() {
         <PageSection title="Facts">
           <FactsSection workspaceId={workspaceId} />
         </PageSection>
-        <PageSection title="Machines">
-          <MachinesSection workspaceId={workspaceId} />
-        </PageSection>
-        <PageSection title="Integrations">
-          <IntegrationsSection workspaceId={workspaceId} />
-        </PageSection>
       </PageContent>
     </section>
   );
 }
 
-/** The LLM provider, the person's own machines and integrations, and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
+/** The LLM provider, the person's machines and integrations in the workspace, and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
 export function SettingsPage() {
   const { user, workspaces } = useMe();
   const { data: llm } = useQuery(llmQuery);
@@ -72,12 +66,16 @@ export function SettingsPage() {
           <PageSection title="LLM provider">
             <LlmCard />
           </PageSection>
-          <PageSection title="Machines">
-            <MachinesSection workspaceId={null} />
-          </PageSection>
-          <PageSection title="Integrations">
-            <IntegrationsSection workspaceId={null} />
-          </PageSection>
+          {workspace ? (
+            <>
+              <PageSection title="Machines">
+                <MachinesSection workspaceId={workspace.id} />
+              </PageSection>
+              <PageSection title="Integrations">
+                <IntegrationsSection workspaceId={workspace.id} />
+              </PageSection>
+            </>
+          ) : null}
           {llm?.owner ? (
             <PageSection title="Server">
               <SettingsCard>

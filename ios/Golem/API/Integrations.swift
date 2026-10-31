@@ -1,41 +1,41 @@
 import Foundation
 
-/// The integrations and credentials of a workspace, or the person's own for a nil `workspaceID`.
+/// The integrations, with the person's own credentials in the workspace and the ones other members shared.
 extension APIClient {
-    func integrations(workspaceID: String?) async throws -> [Integration] {
-        try await get("\(Self.integrationsBase(workspaceID))/integrations")
+    func integrations(workspaceID: String) async throws -> [Integration] {
+        try await get("/api/v1/workspaces/\(workspaceID)/integrations")
     }
 
     /// The page where the person signs in to an integration; it ends at a localhost address that they paste.
-    func connectIntegration(workspaceID: String?, integrationID: String) async throws -> ConnectPage {
-        try await post("\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/connect", [:])
+    func connectIntegration(workspaceID: String, integrationID: String) async throws -> ConnectPage {
+        try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/connect", [:])
     }
 
-    func finishSignIn(workspaceID: String?, integrationID: String, address: String) async throws -> Credential {
+    func finishSignIn(workspaceID: String, integrationID: String, address: String) async throws -> Credential {
         try await post(
-            "\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/sign-in", ["address": address]
+            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/sign-in", ["address": address]
         )
     }
 
     /// The code that the person enters on the phone of `phone`; `finishLink` waits until they did.
-    func linkIntegration(workspaceID: String?, integrationID: String, phone: String) async throws -> LinkCode {
+    func linkIntegration(workspaceID: String, integrationID: String, phone: String) async throws -> LinkCode {
         try await post(
-            "\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/connect", ["phone": phone]
+            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/connect", ["phone": phone]
         )
     }
 
-    func finishLink(workspaceID: String?, integrationID: String) async throws -> Credential {
-        try await post("\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/sign-in", [:])
+    func finishLink(workspaceID: String, integrationID: String) async throws -> Credential {
+        try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/sign-in", [:])
     }
 
     func addCredential(
-        workspaceID: String?, integrationID: String, label: String?, secret: String, address: String?
+        workspaceID: String, integrationID: String, label: String?, secret: String, address: String?
     ) async throws -> Credential {
         var body = ["secret": secret]
         body["label"] = label
         body["address"] = address
         return try await post(
-            "\(Self.integrationsBase(workspaceID))/integrations/\(integrationID)/credentials",
+            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/credentials",
             body
         )
     }
@@ -48,12 +48,15 @@ extension APIClient {
         )
     }
 
-    func deleteCredential(workspaceID: String?, credentialID: String) async throws {
-        _ = try await send("DELETE", "\(Self.integrationsBase(workspaceID))/credentials/\(credentialID)")
+    /// Shares the person's credential with every member's turns, or makes it private to their own again.
+    func setCredentialShared(workspaceID: String, credentialID: String, shared: Bool) async throws -> Credential {
+        try decode(
+            try await send("PUT", "/api/v1/workspaces/\(workspaceID)/credentials/\(credentialID)", ["shared": shared])
+                .data
+        )
     }
 
-    /// A workspace's integrations, or the person's own for a nil `workspaceID`.
-    private static func integrationsBase(_ workspaceID: String?) -> String {
-        workspaceID.map { "/api/v1/workspaces/\($0)" } ?? "/api/v1"
+    func deleteCredential(workspaceID: String, credentialID: String) async throws {
+        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/credentials/\(credentialID)")
     }
 }

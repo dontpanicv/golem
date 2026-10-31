@@ -300,7 +300,7 @@ test("a connector without a credential fails the script", async () => {
   const result = await scripts.test(workspaceId, null, SCRIPT, undefined, null);
   expect(result).toMatchObject({ ok: false });
   expect(!result.ok && result.error).toContain(
-    "School 2 is not connected. Connect it in your own Settings"
+    "School 2 is not connected. Connect it in Settings"
   );
 });
 
@@ -331,7 +331,7 @@ test("a routine runs as the person who last wrote its script, and not after its 
     .members(workspaceId, alice)
     .find((member) => member.email === "bob@example.com")!;
   const bobUser: User = { id: bob.userId, name: bob.name, email: bob.email };
-  await integrations.addCredential(null, bobUser, "school", {
+  await integrations.addCredential(workspaceId, bobUser, "school", {
     label: "Bob",
     secret: "bob-password",
   });

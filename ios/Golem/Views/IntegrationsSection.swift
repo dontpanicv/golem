@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The integrations and credentials of a workspace, for every member's turns there, or the person's own for a nil
-/// `workspaceID`, for their turns in each of their workspaces. Secrets go to the server and never come back.
+/// The integrations, with the person's own credentials, which they share with every member's turns or keep private, and
+/// the ones other members shared. Secrets go to the server and never come back.
 struct IntegrationsSection: View {
-    let workspaceID: String?
+    let workspaceID: String
     @Environment(Session.self) private var session
     @State private var integrations: [Integration] = []
     @State private var addingTo: Integration?
@@ -25,16 +25,25 @@ struct IntegrationsSection: View {
                             .buttonStyle(.golem(.ghost, .icon))
                     }
                 }
-                ForEach(integration.credentials) { credential in
-                    SettingsRow(credential.label, description: "Added by \(credential.ownerName)") {
-                        GolemMenu {
-                            MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
-                                delete(credential, from: $integration)
+                ForEach($integration.credentials) { $credential in
+                    if credential.ownerId == session.user?.id {
+                        SettingsRow(credential.label, description: credential.shared ? "Shared" : "Private") {
+                            Toggle(
+                                "Private",
+                                isOn: Binding(get: { !credential.shared }, set: { share($credential, !$0) })
+                            )
+                            .labelsHidden()
+                            GolemMenu {
+                                MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
+                                    delete(credential, from: $integration)
+                                }
+                            } label: {
+                                Label("Credential actions", systemImage: "ellipsis")
                             }
-                        } label: {
-                            Label("Credential actions", systemImage: "ellipsis")
+                            .buttonStyle(.golem(.ghost, .icon))
                         }
-                        .buttonStyle(.golem(.ghost, .icon))
+                    } else {
+                        SettingsRow(credential.label, description: "Shared by \(credential.ownerName)")
                     }
                 }
                 HStack {
@@ -115,6 +124,16 @@ struct IntegrationsSection: View {
         }
     }
 
+    private func share(_ credential: Binding<Credential>, _ shared: Bool) {
+        Task {
+            await session.run {
+                credential.wrappedValue = try await session.api.setCredentialShared(
+                    workspaceID: workspaceID, credentialID: credential.wrappedValue.id, shared: shared
+                )
+            }
+        }
+    }
+
     private func delete(_ credential: Credential, from integration: Binding<Integration>) {
         Task {
             await session.run {
@@ -126,7 +145,7 @@ struct IntegrationsSection: View {
 }
 
 private struct CredentialForm: View {
-    let workspaceID: String?
+    let workspaceID: String
     let integration: Integration
     let added: (Credential) -> Void
     @Environment(Session.self) private var session
@@ -267,7 +286,7 @@ private struct SignIn: Identifiable {
 
 /// Signs in to an integration on its own page, which ends at a localhost address that the person pastes here.
 private struct SignInForm: View {
-    let workspaceID: String?
+    let workspaceID: String
     let signIn: SignIn
     let added: (Credential) -> Void
     @Environment(Session.self) private var session
@@ -308,7 +327,7 @@ private struct SignInForm: View {
 
 /// Links a phone number with a code that the person enters on their phone, in Linked devices.
 private struct LinkForm: View {
-    let workspaceID: String?
+    let workspaceID: String
     let integration: Integration
     let added: (Credential) -> Void
     @Environment(Session.self) private var session

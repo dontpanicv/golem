@@ -1,7 +1,7 @@
 import { createHash, type KeyObject, sign, X509Certificate } from "node:crypto";
 import { connect } from "node:tls";
 
-/** A machine running `hands`, paired with a workspace or as one person's own. */
+/** A machine running `hands`, which one person paired. */
 export interface Machine {
   readonly addresses: readonly string[];
   readonly arch: string;
@@ -12,12 +12,12 @@ export interface Machine {
   readonly name: string;
   readonly os: string;
   readonly pairedAt: number;
-  /** The member who started the pairing, who allows what agents do on it; null for a machine paired before. */
-  readonly pairedBy: string | null;
+  /** The member who paired it, who allows what agents do on it for others. */
+  readonly pairedBy: string;
   readonly port: number;
+  /** Whether the turns of every member use it; else only the turns of `pairedBy`. */
+  readonly shared: boolean;
   readonly version: string;
-  /** The workspace it is paired with; null for the own machine of `pairedBy`. */
-  readonly workspaceId: string | null;
 }
 
 export interface Reply {
@@ -25,7 +25,7 @@ export interface Reply {
   readonly payload: Uint8Array;
 }
 
-/** The identity that a workspace, or a person for their own machines, signs in to machines with. */
+/** The identity that a person signs in to the machines they paired with. */
 export interface Identity {
   readonly privateKey: KeyObject;
   /** The raw 32-byte Ed25519 public key, base64. */

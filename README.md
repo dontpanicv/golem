@@ -53,13 +53,13 @@ Caddy, in front of Golem on the mesh.
   A message passes between threads at most twice, so agents cannot keep talking to each other.
 - **Search.** Each workspace has its own index: keywords plus meaning from Google's EmbeddingGemma 2, run locally.
   Search and the agents' `recall` tool never cross workspaces. See [docs/data.md](docs/data.md).
-- **Hands.** A workspace's agents can use its machines: Macs and Linux computers that run the [`hands`](hands/)
-  daemon, Golem's own copy of Mycroft's. They run commands and long jobs there, and read and edit files. **Add
-  machine** in the workspace settings gives a command to paste on the machine; it installs `hands` and pairs it with
-  the workspace. Every agent in the workspace can use every machine of the workspace.
+- **Hands.** Agents can use machines: Macs and Linux computers that run the [`hands`](hands/) daemon, Golem's own copy
+  of Mycroft's. They run commands and long jobs there, and read and edit files. **Add machine** in Settings gives a
+  command to paste on the machine; it installs `hands` and pairs it with that person. A machine is private, for that
+  person's turns, until they share it with every agent in the workspace.
 - **Integrations.** A connector in `src/integrations/` gives agents the tools of an outside system, such as a school
-  information system. A credential added in the workspace settings serves every member's turns there; one added in a
-  person's own settings serves only their turns, in each of their workspaces, and comes first. A person can connect
+  information system. A person adds credentials in Settings. A credential is private, for that person's turns, where
+  it comes first, until they share it with the turns of every member. A person can connect
   several accounts of one integration, such as Google accounts for work and home. Google (Gmail, Calendar, Drive),
   Rohlík, and Plaud connect through a sign-in, Slack with a request of its web app pasted as cURL, WhatsApp through a
   device linked to the person's number, and X and Instagram with the cookies of the person's session. Agents send mail

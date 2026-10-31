@@ -219,7 +219,11 @@ struct Member: Codable, Hashable, Identifiable {
 struct Credential: Codable, Hashable, Identifiable {
     let id: String
     let label: String
+    /// The person who connected it; only they share or delete it.
+    let ownerId: String
     let ownerName: String
+    /// Whether every member's turns use it; else only its owner's.
+    var shared: Bool
     let createdAt: Double
 }
 
@@ -298,35 +302,6 @@ struct Brief: Codable {
 
 struct ChannelBrief: Codable {
     let brief: Brief?
-}
-
-struct Machine: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-    let system: String
-    let arch: String
-    let version: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, arch, version
-        case system = "os"
-    }
-
-    /// "macOS arm64 · hands 0.5.0"
-    var summary: String {
-        let names = ["macos": "macOS", "linux": "Linux"]
-        return "\(names[system] ?? system) \(arch) · hands \(version)"
-    }
-}
-
-struct Pairing: Codable, Hashable {
-    let command: String
-    let expiresAt: Double
-}
-
-struct Machines: Codable {
-    let machines: [Machine]
-    let pairing: Pairing?
 }
 
 struct Llm: Codable, Hashable {

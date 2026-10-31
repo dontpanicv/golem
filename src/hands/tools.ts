@@ -19,7 +19,7 @@ const FILE_PART = 8 * 1024 * 1024;
 const machineParameter = Type.String({ description: "Machine name" });
 
 /**
- * The machines of a turn, the workspace's and its person's own, named in the system prompt before each request, so
+ * The machines of a turn, the shared ones and its person's own, named in the system prompt before each request, so
  * agents need not look them up.
  */
 export function handsSection(
@@ -30,20 +30,20 @@ export function handsSection(
   return {
     key: "machines",
     render: async ({ conversationId }) => {
-      // A conversation that is not a thread, or whose person left, sees the workspace's machines only.
+      // A conversation that is not a thread, or whose person left, sees the shared machines only.
       const machines = hands.machinesIn(
         workspaceId,
         await requesterOf(conversationId).catch(() => null)
       );
       if (machines.length === 0) {
-        return "No machines are paired with this workspace or with the person of this turn. If someone needs a shell or files on a computer, tell them to add a machine in the workspace settings, or in their own Settings for a computer only they use.";
+        return "No machines are shared in this workspace or paired by the person of this turn. If someone needs a shell or files on a computer, tell them to add a machine in Settings.";
       }
       const lines = machines.map(
         (machine) =>
-          `- ${machine.name}: ${displayOs(machine.os)} ${machine.arch}; reachable as ${hosts(machine).join(", ")}${machine.workspaceId ? "" : "; the own machine of the person of this turn"}`
+          `- ${machine.name}: ${displayOs(machine.os)} ${machine.arch}; reachable as ${hosts(machine).join(", ")}${machine.shared ? "" : "; private to the person of this turn"}`
       );
       return [
-        "Machines of this turn: the workspace's, and the person's own. Every hands_* tool takes `machine`: one of these names.",
+        "Machines of this turn: the shared ones, and the person's own. Every hands_* tool takes `machine`: one of these names.",
         ...lines,
         '- People may say "the Mac" or "the server": pick the machine that matches; ask only if two match.',
         "- You can use several machines in one script: `await Promise.all([...])` runs calls on different machines at the same time.",
@@ -57,7 +57,7 @@ export function handsSection(
 }
 
 /**
- * The agent's hands: tools that act on the workspace's machines. Commands run as supervised jobs keyed by the durable
+ * The agent's hands: tools that act on the machines of a turn. Commands run as supervised jobs keyed by the durable
  * tool task, so `hands_exec` is replay-safe: a rerun after a restart finds the same job instead of starting the
  * command again.
  */

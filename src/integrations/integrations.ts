@@ -29,7 +29,11 @@ export interface CredentialSummary {
   readonly createdAt: number;
   readonly id: string;
   readonly label: string;
+  /** The person who connected it, whose account it is; only they share, make private, or delete it. */
+  readonly ownerId: string;
   readonly ownerName: string;
+  /** Whether the turns of every member use it; else only the turns of its owner. */
+  readonly shared: boolean;
 }
 export interface Integration {
   readonly credentials: readonly CredentialSummary[];
@@ -154,13 +158,7 @@ export interface Device {
   readonly close: () => Promise<void>;
 }
 
-/**
- * Where a credential belongs, which says whose turns use it: a workspace id, for the turns of every member there, or
- * `null`, for a person's own, for their turns in each of their workspaces.
- */
-export type Place = string | null;
-
-/** The turn a tool call is part of: the person it is for, whose own credentials come first. */
+/** The turn a tool call is part of: the person it is for, whose own credentials come first, also private ones. */
 export interface Turn {
   readonly userId: string | null;
   readonly signal?: AbortSignal;
@@ -195,7 +193,7 @@ export interface IntegrationsOptions {
   readonly directory: string;
   /** The email address of the server's owner, who alone sets Golem's own OAuth clients. */
   readonly owner?: string | null;
-  /** Called when the connector tools of a workspace may change: a credential there or of a member changed. */
+  /** Called when the connector tools of a workspace may change: a credential there changed. */
   readonly changed?: (workspaceId: string) => void;
   readonly catalog?: readonly Connector[];
   /** Connects to an MCP server; tests pass an in-memory one. */
@@ -216,22 +214,24 @@ interface PendingSignIn {
     readonly phone: string;
     readonly linked: Promise<void>;
   };
-  readonly place: Place;
+  readonly workspaceId: string;
   readonly user: User;
   readonly connector: Connector;
   readonly expiresAt: number;
 }
 
+/** The live credential `?1` of the person `?3` in the workspace `?2`. */
+const OWN_CREDENTIAL =
+  "id = ?1 AND workspace_id = ?2 AND owner_id = ?3 AND deleted_at IS NULL";
 const SIGN_IN_MS = 10 * 60 * 1000;
 /** How long finishing a device's link waits for the person to enter its code. */
 const LINK_WAIT_MS = 60 * 1000;
 
 /**
- * The outside systems that agents use. A person connects an integration in a workspace, for every member's turns there,
- * or for themselves, for their own turns in each of their workspaces; one connector serves both. Each credential is an
- * account, such as a Google address: a turn uses the account that a tool call names, else the newest of the person it
- * is for, else the workspace's newest. Any member adds or deletes a workspace's credentials, and only their owner a
- * person's own. Secrets never leave the server.
+ * The outside systems that agents use. A person connects an integration in their Settings, in the workspace, and each
+ * credential is private, for their own turns, until they share it with the turns of every member. Each credential is
+ * an account, such as a Google address: a turn uses the account that a tool call names, else the newest of the person
+ * it is for, else the newest shared one. Only its owner shares or deletes a credential. Secrets never leave the server.
  */
 export class Integrations {
   private readonly catalog: readonly Connector[];
@@ -266,13 +266,14 @@ export class Integrations {
     }
   }
 
-  list(place: Place, user: User): Integration[] {
-    this.requireAccess(place, user);
-    const credentials = this.database
-      .query(
-        "SELECT c.id, c.integration, c.label, u.name AS ownerName, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE (c.workspace_id = ?1 OR (?1 IS NULL AND c.workspace_id IS NULL AND c.owner_id = ?2)) AND c.deleted_at IS NULL ORDER BY c.created_at"
-      )
-      .all(place, user.id) as (CredentialSummary & { integration: string })[];
+  /** The integrations, with the credentials that the person sees in the workspace: the shared ones and their own. */
+  list(workspaceId: string, user: User): Integration[] {
+    this.workspaces.requireMember(workspaceId, user);
+    const credentials = this.summaries(
+      "c.workspace_id = ?1 AND (c.shared = 1 OR c.owner_id = ?2)",
+      workspaceId,
+      user.id
+    );
     const owner = this.isOwner(user);
     return this.catalog.flatMap((connector) => {
       const clientId = connector.registered
@@ -295,6 +296,21 @@ export class Integrations {
           .map(({ integration: _, ...credential }) => credential),
       };
     });
+  }
+
+  private summaries(
+    where: string,
+    ...params: string[]
+  ): (CredentialSummary & { integration: string })[] {
+    const rows = this.database
+      .query(
+        `SELECT c.id, c.integration, c.label, c.owner_id AS ownerId, u.name AS ownerName, c.shared, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE ${where} AND c.deleted_at IS NULL ORDER BY c.created_at`
+      )
+      .all(...params) as (Omit<CredentialSummary, "shared"> & {
+      integration: string;
+      shared: number;
+    })[];
+    return rows.map((row) => ({ ...row, shared: row.shared === 1 }));
   }
 
   /**
@@ -324,12 +340,12 @@ export class Integrations {
   }
 
   async addCredential(
-    place: Place,
+    workspaceId: string,
     user: User,
     integrationId: string,
     input: { label?: string; secret: string; address?: string }
   ): Promise<CredentialSummary> {
-    this.requireAccess(place, user);
+    this.workspaces.requireMember(workspaceId, user);
     const connector = this.connector(integrationId);
     if (connectionOf(connector) !== "secret") {
       throw new HttpError(400, "Connect it by signing in");
@@ -340,7 +356,7 @@ export class Integrations {
         throw new HttpError(400, error.message, { cause: error });
       });
       return this.insertCredential(
-        place,
+        workspaceId,
         user,
         integrationId,
         made.label,
@@ -348,7 +364,7 @@ export class Integrations {
       );
     }
     return this.insertCredential(
-      place,
+      workspaceId,
       user,
       integrationId,
       required(input.label, "Label"),
@@ -364,12 +380,12 @@ export class Integrations {
    * a device: returns the code that the person enters on the phone of `phone`.
    */
   async connect(
-    place: Place,
+    workspaceId: string,
     user: User,
     integrationId: string,
     phone?: string
   ): Promise<{ url: string } | { code: string }> {
-    this.requireAccess(place, user);
+    this.workspaces.requireMember(workspaceId, user);
     const connector = this.connector(integrationId);
     const now = Date.now();
     for (const [state, pending] of this.signIns) {
@@ -389,7 +405,7 @@ export class Integrations {
       );
       this.signIns.set(credentialId, {
         device: { credentialId, phone: number, linked },
-        place,
+        workspaceId,
         user,
         connector,
         expiresAt: now + SIGN_IN_MS,
@@ -427,7 +443,7 @@ export class Integrations {
     }
     this.signIns.set(state, {
       provider,
-      place,
+      workspaceId,
       user,
       connector,
       expiresAt: now + SIGN_IN_MS,
@@ -436,24 +452,27 @@ export class Integrations {
   }
 
   /**
-   * Ends the person's own sign-in of the place where it started, and keeps it as a credential. A sign-in ends with the
+   * Ends the person's own sign-in in the workspace where it started, and keeps it as a private credential. A sign-in ends with the
    * address where its page ended, and works once; a device's link when the person entered its code.
    */
   async finishConnect(
-    place: Place,
+    workspaceId: string,
     user: User,
     integrationId: string,
     address?: string
   ): Promise<CredentialSummary> {
-    this.requireAccess(place, user);
+    this.workspaces.requireMember(workspaceId, user);
     if (this.connector(integrationId).device) {
-      return this.finishLink(place, user, integrationId);
+      return this.finishLink(workspaceId, user, integrationId);
     }
     const query = URL.parse(required(address, "Address"))?.searchParams;
     const state = query?.get("state") ?? "";
     const pending = this.signIns.get(state);
     if (
-      !(pending?.provider && this.isOwn(pending, place, user, integrationId))
+      !(
+        pending?.provider &&
+        this.isOwn(pending, workspaceId, user, integrationId)
+      )
     ) {
       throw new HttpError(400, "This is not the address of your sign-in");
     }
@@ -465,7 +484,7 @@ export class Integrations {
     const { provider, connector } = pending;
     await signIn(connector, provider, code);
     return this.insertCredential(
-      place,
+      workspaceId,
       user,
       connector.id,
       emailOf(provider.grant.tokens?.id_token) ?? connector.name,
@@ -473,14 +492,16 @@ export class Integrations {
     );
   }
 
-  /** Waits a while for the person's newest link of a device in this place, and keeps it as a credential. */
+  /** Waits a while for the person's newest link of a device in the workspace, and keeps it as a private credential. */
   private async finishLink(
-    place: Place,
+    workspaceId: string,
     user: User,
     integrationId: string
   ): Promise<CredentialSummary> {
     const pending = [...this.signIns.values()]
-      .filter((candidate) => this.isOwn(candidate, place, user, integrationId))
+      .filter((candidate) =>
+        this.isOwn(candidate, workspaceId, user, integrationId)
+      )
       .at(-1);
     if (!pending?.device) {
       throw new HttpError(400, "Start linking again");
@@ -506,7 +527,7 @@ export class Integrations {
     }
     this.signIns.delete(credentialId);
     return this.insertCredential(
-      place,
+      workspaceId,
       user,
       integrationId,
       phone,
@@ -517,12 +538,12 @@ export class Integrations {
 
   private isOwn(
     pending: PendingSignIn,
-    place: Place,
+    workspaceId: string,
     user: User,
     integrationId: string
   ): boolean {
     return (
-      pending.place === place &&
+      pending.workspaceId === workspaceId &&
       pending.user.id === user.id &&
       pending.connector.id === integrationId &&
       pending.expiresAt >= Date.now()
@@ -530,7 +551,7 @@ export class Integrations {
   }
 
   private insertCredential(
-    place: Place,
+    workspaceId: string,
     user: User,
     integrationId: string,
     label: string,
@@ -540,34 +561,62 @@ export class Integrations {
     const credential = {
       id,
       label,
+      ownerId: user.id,
       ownerName: user.name,
+      shared: false,
       createdAt: Date.now(),
     };
-    // `shared` is left from when credentials could be private.
     this.database
       .query(
-        "INSERT INTO credential (id, workspace_id, integration, owner_id, label, shared, secret, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
+        "INSERT INTO credential (id, workspace_id, integration, owner_id, label, shared, secret, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)"
       )
       .run(
         credential.id,
-        place,
+        workspaceId,
         integrationId,
         user.id,
         label,
         this.secrets.encrypt(secret),
         credential.createdAt
       );
-    this.changedFor(place, user);
+    this.options.changed?.(workspaceId);
     return credential;
   }
 
-  deleteCredential(place: Place, user: User, credentialId: string): void {
-    this.requireAccess(place, user);
+  /** Shares the person's credential with the turns of every member, or makes it private to their own turns again. */
+  setShared(
+    workspaceId: string,
+    user: User,
+    credentialId: string,
+    shared: boolean
+  ): CredentialSummary {
+    this.workspaces.requireMember(workspaceId, user);
+    const { changes } = this.database
+      .query(`UPDATE credential SET shared = ?4 WHERE ${OWN_CREDENTIAL}`)
+      .run(credentialId, workspaceId, user.id, shared ? 1 : 0);
+    if (changes === 0) {
+      throw notFound();
+    }
+    this.options.changed?.(workspaceId);
+    const { integration: _, ...credential } = this.summaries(
+      "c.id = ?",
+      credentialId
+    )[0]!;
+    return credential;
+  }
+
+  /** Deletes the person's credential. */
+  deleteCredential(
+    workspaceId: string,
+    user: User,
+    credentialId: string
+  ): void {
+    this.workspaces.requireMember(workspaceId, user);
     const row = this.database
-      .query(
-        "SELECT integration FROM credential WHERE id = ?1 AND (workspace_id = ?2 OR (?2 IS NULL AND workspace_id IS NULL AND owner_id = ?3)) AND deleted_at IS NULL"
-      )
-      .get(credentialId, place, user.id) as { integration: string } | null;
+      .query(`SELECT integration FROM credential WHERE ${OWN_CREDENTIAL}`)
+      .get(credentialId, workspaceId, user.id) as {
+      integration: string;
+    } | null;
     if (!row) {
       throw notFound();
     }
@@ -581,12 +630,12 @@ export class Integrations {
     if (connector?.device) {
       this.unlink(connector, credentialId);
     }
-    this.changedFor(place, user);
+    this.options.changed?.(workspaceId);
   }
 
   /**
-   * The tools of every connector for the agents and routines of a workspace: of each connector that the workspace or
-   * one of its members connected, with `<id>_accounts`, which lists the accounts that a turn can name.
+   * The tools of every connector for the agents and routines of a workspace: of each connector that someone connected
+   * there, with `<id>_accounts`, which lists the accounts that a turn can name.
    */
   async tools(workspaceId: string): Promise<WorkspaceTool[]> {
     const tools = await Promise.all(
@@ -772,35 +821,34 @@ export class Integrations {
   ): WorkspaceTool {
     return {
       name: `${connector.id}_accounts`,
-      description: `The ${connector.name} accounts that the other ${connector.id}_ tools can use for this person, by \`account\`: their own first, newest first, then the workspace's.`,
+      description: `The ${connector.name} accounts that the other ${connector.id}_ tools can use for this person, by \`account\`: their own first, newest first, then the ones that other members shared.`,
       parameters: Type.Object({}),
-      execute: async (_args, turn) =>
-        this.credentialRows(
-          workspaceId,
-          connector,
-          this.turnPeople(workspaceId, turn.userId)
-        ).map((row) => ({
-          account: row.label,
-          of: row.workspace_id ? "workspace" : "own",
-        })),
+      execute: async (_args, turn) => {
+        const person = this.turnPerson(workspaceId, turn.userId);
+        return this.credentialRows(workspaceId, connector, person).map(
+          (row) => ({
+            account: row.label,
+            of: row.owner_id === person ? "own" : "shared",
+          })
+        );
+      },
     };
   }
 
   /**
-   * The tools of a connector's MCP servers, named `<id>_<tool>`, as the workspace's sign-in lists them, else a member's
-   * own; the list has only names and schemas, and no tool call uses that sign-in for another person. None of a server
-   * without a sign-in, or when it fails, so one shop that is down does not stop the agents.
+   * The tools of a connector's MCP servers, named `<id>_<tool>`, as the newest shared sign-in lists them, else the
+   * newest private one; the list has only names and schemas, and no tool call uses that sign-in for another person.
+   * None of a server without a sign-in, or when it fails, so one shop that is down does not stop the agents.
    */
   private async mcpTools(
     workspaceId: string,
     connector: Connector
   ): Promise<AccountTool[]> {
-    const rows = this.credentialRows(
-      workspaceId,
-      connector,
-      this.memberIds(workspaceId)
-    );
-    const row = rows.find((candidate) => candidate.workspace_id) ?? rows[0];
+    const row = this.database
+      .query(
+        "SELECT id, label, owner_id, secret FROM credential WHERE integration = ? AND workspace_id = ? AND deleted_at IS NULL ORDER BY shared DESC, created_at DESC, rowid DESC LIMIT 1"
+      )
+      .get(connector.id, workspaceId) as CredentialRow | null;
     if (!row) {
       return [];
     }
@@ -959,7 +1007,7 @@ export class Integrations {
 
   /**
    * The credential that a turn of `userId` in a workspace uses for a connector: the one named `account`, else the
-   * person's newest, else the workspace's newest.
+   * person's newest, else the newest shared one.
    */
   private credentialFor(
     workspaceId: string,
@@ -970,11 +1018,11 @@ export class Integrations {
     const rows = this.credentialRows(
       workspaceId,
       connector,
-      this.turnPeople(workspaceId, userId)
+      this.turnPerson(workspaceId, userId)
     );
     if (rows.length === 0) {
       throw new Error(
-        `${connector.name} is not connected. Connect it in your own Settings, or for everyone in Workspace settings.`
+        `${connector.name} is not connected. Connect it in Settings, and share it for the turns of every member.`
       );
     }
     const row = account
@@ -996,7 +1044,7 @@ export class Integrations {
 
   /**
    * Who allows a call that acts with a credential: its owner, whom the call acts as, while a member; else the turn's
-   * person. The owner of a workspace's credential allows it for another person's turn, as for a machine.
+   * person. The owner of a shared credential allows it for another person's turn, as for a machine.
    */
   private approverOf(
     workspaceId: string,
@@ -1008,24 +1056,27 @@ export class Integrations {
       : userId;
   }
 
-  /** The credentials of a connector that are the own of one of `people`, newest first, then the workspace's. */
+  /** The credentials of a connector that a turn of `person` uses: their own, newest first, then the shared ones. */
   private credentialRows(
     workspaceId: string,
     connector: Connector,
-    people: readonly string[]
+    person: string | null
   ): CredentialRow[] {
     return this.database
       .query(
-        `SELECT id, label, workspace_id, owner_id, secret FROM credential WHERE integration = ? AND deleted_at IS NULL AND (workspace_id = ? OR (workspace_id IS NULL AND owner_id IN (${people.map(() => "?").join(", ")}))) ORDER BY workspace_id IS NOT NULL, created_at DESC, rowid DESC`
+        "SELECT id, label, owner_id, secret FROM credential WHERE integration = ?1 AND workspace_id = ?2 AND deleted_at IS NULL AND (shared = 1 OR owner_id = ?3) ORDER BY owner_id IS NOT ?3, created_at DESC, rowid DESC"
       )
-      .all(connector.id, workspaceId, ...people) as CredentialRow[];
+      .all(connector.id, workspaceId, person) as CredentialRow[];
   }
 
   /** The person of a turn, when they are a member of its workspace. */
-  private turnPeople(workspaceId: string, userId: string | null): string[] {
+  private turnPerson(
+    workspaceId: string,
+    userId: string | null
+  ): string | null {
     return userId && this.memberIds(workspaceId).includes(userId)
-      ? [userId]
-      : [];
+      ? userId
+      : null;
   }
 
   private memberIds(workspaceId: string): string[] {
@@ -1050,24 +1101,6 @@ export class Integrations {
     return user.email.toLowerCase() === this.options.owner?.toLowerCase();
   }
 
-  /** A workspace's credentials are for its members; a person's own only for them. */
-  private requireAccess(place: Place, user: User): void {
-    if (place !== null) {
-      this.workspaces.requireMember(place, user);
-    }
-  }
-
-  /** Tells the workspaces whose tools a credential of `place` may change: the person's own reach all of theirs. */
-  private changedFor(place: Place, user: User): void {
-    const workspaceIds =
-      place === null
-        ? this.workspaces.list(user).map((workspace) => workspace.id)
-        : [place];
-    for (const workspaceId of workspaceIds) {
-      this.options.changed?.(workspaceId);
-    }
-  }
-
   private connector(integrationId: string): Connector {
     const connector = this.catalog.find(
       (candidate) => candidate.id === integrationId
@@ -1089,7 +1122,6 @@ interface Credential {
 interface CredentialRow {
   readonly id: string;
   readonly label: string;
-  readonly workspace_id: string | null;
   readonly owner_id: string;
   readonly secret: Uint8Array;
 }

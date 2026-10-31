@@ -1,7 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// The LLM provider, which the whole server shares and only its owner changes, and the account.
+/// The LLM provider, which the whole server shares and only its owner changes, the person's machines and integrations
+/// in the workspace, and the account.
 struct SettingsView: View {
     @Environment(Session.self) private var session
     @State private var llm: Llm?
@@ -74,8 +75,10 @@ struct SettingsView: View {
                     }
                 }
             }
-            MachinesSection(workspaceID: nil)
-            IntegrationsSection(workspaceID: nil)
+            if let workspace = session.workspace {
+                MachinesSection(workspaceID: workspace.id)
+                IntegrationsSection(workspaceID: workspace.id)
+            }
             if llm?.owner == true {
                 SettingsCard(title: "Server") {
                     SettingsRow("Configuration") {

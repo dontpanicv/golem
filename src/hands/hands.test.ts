@@ -109,7 +109,7 @@ describe("pairing", () => {
     expect(await hands.installScript(code)).toContain(code);
   });
 
-  test("a machine pairs once with a code and trusts the workspace's key", async () => {
+  test("a machine pairs once with a code, as a private one, and trusts the key of its person", async () => {
     const code = codeOf((await hands.startPairing(family, alice)).command);
     expect(() =>
       hands.pair(code, pairingRequest({ certSha256: "nope" }))
@@ -119,7 +119,7 @@ describe("pairing", () => {
     );
 
     const answer = hands.pair(code, pairingRequest());
-    expect(answer.phoneName).toBe("Golem · Family");
+    expect(answer.phoneName).toBe("Golem · Alice");
     expect(Buffer.from(answer.publicKey, "base64")).toHaveLength(32);
     expect(() => hands.pair(code, pairingRequest())).toThrow("Not found");
     expect(hands.pairing(family, alice)).toBeNull();
@@ -130,10 +130,16 @@ describe("pairing", () => {
       addresses: ["192.168.1.40"],
       certSha256: "a".repeat(64),
       pairedBy: alice.id,
+      shared: false,
     });
-    // Each workspace signs in with a key of its own.
+    // Each person signs in with a key of their own, in every workspace.
     const other = codeOf((await hands.startPairing(work, alice)).command);
-    expect(hands.pair(other, pairingRequest()).publicKey).not.toBe(
+    expect(hands.pair(other, pairingRequest()).publicKey).toBe(
+      answer.publicKey
+    );
+    const evesHome = (await golem.app.workspaces.create(eve, "Eve")).id;
+    const eves = codeOf((await hands.startPairing(evesHome, eve)).command);
+    expect(hands.pair(eves, pairingRequest()).publicKey).not.toBe(
       answer.publicKey
     );
   });
@@ -193,95 +199,91 @@ describe("pairing", () => {
   });
 });
 
-describe("own machines", () => {
+describe("shared and private machines", () => {
   let bob: User;
   let home: string;
-  let office: string;
 
   beforeAll(async () => {
     bob = await person("Bob", "bob@example.com");
     home = (await golem.app.workspaces.create(bob, "Home")).id;
-    office = (await golem.app.workspaces.create(bob, "Office")).id;
+    await golem.app.workspaces.addMember(home, bob, alice.email);
   });
 
-  async function pairIn(place: string | null, fields: Record<string, unknown>) {
-    const code = codeOf((await hands.startPairing(place, bob)).command);
-    return hands.pair(code, pairingRequest(fields));
+  async function pairAs(user: User, fields: Record<string, unknown>) {
+    const code = codeOf((await hands.startPairing(home, user)).command);
+    hands.pair(code, pairingRequest(fields));
+    return hands
+      .machines(home, user)
+      .find(
+        (machine) =>
+          machine.certSha256 === fields.certSha256 &&
+          machine.pairedBy === user.id
+      )!;
   }
 
-  test("a person's own machine is for their turns in each of their workspaces, and only theirs", async () => {
-    const own = await pairIn(null, {
+  test("a private machine is for its person's turns only, and a shared one for every member's", async () => {
+    const laptop = await pairAs(bob, {
       name: "laptop",
       certSha256: "1".repeat(64),
     });
-    expect(own.phoneName).toBe("Golem · Bob");
-    const workspaceKey = (
-      await pairIn(home, { name: "server", certSha256: "2".repeat(64) })
-    ).publicKey;
-    expect(own.publicKey).not.toBe(workspaceKey);
+    const server = await pairAs(bob, {
+      name: "server",
+      certSha256: "2".repeat(64),
+    });
+    expect(hands.setShared(home, bob, server.id, true).shared).toBeTrue();
 
-    expect(hands.machines(null, bob).map((machine) => machine.name)).toEqual([
-      "laptop",
-    ]);
-    expect(hands.machines(null, eve)).toEqual([]);
-    for (const workspaceId of [home, office]) {
-      expect(
-        hands
-          .machinesIn(workspaceId, bob.id)
-          .map((machine) => [machine.name, machine.workspaceId])
-      ).toEqual(
-        workspaceId === home
-          ? [
-              ["laptop", null],
-              ["server", home],
-            ]
-          : [["laptop", null]]
-      );
-    }
-    // A turn of nobody, or of another person, sees only the workspace's.
-    expect(hands.machinesIn(home, null).map((machine) => machine.name)).toEqual(
-      ["server"]
-    );
-    expect(hands.machinesIn(home, alice.id)).toHaveLength(1);
-    expect(() => hands.machineNamed(office, null, "laptop")).toThrow(
-      "No machines are paired."
-    );
+    const names = (machines: { name: string }[]) =>
+      machines.map((machine) => machine.name);
+    expect(names(hands.machines(home, bob))).toEqual(["laptop", "server"]);
+    expect(names(hands.machines(home, alice))).toEqual(["server"]);
+    expect(names(hands.machinesIn(home, bob.id))).toEqual(["laptop", "server"]);
+    // A turn of nobody, or of another person, sees only the shared ones.
+    expect(names(hands.machinesIn(home, null))).toEqual(["server"]);
+    expect(names(hands.machinesIn(home, alice.id))).toEqual(["server"]);
+    expect(() => hands.machineNamed(home, alice.id, "laptop")).toThrow();
+    expect(() => hands.machines(home, eve)).toThrow("Not found");
 
-    const [laptop] = hands.machines(null, bob);
-    expect(() => hands.removeMachine(null, eve, laptop!.id)).toThrow(
+    // Only the person who paired a machine shares or removes it.
+    expect(() => hands.setShared(home, alice, server.id, false)).toThrow(
       "Not found"
     );
-    expect(() => hands.removeMachine(home, bob, laptop!.id)).toThrow(
+    expect(() => hands.removeMachine(home, alice, server.id)).toThrow(
       "Not found"
     );
-    hands.removeMachine(null, bob, laptop!.id);
-    expect(hands.machines(null, bob)).toEqual([]);
+    hands.setShared(home, bob, server.id, false);
+    expect(hands.machines(home, alice)).toEqual([]);
+    hands.removeMachine(home, bob, laptop.id);
+    hands.removeMachine(home, bob, server.id);
+    expect(hands.machines(home, bob)).toEqual([]);
   });
 
-  test("a machine paired in a workspace and as one's own shows once in that person's turns, as their own", async () => {
-    await pairIn(home, { name: "nas", certSha256: "3".repeat(64) });
-    await pairIn(null, { name: "nas", certSha256: "3".repeat(64) });
+  test("a machine that two people paired shows once in a turn, as its person's own", async () => {
+    const bobs = await pairAs(bob, { name: "nas", certSha256: "3".repeat(64) });
+    hands.setShared(home, bob, bobs.id, true);
+    const alices = await pairAs(alice, {
+      name: "nas",
+      certSha256: "3".repeat(64),
+    });
+    expect(alices.name).toBe("nas-2");
     expect(
       hands
-        .machinesIn(home, bob.id)
+        .machinesIn(home, alice.id)
         .filter((machine) => machine.certSha256 === "3".repeat(64))
-        .map((machine) => [machine.name, machine.workspaceId])
-    ).toEqual([["nas", null]]);
-    expect(hands.machineNamed(home, null, "nas").workspaceId).toBe(home);
+        .map((machine) => machine.id)
+    ).toEqual([alices.id]);
+    expect(hands.machineNamed(home, null, "nas").id).toBe(bobs.id);
   });
 
-  test("another machine does not take a name that a turn sees with it", async () => {
-    await pairIn(null, { name: "server", certSha256: "4".repeat(64) });
-    await pairIn(office, { name: "laptop", certSha256: "5".repeat(64) });
-    await pairIn(null, { name: "laptop", certSha256: "6".repeat(64) });
+  test("another machine does not take a name of the workspace, private ones too", async () => {
+    await pairAs(bob, { name: "server", certSha256: "4".repeat(64) });
+    await pairAs(alice, { name: "server", certSha256: "5".repeat(64) });
+    await pairAs(alice, { name: "Server", certSha256: "6".repeat(64) });
     expect(
       hands
-        .machinesIn(home, bob.id)
+        .machines(home, alice)
         .map((machine) => machine.name)
-        .filter(
-          (name) => name.startsWith("server") || name.startsWith("laptop")
-        )
-    ).toEqual(["laptop-2", "server", "server-2"]);
+        .filter((name) => name.toLowerCase().startsWith("server"))
+    ).toEqual(["Server-3", "server-2"]);
   });
 });
 
@@ -509,13 +511,10 @@ describe("the hands tools", () => {
     }
   }, 10_000);
 
-  test("a machine refuses a workspace or a person it did not pair with", async () => {
+  test("a machine refuses a person it did not pair with", async () => {
     const [machine] = hands.machinesIn(toolsWorkspace, alice.id);
     await expect(
-      hands.connection({ ...machine!, id: "elsewhere", workspaceId: work })
-    ).rejects.toThrow("refused this pairing");
-    await expect(
-      hands.connection({ ...machine!, id: "own", workspaceId: null })
+      hands.connection({ ...machine!, id: "elsewhere", pairedBy: eve.id })
     ).rejects.toThrow("refused this pairing");
   });
 });

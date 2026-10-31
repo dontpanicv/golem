@@ -16,8 +16,8 @@ import { whatsAppConnector } from "./whatsapp.ts";
 
 let golem: TestApp;
 let alice: User;
-/** A person who is not the server's owner. */
-const notOwner: User = { id: "otto", name: "Otto", email: "otto@example.com" };
+/** A member who is not the server's owner. */
+let notOwner: User;
 let workspaceId: string;
 /** A sign-in server and an MCP server's address, as Rohlík's are, on a local port. */
 let signInServer: ReturnType<typeof Bun.serve>;
@@ -37,6 +37,10 @@ beforeAll(async () => {
   ))!;
   alice = { id: user.id, name: user.name, email: user.email };
   workspaceId = (await golem.app.workspaces.create(alice, "Family")).id;
+  await golem.signIn("Eve", "eve@example.com");
+  const eve = (await internalAdapter.findUserByEmail("eve@example.com"))!;
+  notOwner = { id: eve.user.id, name: eve.user.name, email: eve.user.email };
+  await golem.app.workspaces.addMember(workspaceId, alice, notOwner.email);
   signInServer = Bun.serve({ port: 0, fetch: signIn });
   const shop: Connector = {
     id: "shop",
@@ -245,27 +249,32 @@ test("people connect an MCP server by signing in, and agents get its tools", asy
   expect(await integrations.tools(workspaceId)).toEqual([]);
 });
 
-test("the workspace's sign-in lists an MCP server's tools, also when a member signed in on their own", async () => {
-  const signInTo = async (place: string | null, code: string) => {
-    const { url } = (await integrations.connect(place, alice, "shop")) as {
+test("a shared sign-in lists an MCP server's tools, else a private one", async () => {
+  const signInTo = async (code: string) => {
+    const { url } = (await integrations.connect(
+      workspaceId,
+      alice,
+      "shop"
+    )) as {
       url: string;
     };
     const state = new URL(url).searchParams.get("state")!;
     return integrations.finishConnect(
-      place,
+      workspaceId,
       alice,
       "shop",
       `https://localhost/golem-sign-in?code=${code}&state=${state}`
     );
   };
-  const shared = await signInTo(workspaceId, "code-1");
-  const own = await signInTo(null, "code-own");
+  const shared = await signInTo("code-1");
+  integrations.setShared(workspaceId, alice, shared.id, true);
+  const own = await signInTo("code-own");
   await integrations.tools(workspaceId);
   expect(connectedWith.at(-1)).toBe("access-1");
   integrations.deleteCredential(workspaceId, alice, shared.id);
   await integrations.tools(workspaceId);
   expect(connectedWith.at(-1)).toBe("access-own");
-  integrations.deleteCredential(null, alice, own.id);
+  integrations.deleteCredential(workspaceId, alice, own.id);
 });
 
 test("a sign-in that did not finish adds nothing", async () => {
@@ -284,7 +293,7 @@ test("a sign-in that did not finish adds nothing", async () => {
   expect(integrations.list(workspaceId, alice)[0]!.credentials).toEqual([]);
 });
 
-test("a turn uses its person's own credential, else the workspace's, in each of their workspaces", async () => {
+test("a turn uses its person's own credential, else a shared one, and only its owner shares or deletes it", async () => {
   await golem.signIn("Bob", "bob@example.com");
   const { internalAdapter } = await golem.app.auth.$context;
   const found = (await internalAdapter.findUserByEmail("bob@example.com"))!;
@@ -294,7 +303,6 @@ test("a turn uses its person's own credential, else the workspace's, in each of 
     email: found.user.email,
   };
   await golem.app.workspaces.addMember(workspaceId, alice, bob.email);
-  const work = (await golem.app.workspaces.create(alice, "Work")).id;
   const reached: string[] = [];
   const notes = new Integrations(
     golem.app.database,
@@ -321,40 +329,54 @@ test("a turn uses its person's own credential, else the workspace's, in each of 
       changed: (id) => reached.push(id),
     }
   );
-  const token = async (place: string, userId: string | null) => {
-    const [tool] = await notes.tools(place);
+  const token = async (userId: string | null) => {
+    const [tool] = await notes.tools(workspaceId);
     return tool!.execute({}, { userId });
   };
-  await notes.addCredential(workspaceId, bob, "notes", {
+  const family = await notes.addCredential(workspaceId, bob, "notes", {
     label: "Family",
     secret: "family",
   });
-  const own = await notes.addCredential(null, alice, "notes", {
+  expect(family).toMatchObject({ ownerId: bob.id, shared: false });
+  const own = await notes.addCredential(workspaceId, alice, "notes", {
     label: "Mine",
     secret: "alice",
   });
-  expect(reached).toEqual([workspaceId, workspaceId, work]);
-
-  expect(await token(workspaceId, alice.id)).toBe("alice");
-  expect(await token(workspaceId, bob.id)).toBe("family");
-  expect(await token(workspaceId, null)).toBe("family");
-  expect(await token(work, alice.id)).toBe("alice");
-  // Bob is not a member of Work, and Work has no credential of its own.
-  await expect(token(work, bob.id)).rejects.toThrow("Notes is not connected");
-
-  expect(notes.list(null, alice)[0]!.credentials).toMatchObject([
+  // Private: only Alice's turns use hers, and Bob's his.
+  expect(await token(alice.id)).toBe("alice");
+  expect(await token(bob.id)).toBe("family");
+  await expect(token(null)).rejects.toThrow("Notes is not connected");
+  expect(notes.list(workspaceId, alice)[0]!.credentials).toMatchObject([
     { label: "Mine" },
   ]);
-  expect(notes.list(null, bob)[0]!.credentials).toEqual([]);
+
+  expect(() => notes.setShared(workspaceId, alice, family.id, true)).toThrow(
+    "Not found"
+  );
+  expect(notes.setShared(workspaceId, bob, family.id, true)).toMatchObject({
+    label: "Family",
+    shared: true,
+  });
+  expect(reached).toEqual([workspaceId, workspaceId, workspaceId]);
+  expect(await token(null)).toBe("family");
+  expect(await token(alice.id)).toBe("alice");
+  expect(notes.list(workspaceId, alice)[0]!.credentials).toMatchObject([
+    { label: "Family", ownerName: "Bob", shared: true },
+    { label: "Mine", shared: false },
+  ]);
   expect(notes.list(workspaceId, bob)[0]!.credentials).toMatchObject([
     { label: "Family" },
   ]);
-  expect(() => notes.deleteCredential(null, bob, own.id)).toThrow("Not found");
-  expect(() => notes.deleteCredential(workspaceId, alice, own.id)).toThrow(
+
+  expect(() => notes.deleteCredential(workspaceId, bob, own.id)).toThrow(
     "Not found"
   );
-  notes.deleteCredential(null, alice, own.id);
-  expect(await token(workspaceId, alice.id)).toBe("family");
+  expect(() => notes.deleteCredential(workspaceId, alice, family.id)).toThrow(
+    "Not found"
+  );
+  notes.deleteCredential(workspaceId, alice, own.id);
+  expect(await token(alice.id)).toBe("family");
+  notes.deleteCredential(workspaceId, bob, family.id);
 });
 
 test("a tool that acts as a person asks its credential's owner every time, and only an agent in a thread can ask", async () => {
@@ -403,15 +425,15 @@ test("a tool that acts as a person asks its credential's owner every time, and o
       secret: "hello",
     })
   ).rejects.toThrow("Paste a cURL command");
-  expect(
-    await messenger.addCredential(workspaceId, alice, "messenger", {
-      secret: "curl x",
-    })
-  ).toMatchObject({ label: "Family chat" });
+  const chat = await messenger.addCredential(workspaceId, alice, "messenger", {
+    secret: "curl x",
+  });
+  expect(chat).toMatchObject({ label: "Family chat" });
+  messenger.setShared(workspaceId, alice, chat.id, true);
 
   const [send] = await messenger.tools(workspaceId);
   const asked: [string, string | null][] = [];
-  // Bob's turn uses Alice's credential of the workspace, so Alice allows it.
+  // Bob's turn uses Alice's shared credential, so Alice allows it.
   await send!.execute(
     { text: "Hi" },
     {
@@ -505,12 +527,12 @@ test("only the server's owner sets Golem's own client, and its MCP server hides 
     },
   });
   // Until the owner sets the client, only the owner sees the integration, and nobody can connect it.
-  expect(withOwner.list(null, notOwner)).toEqual([]);
-  expect(withOwner.list(null, alice)[0]!.client).toEqual({
+  expect(withOwner.list(workspaceId, notOwner)).toEqual([]);
+  expect(withOwner.list(workspaceId, alice)[0]!.client).toEqual({
     clientId: null,
     changeable: true,
   });
-  await expect(withOwner.connect(null, alice, "chat")).rejects.toThrow(
+  await expect(withOwner.connect(workspaceId, alice, "chat")).rejects.toThrow(
     "The server's owner has not set the client of Chat"
   );
   expect(() =>
@@ -520,19 +542,19 @@ test("only the server's owner sets Golem's own client, and its MCP server hides 
     clientId: " own-client ",
     clientSecret: "shh",
   });
-  expect(withOwner.list(null, notOwner)[0]!.client).toEqual({
+  expect(withOwner.list(workspaceId, notOwner)[0]!.client).toEqual({
     clientId: "own-client",
     changeable: false,
   });
 
-  const { url } = (await withOwner.connect(null, alice, "chat")) as {
+  const { url } = (await withOwner.connect(workspaceId, alice, "chat")) as {
     url: string;
   };
   const page = new URL(url);
   expect(page.searchParams.get("client_id")).toBe("own-client");
   expect(page.searchParams.get("scope")).toBe("search chat:write");
   const credential = await withOwner.finishConnect(
-    null,
+    workspaceId,
     alice,
     "chat",
     `https://localhost/golem-sign-in?code=code-2&state=${page.searchParams.get("state")}`
@@ -541,7 +563,7 @@ test("only the server's owner sets Golem's own client, and its MCP server hides 
   expect((await withOwner.tools(workspaceId)).map((tool) => tool.name)).toEqual(
     ["chat_search_products", "chat_cart", "chat_accounts"]
   );
-  withOwner.deleteCredential(null, alice, credential.id);
+  withOwner.deleteCredential(workspaceId, alice, credential.id);
   await withOwner.close();
 });
 
@@ -578,8 +600,10 @@ test("the own tools of a sign-in get a fresh access token, which the refresh tok
     clientId: "own-client",
     clientSecret: "shh",
   });
-  expect(withOwner.list(null, alice)[0]).toMatchObject({ connect: "sign-in" });
-  const { url } = (await withOwner.connect(null, alice, "google")) as {
+  expect(withOwner.list(workspaceId, alice)[0]).toMatchObject({
+    connect: "sign-in",
+  });
+  const { url } = (await withOwner.connect(workspaceId, alice, "google")) as {
     url: string;
   };
   const page = new URL(url);
@@ -587,7 +611,7 @@ test("the own tools of a sign-in get a fresh access token, which the refresh tok
   expect(page.searchParams.get("access_type")).toBe("offline");
   expect(page.searchParams.has("resource")).toBe(false);
   const credential = await withOwner.finishConnect(
-    null,
+    workspaceId,
     alice,
     "google",
     `https://localhost/golem-sign-in?code=code-3&state=${page.searchParams.get("state")}`
@@ -607,7 +631,7 @@ test("the own tools of a sign-in get a fresh access token, which the refresh tok
   expect(await token!.execute({}, turn)).toBe("access-refreshed");
   expect(refreshes()).toBe(before + 1);
   expect(tokenRequests.at(-1)?.get("refresh_token")).toBe("refresh-1");
-  withOwner.deleteCredential(null, alice, credential.id);
+  withOwner.deleteCredential(workspaceId, alice, credential.id);
   await withOwner.close();
 });
 
@@ -636,15 +660,16 @@ test("a turn picks one of its person's accounts by name, and lists them", async 
       ],
     }
   );
-  await notes.addCredential(workspaceId, alice, "mail", {
+  const family = await notes.addCredential(workspaceId, alice, "mail", {
     label: "family@example.com",
     secret: "family",
   });
-  await notes.addCredential(null, alice, "mail", {
+  notes.setShared(workspaceId, alice, family.id, true);
+  await notes.addCredential(workspaceId, alice, "mail", {
     label: "work@example.com",
     secret: "work",
   });
-  await notes.addCredential(null, alice, "mail", {
+  await notes.addCredential(workspaceId, alice, "mail", {
     label: "me@example.com",
     secret: "me",
   });
@@ -663,10 +688,10 @@ test("a turn picks one of its person's accounts by name, and lists them", async 
   expect(await accounts!.execute({}, turn)).toEqual([
     { account: "me@example.com", of: "own" },
     { account: "work@example.com", of: "own" },
-    { account: "family@example.com", of: "workspace" },
+    { account: "family@example.com", of: "own" },
   ]);
   expect(await accounts!.execute({}, { userId: null })).toEqual([
-    { account: "family@example.com", of: "workspace" },
+    { account: "family@example.com", of: "shared" },
   ]);
 });
 
@@ -700,16 +725,22 @@ esac
     golem.app.workspaces,
     { directory, catalog: [whatsAppConnector(wacli)] }
   );
-  expect(whatsApp.list(null, alice)[0]).toMatchObject({ connect: "phone" });
-  await expect(whatsApp.finishConnect(null, alice, "whatsapp")).rejects.toThrow(
-    "Start linking again"
-  );
+  expect(whatsApp.list(workspaceId, alice)[0]).toMatchObject({
+    connect: "phone",
+  });
+  await expect(
+    whatsApp.finishConnect(workspaceId, alice, "whatsapp")
+  ).rejects.toThrow("Start linking again");
   expect(
-    await whatsApp.connect(null, alice, "whatsapp", "+420 123 456 789")
+    await whatsApp.connect(workspaceId, alice, "whatsapp", "+420 123 456 789")
   ).toEqual({
     code: "ABCD-1234",
   });
-  const credential = await whatsApp.finishConnect(null, alice, "whatsapp");
+  const credential = await whatsApp.finishConnect(
+    workspaceId,
+    alice,
+    "whatsapp"
+  );
   expect(credential.label).toBe("+420 123 456 789");
 
   const tools = await whatsApp.tools(workspaceId);
@@ -796,7 +827,7 @@ esac
     `${alice.id}: Send on WhatsApp to family@g.us: menu.pdf\n\nTonight`,
   ]);
 
-  whatsApp.deleteCredential(null, alice, credential.id);
+  whatsApp.deleteCredential(workspaceId, alice, credential.id);
   const unlinked = join(directory, "deleted", credential.id, "logged-out");
   for (let tries = 0; tries < 50 && !(await exists(unlinked)); tries += 1) {
     await Bun.sleep(20);

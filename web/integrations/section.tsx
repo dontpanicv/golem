@@ -9,24 +9,21 @@ import {
   Dialog,
   SettingsCard,
   SettingsRow,
+  Switch,
   TextField,
 } from "../ui/components.tsx";
 import { Icon } from "../ui/icon.tsx";
 import { showToast } from "../ui/toast.tsx";
+import { useMe } from "../workspaces/data.ts";
 
 /**
- * The integrations and credentials of a workspace, for every member's turns there, or the person's own for a null
- * `workspaceId`, for their turns in each of their workspaces. Secrets go to the server and never come back.
+ * The integrations, with the person's own credentials, which they share with every member's turns or keep private, and
+ * the ones other members shared. Secrets go to the server and never come back.
  */
-export function IntegrationsSection({
-  workspaceId,
-}: {
-  workspaceId: string | null;
-}) {
-  const base = workspaceId ? `/workspaces/${workspaceId}` : "";
-  const queryKey = workspaceId
-    ? ["workspaces", workspaceId, "integrations"]
-    : ["integrations"];
+export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
+  const { user } = useMe();
+  const base = `/workspaces/${workspaceId}`;
+  const queryKey = ["workspaces", workspaceId, "integrations"];
   const { data: integrations = [] } = useQuery({
     queryKey,
     queryFn: ({ signal }) =>
@@ -121,6 +118,14 @@ export function IntegrationsSection({
       });
     },
   });
+  const share = useMutation({
+    mutationFn: (input: { credentialId: string; shared: boolean }) =>
+      request(`${base}/credentials/${input.credentialId}`, {
+        method: "PUT",
+        body: { shared: input.shared },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  });
   const remove = useMutation({
     mutationFn: (credentialId: string) =>
       request(`${base}/credentials/${credentialId}`, {
@@ -153,23 +158,43 @@ export function IntegrationsSection({
               />
             )}
           </SettingsRow>
-          {integration.credentials.map((credential) => (
-            <SettingsRow
-              compact
-              description={`Added by ${credential.ownerName}`}
-              key={credential.id}
-              label={credential.label}
-              lead={<Icon name="key" />}
-            >
-              <Button
-                icon="trash"
-                label={`Delete ${credential.label}`}
-                onClick={() => remove.mutate(credential.id)}
-                size="icon"
-                variant="ghost"
+          {integration.credentials.map((credential) =>
+            credential.ownerId === user.id ? (
+              <SettingsRow
+                compact
+                description={credential.shared ? "Shared" : "Private"}
+                key={credential.id}
+                label={credential.label}
+                lead={<Icon name="key" />}
+              >
+                <Switch
+                  checked={!credential.shared}
+                  label="Private"
+                  onChange={(checked) =>
+                    share.mutate({
+                      credentialId: credential.id,
+                      shared: !checked,
+                    })
+                  }
+                />
+                <Button
+                  icon="trash"
+                  label={`Delete ${credential.label}`}
+                  onClick={() => remove.mutate(credential.id)}
+                  size="icon"
+                  variant="ghost"
+                />
+              </SettingsRow>
+            ) : (
+              <SettingsRow
+                compact
+                description={`Shared by ${credential.ownerName}`}
+                key={credential.id}
+                label={credential.label}
+                lead={<Icon name="key" />}
               />
-            </SettingsRow>
-          ))}
+            )
+          )}
           <div className="settings-row compact">
             {integration.connect === "sign-in" && (
               <Button

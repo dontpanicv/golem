@@ -74,11 +74,11 @@ addresses, or code and data from employers or clients.
   imports from `src/`: `web/app/types.ts` holds the types of `docs/api.md`, and `test/web-types.test.ts` checks them
   against the server's.
 - Register new route tables in `src/app/routes.ts` and new services in `createApp` in `src/app/app.ts`.
-- Every integration works in both places, with one connector and no code for either place: a person connects it in
-  Workspace settings for every member's turns there, or in their own Settings for their own turns in each of their
-  workspaces. A tool call uses the credential of its turn's person first, else the workspace's
-  (`src/integrations/integrations.ts`). A person can connect several accounts of one integration; each tool takes an
-  `account`.
+- A person adds machines and integration credentials only in their own Settings, never in Workspace settings. Like a
+  private channel, each one belongs to one member (`machine.paired_by`, `credential.owner_id`) and is private to their
+  turns until they set `shared`, which gives it to the turns of every member; only its owner changes or removes it. A
+  tool call uses the credential of its turn's person first, else a shared one (`src/integrations/integrations.ts`). A
+  person can connect several accounts of one integration; each tool takes an `account`.
 - A connector tool that acts as a person, such as one that sends mail or a message, has an `approval`: the owner of
   its credential allows each call in the thread, and a routine's script cannot call it. An MCP server's tool cannot
   have one, so a connector hides such tools with `hiddenTools`.

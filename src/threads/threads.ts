@@ -1912,10 +1912,7 @@ export class Threads {
     }
     const members = this.members(workspaceId).map((member) => member.userId);
     // The machine's owner allows the command for another person; one who left the workspace owns nothing.
-    const owner =
-      machine.pairedBy && members.includes(machine.pairedBy)
-        ? machine.pairedBy
-        : null;
+    const owner = members.includes(machine.pairedBy) ? machine.pairedBy : null;
     const approverId =
       owner && owner !== requesterId ? owner : (requesterId ?? owner);
     const scope = await this.ask(

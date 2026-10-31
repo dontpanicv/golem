@@ -1,7 +1,7 @@
 # Integrations
 
-People connect integrations in Settings: in their own Settings for their own turns, or in Workspace settings for the
-turns of every member. A person can connect more than one account of an integration, such as a work and a personal
+People connect integrations in Settings. A new account is private, for the person's own turns; the **Private** switch
+on it shares it with the turns of every member. A person can connect more than one account of an integration, such as a work and a personal
 Google account. Agents name the account with the `account` argument of each tool, and `<integration>_accounts` lists
 the accounts. Agents draft mail and messages, and send them as you only after you allow each one: the thread shows
 what they send, and you get a notification. The person who added the account allows it, also for the turn of another

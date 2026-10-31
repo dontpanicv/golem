@@ -2114,7 +2114,7 @@ function savingThreads(
       file,
       put: () => Promise.reject(new Error("No machines are paired.")),
       machineNamed: (_workspaceId, _userId, name) =>
-        ({ id: name, name, pairedBy: null }) as Machine,
+        ({ id: name, name, pairedBy: "nobody" }) as Machine,
       tools: () => [],
       section: () => ({ key: "machines", render: () => undefined }),
       ...machine,

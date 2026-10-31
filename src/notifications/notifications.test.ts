@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { generateKeyPairSync, verify } from "node:crypto";
+import { authDatabase } from "../../test/database.ts";
 import type { User } from "../platform/auth.ts";
-import { migrate, openDatabase } from "../platform/database.ts";
+import { migrate } from "../platform/database.ts";
 import { apnsOutcome, apnsPayload, providerToken } from "./apns.ts";
 import {
   Notifications,
@@ -26,7 +27,7 @@ const answer = {
 function setup(
   answerPush: (device: PushDevice) => "sent" | "gone" = () => "sent"
 ) {
-  const database = openDatabase(":memory:");
+  const database = authDatabase();
   migrate(database);
   const workspaces = {
     list: (user: User) =>

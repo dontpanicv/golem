@@ -32,13 +32,15 @@ import {
 
 export type { Machine } from "./connection.ts";
 
-/** A workspace's id, for every member's turns there, or null for a person's own, for their turns in each workspace. */
-export type Place = string | null;
-
 /** The person of a conversation's running turn, or null for none. */
 export type RequesterOf = (
   conversationId: ConversationId
 ) => Promise<string | null>;
+
+/** A machine as Settings shows it, with the name of the person who paired it. */
+export interface MachineSummary extends Machine {
+  readonly pairedByName: string;
+}
 
 /** A running pairing: the command to paste on the machine, until it pairs or expires. */
 export interface Pairing {
@@ -56,11 +58,15 @@ export interface HandsOptions {
   readonly serverPin?: (baseUrl: string) => Promise<string>;
 }
 
-const COLUMNS =
-  "SELECT id, workspace_id AS workspaceId, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt, paired_by AS pairedBy FROM machine WHERE deleted_at IS NULL";
-/** The machines of a place: a workspace's, or the person's own. */
-const IN_PLACE =
-  "workspace_id IS $place AND ($place IS NOT NULL OR paired_by = $userId)";
+const FIELDS =
+  "id, name, hostname, addresses, port, cert_sha256 AS certSha256, os, arch, version, paired_at AS pairedAt, paired_by AS pairedBy, shared";
+const COLUMNS = `SELECT ${FIELDS} FROM machine WHERE deleted_at IS NULL`;
+/** The machines that a person's turns in a workspace use: the shared ones and their own. */
+const SEEN_BY =
+  "workspace_id = $workspaceId AND (shared = 1 OR paired_by = $userId)";
+/** The live machine of the person in the workspace. */
+const OWN =
+  "workspace_id = $workspaceId AND paired_by = $userId AND deleted_at IS NULL";
 /**
  * Removes machines without removing anything: a removed machine stays, hidden, and its name and certificate get
  * `~<id>`, which no name or SHA-256 has, so the machine can pair again and another machine can take the name.
@@ -124,15 +130,14 @@ interface PendingPairing extends Pairing {
   readonly code: string;
   readonly key: string;
   readonly user: User;
-  readonly place: Place;
-  readonly placeName: string;
+  readonly workspaceId: string;
 }
 
 /**
- * Macs and Linux computers that run the `hands` daemon in `hands/`. A person pairs a machine in a workspace, for every
- * agent there whoever it works for, or as their own, for their own turns in each of their workspaces. A machine pairs
- * with the command from the settings, and trusts the Ed25519 key of that place from then on; Golem connects to it and
- * pins its certificate. One machine can pair with several places: it trusts each key.
+ * Macs and Linux computers that run the `hands` daemon in `hands/`. A person pairs a machine in their Settings, and it
+ * is private, for their own turns, until they share it with the turns of every member. A machine pairs with the
+ * command from the settings, and trusts the Ed25519 key of the person who paired it from then on; Golem connects to it
+ * and pins its certificate. Several people can pair one machine: it trusts each key.
  */
 export class Hands {
   private readonly pairings = new Map<string, PendingPairing>();
@@ -148,21 +153,22 @@ export class Hands {
     this.serverPin = options.serverPin ?? serverPin;
   }
 
-  machines(place: Place, user: User): Machine[] {
-    this.requireAccess(place, user);
-    return this.rows(`${COLUMNS} AND ${IN_PLACE} ORDER BY name`, {
-      place,
-      userId: user.id,
-    });
+  /** The machines that the person sees in the workspace, the shared ones and their own, with the name of whoever paired each. */
+  machines(workspaceId: string, user: User): MachineSummary[] {
+    this.workspaces.requireMember(workspaceId, user);
+    return this.rows(
+      `SELECT ${FIELDS}, (SELECT name FROM user WHERE user.id = machine.paired_by) AS pairedByName FROM machine WHERE deleted_at IS NULL AND ${SEEN_BY} ORDER BY name`,
+      { workspaceId, userId: user.id }
+    ) as MachineSummary[];
   }
 
   /**
-   * The machines that a turn of `userId` in a workspace uses: the workspace's and the person's own. A machine paired
-   * in both places shows once, as the person's own.
+   * The machines that a turn of `userId` in a workspace uses: the shared ones and the person's own. A machine that
+   * several people paired shows once, as the person's own.
    */
   machinesIn(workspaceId: string, userId: string | null): Machine[] {
     const rows = this.rows(
-      `${COLUMNS} AND (workspace_id = $workspaceId OR (workspace_id IS NULL AND paired_by = $userId)) ORDER BY workspace_id IS NOT NULL, name`,
+      `${COLUMNS} AND ${SEEN_BY} ORDER BY paired_by IS NOT $userId, name`,
       { workspaceId, userId }
     );
     return rows
@@ -174,21 +180,19 @@ export class Hands {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  /** The running pairing of a place, if any. */
-  pairing(place: Place, user: User): Pairing | null {
-    this.requireAccess(place, user);
-    const pairing = this.pairings.get(pairingKey(place, user));
+  /** The person's running pairing in the workspace, if any. */
+  pairing(workspaceId: string, user: User): Pairing | null {
+    this.workspaces.requireMember(workspaceId, user);
+    const pairing = this.pairings.get(user.id);
     if (!pairing || pairing.expiresAt < Date.now()) {
       return null;
     }
     return { command: pairing.command, expiresAt: pairing.expiresAt };
   }
 
-  /** Starts pairing a machine with the place, and ends the pairing it ran before. */
-  async startPairing(place: Place, user: User): Promise<Pairing> {
-    const placeName = place
-      ? this.workspaces.requireMember(place, user).name
-      : user.name;
+  /** Starts pairing a machine of the person in the workspace, and ends the pairing they ran before. */
+  async startPairing(workspaceId: string, user: User): Promise<Pairing> {
+    this.workspaces.requireMember(workspaceId, user);
     if (!this.options.baseUrl.startsWith("https://")) {
       throw new HttpError(
         409,
@@ -203,10 +207,9 @@ export class Hands {
     ).join("");
     const pairing: PendingPairing = {
       code,
-      key: pairingKey(place, user),
+      key: user.id,
       user,
-      place,
-      placeName,
+      workspaceId,
       command: `curl -fsSL ${this.base(code)} | sh`,
       expiresAt: Date.now() + PAIRING_LIFETIME,
     };
@@ -214,13 +217,33 @@ export class Hands {
     return { command: pairing.command, expiresAt: pairing.expiresAt };
   }
 
-  removeMachine(place: Place, user: User, machineId: string): void {
-    this.requireAccess(place, user);
+  /** Shares the person's machine with the turns of every member, or makes it private to their own turns again. */
+  setShared(
+    workspaceId: string,
+    user: User,
+    machineId: string,
+    shared: boolean
+  ): MachineSummary {
+    this.workspaces.requireMember(workspaceId, user);
     const { changes } = this.database
       .query(
-        `${RETIRE} WHERE ${IN_PLACE} AND id = $machineId AND deleted_at IS NULL`
+        `UPDATE machine SET shared = $shared WHERE ${OWN} AND id = $machineId`
       )
-      .run({ now: Date.now(), place, userId: user.id, machineId });
+      .run({ shared: shared ? 1 : 0, workspaceId, userId: user.id, machineId });
+    if (changes === 0) {
+      throw notFound();
+    }
+    return this.machines(workspaceId, user).find(
+      (machine) => machine.id === machineId
+    )!;
+  }
+
+  /** Removes the person's machine. */
+  removeMachine(workspaceId: string, user: User, machineId: string): void {
+    this.workspaces.requireMember(workspaceId, user);
+    const { changes } = this.database
+      .query(`${RETIRE} WHERE ${OWN} AND id = $machineId`)
+      .run({ now: Date.now(), workspaceId, userId: user.id, machineId });
     if (changes === 0) {
       throw notFound();
     }
@@ -254,34 +277,32 @@ export class Hands {
   }
 
   /**
-   * The machine's pairing request (hands/docs/pairing.md, `POST /S/pair`): stores the machine in the place and
-   * answers with the place's identity. A code pairs one machine only.
+   * The machine's pairing request (hands/docs/pairing.md, `POST /S/pair`): stores the machine as a private one of the
+   * person who paired it, and answers with their identity. A code pairs one machine only.
    */
   pair(code: string, body: unknown): { phoneName: string; publicKey: string } {
     const pairing = this.pendingPairing(code);
     const machine = machineOf(body);
-    const { place, user } = pairing;
+    const { workspaceId, user } = pairing;
     this.pairings.delete(pairing.key);
     this.database.transaction(() => {
-      // The same machine paired again in the same place replaces itself.
+      // The same machine paired again by the same person replaces itself.
       this.database
-        .query(
-          `${RETIRE} WHERE ${IN_PLACE} AND cert_sha256 = $certSha256 AND deleted_at IS NULL`
-        )
+        .query(`${RETIRE} WHERE ${OWN} AND cert_sha256 = $certSha256`)
         .run({
           now: Date.now(),
-          place,
+          workspaceId,
           userId: user.id,
           certSha256: machine.certSha256,
         });
       this.database
         .query(
-          "INSERT INTO machine (id, workspace_id, name, hostname, addresses, port, cert_sha256, os, arch, version, paired_at, paired_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT INTO machine (id, workspace_id, name, hostname, addresses, port, cert_sha256, os, arch, version, paired_at, paired_by, shared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"
         )
         .run(
           randomUUID(),
-          place,
-          this.freeName(place, user, machine),
+          workspaceId,
+          this.freeName(workspaceId, machine.name),
           machine.hostname,
           JSON.stringify(machine.addresses),
           machine.port,
@@ -294,8 +315,8 @@ export class Hands {
         );
     })();
     return {
-      phoneName: `Golem · ${pairing.placeName}`,
-      publicKey: this.identity(place, user.id).publicKey,
+      phoneName: `Golem · ${user.name}`,
+      publicKey: this.identity(user.id).publicKey,
     };
   }
 
@@ -317,7 +338,7 @@ export class Hands {
 
   /**
    * One live connection per machine, shared by parallel tool calls, and opened again once it closed. It signs in with
-   * the key of the machine's place.
+   * the key of the person who paired the machine.
    */
   async connection(machine: Machine): Promise<HandsConnection> {
     const existing = await this.connections
@@ -328,7 +349,7 @@ export class Hands {
     }
     const opening = HandsConnection.open(
       machine,
-      this.identity(machine.workspaceId, machine.pairedBy)
+      this.identity(machine.pairedBy)
     );
     this.connections.set(machine.id, opening);
     opening.catch(() => {
@@ -454,19 +475,13 @@ export class Hands {
   private rows(sql: string, params: Record<string, string | null>): Machine[] {
     const rows = this.database.query(sql).all(params) as (Omit<
       Machine,
-      "addresses"
-    > & { addresses: string })[];
+      "addresses" | "shared"
+    > & { addresses: string; shared: number })[];
     return rows.map((row) => ({
       ...row,
       addresses: JSON.parse(row.addresses),
+      shared: row.shared === 1,
     }));
-  }
-
-  /** A workspace's machines are for its members; a person's own only for them. */
-  private requireAccess(place: Place, user: User): void {
-    if (place !== null) {
-      this.workspaces.requireMember(place, user);
-    }
   }
 
   private forget(machineId: string): void {
@@ -479,14 +494,9 @@ export class Hands {
     this.connections.delete(machineId);
   }
 
-  /**
-   * Each workspace and each person's own machines have a key, so a machine can trust one place and not another.
-   * An own machine always has its owner: only machines of a workspace can be from before `paired_by`.
-   */
-  private identity(place: Place, ownerId: string | null): Identity {
-    const seed = this.secrets.derive(
-      place ? `hands:${place}` : `hands:user:${ownerId}`
-    );
+  /** Each person has a key, which the machines they pair trust. */
+  private identity(ownerId: string): Identity {
+    const seed = this.secrets.derive(`hands:user:${ownerId}`);
     // PKCS#8 for an Ed25519 private key is this fixed prefix and the 32-byte seed.
     const privateKey = createPrivateKey({
       key: Buffer.concat([
@@ -545,48 +555,22 @@ export class Hands {
   }
 
   /**
-   * Names are how people and agents tell machines apart, so a machine does not take a name that a turn sees with it:
-   * of the workspace and its members' own machines, or of the person's own and their workspaces' machines. Another
-   * machine with a taken name gets a number; the same machine in another place keeps its name.
+   * Names are how people and agents tell machines apart, so a machine does not take a name that another machine of the
+   * workspace has; it gets a number.
    */
-  private freeName(
-    place: Place,
-    user: User,
-    machine: { name: string; certSha256: string }
-  ): string {
-    const [workspaceIds, ownerIds] = place
-      ? [
-          [place],
-          this.workspaces
-            .members(place, this.workspaces.agentMember(place))
-            .map((member) => member.userId),
-        ]
-      : [
-          this.workspaces.list(user).map((workspace) => workspace.id),
-          [user.id],
-        ];
+  private freeName(workspaceId: string, name: string): string {
     const rows = this.database
       .query(
-        "SELECT name FROM machine WHERE deleted_at IS NULL AND cert_sha256 != ? AND (workspace_id IN (SELECT value FROM json_each(?)) OR (workspace_id IS NULL AND paired_by IN (SELECT value FROM json_each(?))))"
+        "SELECT name FROM machine WHERE deleted_at IS NULL AND workspace_id = ?"
       )
-      .all(
-        machine.certSha256,
-        JSON.stringify(workspaceIds),
-        JSON.stringify(ownerIds)
-      ) as { name: string }[];
+      .all(workspaceId) as { name: string }[];
     const taken = new Set(rows.map((row) => row.name.toLowerCase()));
-    const { name } = machine;
     let candidate = name;
     for (let number = 2; taken.has(candidate.toLowerCase()); number += 1) {
       candidate = `${name.replace(/-\d+$/, "")}-${number}`;
     }
     return candidate;
   }
-}
-
-/** One running pairing for each workspace, and one for each person's own machines. */
-function pairingKey(place: Place, user: User): string {
-  return place ?? `user:${user.id}`;
 }
 
 /** The pairing request's machine; anything malformed is a 400. */

@@ -114,7 +114,7 @@ type SearchResult = {
 };
 type RecentSearch = { query: string; searchedAt: number }; // newest first; the same query again, in any case, only moves to the top
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
-type Credential = { id: string; label: string; ownerName: string; createdAt: number };
+type Credential = { id: string; label: string; ownerId: string; ownerName: string; shared: boolean; createdAt: number }; // ownerId: the person who connected it, who alone shares or deletes it; shared: every member's turns use it, else only its owner's
 type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret also needs the address of the person's own server; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
 type RoutineRun = {
 	id: string;
@@ -158,7 +158,7 @@ type ArtifactRecord = {
 };
 type Machine = {
 	id: string;
-	name: string; // what agents and people call it; a new machine does not take a name that a turn sees with it
+	name: string; // what agents and people call it; unique in the workspace, so a new machine with a taken name gets a number
 	hostname: string | null;
 	addresses: string[];
 	port: number;
@@ -167,8 +167,9 @@ type Machine = {
 	arch: string;
 	version: string; // hands version when it paired
 	pairedAt: number;
-	pairedBy: string | null; // the member who paired it; null for a machine paired before Golem kept it
-	workspaceId: string | null; // the workspace it is paired with; null for the own machine of `pairedBy`
+	pairedBy: string; // the member who paired it, who alone shares or removes it
+	pairedByName: string;
+	shared: boolean; // every member's turns use it, else only the turns of `pairedBy`
 };
 type Pairing = { command: string; expiresAt: number }; // run `command` on the machine before `expiresAt`
 type Effort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -338,37 +339,33 @@ to put that host on the internet while the rest of Golem stays private.
 
 ### Integrations (`src/integrations/`)
 
-Each request exists twice: under `/api/v1/workspaces/:workspaceId` for the workspace's integrations, and under
-`/api/v1` for the person's own.
+`…` is `/api/v1/workspaces/:workspaceId`.
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET …/integrations` | | `Integration[]` |
-| `POST …/integrations/:integrationId/credentials` | `{ label?, secret, address? }`; `label` when the integration is `labeled`, `address` when it has `address` | `Credential`; `400` unless `connect` is `"secret"`, or when the integration cannot use the secret, such as a Slack cURL whose session Slack refuses |
+| `GET …/integrations` | | `Integration[]`, with the person's own credentials and the ones other members shared |
+| `POST …/integrations/:integrationId/credentials` | `{ label?, secret, address? }`; `label` when the integration is `labeled`, `address` when it has `address` | `Credential`, private; `400` unless `connect` is `"secret"`, or when the integration cannot use the secret, such as a Slack cURL whose session Slack refuses |
 | `POST …/integrations/:integrationId/connect` | `{ phone }` for `"phone"` | `{ url }`: the integration's sign-in page; `{ code }` for `"phone"` |
-| `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`; `400` when the address is not of the person's own sign-in of this place, the sign-in did not finish, or the number did not link within a minute |
-| `DELETE …/credentials/:credentialId` | | `204` |
-
-| Request | Body | Response |
-| --- | --- | --- |
+| `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`, private; `400` when the address is not of the person's own sign-in in this workspace, the sign-in did not finish, or the number did not link within a minute |
+| `PUT …/credentials/:credentialId` | `{ shared }` | `Credential`; `404` unless it is the person's own |
+| `DELETE …/credentials/:credentialId` | | `204`; `404` unless it is the person's own |
 | `PUT /api/v1/integrations/:integrationId/client` | `{ clientId, clientSecret }` | `204`; the next sign-in uses it, at once. `403` unless the person is the server's owner, `404` unless the integration has `client` |
 
-Where a person connects an integration says whose turns use it. A workspace's credentials serve the turns of every
-member there; every member sees and deletes them. A person's own serve only their turns, in each of their workspaces;
-only they see and delete them. A turn is for the author of the message it answers, the person whose request another
-thread passes on, the person who last wrote a routine's instructions or script, or the person who asked for a
-reminder or last changed it. Each tool call uses the newest credential of that person, else the workspace's newest,
-unless the call names another of their accounts in its `account` argument; `<integrationId>_accounts` lists them. The
-agents of a workspace get the tools of each integration that the workspace or one of its members connected. Secrets
-never leave the server.
+A person connects integrations in Settings. A new credential is private: only the turns of its owner use it. Its owner
+shares it, and then the turns of every member use it, or makes it private again; only its owner deletes it. A turn is
+for the author of the message it answers, the person whose request another thread passes on, the person who last
+wrote a routine's instructions or script, or the person who asked for a reminder or last changed it. Each tool call
+uses the newest credential of that person, else the newest shared one, unless the call names another account in its
+`account` argument; `<integrationId>_accounts` lists them. The agents of a workspace get the tools of each integration
+that someone connected there. Secrets never leave the server.
 
 An integration with `connect: "sign-in"` is one or more MCP servers, such as Rohlík's or Plaud's, or an API that
 Golem's own tools call, such as Google's. The app shows a link to the `url` of `connect`; the person signs in there. Rohlík lets self-registered clients return only to
 loopback addresses, so the sign-in ends on an error page at
 `https://localhost/golem-sign-in?code=…&state=…`. The person pastes that address, and `sign-in` keeps the tokens as a
 credential, labeled with the account's email when the server gives it. The agents then get the servers' tools as
-`<integrationId>_<tool>`, in the codemode namespace of the integration. Golem lists a server's tools with the
-workspace's sign-in, else with a member's own; the list has only tool names and schemas. Google's tools run gog with
+`<integrationId>_<tool>`, in the codemode namespace of the integration. Golem lists a server's tools with the newest
+shared sign-in, else with a private one; the list has only tool names and schemas. Google's tools run gog with
 an access token that Golem renews with the refresh token.
 
 An integration with `client` signs in with Golem's own OAuth client, because its sign-in server does not register
@@ -399,20 +396,21 @@ starts again and its agent answers; the script does not run again.
 Agents in every thread of a workspace, including its orchestrator, have `reminders_create`, `reminders_list`,
 `reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source thread. It runs once when
 its saved UTC time is due, or when Golem starts again after that time. Its turn is for the person who asked for it or
-last changed it, not for its recipient; a reminder from before this rule uses only the workspace's credentials.
+last changed it, not for its recipient; a reminder from before this rule uses only the shared credentials.
 Reminders have no user-facing web or JSON routes.
 
 ### Machines (`src/hands/`)
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET /api/v1/workspaces/:workspaceId/machines` | | `{ machines: Machine[], pairing: Pairing \| null }`; poll it while `pairing` is set to see the machine arrive |
-| `POST /api/v1/workspaces/:workspaceId/machines/pairing` | | `Pairing`; replaces the workspace's earlier pairing. `409` when `base_url` is not `https://` or Golem has no hands binaries |
-| `DELETE /api/v1/workspaces/:workspaceId/machines/:machineId` | | `204` |
+| `GET /api/v1/workspaces/:workspaceId/machines` | | `{ machines: Machine[], pairing: Pairing \| null }`: the person's own machines and the ones other members shared; poll it while `pairing` is set to see the machine arrive |
+| `POST /api/v1/workspaces/:workspaceId/machines/pairing` | | `Pairing`; replaces the person's earlier pairing. `409` when `base_url` is not `https://` or Golem has no hands binaries |
+| `PUT /api/v1/workspaces/:workspaceId/machines/:machineId` | `{ shared }` | `Machine`; `404` unless the person paired it |
+| `DELETE /api/v1/workspaces/:workspaceId/machines/:machineId` | | `204`; `404` unless the person paired it |
 
-The same routes without `/workspaces/:workspaceId` are the person's own machines, for their turns in each of their
-workspaces; a person sees and removes only their own. A machine can pair with a workspace and as a person's own: it
-trusts each key, and a turn of that person shows it once, as their own.
+A person pairs machines in Settings. A new machine is private: only the turns of the person who paired it use it. That
+person shares it, and then the turns of every member use it, or makes it private again. Several people can pair one
+machine: it trusts each person's key, and a turn of one of them shows it once, as their own.
 
 The machine calls these, without an account; the 16-character pairing code in the path is the credential. They follow
 the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
@@ -421,7 +419,7 @@ the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 | --- | --- |
 | `GET /hands/:code` | `hands/scripts/pair-install.sh`, with Golem's address, the pin of its TLS key, and the binaries' SHA-256 |
 | `GET /hands/:code/hands-<os>-<arch>` | A binary from `hands/dist/`, which `hands/scripts/build-release.sh` builds |
-| `POST /hands/:code/pair` | `{ phoneName, publicKey }`: the workspace's name and Ed25519 key. `400` on a malformed request, also for a loopback or link-local address or a `localhost` name, `404` once the code was used, `410` once it expired |
+| `POST /hands/:code/pair` | `{ phoneName, publicKey }`: `Golem · <name>` of the person who paired it, and their Ed25519 key. `400` on a malformed request, also for a loopback or link-local address or a `localhost` name, `404` once the code was used, `410` once it expired |
 
 ### LLM (`src/llm/`)
 
@@ -465,9 +463,9 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
   `host = "127.0.0.1"` behind Caddy can trust. An IPv6 client is its /48 network. Keep private things in members
   artifacts.
 - Each thread is one conversation in its workspace's Pi Durable session, a SQLite file in the workspace's directory.
-- A machine belongs to a workspace, and every agent in that workspace can use it, whoever the agent works for; or it is
-  a person's own, and only the turns of that person use it, in each of their workspaces. The machine trusts the key of
-  that workspace or person, so pairing it with one does not open it to another. A command on a machine that
+- A machine belongs to the person who paired it. While it is private, only that person's turns use it; once they share
+  it, every agent in the workspace can use it, whoever the agent works for. The machine trusts the key of that person,
+  so pairing it with one Golem does not open it to another. A command on a machine that
   [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) flags, such as `rm -rf` or
   `git reset --hard`, waits for an approval (`ThreadState.approvals`, with a notification) from the member who paired
   the machine when the turn is another person's, and from the turn's person otherwise; a command that dcg cannot judge
@@ -479,5 +477,6 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
   loopback, private, link-local, and other non-public addresses after each DNS answer and redirect. Each person of a
   thread has a browser of their own, with their own logins.
 - A codemode script stops after 15 minutes. A routine runs at most every 15 minutes.
-- A credential belongs to a workspace, for the turns of every member there, or to one person, for their own turns in
-  each of their workspaces. A turn never uses another person's own credential. Secrets never leave the server.
+- A credential belongs to the person who connected it. While it is private, only that person's turns use it; once they
+  share it, the turns of every member use it. A turn never uses another person's private credential. Secrets never
+  leave the server.

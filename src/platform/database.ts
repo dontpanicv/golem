@@ -296,6 +296,52 @@ const migrations = [
 		searched_at INTEGER NOT NULL,
 		PRIMARY KEY (workspace_id, user_id, query)
 	);`,
+  // integrations and hands: a person adds each credential and machine in their own Settings, in the workspace, and it
+  // is shared, for every member's turns, or private, for its owner's turns only. The own ones from before become
+  // private ones in their owner's workspace, and the workspace's become shared. A machine paired both ways stays once:
+  // the own row, whose key the machine trusts, now shared. Names are unique in the workspace, so a later machine with
+  // a taken name gets the start of its id. SQLite cannot add NOT NULL to a column, so both tables are made again.
+  `UPDATE credential SET shared = workspace_id IS NOT NULL;
+	UPDATE credential SET workspace_id = (SELECT m.organizationId FROM member m JOIN organization o ON o.id = m.organizationId WHERE m.userId = credential.owner_id ORDER BY o.deletedAt IS NOT NULL, o.createdAt LIMIT 1) WHERE workspace_id IS NULL;
+	CREATE TABLE credential_next (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		integration TEXT NOT NULL,
+		owner_id TEXT NOT NULL,
+		label TEXT NOT NULL,
+		shared INTEGER NOT NULL,
+		secret BLOB NOT NULL,
+		created_at INTEGER NOT NULL,
+		deleted_at INTEGER
+	);
+	INSERT INTO credential_next SELECT id, workspace_id, integration, owner_id, label, shared, secret, created_at, deleted_at FROM credential;
+	DROP TABLE credential;
+	ALTER TABLE credential_next RENAME TO credential;
+	CREATE INDEX credential_workspace ON credential (workspace_id, integration);
+	UPDATE machine SET paired_by = (SELECT c.created_by FROM channel c WHERE c.workspace_id = machine.workspace_id ORDER BY c.created_at, c.rowid LIMIT 1) WHERE paired_by IS NULL;
+	CREATE TABLE machine_next (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		hostname TEXT,
+		addresses TEXT NOT NULL,
+		port INTEGER NOT NULL,
+		cert_sha256 TEXT NOT NULL,
+		os TEXT NOT NULL,
+		arch TEXT NOT NULL,
+		version TEXT NOT NULL,
+		paired_at INTEGER NOT NULL,
+		paired_by TEXT NOT NULL,
+		shared INTEGER NOT NULL,
+		deleted_at INTEGER
+	);
+	INSERT INTO machine_next SELECT id, COALESCE(workspace_id, (SELECT m.organizationId FROM member m JOIN organization o ON o.id = m.organizationId WHERE m.userId = machine.paired_by ORDER BY o.deletedAt IS NOT NULL, o.createdAt LIMIT 1)), name, hostname, addresses, port, cert_sha256, os, arch, version, paired_at, paired_by, workspace_id IS NOT NULL OR EXISTS (SELECT 1 FROM machine twin WHERE twin.workspace_id IS NOT NULL AND twin.deleted_at IS NULL AND twin.paired_by = machine.paired_by AND twin.cert_sha256 = machine.cert_sha256), deleted_at FROM machine;
+	UPDATE machine_next SET deleted_at = CAST(unixepoch('subsec') * 1000 AS INTEGER), name = name || '~' || id, cert_sha256 = cert_sha256 || '~' || id WHERE id IN (SELECT twin.id FROM machine twin JOIN machine own ON own.workspace_id IS NULL AND own.deleted_at IS NULL AND own.paired_by = twin.paired_by AND own.cert_sha256 = twin.cert_sha256 WHERE twin.workspace_id IS NOT NULL AND twin.deleted_at IS NULL);
+	UPDATE machine_next SET name = name || '-' || substr(id, 1, 4) WHERE deleted_at IS NULL AND EXISTS (SELECT 1 FROM machine_next other WHERE other.deleted_at IS NULL AND other.workspace_id = machine_next.workspace_id AND other.name = machine_next.name COLLATE NOCASE AND (other.paired_at, other.id) < (machine_next.paired_at, machine_next.id));
+	DROP TABLE machine;
+	ALTER TABLE machine_next RENAME TO machine;
+	CREATE UNIQUE INDEX machine_cert ON machine (workspace_id, paired_by, cert_sha256);
+	CREATE UNIQUE INDEX machine_name ON machine (workspace_id, name COLLATE NOCASE);`,
 ];
 
 export function openDatabase(path: string): Database {

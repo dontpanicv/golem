@@ -148,7 +148,11 @@ export interface SearchResponse {
 export interface Credential {
   readonly id: string;
   readonly label: string;
+  /** The person who connected it; only they share or delete it. */
+  readonly ownerId: string;
   readonly ownerName: string;
+  /** Whether every member's turns use it; else only its owner's. */
+  readonly shared: boolean;
   readonly createdAt: number;
 }
 
@@ -224,6 +228,11 @@ export interface Machine {
   readonly os: string;
   readonly arch: string;
   readonly version: string;
+  /** The person who paired it; only they share or remove it. */
+  readonly pairedBy: string;
+  readonly pairedByName: string;
+  /** Whether every member's turns use it; else only its person's. */
+  readonly shared: boolean;
 }
 
 export interface Pairing {

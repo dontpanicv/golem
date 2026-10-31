@@ -1,23 +1,30 @@
 import SwiftUI
 
-/// The machines of a workspace, for every member's turns there, or the person's own for a nil `workspaceID`, for their
-/// turns in each of their workspaces.
+/// The person's own machines, which they share with every member's turns or keep private, and the ones other members
+/// shared.
 struct MachinesSection: View {
-    let workspaceID: String?
+    let workspaceID: String
     @Environment(Session.self) private var session
     @State private var machines: [Machine] = []
     @State private var pairing: Pairing?
 
     var body: some View {
         SettingsCard(title: "Machines") {
-            ForEach(machines) { machine in
-                SettingsRow(machine.name, description: machine.summary) {
-                    GolemMenu {
-                        MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }
-                    } label: {
-                        Label("Machine actions", systemImage: "ellipsis")
+            ForEach($machines) { $machine in
+                if machine.pairedBy == session.user?.id {
+                    let visibility = machine.shared ? "Shared" : "Private"
+                    SettingsRow(machine.name, description: "\(machine.summary) · \(visibility)") {
+                        Toggle("Private", isOn: Binding(get: { !machine.shared }, set: { share($machine, !$0) }))
+                            .labelsHidden()
+                        GolemMenu {
+                            MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }
+                        } label: {
+                            Label("Machine actions", systemImage: "ellipsis")
+                        }
+                        .buttonStyle(.golem(.ghost, .icon))
                     }
-                    .buttonStyle(.golem(.ghost, .icon))
+                } else {
+                    SettingsRow(machine.name, description: "\(machine.summary) · Shared by \(machine.pairedByName)")
                 }
             }
             if let pairing {
@@ -53,6 +60,16 @@ struct MachinesSection: View {
         }
     }
 
+    private func share(_ machine: Binding<Machine>, _ shared: Bool) {
+        Task {
+            await session.run {
+                machine.wrappedValue = try await session.api.setMachineShared(
+                    workspaceID: workspaceID, machineID: machine.wrappedValue.id, shared: shared
+                )
+            }
+        }
+    }
+
     private func remove(_ machine: Machine) {
         Task {
             await session.run {
@@ -63,7 +80,7 @@ struct MachinesSection: View {
     }
 }
 
-/// The command that installs hands on a machine and pairs it with the workspace or the person.
+/// The command that installs hands on a machine and pairs it with the person.
 private struct PairingCommand: View {
     let pairing: Pairing
     @Environment(Session.self) private var session

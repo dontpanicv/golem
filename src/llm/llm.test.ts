@@ -12,14 +12,10 @@ import {
   fauxAssistantMessage,
   fauxProvider,
 } from "@earendil-works/pi-ai/providers/faux";
+import { authDatabase } from "../../test/database.ts";
 import { until } from "../../test/harness.ts";
 import type { NotificationInput } from "../notifications/notifications.ts";
-import {
-  migrate,
-  openDatabase,
-  setSetting,
-  setting,
-} from "../platform/database.ts";
+import { migrate, setSetting, setting } from "../platform/database.ts";
 import { HttpError } from "../platform/errors.ts";
 import { Secrets } from "../platform/secrets.ts";
 import { Threads } from "../threads/threads.ts";
@@ -29,7 +25,7 @@ import { Llm, SqliteCredentialStore } from "./llm.ts";
 const OWNER = { id: "owner", name: "Owner", email: "owner@example.com" };
 
 function database() {
-  const opened = openDatabase(":memory:");
+  const opened = authDatabase();
   migrate(opened);
   return opened;
 }

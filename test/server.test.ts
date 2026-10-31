@@ -229,7 +229,7 @@ test("workspaces are isolated until someone adds you", async () => {
   ).toBe(200);
 });
 
-test("credentials belong to the workspace, and secrets never leave the server", async () => {
+test("a credential is private until its owner shares it, only its owner deletes it, and secrets never leave the server", async () => {
   const base = `/api/v1/workspaces/${workspaceId}`;
   const credential = (await (
     await call(`${base}/integrations/home_assistant/credentials`, {
@@ -241,30 +241,26 @@ test("credentials belong to the workspace, and secrets never leave the server", 
       },
     })
   ).json()) as any;
+  expect(credential.shared).toBe(false);
+  const bobsView = async () =>
+    (await call(`${base}/integrations`, { token: bob })).text();
+  expect(await bobsView()).not.toContain("Family");
 
-  const bobsView = await (
-    await call(`${base}/integrations`, { token: bob })
-  ).text();
-  expect(bobsView).toContain("Family");
-  expect(bobsView).not.toContain("family-secret");
+  const share = (token: string) =>
+    call(`${base}/credentials/${credential.id}`, {
+      method: "PUT",
+      token,
+      body: { shared: true },
+    });
+  expect((await share(bob)).status).toBe(404);
+  expect(await (await share(alice)).json()).toMatchObject({ shared: true });
+  expect(await bobsView()).toContain("Family");
+  expect(await bobsView()).not.toContain("family-secret");
 
-  // Any member deletes a credential of the workspace.
-  expect(
-    (
-      await call(`${base}/credentials/${credential.id}`, {
-        method: "DELETE",
-        token: bob,
-      })
-    ).status
-  ).toBe(204);
-  expect(
-    (
-      await call(`${base}/credentials/${credential.id}`, {
-        method: "DELETE",
-        token: alice,
-      })
-    ).status
-  ).toBe(404);
+  const remove = (token: string) =>
+    call(`${base}/credentials/${credential.id}`, { method: "DELETE", token });
+  expect((await remove(bob)).status).toBe(404);
+  expect((await remove(alice)).status).toBe(204);
   // The credential stays encrypted, marked deleted, and no tool reads it.
   expect(
     golem.app.database

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
+import { authDatabase } from "../../test/database.ts";
 import type { User } from "../platform/auth.ts";
-import { migrate, openDatabase } from "../platform/database.ts";
+import { migrate } from "../platform/database.ts";
 import type { Threads } from "../threads/threads.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 import { Reminders } from "./reminders.ts";
@@ -16,7 +17,7 @@ function setup(
   answer: (requestId: string) => string | null = () => "Done",
   requester: User | null = alice
 ) {
-  const database = openDatabase(":memory:");
+  const database = authDatabase();
   migrate(database);
   const threadsOf = (workspaceId: string) =>
     workspaceId === "home"

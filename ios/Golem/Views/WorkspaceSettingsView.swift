@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The name, members, facts, machines, and integrations of the workspace; only an owner renames it.
+/// The name, members, and facts of the workspace; only an owner renames it. Each person's machines and integrations are
+/// in Settings.
 struct WorkspaceSettingsView: View {
     @Environment(Session.self) private var session
     @State private var members: [Member] = []
@@ -73,8 +74,6 @@ struct WorkspaceSettingsView: View {
                 }
                 .padding(Tokens.Space.xl)
             }
-            MachinesSection(workspaceID: workspaceID)
-            IntegrationsSection(workspaceID: workspaceID)
         }
         .phoneTabBar()
         .screenTitle(session.workspace?.name ?? "")

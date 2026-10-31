@@ -112,25 +112,6 @@ final class APIClient {
         _ = try await send("DELETE", "/api/v1/routines/\(id)")
     }
 
-    // MARK: Machines
-
-    /// A workspace's machines, or the person's own for a nil `workspaceID`.
-    func machines(workspaceID: String?) async throws -> Machines {
-        try await get("\(Self.machinesBase(workspaceID))/machines")
-    }
-
-    func startPairing(workspaceID: String?) async throws -> Pairing {
-        try await post("\(Self.machinesBase(workspaceID))/machines/pairing")
-    }
-
-    func removeMachine(workspaceID: String?, machineID: String) async throws {
-        _ = try await send("DELETE", "\(Self.machinesBase(workspaceID))/machines/\(machineID)")
-    }
-
-    private static func machinesBase(_ workspaceID: String?) -> String {
-        workspaceID.map { "/api/v1/workspaces/\($0)" } ?? "/api/v1"
-    }
-
     // MARK: Threads
 
     func thread(_ id: String) async throws -> ThreadState { try await get("/api/v1/threads/\(id)") }
@@ -347,7 +328,7 @@ final class APIClient {
         throw APIError(status: http.statusCode, message: message ?? fallback)
     }
 
-    private func decode<Response: Decodable>(_ data: Data) throws -> Response {
+    func decode<Response: Decodable>(_ data: Data) throws -> Response {
         try JSONDecoder().decode(Response.self, from: data)
     }
 }
