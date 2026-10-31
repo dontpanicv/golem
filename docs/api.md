@@ -33,7 +33,7 @@ stops getting its event streams.
 ## Types
 
 ```ts
-type User = { id: string; name: string; email: string; picture: string | null }; // picture: the address of the profile picture, or null for none
+type User = { id: string; name: string; email: string; picture: string | null }; // picture: the address of the profile picture, or null for none; until a person uploads one, it is a copy of their Google picture, which Golem makes once
 type Workspace = { id: string; name: string; role: "owner" | "member" }; // `role` is the person's
 type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: number; settledAt: number | null }; // times are Unix milliseconds
 type Channel = {
@@ -248,7 +248,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | --- | --- | --- |
 | `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[] }`; the first person to sign in starts Golem's one workspace, with a `general` channel, and is its owner |
 | `POST /api/v1/me/picture` | `multipart/form-data` with one JPEG, PNG, or WebP file | `{ picture }`: the new address; the apps send a 256 px square. `400` for another kind, `413` over 1 MB |
-| `DELETE /api/v1/me/picture` | | `204`; the person has no picture again |
+| `DELETE /api/v1/me/picture` | | `204`; the person shows their initial, also in place of their Google picture |
 | `GET /api/v1/pictures/:pictureId` | | The picture, for its person and the members of their workspace, else `404`. A new picture gets a new address, so the browser keeps this one |
 | `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }`: the channels every member sees, and the person's own private ones |
 | `PUT /api/v1/workspaces/:workspaceId` | `{ name }` | `Workspace`; `403` for a member who is not an owner |

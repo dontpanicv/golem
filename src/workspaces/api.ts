@@ -11,6 +11,7 @@ export const workspaceApiRoutes: readonly Route[] = [
       if (app.workspaces.ids().length === 0) {
         await app.workspaces.create(user, "Golem");
       }
+      await app.pictures.importGoogle(user.id);
       return json({
         user: { ...user, picture: app.workspaces.pictureOf(user) },
         workspaces: app.workspaces.list(user),

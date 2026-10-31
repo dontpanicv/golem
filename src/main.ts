@@ -29,6 +29,7 @@ const server = Layer.unwrap(
       app.indexer.start();
       app.routines.start();
       app.reminders.start();
+      app.pictures.importGoogle();
       return app;
     }),
     (app) =>

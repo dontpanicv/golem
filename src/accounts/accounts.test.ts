@@ -45,3 +45,26 @@ test("a new profile picture replaces the old one, and only pictures are kept", a
   expect(pictures.ids(["ada"]).size).toBe(0);
   expect(() => pictures.get(second)).toThrow("Not found");
 });
+
+test("a person's Google picture is copied once at 256 px, and never again after they remove it", async () => {
+  const database = authDatabase();
+  migrate(database);
+  const asked: string[] = [];
+  const pictures = new ProfilePictures(database, (async (address: string) => {
+    asked.push(address);
+    return new Response(
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10])
+    );
+  }) as unknown as typeof fetch);
+  // better-auth's user table, with only the columns that the copy reads.
+  database.run(`CREATE TABLE user (id TEXT PRIMARY KEY, image TEXT);
+	INSERT INTO user VALUES ('ada', 'https://lh3.googleusercontent.com/a/photo=s96-c'), ('bob', 'https://example.com/bob.png');`);
+  await pictures.importGoogle();
+  expect(asked).toEqual(["https://lh3.googleusercontent.com/a/photo=s256-c"]);
+  const id = pictures.ids(["ada", "bob"]).get("ada")!;
+  expect(pictures.get(id).contentType).toBe("image/png");
+  expect(pictures.ids(["bob"]).size).toBe(0);
+  pictures.remove("ada");
+  await new ProfilePictures(database).importGoogle("ada");
+  expect(pictures.ids(["ada"]).size).toBe(0);
+});

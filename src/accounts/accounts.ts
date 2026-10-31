@@ -113,6 +113,8 @@ export class AppSignIns {
 
 /** The largest profile picture; the apps send a small square. */
 const MAX_PICTURE = 1024 ** 2;
+/** How long Golem waits for Google to send a person's picture. */
+const GOOGLE_TIMEOUT = 10_000;
 
 export interface ProfilePicture {
   readonly userId: string;
@@ -121,15 +123,59 @@ export interface ProfilePicture {
 }
 
 /**
- * The pictures people upload for their profile. Each upload is a new row with a new id, so a picture's address never
- * changes and browsers keep it; a new upload or a removal marks the old one deleted.
+ * The pictures people upload for their profile, or that Golem copies once from their Google account. Each picture is a
+ * new row with a new id, so a picture's address never changes and browsers keep it; a new upload or a removal marks
+ * the old one deleted.
  */
 export class ProfilePictures {
-  constructor(private readonly database: Database) {}
+  /** The people whose Google picture this run of Golem already tried to copy. */
+  private readonly triedGoogle = new Set<string>();
+
+  constructor(
+    private readonly database: Database,
+    private readonly download: typeof fetch = fetch
+  ) {}
 
   /** Makes `file` the person's picture, if it is a JPEG, PNG, or WebP; returns its id. */
   async set(userId: string, file: File | undefined): Promise<string> {
-    const data = new Uint8Array((await file?.arrayBuffer()) ?? []);
+    return this.store(
+      userId,
+      new Uint8Array((await file?.arrayBuffer()) ?? [])
+    );
+  }
+
+  /**
+   * Copies the Google picture of each person who never had a picture, or only of `userId`; after a removal, the
+   * person keeps their initial. Golem keeps a copy because the apps show pictures only from Golem.
+   */
+  async importGoogle(userId?: string): Promise<void> {
+    const people = this.database
+      .query(
+        `SELECT id, image FROM user WHERE image IS NOT NULL AND id NOT IN (SELECT user_id FROM profile_picture)${userId ? " AND id = ?" : ""}`
+      )
+      .all(...(userId ? [userId] : [])) as { id: string; image: string }[];
+    for (const person of people) {
+      const address = googlePicture(person.image);
+      if (!address || this.triedGoogle.has(person.id)) {
+        continue;
+      }
+      this.triedGoogle.add(person.id);
+      try {
+        const response = await this.download(address, {
+          redirect: "error",
+          signal: AbortSignal.timeout(GOOGLE_TIMEOUT),
+        });
+        if (!response.ok) {
+          throw new Error(`Google answered ${response.status}`);
+        }
+        this.store(person.id, new Uint8Array(await response.arrayBuffer()));
+      } catch (error) {
+        console.error("copying a Google picture failed", error);
+      }
+    }
+  }
+
+  private store(userId: string, data: Uint8Array): string {
     const contentType = pictureType(data);
     if (!contentType) {
       throw new HttpError(400, "Send a JPEG, PNG, or WebP picture");
@@ -180,6 +226,21 @@ export class ProfilePictures {
     }
     return picture;
   }
+}
+
+/** The 256 px address of a Google account's picture, which Google gives at 96 px; undefined for any other address. */
+function googlePicture(image: string): string | undefined {
+  const url = URL.parse(image);
+  if (
+    !(
+      url?.protocol === "https:" &&
+      url.hostname.endsWith(".googleusercontent.com")
+    )
+  ) {
+    return undefined;
+  }
+  url.pathname = url.pathname.replace(/[=]s\d+-c$/, "=s256-c");
+  return url.href;
 }
 
 /** The type of a JPEG, PNG, or WebP picture from its first bytes, so nothing else is ever served as a picture. */
