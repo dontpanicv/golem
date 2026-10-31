@@ -50,6 +50,33 @@ export type Push = (
   message: PushMessage
 ) => Promise<"sent" | "gone">;
 
+/** What a Live Activity shows: how the work for a person's message goes, and in which thread it is now. */
+export interface ActivityState {
+  readonly status: "working" | "waiting" | "done" | "failed";
+  /** The thread that works now, or the thread of the message when the work ended. */
+  readonly title: string;
+  /** How many threads work on it now. */
+  readonly threads: number;
+}
+
+/** Sends one update of a Live Activity to its push token; `gone` when the activity takes no more. */
+export type ActivityPush = (
+  environment: PushEnvironment,
+  token: string,
+  payload: object,
+  priority: 5 | 10
+) => Promise<"sent" | "gone">;
+
+/** A Live Activity on a person's iPhone that follows the work for their message in a thread. */
+export interface LiveActivity {
+  readonly token: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly threadId: string;
+  readonly environment: PushEnvironment;
+  readonly startedAt: number;
+}
+
 export type NotificationWorkspaces = Pick<Workspaces, "list" | "requireMember">;
 
 /** The newest notifications an inbox shows. */
@@ -61,8 +88,16 @@ const MAX_PUSH_BODY = 180;
 const COLUMNS =
   "id, workspace_id AS workspaceId, channel_id AS channelId, thread_id AS threadId, title, text, created_at AS createdAt, read_at AS readAt";
 const DEVICE_TOKEN = /^[0-9a-f]{64,200}$/i;
+/** A Live Activity's push token is longer than a device's. */
+const ACTIVITY_TOKEN = /^[0-9a-f]{64,512}$/i;
 /** A person keeps this many newest devices; an older one gets no more pushes. */
 const MAX_DEVICES = 10;
+/** iOS ends a Live Activity after 8 hours; Golem stops following it then. */
+const ACTIVITY_LIFETIME = 8 * 60 * 60_000;
+/** How long a finished activity stays on the Lock Screen. */
+const ACTIVITY_DISMISSAL = 2 * 60_000;
+/** An activity that gets no update this long shows as out of date. */
+const ACTIVITY_STALE = 15 * 60_000;
 const ENVIRONMENTS: readonly string[] = [
   "sandbox",
   "production",
@@ -79,7 +114,8 @@ export class Notifications {
   constructor(
     private readonly database: Database,
     private readonly workspaces: NotificationWorkspaces,
-    private readonly push: Push | null
+    private readonly push: Push | null,
+    private readonly activityPush: ActivityPush | null = null
   ) {}
 
   /**
@@ -242,6 +278,134 @@ export class Notifications {
         "UPDATE push_device SET deleted_at = ? WHERE token = ? AND user_id = ? AND deleted_at IS NULL"
       )
       .run(Date.now(), token, user.id);
+  }
+
+  /**
+   * Follows the work for the person's message in a thread with a Live Activity of their iPhone, whose push token
+   * is `token`. An older activity of theirs for the same thread ends: the new one follows the newer message.
+   */
+  startActivity(
+    user: User,
+    workspaceId: string,
+    threadId: string,
+    token: unknown,
+    environment: unknown
+  ): void {
+    if (typeof token !== "string" || !ACTIVITY_TOKEN.test(token)) {
+      throw new HttpError(400, "Send the activity's push token in hex");
+    }
+    if (
+      typeof environment !== "string" ||
+      !ENVIRONMENTS.includes(environment)
+    ) {
+      throw new HttpError(400, "Environment must be sandbox or production");
+    }
+    for (const older of this.activities(workspaceId).filter(
+      (activity) =>
+        activity.userId === user.id &&
+        activity.threadId === threadId &&
+        activity.token !== token
+    )) {
+      this.endActivity(older, null);
+    }
+    this.database
+      .query(
+        "INSERT INTO live_activity (token, user_id, workspace_id, thread_id, environment, started_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (token) DO NOTHING"
+      )
+      .run(token, user.id, workspaceId, threadId, environment, Date.now());
+  }
+
+  /** The Live Activities that follow work in a workspace now; older ones than iOS keeps end here. */
+  activities(workspaceId: string): LiveActivity[] {
+    this.database
+      .query(
+        "UPDATE live_activity SET ended_at = ? WHERE workspace_id = ? AND ended_at IS NULL AND started_at < ?"
+      )
+      .run(Date.now(), workspaceId, Date.now() - ACTIVITY_LIFETIME);
+    return this.database
+      .query(
+        "SELECT token, user_id AS userId, workspace_id AS workspaceId, thread_id AS threadId, environment, started_at AS startedAt FROM live_activity WHERE workspace_id = ? AND ended_at IS NULL ORDER BY started_at"
+      )
+      .all(workspaceId) as LiveActivity[];
+  }
+
+  /**
+   * Pushes a new state to a Live Activity, unless it shows that state already. A wait for the person alerts them;
+   * other changes come quietly.
+   */
+  updateActivity(activity: LiveActivity, state: ActivityState): void {
+    const json = JSON.stringify(state);
+    const changed = this.database
+      .query(
+        "UPDATE live_activity SET state = ? WHERE token = ? AND ended_at IS NULL AND state IS NOT ?"
+      )
+      .run(json, activity.token, json).changes;
+    if (changed === 0) {
+      return;
+    }
+    const now = Date.now();
+    this.sendActivity(
+      activity,
+      {
+        aps: {
+          timestamp: Math.floor(now / 1000),
+          event: "update",
+          "content-state": state,
+          "stale-date": Math.floor((now + ACTIVITY_STALE) / 1000),
+          ...(state.status === "waiting"
+            ? { alert: { title: state.title, body: "Waiting for you" } }
+            : {}),
+        },
+      },
+      state.status === "waiting" ? 10 : 5
+    );
+  }
+
+  /** Ends a Live Activity with its last state, which stays on the Lock Screen a short time; null ends it at once. */
+  endActivity(activity: LiveActivity, state: ActivityState | null): void {
+    const ended = this.database
+      .query(
+        "UPDATE live_activity SET ended_at = ?, state = coalesce(?, state) WHERE token = ? AND ended_at IS NULL"
+      )
+      .run(Date.now(), state && JSON.stringify(state), activity.token).changes;
+    if (ended === 0) {
+      return;
+    }
+    const now = Date.now();
+    this.sendActivity(
+      activity,
+      {
+        aps: {
+          timestamp: Math.floor(now / 1000),
+          event: "end",
+          ...(state ? { "content-state": state } : {}),
+          "dismissal-date": Math.floor(
+            (state ? now + ACTIVITY_DISMISSAL : now) / 1000
+          ),
+        },
+      },
+      10
+    );
+  }
+
+  private sendActivity(
+    activity: LiveActivity,
+    payload: object,
+    priority: 5 | 10
+  ): void {
+    this.activityPush?.(activity.environment, activity.token, payload, priority)
+      .then((outcome) => {
+        if (outcome === "gone") {
+          this.database
+            .query(
+              "UPDATE live_activity SET ended_at = coalesce(ended_at, ?) WHERE token = ?"
+            )
+            .run(Date.now(), activity.token);
+        }
+      })
+      .catch((error: unknown) =>
+        console.error("a Live Activity push failed", error)
+      );
   }
 
   private async send(userId: string, notification: Notification) {

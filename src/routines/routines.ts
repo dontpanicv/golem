@@ -496,7 +496,8 @@ export class Routines {
       text,
       `routine:${runId}`,
       "everyone",
-      routine.createdBy
+      routine.createdBy,
+      "routine"
     );
   }
 

@@ -31,6 +31,7 @@ targets:
     dependencies:
       - package: FluidAudio
       - target: Share
+      - target: GolemActivity
     entitlements:
       path: Golem/Golem.entitlements
       properties:
@@ -52,6 +53,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         ITSAppUsesNonExemptEncryption: false
+        # The work for a message shows on the Lock Screen and in the Dynamic Island (GolemActivity).
+        NSSupportsLiveActivities: true
         NSMicrophoneUsageDescription: Golem listens while you dictate or talk to it.
         # A conversation goes on with the screen locked.
         UIBackgroundModes: [audio]
@@ -143,6 +146,28 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(GOLEM_BUNDLE_ID).share
+  GolemActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: GolemActivity
+      # The activity's attributes, the tokens, and the font come from the app.
+      - path: Golem/API/ThreadActivity.swift
+      - path: Golem/Design/Tokens.swift
+      - path: Golem/Design/DesignSystem.swift
+      - path: Golem/Resources/InterVariable.ttf
+    info:
+      path: GolemActivity/Info.plist
+      properties:
+        CFBundleDisplayName: Golem
+        CFBundleShortVersionString: '0.1.0'
+        CFBundleVersion: '1'
+        UIAppFonts: [InterVariable.ttf]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(GOLEM_BUNDLE_ID).GolemActivity
   GolemTests:
     type: bundle.unit-test
     platform: iOS

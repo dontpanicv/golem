@@ -42,6 +42,7 @@ ios/Golem.xcodeproj
 ios/Golem/Info.plist
 ios/Golem/Golem.entitlements
 ios/Share/Info.plist
+ios/GolemActivity/Info.plist
 ios/Share/Share.entitlements
 ios/build
 ios/Config/Local.xcconfig

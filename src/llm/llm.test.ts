@@ -423,6 +423,8 @@ describe("SqliteCredentialStore", () => {
 const hooks = {
   changed: () => undefined,
   recall: async () => ({ results: [] }),
+  automations: () => "",
+  suggest: () => undefined,
   read: async () => null,
   picture: async () => null,
   tools: async () => [],
@@ -450,6 +452,10 @@ const noNotifications = {
     createdAt: 0,
     readAt: null,
   }),
+  activities: () => [],
+  startActivity: () => undefined,
+  updateActivity: () => undefined,
+  endActivity: () => undefined,
 };
 const noBrowser = {
   pdf: () => Promise.reject(new Error("There is no browser.")),

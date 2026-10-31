@@ -8,10 +8,10 @@ import { dirname } from "node:path";
  *
  * Each table has one owner module, and only that module queries it: `workspaces` owns `channel`, `thread`, and `workspace_facts` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
- * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential` and its keys in `setting`,
+ * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential`, `llm_usage`, `llm_usage_seen`, and its keys in `setting`,
  * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
- * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, and `notifications` owns `notification` and
- * `push_device`. Start a new migration with a comment that names its owner.
+ * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, `agenda` owns `suggestion`, and `notifications` owns `notification`,
+ * `push_device`, and `live_activity`. Start a new migration with a comment that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (
@@ -342,6 +342,61 @@ const migrations = [
 	ALTER TABLE machine_next RENAME TO machine;
 	CREATE UNIQUE INDEX machine_cert ON machine (workspace_id, paired_by, cert_sha256);
 	CREATE UNIQUE INDEX machine_name ON machine (workspace_id, name COLLATE NOCASE);`,
+  // llm: what the model calls cost, by day, person, source, thread, and model, which Settings shows; and the usage of
+  // each conversation that the first table has counted.
+  `CREATE TABLE llm_usage (
+		workspace_id TEXT NOT NULL,
+		day TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		source TEXT NOT NULL,
+		thread_id TEXT NOT NULL,
+		model TEXT NOT NULL,
+		input INTEGER NOT NULL,
+		output INTEGER NOT NULL,
+		cache_read INTEGER NOT NULL,
+		cache_write INTEGER NOT NULL,
+		cost REAL NOT NULL,
+		PRIMARY KEY (workspace_id, day, user_id, source, thread_id, model)
+	);
+	CREATE TABLE llm_usage_seen (
+		workspace_id TEXT NOT NULL,
+		conversation_id INTEGER NOT NULL,
+		usage TEXT NOT NULL,
+		PRIMARY KEY (workspace_id, conversation_id)
+	);`,
+  // agenda: the automations that Golem suggests to a person, which wait until they accept or decline one.
+  `CREATE TABLE suggestion (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		person_id TEXT NOT NULL,
+		thread_id TEXT NOT NULL,
+		channel_id TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		name TEXT NOT NULL,
+		text TEXT NOT NULL,
+		schedule TEXT,
+		at TEXT,
+		time_zone TEXT,
+		created_at INTEGER NOT NULL,
+		answered_at INTEGER,
+		accepted INTEGER,
+		result_id TEXT,
+		deleted_at INTEGER
+	);
+	CREATE INDEX suggestion_person ON suggestion (workspace_id, person_id, created_at);`,
+  // notifications: the Live Activities of the iOS app, each following the work for one message of a person, and the
+  // last state Golem pushed to it.
+  `CREATE TABLE live_activity (
+		token TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		thread_id TEXT NOT NULL,
+		environment TEXT NOT NULL,
+		state TEXT,
+		started_at INTEGER NOT NULL,
+		ended_at INTEGER
+	);
+	CREATE INDEX live_activity_open ON live_activity (workspace_id, ended_at);`,
 ];
 
 export function openDatabase(path: string): Database {

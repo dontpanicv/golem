@@ -1412,6 +1412,25 @@ a {
   gap: var(--space-sm);
 }
 
+/* A suggestion over the orchestrator's composer: the approval's card on one row. */
+.suggestion {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-lg);
+  margin: 0 var(--space-xxl) var(--space-md);
+  padding: var(--space-md) var(--space-md) var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow:
+    0 0 0 0.5px var(--color-ring-control),
+    var(--shadow-low);
+}
+.suggestion > .icon {
+  flex: none;
+  color: var(--color-text-tertiary);
+}
+
 .composer textarea {
   min-height: 28px;
   max-height: 240px;
@@ -1992,6 +2011,55 @@ a {
   height: var(--size-control);
   border-radius: var(--radius-sm);
   background: var(--color-fill-icon);
+}
+
+/* A group of cards in one section, such as usage by model: a smaller title 8 px further down. */
+.page-section > h3 {
+  margin-top: var(--space-md);
+  margin-bottom: calc(var(--space-sm) - var(--space-xl));
+  padding: 0 var(--space-xl);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-tertiary);
+}
+
+/* Usage: a bar for each of the last 30 days, its height the day's tokens. */
+.usage-days {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-xxs);
+  height: calc(var(--size-control) * 2 + var(--space-xl) * 2);
+  padding: var(--space-xl);
+}
+.usage-day {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  height: 100%;
+  border-bottom: 0.5px solid var(--color-border-strong);
+}
+.usage-day > span {
+  width: 100%;
+  border-radius: var(--radius-xxs) var(--radius-xxs) 0 0;
+  background: var(--color-accent);
+}
+
+/* What Golem learned: the entry in body text, a lock after a private one, and a full-width field to correct it. */
+.settings-text .learned-text {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-book);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+.learned-text .lock {
+  display: inline-flex;
+  margin-left: var(--space-sm);
+  vertical-align: -3px;
+  color: var(--color-text-tertiary);
+}
+.settings-row .learned-input {
+  flex: 1;
+  width: auto;
 }
 
 .device-login {

@@ -195,10 +195,13 @@ export interface Routine {
   readonly id: string;
   readonly channelId: string;
   readonly name: string;
+  /** A cron expression in the server's time zone. */
+  readonly schedule: string;
   readonly enabled: boolean;
   /** Null while paused. */
   readonly nextRunAt: number | null;
   readonly threadId: string | null;
+  readonly lastRun: RoutineRun | null;
 }
 
 export interface Artifact {
@@ -287,4 +290,87 @@ export interface Inbox {
   readonly notifications: readonly Notification[];
   readonly unread: number;
   readonly badge: number;
+}
+
+/** Tokens and cost of model calls; `input` leaves out `cacheRead`, the tokens read from the prompt cache. */
+export interface UsageTotals {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  /** US dollars at the model's list price, which a ChatGPT login does not pay. */
+  readonly cost: number;
+}
+
+export type UsageSource =
+  | "thread"
+  | "orchestrator"
+  | "routine"
+  | "reminder"
+  | "background";
+
+export interface Usage {
+  /** "YYYY-MM-DD" in UTC, oldest first; a day without use is left out. */
+  readonly days: readonly (UsageTotals & { readonly day: string })[];
+  readonly total: UsageTotals;
+  readonly sources: readonly (UsageTotals & { readonly source: UsageSource })[];
+  readonly models: readonly (UsageTotals & { readonly model: string })[];
+  readonly threads: readonly (UsageTotals & {
+    readonly threadId: string;
+    readonly title: string;
+  })[];
+  /** Only for the server's owner; userId "" is work for nobody. */
+  readonly people:
+    | readonly (UsageTotals & {
+        readonly userId: string;
+        readonly name: string;
+      })[]
+    | null;
+}
+
+/** What Golem learned: a fact about a person, or a how-to of a channel. */
+export interface Learned {
+  readonly id: number;
+  readonly kind: "about" | "howto";
+  readonly personId: string | null;
+  /** Null for a fact, and for a how-to of the person's own orchestrator. */
+  readonly channelId: string | null;
+  /** The person who alone sees it; null for every member. */
+  readonly realm: string | null;
+  readonly text: string;
+  readonly threadId: string | null;
+  readonly updatedAt: number;
+}
+
+/** An automation that Golem suggests; nothing runs until the person accepts it. */
+export interface Suggestion {
+  readonly id: string;
+  readonly kind: "routine" | "reminder";
+  readonly name: string;
+  readonly text: string;
+  readonly schedule: string | null;
+  /** When the reminder is due, or the routine's first run. */
+  readonly at: number | null;
+  readonly channelId: string;
+  readonly threadId: string;
+  readonly createdAt: number;
+}
+
+export interface Reminder {
+  readonly id: string;
+  readonly threadId: string;
+  readonly recipientId: string;
+  readonly createdBy: string | null;
+  readonly text: string;
+  readonly dueAt: number;
+}
+
+export interface Upcoming {
+  readonly routines: readonly Routine[];
+  readonly reminders: readonly Reminder[];
+  readonly suggestions: readonly Suggestion[];
+  readonly approvals: readonly {
+    readonly threadId: string;
+    readonly approval: Approval;
+  }[];
 }

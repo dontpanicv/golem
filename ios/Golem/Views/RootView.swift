@@ -24,6 +24,10 @@ struct RootView: View {
             if session.signedIn { await session.load() }
         }
         .task(id: "\(session.signedIn) \(Push.shared.token ?? "")") { await session.registerDevice() }
+        // A tapped Live Activity opens its thread.
+        .onOpenURL { url in
+            if let tapped = Push.tapped(url) { Push.shared.tapped = tapped }
+        }
         // Threads read on screen read their notifications, so the inbox and the app icon load again.
         .onChange(of: scenePhase) {
             if scenePhase != .inactive { Task { try? await session.loadInbox() } }
@@ -60,6 +64,7 @@ enum Destination: Hashable, Identifiable {
     case channelDetails(String)
     case thread(String)
     case inbox
+    case upcoming
     case workspaceSettings
     case settings
 
@@ -127,10 +132,12 @@ private struct SplitView: View {
                     ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
                 case .inbox:
                     InboxView(open: open).id(session.workspace?.id)
+                case .upcoming:
+                    UpcomingView(open: open).id(session.workspace?.id)
                 case .workspaceSettings:
                     WorkspaceSettingsView().id(session.workspace?.id)
                 case .settings:
-                    SettingsView()
+                    SettingsView(open: open)
                 case nil:
                     EmptyState(title: "Choose a thread", systemImage: "bubble.left.and.bubble.right")
                 }
@@ -207,6 +214,7 @@ private struct Sidebar: View {
                 }
                 row("Inbox", systemImage: "bell", destination: .inbox, count: session.inbox?.unread)
                 row("Search", systemImage: "magnifyingglass", destination: .search)
+                row("Upcoming", systemImage: "calendar", destination: .upcoming)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels.filter { $0.ownerId == nil }) { channelRow($0) }
                 Button {

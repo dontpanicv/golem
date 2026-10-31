@@ -36,7 +36,11 @@ addresses, or code and data from employers or clients.
 - The web app and the iOS app have the same functionality. Every feature is a JSON endpoint in `src/<module>/api.ts`,
   documented in `docs/api.md`, that calls the module's service in `src/<module>/<module>.ts`; both apps use it. The web
   app is a React single-page app in `web/`; the server sends it for every app path and has no other pages.
-- Reminders are agent-only: their create, list, change, and cancel operations are tools, with no user routes.
+- Agents make and change reminders with tools; a person sees their pending ones in Upcoming and cancels one there.
+- Golem stays quiet by default: background work notifies a person only when they must act or asked for it, and a
+  routine or reminder answers `QUIET` when nothing needs anyone.
+- Consent first: Golem makes no routine, reminder, or message that no person asked for. It suggests one
+  (`src/agenda/`), which waits, with no push, until its person accepts it.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
 - Golem has one workspace, the family's; nobody makes or deletes one. A private channel (`channel.owner_id`) and all
   of it belong to one member. Every read of channels, threads, files, artifacts, routines, reminders, search, or memory
@@ -65,7 +69,7 @@ addresses, or code and data from employers or clients.
 ## Modules
 
 - `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `artifacts`,
-  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`) holds one domain: its service, routes, and tests. `src/platform/`
+  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`) holds one domain: its service, routes, and tests. `src/platform/`
   is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
 - A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` from
   routes. A module reads only the tables it owns. `test/architecture.test.ts` enforces these rules;
@@ -85,6 +89,8 @@ addresses, or code and data from employers or clients.
 - The model calls only the core tools of channels, threads, files, and web search directly. Every other tool is
   script-only (`callers: ["tools"]`) and its name starts with its codemode namespace: `NAMESPACES` in
   `src/threads/threads.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.
+- A prompt section of the agents renders the same text until its content changes: no times and no order by time. Pi
+  Durable adds each changed section to the conversation again, so a section that changes often repeats itself.
 - In `src/threads/threads.ts`, a tool that runs a shell command on a machine is in `RUNS_COMMAND`, so `approved` asks a
   person before a command that dcg (destructive_command_guard) flags; besides connector tools with an `approval`,
   nothing else waits for one. All web traffic of agents

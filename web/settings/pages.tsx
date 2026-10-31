@@ -5,6 +5,8 @@ import { request } from "../app/api.ts";
 import { MachinesSection } from "../hands/machines.tsx";
 import { IntegrationsSection } from "../integrations/section.tsx";
 import { LlmCard, llmQuery } from "../llm/card.tsx";
+import { UsageSection } from "../llm/usage.tsx";
+import { LearnedSection } from "../threads/learned.tsx";
 import {
   Avatar,
   Button,
@@ -50,7 +52,7 @@ export function WorkspaceSettingsPage() {
   );
 }
 
-/** The LLM provider, the person's machines and integrations in the workspace, and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
+/** The LLM provider and its usage, the person's machines and integrations in the workspace, what Golem learned, and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
 export function SettingsPage() {
   const { user, workspaces } = useMe();
   const { data: llm } = useQuery(llmQuery);
@@ -68,11 +70,17 @@ export function SettingsPage() {
           </PageSection>
           {workspace ? (
             <>
+              <PageSection title="Usage">
+                <UsageSection workspaceId={workspace.id} />
+              </PageSection>
               <PageSection title="Machines">
                 <MachinesSection workspaceId={workspace.id} />
               </PageSection>
               <PageSection title="Integrations">
                 <IntegrationsSection workspaceId={workspace.id} />
+              </PageSection>
+              <PageSection title="What Golem learned">
+                <LearnedSection workspaceId={workspace.id} />
               </PageSection>
             </>
           ) : null}

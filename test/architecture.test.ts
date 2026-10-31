@@ -17,6 +17,7 @@ const MODULES = [
   "search",
   "routines",
   "reminders",
+  "agenda",
 ];
 /** The files of a module that route or render; the other files are its service. */
 const UI_FILES = new Set(["web.ts", "api.ts", "pages.ts"]);
@@ -109,6 +110,7 @@ const WEB_MODULES = [
   "threads",
   "search",
   "routines",
+  "agenda",
   "settings",
 ];
 

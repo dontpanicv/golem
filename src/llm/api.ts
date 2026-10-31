@@ -34,4 +34,42 @@ export const llmApiRoutes: readonly Route[] = [
       return json(await app.llm.status(user));
     }),
   ],
+  [
+    "GET",
+    "/api/v1/workspaces/:workspace/usage",
+    api(async ({ app, user, params, request }) => {
+      const workspace = app.workspaces.requireMember(params.workspace!, user);
+      const days = Number(new URL(request.url).searchParams.get("days"));
+      const report = app.llm.usage(workspace.id, user, days);
+      // Titles only of the threads the person sees; the owner's totals still count the others.
+      const titles = new Map(
+        app.workspaces
+          .threadsIn(workspace.id, user.id)
+          .filter(
+            (thread) => thread.ownerId === null || thread.ownerId === user.id
+          )
+          .map((thread) => [thread.id, thread.title])
+      );
+      const names = new Map(
+        app.workspaces
+          .members(workspace.id, user)
+          .map((member) => [member.userId, member.name])
+      );
+      return json({
+        ...report,
+        threads: report.threads.flatMap((row) =>
+          titles.has(row.threadId)
+            ? [{ ...row, title: titles.get(row.threadId)! }]
+            : []
+        ),
+        people:
+          report.people?.map((row) => ({
+            ...row,
+            name: row.userId
+              ? (names.get(row.userId) ?? "Former member")
+              : "Golem",
+          })) ?? null,
+      });
+    }),
+  ],
 ];

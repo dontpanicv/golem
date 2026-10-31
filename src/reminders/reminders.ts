@@ -242,7 +242,8 @@ export class Reminders {
         `reminder:${reminder.id}:${reminder.attempts}`,
         [reminder.recipientId],
         // The turn is the asker's, with their own integrations: the text is theirs, not the recipient's.
-        reminder.createdBy
+        reminder.createdBy,
+        "reminder"
       );
       if (!answer) {
         throw new Error("The agent gave no reminder.");
@@ -288,7 +289,8 @@ export class Reminders {
 const COLUMNS =
   "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
 
-function dueTime(at: string, timeZone: string, now: number): number {
+/** The UTC time of `at`, a local time with its offset in `timeZone`; throws when it is wrong or not in the future. */
+export function dueTime(at: string, timeZone: string, now: number): number {
   const match =
     /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::\d\d)?([+-]\d\d:\d\d)$/.exec(at);
   if (!match) {

@@ -239,6 +239,48 @@ export const threadApiRoutes: readonly Route[] = [
       return json({ files });
     }),
   ],
+  [
+    "POST",
+    "/api/v1/threads/:thread/live-activity",
+    api(async ({ app, user, params, body }) => {
+      app.threads.followActivity(
+        params.thread!,
+        user,
+        body.token,
+        body.environment
+      );
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
+    "GET",
+    "/api/v1/workspaces/:workspace/learned",
+    api(async ({ app, user, params }) =>
+      json({ learned: app.threads.learnedFor(params.workspace!, user) })
+    ),
+  ],
+  [
+    "PUT",
+    "/api/v1/workspaces/:workspace/learned/:id",
+    api(async ({ app, user, params, body }) =>
+      json(
+        app.threads.changeLearned(
+          params.workspace!,
+          user,
+          Number(params.id),
+          body.text
+        )
+      )
+    ),
+  ],
+  [
+    "DELETE",
+    "/api/v1/workspaces/:workspace/learned/:id",
+    api(async ({ app, user, params }) => {
+      app.threads.removeLearned(params.workspace!, user, Number(params.id));
+      return new Response(null, { status: 204 });
+    }),
+  ],
 ];
 
 function summary(thread: {

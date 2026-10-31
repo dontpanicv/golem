@@ -8,6 +8,7 @@ import { queryClient } from "../app/query.ts";
 import type {
   Approval,
   Brief,
+  Learned,
   Message,
   SavedFile,
   ThreadState,
@@ -311,3 +312,35 @@ export function briefQuery(workspaceId: string, channelId: string) {
       ),
   });
 }
+
+/** What Golem learned that the person sees, facts first. A correction or a delete shows at once. */
+export const learnedOf = keyed((workspaceId: string) =>
+  createCollection(
+    queryCollectionOptions({
+      id: `learned:${workspaceId}`,
+      queryKey: ["workspaces", workspaceId, "learned"],
+      queryClient,
+      queryFn: ({ signal }) =>
+        request<{ learned: Learned[] }>(`/workspaces/${workspaceId}/learned`, {
+          signal,
+        }),
+      select: (response) => response.learned,
+      getKey: (entry) => entry.id,
+      onUpdate: async ({ transaction }) => {
+        for (const mutation of transaction.mutations) {
+          await request(`/workspaces/${workspaceId}/learned/${mutation.key}`, {
+            method: "PUT",
+            body: { text: mutation.modified.text },
+          });
+        }
+      },
+      onDelete: async ({ transaction }) => {
+        for (const mutation of transaction.mutations) {
+          await request(`/workspaces/${workspaceId}/learned/${mutation.key}`, {
+            method: "DELETE",
+          });
+        }
+      },
+    })
+  )
+);

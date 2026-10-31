@@ -44,8 +44,15 @@ import { followed, outbox, sendMessage } from "./outbox.ts";
 
 const threadRoute = getRouteApi("/signed-in/w/$workspaceId/t/$threadId");
 
-/** A thread of the workspace in the address; a thread of another workspace is not found. */
-export function ThreadPage() {
+/**
+ * A thread of the workspace in the address; a thread of another workspace is not found. `orchestratorCards` shows over
+ * the composer of the person's orchestrator only.
+ */
+export function ThreadPage({
+  orchestratorCards,
+}: {
+  orchestratorCards: ReactNode;
+}) {
   const { workspaceId, threadId } = threadRoute.useParams();
   const orchestrator = useQuery(orchestratorQuery(workspaceId)).data;
   const isOrchestrator = orchestrator?.id === threadId;
@@ -67,6 +74,7 @@ export function ThreadPage() {
   }
   return (
     <Thread
+      cards={isOrchestrator ? orchestratorCards : null}
       isOrchestrator={isOrchestrator}
       thread={thread}
       threadId={threadId}
@@ -81,11 +89,14 @@ function Thread({
   threadId,
   thread,
   isOrchestrator,
+  cards,
 }: {
   workspaceId: string;
   threadId: string;
   thread: ThreadSummary;
   isOrchestrator: boolean;
+  /** Cards over the composer. */
+  cards: ReactNode;
 }) {
   const { data: channel } = useLiveQuery({
     query: (q) =>
@@ -197,6 +208,7 @@ function Thread({
               threadId={threadId}
             />
           ))}
+        {cards}
         <Composer
           clearAtOnce
           onSend={(text, files) => sendMessage(threadId, text, files)}

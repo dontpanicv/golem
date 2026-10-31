@@ -39,7 +39,10 @@ struct PhoneShell: View {
                     if destination == .workspaceSettings {
                         WorkspaceSettingsView().id(session.workspace?.id)
                     } else {
-                        SettingsView()
+                        SettingsView { destination in
+                            sheet = nil
+                            open(destination)
+                        }
                     }
                 }
                 .toolbar {
@@ -131,6 +134,8 @@ struct PhoneShell: View {
             ChannelDetailsView(channelID: id, open: open).id(id)
         case let .thread(id):
             WithArtifacts { ConversationView(threadID: id, showArtifacts: $0, open: open) }.id(id)
+        case .upcoming:
+            UpcomingView(open: open).id(session.workspace?.id)
         case .search, .inbox, .workspaceSettings, .settings:
             EmptyView()
         }

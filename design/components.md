@@ -191,6 +191,25 @@ Used by the workspace switcher and action menus.
   `size.dot` `accent` dot while unread. A click reads it and opens its thread or channel. The header's check button
   reads them all. iOS has the same screen in the More menu and the sidebar, with the count at the right of its row.
 
+## Upcoming
+
+- The sidebar's Upcoming item, after Inbox, has the `clock` icon. The page is the Settings column; its groups, each
+  only with items, are Needs you, Suggested, Today, Tomorrow, This week (the next 7 days), Later, and Paused, each a
+  section title over a card of compact rows. A routine row has the `play` icon, its name, its schedule in words and its
+  channel, a failed badge after a failed run, and its switch; a reminder row has the `clock` icon, its text, its time,
+  and a secondary Cancel button. iOS has the same screen from a row at the top of Home and in the sidebar.
+- Suggestion: a compact row with its kind's icon, the name, when it runs, and secondary Decline and primary Accept
+  buttons. In the person's orchestrator the waiting suggestions sit in one card over the composer, as wide as it.
+
+## What Golem learned and Usage
+
+- What Golem learned is a Settings section: a sub-heading (`fontSize.sm` `medium` `textTertiary`, 16 px in) per person
+  ("About Anna") and per channel, each over a card of compact rows with the text, a 14 px `lock` for a private entry,
+  and edit and delete icon buttons at the right. Edit turns the text into a field in place: Enter saves, Escape stops.
+- Usage is a Settings section: rows for tokens, cost at API prices, and cache rate, then a bar for each of the last 30
+  days, 80 px high, in `accent`, each with a tooltip; then cards by source, by model, the top threads as links, and,
+  for the server's owner, by person with avatars.
+
 ## Conversation
 
 - Message: avatar, then the author in `medium` `text` and the time in `fontSize.sm` `textQuaternary`; the text in
@@ -326,4 +345,7 @@ iPad keeps the sidebar with the same screens.
   its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.
 - Menus: native. Sheets: a 40 pt round glass close button at the left and the title in the middle,
   `fontSize.sheetTitle` `semibold`; fields are `fill` with radius 12 and a 1 pt accent outline when focused.
-
+- Live Activity: on the Lock Screen, a status symbol, the working thread's title in `fontSize.row` `semibold`, the
+  status in words (Working, Waiting for you, Done, Failed) in `caption`, and the elapsed time; in the Dynamic Island,
+  the symbol and the elapsed time, and when expanded the title, the status, and how many threads work. A tap opens the
+  thread.

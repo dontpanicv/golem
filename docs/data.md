@@ -19,8 +19,9 @@ data/
 │   └── <workspace-id>/              The folder of Golem's one workspace, the family's.
 │       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per thread
 │       │                            (transcript, runs, tasks).
-│       ├── memory.sqlite            The brief of each channel, every version; and the workspace's one memory
-│       │                            from before each member had an orchestrator.
+│       ├── memory.sqlite            The brief of each channel, every version; what Golem learned about each
+│       │                            person and each channel; and the workspace's one memory from before each
+│       │                            member had an orchestrator.
 │       ├── memories/
 │       │   └── <thread-id>.sqlite   The memory of one member's orchestrator: a line for each message of it and
 │       │                            of every thread of the channels, merged in pairs into a tree of summaries.
@@ -80,9 +81,10 @@ data/
 | Data | Where | Format |
 | --- | --- | --- |
 | People, sessions, workspaces, members | `golem.sqlite` (better-auth tables) | SQLite |
-| Channels, threads, credentials, routines and their runs, one-time reminders, notifications, push devices, recent searches | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
+| Channels, threads, credentials, routines and their runs, one-time reminders, suggestions, notifications, push devices, Live Activities, recent searches, the usage of the model by day | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
+| What Golem learned: facts about each person and how-tos of each channel, which the reviews of quiet threads write and people correct | `memory.sqlite`, the tables `learned`, `learned_read`, and `learned_since` | SQLite |
 | The channel briefs: summaries of the messages of a channel's threads, which the model wrote | `memory.sqlite` | SQLite; the tables `node` and `line` are the memory of the workspace's one orchestrator from before, which its person's memory copied, and which nothing reads now |
 | The memory of each member's orchestrator: summaries of its messages and those of the channels' threads | `memories/<thread-id>.sqlite` | SQLite |
 | Files uploaded to a channel or attached to messages in its threads | `channels/<id>/files/` | the file as uploaded |

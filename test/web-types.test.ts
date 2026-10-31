@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
+import type { Suggestion, Upcoming } from "../src/agenda/agenda.ts";
 import type * as Server from "../src/artifacts/artifacts.ts";
 import type { MachineSummary, Pairing } from "../src/hands/hands.ts";
 import type { Integration } from "../src/integrations/integrations.ts";
-import type { LlmStatus } from "../src/llm/llm.ts";
+import type { LlmStatus, UsageReport } from "../src/llm/llm.ts";
 import type { User } from "../src/platform/auth.ts";
 import type { Routine, RoutineRun } from "../src/routines/routines.ts";
 import type { RecentSearch, SearchResponse } from "../src/search/search.ts";
 import type {
   Brief,
+  LearnedItem,
   Message,
   SavedFile,
   ThreadMessages,
@@ -46,6 +48,18 @@ const checks: true[] = [
   true satisfies Fits<MachineSummary, Web.Machine>,
   true satisfies Fits<Pairing, Web.Pairing>,
   true satisfies Fits<LlmStatus, Web.LlmStatus>,
+  true satisfies Fits<
+    Omit<UsageReport, "threads" | "people"> & {
+      threads: (UsageReport["threads"][number] & { title: string })[];
+      people:
+        | (NonNullable<UsageReport["people"]>[number] & { name: string })[]
+        | null;
+    },
+    Web.Usage
+  >,
+  true satisfies Fits<LearnedItem, Web.Learned>,
+  true satisfies Fits<Suggestion, Web.Suggestion>,
+  true satisfies Fits<Upcoming, Web.Upcoming>,
 ];
 
 test("the web app reads the types the server sends", () => {

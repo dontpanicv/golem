@@ -224,7 +224,7 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
   );
 }
 
-/** The workspace's orchestrator and search, its channels with their active threads, and the settled threads. */
+/** The workspace's orchestrator, inbox, upcoming, and search, its channels with their active threads, and the settled threads. */
 function WorkspaceNav({
   workspaceId,
   onNewChannel,
@@ -311,6 +311,13 @@ function WorkspaceNav({
             to="/w/$workspaceId/inbox"
           >
             <NavContent count={unread} icon="bell" label="Inbox" />
+          </Link>
+          <Link
+            className="nav-item"
+            params={{ workspaceId }}
+            to="/w/$workspaceId/upcoming"
+          >
+            <NavContent icon="clock" label="Upcoming" />
           </Link>
           <Link
             className="nav-item"

@@ -167,6 +167,11 @@ struct ChannelView: View {
                 if let thread = try await session.createThread(channelID: channelID, text: text, files: files) {
                     draft = ""
                     files = []
+                    if let workspace = session.workspace {
+                        Push.followWork(
+                            workspaceID: workspace.id, threadID: thread.id, title: thread.title, api: session.api
+                        )
+                    }
                     open(.thread(thread.id))
                 }
             }

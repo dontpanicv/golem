@@ -347,7 +347,7 @@ final class APIClient {
     }
 }
 
-/// The inbox and the devices that get pushes.
+/// The inbox, and the devices and Live Activities that get pushes.
 extension APIClient {
     func inbox(workspaceID: String) async throws -> Inbox {
         try await get("/api/v1/workspaces/\(workspaceID)/notifications")
@@ -364,6 +364,13 @@ extension APIClient {
 
     func removeDevice(token: String) async throws {
         _ = try await send("DELETE", "/api/v1/devices/\(token)")
+    }
+
+    /// Gives Golem the push token of a Live Activity, in hex, that follows the work for the person's newest message.
+    func followActivity(threadID: String, token: String, environment: String) async throws {
+        _ = try await send(
+            "POST", "/api/v1/threads/\(threadID)/live-activity", ["token": token, "environment": environment]
+        )
     }
 }
 

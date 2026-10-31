@@ -67,7 +67,7 @@ beforeAll(async () => {
   bob = await person("Bob", "bob@example.com");
   // Threads run at the same time, so the model answers from what its conversation shows, not from a fixed order.
   // The memory and the channel briefs ask the model in the background too.
-  golem.faux.setResponses(Array.from({ length: 200 }, () => agent));
+  golem.faux.setResponses(Array.from({ length: 300 }, () => agent));
 });
 afterAll(() => golem.close());
 
@@ -120,6 +120,33 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (system.includes("You keep the brief")) {
     return fauxAssistantMessage(
       `<summary>What the family eats.</summary><brief>## Now\n- Pasta tonight ${/\[[^\]]*\]\(thread:[\w-]+\)/.exec(textOf(context.messages.at(-1)!))![0]}</brief>`
+    );
+  }
+  if (system.includes("You are the learning loop")) {
+    return fauxAssistantMessage(
+      textOf(context.messages.at(-1)!).includes("I am vegetarian")
+        ? JSON.stringify({
+            about: [{ person: "Alice", text: "Alice is vegetarian" }],
+            howto: ["Groceries come from the corner shop"],
+            suggest: [
+              {
+                kind: "routine",
+                person: "Alice",
+                name: "Morning menu",
+                schedule: "0 7 * * *",
+                instructions: "Suggest a vegetarian lunch, or stay quiet",
+                channel: "food",
+              },
+              {
+                kind: "routine",
+                person: "Bob",
+                name: "Not for Bob",
+                schedule: "0 7 * * *",
+                instructions: "Bob wrote nothing here",
+              },
+            ],
+          })
+        : "{}"
     );
   }
   systemPrompts.push(system);
@@ -416,7 +443,8 @@ test("an answer notifies the person who asked unless a screen of theirs shows th
     "Check the mail",
     "mail",
     [bob.id],
-    bob.id
+    bob.id,
+    "routine"
   );
   expect(inboxOf(bob).unread).toBe(2);
   expect(inboxOf(alice).notifications).toHaveLength(2);
@@ -729,6 +757,62 @@ test("a spoken message asks the agent for an answer to read aloud, and the trans
     "Turn on the lights",
     "Done.",
   ]);
+});
+
+test("each run counts its usage once for its person, and the owner alone sees everyone's", async () => {
+  const home = await golem.app.workspaces.create(alice, "Usage");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const thread = await golem.app.threads.create(
+    home.id,
+    bob,
+    general.id,
+    "Hello"
+  );
+  const usageOf = (user: User) => golem.app.llm.usage(home.id, user, 30);
+  const counted = await until(
+    () => Promise.resolve(usageOf(bob)),
+    (report) => report.threads.some((row) => row.threadId === thread.id)
+  );
+  expect(counted.people).toBeNull();
+  expect(counted.sources.map((row) => row.source)).toContain("thread");
+  expect(counted.total.input + counted.total.cacheRead).toBeGreaterThan(0);
+  expect(counted.days).toHaveLength(1);
+
+  // Counting again without a new run adds nothing.
+  const before = usageOf(bob).total;
+  await golem.app.threads.send(thread.id, bob, "Again");
+  await until(
+    () => Promise.resolve(usageOf(bob).total),
+    (total) => total.output > before.output
+  );
+  const after = usageOf(bob).total;
+  (
+    golem.app.threads as unknown as {
+      countUsage: (workspaceId: string, threadId: string) => Promise<void>;
+    }
+  ).countUsage(home.id, thread.id);
+  await Bun.sleep(50);
+  expect(usageOf(bob).total).toEqual(after);
+
+  const owner = usageOf(alice);
+  expect(owner.people!.map((row) => row.userId)).toContain(bob.id);
+  expect(usageOf(alice).threads.length).toBeGreaterThan(0);
+
+  const response = await golem.call(
+    `/api/v1/workspaces/${home.id}/usage?days=7`,
+    {
+      token: await golem.signIn("Bob", "bob@example.com"),
+    }
+  );
+  const body = (await response.json()) as {
+    threads: { threadId: string; title: string }[];
+    people: unknown;
+  };
+  expect(body.threads.find((row) => row.threadId === thread.id)?.title).toBe(
+    thread.title
+  );
+  expect(body.people).toBeNull();
 });
 
 test("a text message steers its author's running turn", async () => {
@@ -1058,6 +1142,53 @@ test("stopping a thread also stops the threads it asked, which still work on its
   expect(answer).toMatchObject({ agent: true, work: { stopped: true } });
 });
 
+test("a Live Activity follows a message's work into the threads it asked, and ends a moment after the work", async () => {
+  const family = await golem.app.workspaces.create(alice, "Activities");
+  const [general] = golem.app.workspaces.channels(family.id, alice);
+  const asking = await golem.app.threads.create(
+    family.id,
+    alice,
+    general!.id,
+    "Delegate and wait"
+  );
+  const token = "cd".repeat(32);
+  expect(() =>
+    golem.app.threads.followActivity(asking.id, bob, token, "sandbox")
+  ).toThrow();
+  golem.app.threads.followActivity(asking.id, alice, token, "sandbox");
+  const stateOf = () =>
+    golem.app.database
+      .query(
+        "SELECT state, ended_at AS endedAt FROM live_activity WHERE token = ?"
+      )
+      .get(token) as { state: string | null; endedAt: number | null };
+  const delegated = await until(
+    () => Promise.resolve(stateOf()),
+    (row) => row.state !== null && JSON.parse(row.state).threads === 2
+  );
+  expect(JSON.parse(delegated.state!)).toEqual({
+    status: "working",
+    title: "Take your time",
+    threads: 2,
+  });
+
+  await golem.app.threads.stop(asking.id, alice);
+  // It waits a few seconds after the work, in case another thread takes the work on.
+  let ended = stateOf();
+  for (
+    let waited = 0;
+    ended.endedAt === null && waited < 15_000;
+    waited += 100
+  ) {
+    await Bun.sleep(100);
+    ended = stateOf();
+  }
+  expect(JSON.parse(ended.state!)).toMatchObject({
+    status: "done",
+    threads: 0,
+  });
+}, 20_000);
+
 test("each member has an own orchestrator thread, which stays open, out of the channel lists, and private", async () => {
   const family = await golem.app.workspaces.create(alice, "Orchestrated");
   const [first, again] = await Promise.all([
@@ -1233,6 +1364,105 @@ test("the orchestrator compacts into a view of its memory, and its agent zooms i
   );
 });
 
+test("a quiet thread teaches Golem about its people and its channel, and Golem suggests an automation that waits for its person", async () => {
+  golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
+  const home = await golem.app.workspaces.create(alice, "Learning");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const food = golem.app.workspaces.createChannel(home.id, alice, "food");
+  const general = golem.app.workspaces
+    .channels(home.id, alice)
+    .find((channel) => channel.name === "general")!;
+  const answered = (threadId: string) =>
+    until(
+      () =>
+        golem.app.threads.messages(
+          golem.app.workspaces.thread(threadId, alice)
+        ),
+      (state) => !state.running && state.messages.length === 2
+    );
+  const lunch = await golem.app.threads.create(
+    home.id,
+    alice,
+    food.id,
+    "I am vegetarian, what is for lunch?"
+  );
+  await answered(lunch.id);
+  golem.app.workspaces.setThreadSettled(home.id, lunch.id, alice, true);
+  const elsewhere = await golem.app.threads.create(
+    home.id,
+    alice,
+    general.id,
+    "Hello"
+  );
+  await answered(elsewhere.id);
+  const learned = await until(
+    () => Promise.resolve(golem.app.threads.learnedFor(home.id, bob)),
+    (items) => items.length === 2
+  );
+  expect(learned.map((item) => [item.kind, item.text, item.realm])).toEqual([
+    ["about", "Alice is vegetarian", null],
+    ["howto", "Groceries come from the corner shop", null],
+  ]);
+  expect(learned[1]!.channelId).toBe(food.id);
+
+  const before = systemPrompts.length;
+  const next = await golem.app.threads.create(
+    home.id,
+    bob,
+    food.id,
+    "What do we eat?"
+  );
+  await answered(next.id);
+  const prompt = systemPrompts
+    .slice(before)
+    .find((text) => text.includes("This thread is in #food."))!;
+  expect(prompt).toContain("About Alice:\n- Alice is vegetarian");
+  expect(prompt).toContain(
+    "How-tos here:\n- Groceries come from the corner shop"
+  );
+
+  // Only the person who wrote gets a suggestion, and nothing runs before they accept it.
+  expect(golem.app.agenda.upcoming(home.id, bob).suggestions).toEqual([]);
+  const [suggestion] = golem.app.agenda.upcoming(home.id, alice).suggestions;
+  expect(suggestion).toMatchObject({
+    kind: "routine",
+    name: "Morning menu",
+    channelId: food.id,
+    threadId: lunch.id,
+  });
+  expect(golem.app.routines.inWorkspace(home.id, alice.id)).toEqual([]);
+  await golem.app.agenda.answer(home.id, alice, suggestion!.id, true);
+  expect(
+    golem.app.routines
+      .inWorkspace(home.id, alice.id)
+      .map((routine) => [routine.name, routine.channelId])
+  ).toEqual([["Morning menu", food.id]]);
+  expect(golem.app.agenda.upcoming(home.id, alice).suggestions).toEqual([]);
+  expect(golem.app.agenda.automations(home.id, alice.id)).toContain(
+    'Suggested routine "Morning menu": accepted'
+  );
+  // Later tests tick every routine.
+  for (const routine of golem.app.routines.inWorkspace(home.id, alice.id)) {
+    golem.app.routines.delete(routine.id, alice);
+  }
+
+  // A person corrects and removes what Golem learned; the agent reads the change.
+  const [fact, howto] = learned;
+  golem.app.threads.changeLearned(
+    home.id,
+    bob,
+    fact!.id,
+    "Alice eats fish, no meat"
+  );
+  golem.app.threads.removeLearned(home.id, alice, howto!.id);
+  expect(
+    golem.app.threads.learnedFor(home.id, alice).map((item) => item.text)
+  ).toEqual(["Alice eats fish, no meat"]);
+  expect(() =>
+    golem.app.threads.removeLearned(home.id, alice, howto!.id)
+  ).toThrow();
+});
+
 test("a settled thread goes into its channel's brief and summary, which a new thread of the channel reads with the channel's threads", async () => {
   golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
   const home = await golem.app.workspaces.create(alice, "Briefs");
@@ -1294,7 +1524,8 @@ test("a settled thread goes into its channel's brief and summary, which a new th
   );
   expect(prompt).toMatch(
     new RegExp(
-      `The other threads of #food, newest first:\\n- \\[We eat pasta tonight\\]\\(thread:${pasta.id}\\): settled, last message from a person \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC`
+      `The newest other threads of #food, by title:\\n- \\[We eat pasta tonight\\]\\(thread:${pasta.id}\\): settled$`,
+      "m"
     )
   );
   expect(prompt).not.toContain(next.id);
@@ -2133,6 +2364,8 @@ function savingThreads(
     {
       changed: () => undefined,
       recall: async () => ({ results: [] }),
+      automations: () => "",
+      suggest: () => undefined,
       read: async () => null,
       picture: async () => null,
       tools: async () => [],

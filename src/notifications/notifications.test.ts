@@ -222,3 +222,65 @@ test("an APNs answer whose body is not JSON is an error and not a crash", () => 
     (apnsOutcome(429, '{"reason":"TooManyRequests"}') as Error).message
   ).toBe("APNs answered 429: TooManyRequests");
 });
+
+test("a Live Activity gets each new state once, alerts only for a wait, and ends with its last state", async () => {
+  const database = authDatabase();
+  migrate(database);
+  const sent: {
+    token: string;
+    payload: Record<string, unknown>;
+    priority: number;
+  }[] = [];
+  let outcome: "sent" | "gone" = "sent";
+  const notifications = new Notifications(
+    database,
+    {} as NotificationWorkspaces,
+    null,
+    async (_environment, token, payload, priority) => {
+      sent.push({
+        token,
+        payload: payload as Record<string, unknown>,
+        priority,
+      });
+      return outcome;
+    }
+  );
+  expect(() =>
+    notifications.startActivity(alice, "home", "thread", "not hex", "sandbox")
+  ).toThrow();
+  notifications.startActivity(alice, "home", "thread", TOKEN, "sandbox");
+  const [activity] = notifications.activities("home");
+  const working = { status: "working" as const, title: "Lunch", threads: 1 };
+  notifications.updateActivity(activity!, working);
+  notifications.updateActivity(activity!, working);
+  notifications.updateActivity(activity!, { ...working, status: "waiting" });
+  await Bun.sleep(0);
+  expect(sent.map((push) => [push.priority, push.payload.aps])).toEqual([
+    [5, expect.objectContaining({ event: "update", "content-state": working })],
+    [
+      10,
+      expect.objectContaining({
+        "content-state": { ...working, status: "waiting" },
+        alert: { title: "Lunch", body: "Waiting for you" },
+      }),
+    ],
+  ]);
+
+  // A newer activity for the same thread ends the older one at once.
+  const newer = "ef".repeat(32);
+  notifications.startActivity(alice, "home", "thread", newer, "sandbox");
+  await Bun.sleep(0);
+  expect(sent.at(-1)!.token).toBe(TOKEN);
+  expect(sent.at(-1)!.payload.aps).toMatchObject({ event: "end" });
+  expect(notifications.activities("home").map((item) => item.token)).toEqual([
+    newer,
+  ]);
+
+  outcome = "gone";
+  const [current] = notifications.activities("home");
+  notifications.updateActivity(current!, working);
+  await Bun.sleep(0);
+  expect(notifications.activities("home")).toEqual([]);
+  notifications.endActivity(current!, { ...working, status: "done" });
+  expect(sent.at(-1)!.payload.aps).toMatchObject({ event: "update" });
+});

@@ -406,7 +406,7 @@ export function SettingsRow({
   compact = false,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   description?: string | null;
   lead?: ReactNode;
   compact?: boolean;

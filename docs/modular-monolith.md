@@ -36,7 +36,8 @@ src/
 │                            files of each channel
 ├── search/                  Extraction, embeddings, and the index of each workspace
 ├── routines/                Scheduled scripts and instructions of each channel, and their runs
-├── reminders/               One-time workspace reminders and their agent tools; no user routes
+├── reminders/               One-time workspace reminders and their agent tools
+├── agenda/                  Each person's Upcoming, and the automations Golem suggests to them
 ```
 
 Each module has the same files, when it needs them:
@@ -63,7 +64,7 @@ module uses only `app/`, `ui/`, and the modules before it, and never the server'
 ## Rules
 
 1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
-   `artifacts`, `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`. A module uses only the modules before it. `platform/` uses no module.
+   `artifacts`, `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.
@@ -76,7 +77,8 @@ module uses only `app/`, `ui/`, and the modules before it, and never the server'
 6. **Ports for the backward edges.** `threads` needs search for its recall tool, and search reads threads. So
    `threads` declares the port it needs (`ThreadHooks.recall`, with its own `RecallResult` type), and
    `app/app.ts` connects it to the indexer. In the same way, `ThreadHooks.tools` gives agents the tools of
-   `routines`, which runs its work in threads.
+   `routines`, which runs its work in threads, and `ThreadHooks.suggest` gives `agenda` the automations that the
+   reviews of quiet threads suggest.
 
 ## Schema
 

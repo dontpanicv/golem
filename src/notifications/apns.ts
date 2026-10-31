@@ -1,6 +1,11 @@
 import { sign } from "node:crypto";
 import { connect } from "node:http2";
-import type { Push, PushMessage } from "./notifications.ts";
+import type {
+  ActivityPush,
+  Push,
+  PushEnvironment,
+  PushMessage,
+} from "./notifications.ts";
 
 export interface ApnsKey {
   readonly keyId: string;
@@ -25,26 +30,61 @@ const GONE = new Set([
 ]);
 
 /**
- * Sends pushes through the Apple Push Notification service. APNs speaks only HTTP/2, which Bun's `fetch` does not, so
- * this uses `node:http2`.
+ * Sends pushes through the Apple Push Notification service: alerts to devices, and the updates of Live Activities to
+ * each activity's own token. Both share one provider token, which APNs lets change only every 20 minutes. APNs speaks
+ * only HTTP/2, which Bun's `fetch` does not, so this uses `node:http2`.
  */
-export function apnsPush(key: ApnsKey): Push {
+export function apnsPush(key: ApnsKey): {
+  readonly push: Push;
+  readonly activityPush: ActivityPush;
+} {
+  const send = apnsSender(key);
+  return {
+    push: (device, message) =>
+      send(
+        device.environment,
+        device.token,
+        key.topic,
+        "alert",
+        10,
+        apnsPayload(message)
+      ),
+    activityPush: (environment, token, payload, priority) =>
+      send(
+        environment,
+        token,
+        `${key.topic}.push-type.liveactivity`,
+        "liveactivity",
+        priority,
+        payload
+      ),
+  };
+}
+
+function apnsSender(key: ApnsKey) {
   let token = { value: "", at: 0 };
-  return (device, message) => {
+  return (
+    environment: PushEnvironment,
+    deviceToken: string,
+    topic: string,
+    pushType: "alert" | "liveactivity",
+    priority: 5 | 10,
+    payload: object
+  ) => {
     if (Date.now() - token.at > TOKEN_AGE) {
       token = { value: providerToken(key), at: Date.now() };
     }
     // A family sends few pushes, so each gets its own connection and none needs to be kept alive.
-    const session = connect(HOSTS[device.environment]);
+    const session = connect(HOSTS[environment]);
     return new Promise<"sent" | "gone">((resolve, reject) => {
       session.on("error", reject);
       const stream = session.request({
         ":method": "POST",
-        ":path": `/3/device/${device.token}`,
+        ":path": `/3/device/${deviceToken}`,
         authorization: `bearer ${token.value}`,
-        "apns-topic": key.topic,
-        "apns-push-type": "alert",
-        "apns-priority": "10",
+        "apns-topic": topic,
+        "apns-push-type": pushType,
+        "apns-priority": String(priority),
       });
       let status = 0;
       let body = "";
@@ -63,7 +103,7 @@ export function apnsPush(key: ApnsKey): Push {
         }
         resolve(outcome);
       });
-      stream.end(JSON.stringify(apnsPayload(message)));
+      stream.end(JSON.stringify(payload));
     }).finally(() => session.close());
   };
 }

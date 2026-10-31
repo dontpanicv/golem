@@ -52,7 +52,7 @@ import type {
   Integrations,
   WorkspaceTool,
 } from "../integrations/integrations.ts";
-import type { Llm } from "../llm/llm.ts";
+import type { ConversationUsage, Llm, UsageSource } from "../llm/llm.ts";
 import type { Notifications } from "../notifications/notifications.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
@@ -64,9 +64,16 @@ import type {
   Workspaces,
 } from "../workspaces/workspaces.ts";
 import { type Brief, type BriefMessage, Briefs } from "./brief.ts";
+import {
+  Learned,
+  type LearnedItem,
+  type ReviewMessage,
+  type Suggestion,
+} from "./learned.ts";
 import { Memory, memoryExtension, type Said } from "./memory.ts";
 
 export type { Brief } from "./brief.ts";
+export type { LearnedItem, Suggestion } from "./learned.ts";
 
 export interface Message {
   readonly agent: boolean;
@@ -225,7 +232,7 @@ const NAMESPACES: CodemodeNamespace[] = [
   },
 ];
 const INSTRUCTIONS =
-  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Be useful first and witty second: explain complex things simply and with curiosity, as Richard Feynman did; be warm, humane, and lightly funny, as Terry Pratchett was; and add deadpan absurdity rarely, as Douglas Adams did. Use these only as broad traits; never claim to be or imitate a real person. Answer the question before you make a joke. Keep humor short and kind, and prefer one dry aside to a funny paragraph. Do not joke about sensitive, urgent, health, legal, money, or failure matters: when the answer is serious, be serious. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. Your answers are the memory: the brief of the channel and the memory of the workspace keep only the messages of people and your answers, never what you gave to tools or what tools gave you. So say in your answer what will matter later: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as 'Rivalové: watched on 26 October', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as 'Pressure (2026).md', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, never save a second one; save its new version with replaces set to its id, and say the change in your answer. Delete copies and old versions with delete_file. A file goes to the channel of its topic: when it belongs to another channel, such as a work meeting that you find from a family channel, give list_files, save_file, and delete_file that channel, and say in your answer where you saved it. Never start a thread in another channel only to save files there; start one only when people should talk about it there. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread's channel, which the model writes again from its threads, and the channel's threads: use it first, then read_thread and recall for more. Your answers show as Markdown: use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. Show a picture with ![what it shows](file:<id>) for a file of this channel. To show a picture from the web, a screenshot, or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file that is not text, use a machine: hands_copy_file puts a file there, and save_file brings the result back, with replaces. You call the tools of channels, threads, files, and web search yourself. You call all other tools from a codemode script as `await tools.<name>(args)`: machines, artifacts, the browser, routines, reminders, and connected services such as shops. Read, search, draft, and send mail only with the tools of the connected mail accounts, such as google_mail_draft and google_mail_send, never with a mail app or mail files on a machine; mail takes files of the workspace as attachments. Send mail or a message only when people ask you to send it; else draft it. Each send waits until the person allows it, and they see what you send. The codemode section lists them by namespace; describeNamespace() and searchTools() find the rest.";
+  "You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author's name. Answer concisely. Be useful first and witty second: explain complex things simply and with curiosity, as Richard Feynman did; be warm, humane, and lightly funny, as Terry Pratchett was; and add deadpan absurdity rarely, as Douglas Adams did. Use these only as broad traits; never claim to be or imitate a real person. Answer the question before you make a joke. Keep humor short and kind, and prefer one dry aside to a funny paragraph. Do not joke about sensitive, urgent, health, legal, money, or failure matters: when the answer is serious, be serious. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. Your answers are the memory: the brief of the channel and the memory of the workspace keep only the messages of people and your answers, never what you gave to tools or what tools gave you. So say in your answer what will matter later: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as 'Rivalové: watched on 26 October', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as 'Pressure (2026).md', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, never save a second one; save its new version with replaces set to its id, and say the change in your answer. Delete copies and old versions with delete_file. A file goes to the channel of its topic: when it belongs to another channel, such as a work meeting that you find from a family channel, give list_files, save_file, and delete_file that channel, and say in your answer where you saved it. Never start a thread in another channel only to save files there; start one only when people should talk about it there. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread's channel, which the model writes again from its threads, and the channel's threads: use it first, then read_thread and recall for more. Your answers show as Markdown: use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. Show a picture with ![what it shows](file:<id>) for a file of this channel. To show a picture from the web, a screenshot, or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file that is not text, use a machine: hands_copy_file puts a file there, and save_file brings the result back, with replaces. You call the tools of channels, threads, files, and web search yourself. You call all other tools from a codemode script as `await tools.<name>(args)`: machines, artifacts, the browser, routines, reminders, and connected services such as shops. Read, search, draft, and send mail only with the tools of the connected mail accounts, such as google_mail_draft and google_mail_send, never with a mail app or mail files on a machine; mail takes files of the workspace as attachments. Make a routine or a reminder only when a person asks for it: Golem suggests the others to people itself, and each waits until its person accepts it. Send mail or a message only when people ask you to send it; else draft it. Each send waits until the person allows it, and they see what you send. The codemode section lists them by namespace; describeNamespace() and searchTools() find the rest.";
 /** Added to `INSTRUCTIONS` for an orchestrator, the one thread of a person in a workspace that never ends. */
 const ORCHESTRATOR =
   "This thread is an orchestrator: the own thread of one person of the family, which never ends, where they talk to you first. You are their personal assistant here. Only they read and write this thread, so it is private: the threads of the channels are for the whole family, so give a thread there only what its work needs, and never the person's private matters unless they ask. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the person in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the person what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of this thread and of every thread of the workspace's channels, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
@@ -241,6 +248,8 @@ const CATCH_UP_MS = 2000;
 const BRIEF_CHECK_MS = 5 * 60_000;
 /** A brief takes in a thread's new messages after the thread is quiet this long, or at once when it is settled. */
 const BRIEF_QUIET_MS = 10 * 60_000;
+/** A Live Activity whose work ended waits this long before it ends, in case another thread takes the work on. */
+const ACTIVITY_GRACE_MS = 5000;
 /** The most threads that the channel section lists. */
 const LISTED_THREADS = 30;
 /** Added for the model to a message spoken in a conversation on the phone, whose answer is read aloud. */
@@ -262,6 +271,8 @@ interface SaveSource {
 interface Task extends JsonObject {
   readonly requesterId: string | null;
   readonly requesterName: string | null;
+  /** What gave the work; tasks from before it was kept have none. */
+  readonly source: "routine" | "reminder" | null;
 }
 
 interface Relay extends JsonObject {
@@ -288,6 +299,18 @@ export interface ThreadHooks {
   ) => Promise<{ readonly results: readonly RecallResult[] }>;
   /** Tools of the modules after threads, such as routines, for the agents of a workspace. */
   readonly tools: (workspaceId: string) => Promise<readonly ToolRegistration[]>;
+  /** What a review may not suggest to a person again: their routines, reminders, and suggestions, as lines. */
+  readonly automations: (workspaceId: string, personId: string) => string;
+  /**
+   * Offers a person an automation that a review of `threadId` suggests; `channelId` is where a routine would run.
+   * Nothing is made until the person accepts.
+   */
+  readonly suggest: (
+    workspaceId: string,
+    threadId: string,
+    channelId: string,
+    suggestion: Suggestion
+  ) => void;
   /** The text of a document or PDF for read_file; `null` for a kind of file without text. */
   readonly read: (path: string) => Promise<string | null>;
   /** A JPEG of a picture that read_file cannot open as it is, such as HEIC; `null` when it cannot convert it. */
@@ -359,7 +382,10 @@ export type ThreadBrowser = Pick<
 >;
 
 /** The inboxes of the workspace's people, which agents fill when something needs them. */
-export type ThreadNotifications = Pick<Notifications, "notify">;
+export type ThreadNotifications = Pick<
+  Notifications,
+  "activities" | "endActivity" | "notify" | "startActivity" | "updateActivity"
+>;
 
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
 export class Threads {
@@ -382,6 +408,12 @@ export class Threads {
   private readonly unbriefed = new Map<string, Map<string, number>>();
   /** The channels whose brief the model writes now. */
   private readonly briefing = new Set<string>();
+  /** What Golem learned in each open workspace. */
+  private readonly learned = new Map<string, Learned>();
+  /** The threads with messages that no review has read, with the time of the newest, by thread. */
+  private readonly unreviewed = new Map<string, number>();
+  /** The reviews of each workspace, one after another. */
+  private readonly reviewing = new Map<string, Promise<void>>();
   /** The channels whose emoji the model chooses now. */
   private readonly choosingIcon = new Set<string>();
   private readonly catchUpTimers = new Map<string, Timer>();
@@ -398,6 +430,10 @@ export class Threads {
   });
   /** The actions that wait for a person, by approval id; a wait lasts only as long as its call, so memory keeps them. */
   private readonly approvals = new Map<string, PendingApproval>();
+  /** The Live Activities whose work ended, which end after `ACTIVITY_GRACE_MS`, by token. */
+  private readonly endingActivities = new Map<string, Timer>();
+  /** The updates of the Live Activities of each workspace, one after another. */
+  private readonly updatingActivities = new Map<string, Promise<void>>();
   /** The thread streams that show approvals, by thread. */
   private readonly approvalWatchers = new Map<string, Set<() => void>>();
 
@@ -517,7 +553,12 @@ export class Threads {
     }
     topicOf(
       (systemPrompt, text) =>
-        this.llm.complete(systemPrompt, text, this.background.signal, fast),
+        this.llm.complete(systemPrompt, text, this.background.signal, fast, {
+          workspaceId,
+          userId: null,
+          source: "background",
+          threadId: thread.id,
+        }),
       message
     )
       .then((title) => {
@@ -558,7 +599,8 @@ export class Threads {
         CHANNEL_ICON,
         `<channel>\n${text}\n</channel>`,
         this.background.signal,
-        fast
+        fast,
+        { workspaceId, userId: null, source: "background", threadId: null }
       )
       .then((answer) => {
         const icon = emojiOf(answer);
@@ -601,7 +643,8 @@ export class Threads {
     text: string,
     requestId: string,
     notify: readonly string[] | "everyone",
-    requesterId: string | null
+    requesterId: string | null,
+    source: "routine" | "reminder"
   ): Promise<string | null> {
     const conversation = await this.conversation(thread);
     await this.useCurrentAgent(thread.workspaceId, conversation);
@@ -612,6 +655,7 @@ export class Threads {
     const task: Task = {
       requesterId: requester?.userId ?? null,
       requesterName: requester?.name ?? null,
+      source,
     };
     const submission = await conversation.submit(
       {
@@ -911,16 +955,166 @@ export class Threads {
     pending.answer(allow, scope, user);
   }
 
+  /** The approvals that wait for the person in the threads they see: their own, and those any member may answer. */
+  approvalsFor(
+    workspaceId: string,
+    user: User
+  ): { readonly threadId: string; readonly approval: Approval }[] {
+    this.registry.requireMember(workspaceId, user);
+    const seen = new Set(
+      this.registry
+        .threadsIn(workspaceId, user.id)
+        .filter(
+          (thread) => thread.ownerId === null || thread.ownerId === user.id
+        )
+        .map((thread) => thread.id)
+    );
+    return [...this.approvals.values()]
+      .filter(
+        (pending) =>
+          seen.has(pending.threadId) &&
+          (pending.approval.approverId === null ||
+            pending.approval.approverId === user.id)
+      )
+      .map((pending) => ({
+        threadId: pending.threadId,
+        approval: pending.approval,
+      }));
+  }
+
   private approvalsIn(threadId: string): Approval[] {
     return [...this.approvals.values()]
       .filter((pending) => pending.threadId === threadId)
       .map((pending) => pending.approval);
   }
 
-  private approvalsChanged(threadId: string): void {
-    for (const send of this.approvalWatchers.get(threadId) ?? []) {
+  private approvalsChanged(thread: ThreadRef): void {
+    for (const send of this.approvalWatchers.get(thread.id) ?? []) {
       send();
     }
+    this.updateActivities(thread.workspaceId);
+  }
+
+  /**
+   * Follows the work for the person's newest message in a thread with a Live Activity of their iPhone: its status,
+   * the thread that works on it now, also one that another thread's agent gave it to, and its end.
+   */
+  followActivity(
+    threadId: string,
+    user: User,
+    token: unknown,
+    environment: unknown
+  ): void {
+    const thread = this.registry.thread(threadId, user);
+    this.notifications.startActivity(
+      user,
+      thread.workspaceId,
+      thread.id,
+      token,
+      environment
+    );
+    this.updateActivities(thread.workspaceId);
+  }
+
+  private updateActivities(workspaceId: string): void {
+    const next = (this.updatingActivities.get(workspaceId) ?? Promise.resolve())
+      .then(() => this.updateActivitiesNow(workspaceId))
+      .catch((error: unknown) =>
+        console.error("updating the Live Activities failed", error)
+      );
+    this.updatingActivities.set(workspaceId, next);
+  }
+
+  /**
+   * Gives each Live Activity of a workspace the state of its work: the threads that work for its thread, also through
+   * other threads that it asked. Work that ended ends the activity after `ACTIVITY_GRACE_MS`.
+   */
+  private async updateActivitiesNow(workspaceId: string): Promise<void> {
+    const activities = this.notifications.activities(workspaceId);
+    if (activities.length === 0 || this.background.signal.aborted) {
+      return;
+    }
+    const tree = await this.workTrees(workspaceId);
+    const threads = this.registry.allThreadsIn(workspaceId);
+    for (const activity of activities) {
+      const root = threads.find((thread) => thread.id === activity.threadId);
+      if (!root) {
+        this.notifications.endActivity(activity, null);
+        continue;
+      }
+      const working = tree(root.id);
+      if (working.length > 0) {
+        clearTimeout(this.endingActivities.get(activity.token));
+        this.endingActivities.delete(activity.token);
+        const current = threads.find(
+          (thread) =>
+            thread.id === (working.find((id) => id !== root.id) ?? root.id)
+        )!;
+        this.notifications.updateActivity(activity, {
+          status: working.some((id) => this.approvalsIn(id).length > 0)
+            ? "waiting"
+            : "working",
+          title: current.title,
+          threads: working.length,
+        });
+      } else if (!this.endingActivities.has(activity.token)) {
+        this.endingActivities.set(
+          activity.token,
+          setTimeout(() => {
+            this.endingActivities.delete(activity.token);
+            this.endActivity(workspaceId, root).catch((error: unknown) =>
+              console.error("ending a Live Activity failed", error)
+            );
+          }, ACTIVITY_GRACE_MS)
+        );
+      }
+    }
+  }
+
+  /** Ends the Live Activities of a thread whose work did not start again, with how its last answer went. */
+  private async endActivity(
+    workspaceId: string,
+    root: ThreadSummary & ThreadRef
+  ): Promise<void> {
+    if ((await this.workTrees(workspaceId))(root.id).length > 0) {
+      return;
+    }
+    const last = (await this.messages(root)).messages.at(-1);
+    for (const activity of this.notifications
+      .activities(workspaceId)
+      .filter((candidate) => candidate.threadId === root.id)) {
+      this.notifications.endActivity(activity, {
+        status: last?.failed ? "failed" : "done",
+        title: root.title,
+        threads: 0,
+      });
+    }
+  }
+
+  /** For a thread, the working threads that work for it: itself, and those it asked, also through others. */
+  private async workTrees(
+    workspaceId: string
+  ): Promise<(rootId: string) => string[]> {
+    const working = await this.workingNow(workspaceId);
+    const threads = this.registry.allThreadsIn(workspaceId);
+    const askers = new Map<string, string | undefined>();
+    for (const id of working) {
+      const thread = threads.find((candidate) => candidate.id === id);
+      if (thread) {
+        askers.set(id, await this.askedBy(thread));
+      }
+    }
+    return (rootId) =>
+      working.filter((id) => {
+        let current: string | undefined = id;
+        for (let hops = 0; current && hops <= MAX_HOPS + 1; hops += 1) {
+          if (current === rootId) {
+            return true;
+          }
+          current = askers.get(current);
+        }
+        return false;
+      });
   }
 
   /**
@@ -1026,6 +1220,43 @@ export class Threads {
     ) {
       this.notifyAbout(thread, userId, answer.text);
     }
+  }
+
+  /** Counts what a thread's conversation spent since it last counted, for the person of its latest input. */
+  private async countUsage(
+    workspaceId: string,
+    threadId: string
+  ): Promise<void> {
+    const thread = this.registry
+      .allThreadsIn(workspaceId)
+      .find((candidate) => candidate.id === threadId);
+    if (!thread) {
+      return;
+    }
+    const conversation = await this.conversation(thread);
+    const watch = await conversation.watch(BACKGROUND_CONTEXT);
+    await watch.stop();
+    const usage = watch.value.docs["pi.usage"] as unknown as
+      | ConversationUsage
+      | undefined;
+    if (!usage) {
+      return;
+    }
+    const input = await this.latestInput(conversation);
+    const task =
+      input?.kind === TASK ? (input.data as unknown as Task) : undefined;
+    let source: UsageSource = "thread";
+    if (thread.ownerId) {
+      source = "orchestrator";
+    } else if (task) {
+      source = task.source ?? "routine";
+    }
+    this.llm.recordConversation(thread.conversationId, usage, {
+      workspaceId,
+      userId: task?.requesterId ?? (input && requesterIdOf(input)) ?? null,
+      source,
+      threadId: thread.id,
+    });
   }
 
   /** A notification that opens the thread. */
@@ -1139,10 +1370,18 @@ export class Threads {
 
   async closeAll(): Promise<void> {
     this.background.abort();
-    for (const timer of [...this.catchUpTimers.values(), ...this.briefChecks]) {
+    for (const timer of [
+      ...this.catchUpTimers.values(),
+      ...this.briefChecks,
+      ...this.endingActivities.values(),
+    ]) {
       clearTimeout(timer);
     }
-    await Promise.allSettled(this.catchingUp.values());
+    await Promise.allSettled([
+      ...this.catchingUp.values(),
+      ...this.reviewing.values(),
+      ...this.updatingActivities.values(),
+    ]);
     const sessions = await Promise.allSettled(this.open.values());
     this.open.clear();
     for (const memory of this.memories.values()) {
@@ -1153,6 +1392,10 @@ export class Threads {
       briefs.close();
     }
     this.briefs.clear();
+    for (const learned of this.learned.values()) {
+      learned.close();
+    }
+    this.learned.clear();
     await this.sandbox.close();
     for (const session of sessions) {
       if (session.status === "fulfilled") {
@@ -1388,6 +1631,7 @@ export class Threads {
       if (running) {
         continue;
       }
+      this.noteUnreviewed(workspaceId, thread, messages);
       if (thread.ownerId === null) {
         const through = briefs.through(thread.id);
         const fresh = messages.filter(
@@ -1413,6 +1657,7 @@ export class Threads {
       );
     }
     this.briefWhenQuiet(workspaceId, briefs);
+    this.reviewWhenQuiet(workspaceId);
     for (const channel of this.registry.allChannelsIn(workspaceId)) {
       if (!channel.icon) {
         this.chooseIcon(workspaceId, channel.id);
@@ -1460,7 +1705,12 @@ export class Threads {
         join(directory, "memories", `${orchestrator.id}.sqlite`),
         (threadId, messageId) => this.said(orchestrator, threadId, messageId),
         (systemPrompt, text, signal) =>
-          this.llm.complete(systemPrompt, text, signal),
+          this.llm.complete(systemPrompt, text, signal, undefined, {
+            workspaceId: orchestrator.workspaceId,
+            userId: orchestrator.ownerId,
+            source: "background",
+            threadId: null,
+          }),
         () => this.rememberOrchestrator(orchestrator),
         {
           path: join(directory, "memory.sqlite"),
@@ -1591,6 +1841,241 @@ export class Threads {
     }
   }
 
+  /**
+   * Notes a thread whose new messages no review has read and that a person wrote in. Messages with no person's among
+   * them, such as a routine's answers, teach nothing, so the thread moves past them at once.
+   */
+  private noteUnreviewed(
+    workspaceId: string,
+    thread: ThreadSummary & ThreadRef,
+    messages: readonly Message[]
+  ): void {
+    const learned = this.learned.get(workspaceId);
+    if (!learned) {
+      return;
+    }
+    const fresh = this.unreviewedIn(learned, thread, messages);
+    if (fresh.length === 0) {
+      return;
+    }
+    if (fresh.some((message) => !message.agent && message.authorId)) {
+      this.unreviewed.set(thread.id, fresh.at(-1)!.time);
+    } else {
+      learned.read(thread.id, Number(fresh.at(-1)!.id));
+    }
+  }
+
+  private unreviewedIn(
+    learned: Learned,
+    thread: ThreadRef,
+    messages: readonly Message[]
+  ): Message[] {
+    const through = learned.through(thread.id);
+    const since = learned.since();
+    return messages.filter(
+      (message) =>
+        Number(message.id) > through &&
+        message.time >= since &&
+        !message.streaming
+    );
+  }
+
+  /** Starts a review of each thread that has been quiet as long as a brief waits, or is settled; one at a time. */
+  private reviewWhenQuiet(workspaceId: string): void {
+    const now = Date.now();
+    for (const thread of this.registry.allThreadsIn(workspaceId)) {
+      const newest = this.unreviewed.get(thread.id);
+      if (
+        newest === undefined ||
+        !(now - newest >= BRIEF_QUIET_MS || thread.settledAt !== null)
+      ) {
+        continue;
+      }
+      this.unreviewed.delete(thread.id);
+      const next = (this.reviewing.get(workspaceId) ?? Promise.resolve())
+        .then(() => this.review(workspaceId, thread))
+        .catch((error) => {
+          if (!this.background.signal.aborted) {
+            console.error(`The review of ${thread.title} failed`, error);
+          }
+        });
+      this.reviewing.set(workspaceId, next);
+    }
+  }
+
+  /** Reviews a thread's new messages: what Golem learned changes, and suggestions go to their people. */
+  private async review(
+    workspaceId: string,
+    thread: ThreadSummary & ThreadRef
+  ): Promise<void> {
+    const learned = this.learned.get(workspaceId);
+    if (!learned || this.background.signal.aborted) {
+      return;
+    }
+    const state = await this.messages(thread);
+    if (state.running) {
+      // It runs again: its next quiet time reviews it.
+      return;
+    }
+    const fresh = this.unreviewedIn(learned, thread, state.messages);
+    if (fresh.length === 0) {
+      return;
+    }
+    const people = this.membersSeeing(thread).map((member) => ({
+      id: member.userId,
+      name: member.name,
+    }));
+    const writers = new Set(
+      fresh.flatMap((message) =>
+        !message.agent && message.authorId ? [message.authorId] : []
+      )
+    );
+    const channel =
+      thread.ownerId === null
+        ? (this.registry
+            .allChannelsIn(workspaceId)
+            .find((candidate) => candidate.id === thread.channelId) ?? null)
+        : null;
+    const messages: ReviewMessage[] = fresh.map((message) => ({
+      messageId: Number(message.id),
+      author: message.author,
+      text: messageBody(message),
+      time: message.time,
+    }));
+    const suggestions = await learned.review(
+      {
+        threadId: thread.id,
+        threadTitle: thread.title,
+        channel: channel && { id: channel.id, name: channel.name },
+        realm: thread.realm,
+        people,
+        automations: [...writers]
+          .map((personId) => this.hooks.automations(workspaceId, personId))
+          .filter(Boolean)
+          .join("\n"),
+        messages,
+      },
+      (systemPrompt, text, signal) =>
+        this.llm.complete(systemPrompt, text, signal, undefined, {
+          workspaceId,
+          userId: thread.realm,
+          source: "background",
+          threadId: thread.id,
+        }),
+      this.background.signal
+    );
+    for (const suggestion of suggestions) {
+      // Only a person who wrote here gets one, in a channel they see.
+      if (!writers.has(suggestion.personId)) {
+        continue;
+      }
+      const seen = this.registry.channelsIn(workspaceId, suggestion.personId);
+      const named =
+        suggestion.kind === "routine" && suggestion.channel
+          ? seen.find(
+              (candidate) =>
+                candidate.name.toLowerCase() ===
+                suggestion.channel!.toLowerCase()
+            )
+          : undefined;
+      this.hooks.suggest(
+        workspaceId,
+        thread.id,
+        named?.id ?? thread.channelId,
+        suggestion
+      );
+    }
+  }
+
+  /** What Golem learned that a person sees, for their Settings. */
+  learnedFor(workspaceId: string, user: User): LearnedItem[] {
+    this.registry.requireMember(workspaceId, user);
+    return this.learnedOf(workspaceId).forPerson(user.id);
+  }
+
+  /** Changes the text of an entry that the person sees. */
+  changeLearned(
+    workspaceId: string,
+    user: User,
+    id: number,
+    text: unknown
+  ): LearnedItem {
+    this.registry.requireMember(workspaceId, user);
+    const changed = this.learnedOf(workspaceId).change(
+      id,
+      user.id,
+      required(text, "Text")
+    );
+    if (!changed) {
+      throw notFound();
+    }
+    return changed;
+  }
+
+  /** Removes an entry that the person sees; Golem does not learn it again. */
+  removeLearned(workspaceId: string, user: User, id: number): void {
+    this.registry.requireMember(workspaceId, user);
+    if (!this.learnedOf(workspaceId).remove(id, user.id)) {
+      throw notFound();
+    }
+  }
+
+  private learnedOf(workspaceId: string): Learned {
+    let learned = this.learned.get(workspaceId);
+    if (!learned) {
+      mkdirSync(join(this.dataDirectory, "workspaces", workspaceId), {
+        recursive: true,
+      });
+      learned = new Learned(
+        join(this.dataDirectory, "workspaces", workspaceId, "memory.sqlite")
+      );
+      this.learned.set(workspaceId, learned);
+    }
+    return learned;
+  }
+
+  /**
+   * What Golem learned, for the agent of a thread: the facts about people that its realm sees and the how-tos of its
+   * channel, or of its person in an orchestrator. It changes only when a review or a person changes them.
+   */
+  private learnedSection(workspaceId: string) {
+    return section("learned", ({ conversationId }) => {
+      const thread = this.registry.threadOf(workspaceId, conversationId);
+      if (!thread) {
+        return;
+      }
+      const items = this.learnedOf(workspaceId).forThread(
+        thread.realm,
+        thread.ownerId === null ? thread.channelId : null
+      );
+      if (items.length === 0) {
+        return;
+      }
+      const names = new Map(
+        this.members(workspaceId).map((member) => [member.userId, member.name])
+      );
+      const about = new Map<string, string[]>();
+      for (const item of items.filter((entry) => entry.kind === "about")) {
+        const name = names.get(item.personId ?? "");
+        if (name) {
+          about.set(name, [...(about.get(name) ?? []), `- ${item.text}`]);
+        }
+      }
+      const howtos = items
+        .filter((item) => item.kind === "howto")
+        .map((item) => `- ${item.text}`);
+      return [
+        "What Golem learned from the family's messages. People correct it in Settings, and the facts they wrote themselves win over it.",
+        ...[...about].map(
+          ([name, lines]) => `About ${name}:\n${lines.join("\n")}`
+        ),
+        howtos.length ? `How-tos here:\n${howtos.join("\n")}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    });
+  }
+
   /** The facts that the family wrote by hand in the workspace's settings; they change only when someone edits them. */
   private factsSection(workspaceId: string) {
     return section("facts", () => {
@@ -1603,8 +2088,8 @@ export class Threads {
   }
 
   /**
-   * The channel section of the instructions of a thread in a channel: the channel's brief and its threads, newest
-   * first. It changes only when they do, so it keeps the prompt cache.
+   * The channel section of the instructions of a thread in a channel: the channel's brief and its newest threads, by
+   * title. It has no times and no order by time, so a message in another thread keeps this thread's prompt cache.
    */
   private channelSection(workspaceId: string) {
     return section("channel", ({ conversationId }) => {
@@ -1622,16 +2107,17 @@ export class Threads {
       );
       const listed = others
         .slice(0, LISTED_THREADS)
+        .sort((a, b) => a.title.localeCompare(b.title))
         .map(
           (candidate) =>
-            `- ${threadLink(candidate)}: ${candidate.settledAt === null ? "open" : "settled"}, last message from a person ${minute(candidate.updatedAt)} UTC`
+            `- ${threadLink(candidate)}: ${candidate.settledAt === null ? "open" : "settled"}`
         );
       const older = others.length - listed.length;
       return [
         `This thread is in #${channel.name}.`,
         `The brief of #${channel.name}:\n${brief?.text ?? "No brief yet."}`,
         listed.length
-          ? `The other threads of #${channel.name}, newest first:\n${listed.join("\n")}${older > 0 ? `\n- and ${older} older threads` : ""}`
+          ? `The newest other threads of #${channel.name}, by title:\n${listed.join("\n")}${older > 0 ? `\n- and ${older} older threads` : ""}`
           : `#${channel.name} has no other threads.`,
       ].join("\n\n");
     });
@@ -1701,9 +2187,16 @@ export class Threads {
     const briefs = new Briefs(
       join(this.dataDirectory, "workspaces", workspaceId, "memory.sqlite"),
       (systemPrompt, text, signal) =>
-        this.llm.complete(systemPrompt, text, signal)
+        this.llm.complete(systemPrompt, text, signal, undefined, {
+          workspaceId,
+          userId: null,
+          source: "background",
+          threadId: null,
+        })
     );
     this.briefs.set(workspaceId, briefs);
+    // Reviews start with the messages after this, so it opens before the first message of a new workspace.
+    this.learnedOf(workspaceId);
     const memory = memoryExtension(async (conversationId) => {
       const orchestrator = this.registry.threadOf(workspaceId, conversationId);
       return orchestrator?.ownerId ? this.memoryOf(orchestrator) : undefined;
@@ -1742,11 +2235,15 @@ export class Threads {
     let working = this.workingIn(workspaceId, changes.value);
     changes.start(async (graph) => {
       this.hooks.changed(workspaceId);
+      this.updateActivities(workspaceId);
       this.catchUp(workspaceId);
       const now = this.workingIn(workspaceId, graph);
       for (const threadId of working.filter((id) => !now.includes(id))) {
         this.notifyFinished(workspaceId, threadId).catch((error: unknown) =>
           console.error("notifying a finished run failed", error)
+        );
+        this.countUsage(workspaceId, threadId).catch((error: unknown) =>
+          console.error("counting the usage of a run failed", error)
         );
       }
       working = now;
@@ -1830,6 +2327,7 @@ export class Threads {
       tools,
       sections: [
         this.factsSection(workspaceId),
+        this.learnedSection(workspaceId),
         this.hands.section(workspaceId, requesterOf),
         this.channelSection(workspaceId),
       ],
@@ -1961,7 +2459,7 @@ export class Threads {
         clearTimeout(timer);
         signal?.removeEventListener("abort", stopped);
         this.approvals.delete(approval.id);
-        this.approvalsChanged(thread.id);
+        this.approvalsChanged(thread);
         if (outcome instanceof Error) {
           reject(outcome);
         } else {
@@ -1980,7 +2478,7 @@ export class Threads {
         answer: (allow, scope, by) =>
           end(allow ? scope : new Error(`${by.name} did not allow this.`)),
       });
-      this.approvalsChanged(thread.id);
+      this.approvalsChanged(thread);
       for (const userId of approverId ? [approverId] : members) {
         this.notifyAbout(thread, userId, `Allow? ${text}`);
       }

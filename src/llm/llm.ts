@@ -7,6 +7,7 @@ import type {
   CredentialStore,
   Model,
   ModelThinkingLevel,
+  Usage,
 } from "@earendil-works/pi-ai";
 import {
   clampThinkingLevel,
@@ -56,7 +57,59 @@ export interface LlmStatus {
   readonly provider: string;
 }
 
+/** What a model call was for: a person's thread, their orchestrator, a routine run, a reminder, or work for nobody. */
+export type UsageSource =
+  | "thread"
+  | "orchestrator"
+  | "routine"
+  | "reminder"
+  | "background";
+
+/** Whom a model call's cost counts for. */
+export interface Spend {
+  readonly workspaceId: string;
+  /** The person whose turn or memory it was; null for work that acts for no person, such as a brief. */
+  readonly userId: string | null;
+  readonly source: UsageSource;
+  readonly threadId: string | null;
+}
+
+/** The cumulative usage of one conversation by model or tool, as Pi Durable keeps it in `pi.usage`. */
+export interface ConversationUsage {
+  readonly models: Readonly<Record<string, Usage>>;
+  readonly tools: Readonly<Record<string, Usage>>;
+}
+
+/** Tokens and cost of some model calls. `input` leaves out the tokens read from the prompt cache. */
+export interface UsageTotals {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  /** In US dollars at the model's list price; a ChatGPT login pays its plan instead. */
+  readonly cost: number;
+}
+
+/** The usage of the last days in a workspace that one person may see, newest day last. */
+export interface UsageReport {
+  readonly days: readonly (UsageTotals & { readonly day: string })[];
+  readonly total: UsageTotals;
+  readonly sources: readonly (UsageTotals & { readonly source: UsageSource })[];
+  readonly models: readonly (UsageTotals & { readonly model: string })[];
+  readonly threads: readonly (UsageTotals & { readonly threadId: string })[];
+  /** Each person's usage, and `""` for work for nobody; only for the server's owner, else null. */
+  readonly people:
+    | readonly (UsageTotals & { readonly userId: string })[]
+    | null;
+}
+
 const DEFAULT_EFFORT: ModelThinkingLevel = "medium";
+/** The most days a usage report covers. */
+const MAX_USAGE_DAYS = 366;
+/** The threads that cost most, which a usage report lists. */
+const TOP_THREADS = 10;
+const TOTALS =
+  "sum(input) AS input, sum(output) AS output, sum(cache_read) AS cacheRead, sum(cache_write) AS cacheWrite, sum(cost) AS cost";
 
 /**
  * The one LLM provider every workspace's agents use, connected once with ChatGPT device login. Only the server's owner,
@@ -243,7 +296,8 @@ export class Llm {
     systemPrompt: string,
     text: string,
     signal?: AbortSignal,
-    modelId = this.model()
+    modelId = this.model(),
+    spend?: Spend
   ): Promise<string> {
     const model = this.find(modelId);
     if (!model) {
@@ -258,12 +312,127 @@ export class Llm {
       },
       { reasoning: effort === "off" ? undefined : effort, signal }
     );
+    if (spend) {
+      this.record(spend, `${this.providerId}/${modelId}`, answer.usage);
+    }
     if (answer.stopReason === "error" || answer.stopReason === "aborted") {
       throw new Error(answer.errorMessage ?? "The model did not answer");
     }
     return answer.content
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("");
+  }
+
+  /**
+   * Counts what a conversation spent since the last call for it: `usage` is its whole usage so far, and only the
+   * difference counts, so a run counts once, also after a restart.
+   */
+  recordConversation(
+    conversationId: number,
+    usage: ConversationUsage,
+    spend: Spend
+  ): void {
+    const seenRow = this.database
+      .query(
+        "SELECT usage FROM llm_usage_seen WHERE workspace_id = ? AND conversation_id = ?"
+      )
+      .get(spend.workspaceId, conversationId) as { usage: string } | null;
+    const seen = seenRow
+      ? (JSON.parse(seenRow.usage) as ConversationUsage)
+      : { models: {}, tools: {} };
+    this.database.transaction(() => {
+      for (const [bucket, prefix] of [
+        ["models", ""],
+        ["tools", "tool:"],
+      ] as const) {
+        for (const [key, now] of Object.entries(usage[bucket])) {
+          const delta = minus(now, seen[bucket][key]);
+          if (delta) {
+            this.record(spend, `${prefix}${key}`, delta);
+          }
+        }
+      }
+      this.database
+        .query(
+          "INSERT INTO llm_usage_seen (workspace_id, conversation_id, usage) VALUES (?, ?, ?) ON CONFLICT (workspace_id, conversation_id) DO UPDATE SET usage = excluded.usage"
+        )
+        .run(spend.workspaceId, conversationId, JSON.stringify(usage));
+    })();
+  }
+
+  /**
+   * The usage of a workspace in its last `days` days, by day in UTC: the person's own, and for the server's owner
+   * also everyone's, with each person's share.
+   */
+  usage(workspaceId: string, user: User, days: number): UsageReport {
+    const span = Math.min(Math.max(Math.floor(days) || 30, 1), MAX_USAGE_DAYS);
+    const from = new Date(Date.now() - (span - 1) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const owner = this.isOwner(user);
+    const where = `workspace_id = ? AND day >= ?${owner ? "" : " AND user_id = ?"}`;
+    const values = owner ? [workspaceId, from] : [workspaceId, from, user.id];
+    const query = <Row>(columns: string, groupBy: string, tail = "") =>
+      (
+        this.database
+          .query(
+            `SELECT ${columns}, ${TOTALS} FROM llm_usage WHERE ${where} GROUP BY ${groupBy} ${tail}`
+          )
+          .all(...values) as (Row & UsageTotals)[]
+      ).map((row) => ({ ...row, ...totalsOf(row) }));
+    const total = this.database
+      .query(`SELECT ${TOTALS} FROM llm_usage WHERE ${where}`)
+      .get(...values) as UsageTotals;
+    return {
+      days: query<{ day: string }>("day", "day", "ORDER BY day"),
+      total: totalsOf(total),
+      sources: query<{ source: UsageSource }>(
+        "source",
+        "source",
+        "ORDER BY cost DESC, input + output DESC"
+      ),
+      models: query<{ model: string }>(
+        "model",
+        "model",
+        "ORDER BY cost DESC, input + output DESC"
+      ),
+      threads: query<{ threadId: string }>(
+        "thread_id AS threadId",
+        "thread_id",
+        `HAVING thread_id != '' ORDER BY cost DESC, input + output DESC LIMIT ${TOP_THREADS}`
+      ),
+      people: owner
+        ? query<{ userId: string }>(
+            "user_id AS userId",
+            "user_id",
+            "ORDER BY cost DESC, input + output DESC"
+          )
+        : null,
+    };
+  }
+
+  private record(spend: Spend, model: string, usage: Usage): void {
+    this.database
+      .query(
+        `INSERT INTO llm_usage (workspace_id, day, user_id, source, thread_id, model, input, output, cache_read, cache_write, cost)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (workspace_id, day, user_id, source, thread_id, model) DO UPDATE SET
+          input = input + excluded.input, output = output + excluded.output, cache_read = cache_read + excluded.cache_read,
+          cache_write = cache_write + excluded.cache_write, cost = cost + excluded.cost`
+      )
+      .run(
+        spend.workspaceId,
+        new Date().toISOString().slice(0, 10),
+        spend.userId ?? "",
+        spend.source,
+        spend.threadId ?? "",
+        model,
+        usage.input,
+        usage.output,
+        usage.cacheRead,
+        usage.cacheWrite,
+        usage.cost.total
+      );
   }
 
   private find(id: string): Model<Api> | undefined {
@@ -279,6 +448,43 @@ export class Llm {
     setSetting(this.database, "llm.deviceId", id);
     return id;
   }
+}
+
+/** `now` less `before`, or null when nothing changed. */
+function minus(now: Usage, before: Usage | undefined): Usage | null {
+  const delta = {
+    input: now.input - (before?.input ?? 0),
+    output: now.output - (before?.output ?? 0),
+    cacheRead: now.cacheRead - (before?.cacheRead ?? 0),
+    cacheWrite: now.cacheWrite - (before?.cacheWrite ?? 0),
+    cost: now.cost.total - (before?.cost.total ?? 0),
+  };
+  if (Object.values(delta).every((value) => value === 0)) {
+    return null;
+  }
+  return {
+    ...delta,
+    totalTokens:
+      delta.input + delta.output + delta.cacheRead + delta.cacheWrite,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: delta.cost,
+    },
+  };
+}
+
+/** The totals of a row, with zeros for a sum over no rows. */
+function totalsOf(row: UsageTotals): UsageTotals {
+  return {
+    input: row.input ?? 0,
+    output: row.output ?? 0,
+    cacheRead: row.cacheRead ?? 0,
+    cacheWrite: row.cacheWrite ?? 0,
+    cost: row.cost ?? 0,
+  };
 }
 
 /** pi-ai credentials in the `provider_credential` table, encrypted. Writes run one at a time per provider. */

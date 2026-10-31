@@ -1,7 +1,9 @@
+import ActivityKit
 import SwiftUI
 import UserNotifications
 
-/// Pushes: this device's token for Golem, and the push the person tapped until a screen opens it.
+/// Pushes: this device's token for Golem, the push or Live Activity the person tapped until a screen opens it, and the
+/// Live Activities that Golem updates by push.
 @Observable
 final class Push {
     static let shared = Push()
@@ -31,6 +33,35 @@ final class Push {
         let center = UNUserNotificationCenter.current()
         let granted = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
         if granted == true { UIApplication.shared.registerForRemoteNotifications() }
+    }
+
+    /// The thread of a Live Activity's link (`ThreadActivityAttributes.url`), as a tapped push gives it.
+    static func tapped(_ url: URL) -> Tapped? {
+        let path = url.pathComponents
+        guard url.scheme == "golem", let workspaceID = url.host(), path.count == 3, path[1] == "thread" else {
+            return nil
+        }
+        return Tapped(workspaceID: workspaceID, destination: .thread(path[2]))
+    }
+
+    /// Starts a Live Activity that follows the work for the person's new message in a thread, in place of one that
+    /// follows an older message there, and gives Golem each of its push tokens. Golem updates and ends it.
+    static func followWork(workspaceID: String, threadID: String, title: String, api: APIClient) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        Task {
+            for older in Activity<ThreadActivityAttributes>.activities where older.attributes.threadId == threadID {
+                await older.end(nil, dismissalPolicy: .immediate)
+            }
+            let attributes = ThreadActivityAttributes(workspaceId: workspaceID, threadId: threadID, startedAt: .now)
+            let state = ThreadActivityAttributes.ContentState(status: .working, title: title, threads: 1)
+            guard let activity = try? Activity.request(
+                attributes: attributes, content: .init(state: state, staleDate: nil), pushType: .token
+            ) else { return }
+            for await token in activity.pushTokenUpdates {
+                let hex = token.map { String(format: "%02x", $0) }.joined()
+                try? await api.followActivity(threadID: threadID, token: hex, environment: environment)
+            }
+        }
     }
 }
 

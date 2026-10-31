@@ -17,6 +17,8 @@ struct ConversationView: View {
     @State private var files: [URL] = []
     @State private var sending = false
     @State private var preview: URL?
+    /// The routines and reminders Golem suggests to the person, in their orchestrator only.
+    @State private var suggestions: [Suggestion] = []
     @Environment(\.phoneTabBar) private var tabBar
     @Environment(\.scenePhase) private var scenePhase
 
@@ -123,6 +125,13 @@ struct ConversationView: View {
         .task(id: scenePhase == .background) {
             if scenePhase != .background { await follow() }
         }
+        // Golem suggests from quiet threads, so the orchestrator looks again when its own work ends.
+        .task(id: state?.running) {
+            guard isOrchestrator, state?.running != true, let workspace = session.workspace else { return }
+            if let upcoming = try? await session.api.upcoming(workspaceID: workspace.id) {
+                suggestions = upcoming.suggestions
+            }
+        }
         // Thread links in messages open the thread here instead of leaving the app.
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "thread" else { return .systemAction }
@@ -136,12 +145,17 @@ struct ConversationView: View {
         (state?.approvals ?? []).filter { $0.approverId == nil || $0.approverId == session.user?.id }
     }
 
-    /// The approvals and the working line over the composer; a conversation takes the composer's place.
+    /// The approvals, the suggestions, and the working line over the composer; a conversation takes the composer's
+    /// place.
     private var bottomBar: some View {
         ComposerRow {
             VStack(alignment: .leading, spacing: Tokens.Space.sm) {
                 ForEach(approvals) { approval in
                     ApprovalCard(approval: approval, threadID: threadID)
+                }
+                ForEach(suggestions) { suggestion in
+                    SuggestionCard(suggestion: suggestion) { suggestions.removeAll { $0.id == suggestion.id } }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 if state?.running == true {
                     HStack {
@@ -166,6 +180,7 @@ struct ConversationView: View {
             }
             .animation(.snappy, value: state?.running)
             .animation(.snappy, value: talk.isOn)
+            .animation(.snappy, value: suggestions)
         }
     }
 
@@ -197,6 +212,12 @@ struct ConversationView: View {
                 try await session.api.sendMessage(threadID: threadID, text: text, files: files)
                 draft = ""
                 files = []
+                if let workspace = session.workspace {
+                    Push.followWork(
+                        workspaceID: workspace.id, threadID: threadID,
+                        title: isOrchestrator ? "Golem" : state?.thread.title ?? "", api: session.api
+                    )
+                }
             }
             sending = false
         }

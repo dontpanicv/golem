@@ -183,6 +183,55 @@ type Llm = {
 	login: { userCode: string; verificationUri: string; expiresAt: number } | null; // set for the owner while a device login waits
 	error: string | null; // the last login error
 };
+type UsageTotals = { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; input leaves out cacheRead, the tokens read from the prompt cache; cost in US dollars at the model's list price, which a ChatGPT login does not pay
+type UsageSource = "thread" | "orchestrator" | "routine" | "reminder" | "background"; // background: briefs, memory, names, emojis, and what Golem learns
+type Usage = {
+	days: (UsageTotals & { day: string })[]; // "YYYY-MM-DD" in UTC, oldest first; a day without use is left out
+	total: UsageTotals;
+	sources: (UsageTotals & { source: UsageSource })[]; // most cost first
+	models: (UsageTotals & { model: string })[]; // "provider/model", or "tool:<name>" for a tool's own model calls
+	threads: (UsageTotals & { threadId: string; title: string })[]; // the 10 that cost most, of those the person sees
+	people: (UsageTotals & { userId: string; name: string })[] | null; // only for the server's owner; userId "" is work for nobody, named "Golem"
+};
+type Learned = {
+	id: number;
+	kind: "about" | "howto"; // about: a fact about a person; howto: how to do a task for the family in a channel
+	personId: string | null; // the person an "about" is about
+	channelId: string | null; // the channel of a "howto"; null for one of the person's own orchestrator
+	realm: string | null; // the person who alone sees it, because it came from their private channel or orchestrator; null: every member
+	text: string;
+	threadId: string | null; // where Golem learned it
+	updatedAt: number;
+};
+type Suggestion = {
+	id: string;
+	kind: "routine" | "reminder";
+	name: string; // the routine's name, or the reminder's text
+	text: string; // the routine's instructions, or the reminder's text
+	schedule: string | null; // a routine's cron expression in the server's time zone
+	at: number | null; // when the reminder is due, or the routine's first run
+	channelId: string; // where the routine would run
+	threadId: string; // the thread whose messages gave it
+	createdAt: number;
+};
+type Reminder = {
+	id: string;
+	threadId: string; // where its agent reminds
+	recipientId: string;
+	createdBy: string | null; // the person who asked for it
+	text: string;
+	dueAt: number;
+	timeZone: string;
+	deliveredAt: number | null;
+	cancelledAt: number | null;
+};
+type Upcoming = {
+	routines: Routine[]; // every routine the person sees
+	reminders: Reminder[]; // pending, for the person or from them, soonest first
+	suggestions: Suggestion[]; // oldest first; at most 3
+	approvals: { threadId: string; approval: Approval }[]; // what waits for the person to allow it
+};
+type ActivityState = { status: "working" | "waiting" | "done" | "failed"; title: string; threads: number }; // a Live Activity's content state: waiting: for the person to allow an action; title: the thread that works now, or the message's thread at the end; threads: how many work on it now
 ```
 
 ## Endpoints
@@ -218,6 +267,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice?, requestId? }` | `204`; a retry with the same `requestId` sends nothing again |
 | `POST /api/v1/threads/:threadId/approvals/:approvalId` | `{ allow: boolean, scope: "once" \| "turn" }` | `204`; `allow` runs the command once, or with `"turn"` also the rest of the turn's flagged commands on that machine. `403` for a person who is not the approver; `404` when the approval ended or the person is not a member |
+| `POST /api/v1/threads/:threadId/live-activity` | `{ token, environment }` | `204`; a Live Activity of the iPhone, with this push token in hex and `"sandbox"` or `"production"`, follows the work for the person's newest message in the thread. Golem pushes an `ActivityState` when it changes, an alert while it waits for the person, and the end 5 seconds after the last thread of the work stops, with the last state, which iOS dismisses 2 minutes later. A newer activity of the person for the thread ends the older one. |
 | `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
 | `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/brief` | | `{ brief: Brief \| null }`: what the channel is for, where it is now, its decisions, its open questions, and what each person wants; `null` before the first |
@@ -247,6 +297,20 @@ in the first channel, but no `Channel.threads` list shows it, and it cannot be s
 message of its own thread, of every thread of the channels every member sees, and of its person's private channels, and
 no other person's orchestrator or private channel: see `src/threads/memory.ts`. The workspace's one orchestrator from before each member had one belongs to the person who
 made the workspace.
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/learned` | | `{ learned: Learned[] }`: what Golem learned that the person sees, facts first |
+| `PUT /api/v1/workspaces/:workspaceId/learned/:id` | `{ text }` | `Learned`; any person who sees an entry corrects it |
+| `DELETE /api/v1/workspaces/:workspaceId/learned/:id` | | `204`; Golem does not learn it again |
+
+After a thread with a person's new messages is quiet for 10 minutes, or settled, the model reviews those messages
+(`src/threads/learned.ts`): it adds, changes, and removes facts about the people of the thread and the how-tos of its
+channel, or of the person in their orchestrator. An entry from a private channel or an orchestrator belongs to that
+person's realm. Every agent reads the entries that its realm sees before each answer, after the family's facts, and
+the facts that people wrote win. The review can also suggest a routine or a reminder to a person who wrote in the
+thread, when they asked for the same thing more than once or named a regular or later time: see Agenda. Reviews read
+only messages after the first start of the version that has them.
 
 Each channel has a brief, which the model writes again from the new messages of the channel's threads when they are
 quiet for 10 minutes or settled, and the channel's summary with it. Every thread of the channel reads the brief and the
@@ -397,7 +461,19 @@ Agents in every thread of a workspace, including its orchestrator, have `reminde
 `reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source thread. It runs once when
 its saved UTC time is due, or when Golem starts again after that time. Its turn is for the person who asked for it or
 last changed it, not for its recipient; a reminder from before this rule uses only the shared credentials.
-Reminders have no user-facing web or JSON routes.
+Agents make and change reminders; a person sees their pending ones in Upcoming and cancels one there.
+
+### Agenda (`src/agenda/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/upcoming` | | `Upcoming`: what Golem runs for the person and what waits for them |
+| `POST /api/v1/workspaces/:workspaceId/suggestions/:suggestionId` | `{ accept: boolean }` | `204`; `accept` makes the routine in its channel, or the reminder in the person's orchestrator, both as theirs; else Golem does not suggest it again. `404` for another person's suggestion; `409` when its channel is gone or its time has passed |
+| `DELETE /api/v1/workspaces/:workspaceId/reminders/:reminderId` | | `204`; cancels a pending reminder for the person or from them; `404` for another one; `409` while it runs or after it was delivered |
+
+Golem suggests and never makes an automation itself: a suggestion waits, with no push, until its person accepts or
+declines it. A person has at most 3 waiting; Golem drops one with the same name as one they already had, and one whose
+schedule or time cannot run.
 
 ### Machines (`src/hands/`)
 
@@ -430,9 +506,11 @@ the contract of `hands/docs/pairing.md`, with Golem in the phone's place.
 | `POST /api/v1/llm/logout` | | `Llm` |
 | `PUT /api/v1/llm/model` | `{ model }` | `Llm` |
 | `PUT /api/v1/llm/effort` | `{ effort }` | `Llm`; `400` when the model does not support it |
+| `GET /api/v1/workspaces/:workspaceId/usage?days=30` | | `Usage` of the last `days` days, 1 to 366 |
 
 Only the server's owner, the first email in `allowed_emails`, logs in, logs out, and chooses the model and the effort;
-these routes answer `403` to other people.
+these routes answer `403` to other people. Usage is each person's own; the owner sees everyone's, and each person's
+share. Each run counts once, at its end, for the person of its message.
 
 ### Server (`src/app/`)
 

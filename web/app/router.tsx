@@ -5,6 +5,7 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 import { LoginPage } from "../accounts/login.tsx";
+import { SuggestionCards, UpcomingPage } from "../agenda/page.tsx";
 import { InboxPage } from "../notifications/page.tsx";
 import { ChannelDetails } from "../routines/details.tsx";
 import { SearchPage } from "../search/page.tsx";
@@ -98,13 +99,20 @@ const thread = createRoute({
   getParentRoute: () => workspace,
   path: "/t/$threadId",
   validateSearch: withArtifact,
-  component: ThreadPage,
+  // The suggestions over the orchestrator's composer come from the agenda module, which comes after threads.
+  component: () => <ThreadPage orchestratorCards={<SuggestionCards />} />,
 });
 
 const inbox = createRoute({
   getParentRoute: () => workspace,
   path: "/inbox",
   component: InboxPage,
+});
+
+const upcoming = createRoute({
+  getParentRoute: () => workspace,
+  path: "/upcoming",
+  component: UpcomingPage,
 });
 
 const searchRoute = createRoute({
@@ -132,6 +140,7 @@ export const router = createRouter({
         channel,
         thread,
         inbox,
+        upcoming,
         searchRoute,
         workspaceSettings,
       ]),

@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { AppSignIns } from "../accounts/accounts.ts";
+import { Agenda } from "../agenda/agenda.ts";
 import { Artifacts } from "../artifacts/artifacts.ts";
 import { Browser, browserRequirements } from "../browser/browser.ts";
 import { Hands, handsRequirements } from "../hands/hands.ts";
@@ -38,6 +39,7 @@ export interface App {
   readonly recentSearches: RecentSearches;
   readonly routines: Routines;
   readonly reminders: Reminders;
+  readonly agenda: Agenda;
 }
 
 const HANDS_BINARIES = resolve(import.meta.dir, "../../hands/dist");
@@ -107,18 +109,20 @@ export async function createApp(
     indexer.touch(workspaceId)
   );
   const browser = new Browser();
+  const apns = config.apns
+    ? apnsPush({
+        ...config.apns,
+        privateKey: readFileSync(
+          join(config.configDirectory, "apns.p8"),
+          "utf8"
+        ),
+      })
+    : null;
   const notifications = new Notifications(
     database,
     workspaces,
-    config.apns
-      ? apnsPush({
-          ...config.apns,
-          privateKey: readFileSync(
-            join(config.configDirectory, "apns.p8"),
-            "utf8"
-          ),
-        })
-      : null
+    apns?.push ?? null,
+    apns?.activityPush ?? null
   );
   // The recall port points at the indexer too; files read as search reads them.
   // The routine tools come from routines, which runs its work in threads.
@@ -139,6 +143,10 @@ export async function createApp(
         ...(await routines.tools(workspaceId)),
         ...reminders.tools(workspaceId),
       ],
+      automations: (workspaceId, personId) =>
+        agenda.automations(workspaceId, personId),
+      suggest: (workspaceId, threadId, channelId, suggestion) =>
+        agenda.offer(workspaceId, threadId, channelId, suggestion),
       read: readText,
       picture: jpeg,
     }
@@ -158,6 +166,7 @@ export async function createApp(
     indexer
   );
   const reminders = new Reminders(database, workspaces, threads);
+  const agenda = new Agenda(database, workspaces, threads, routines, reminders);
   return {
     config,
     database,
@@ -174,6 +183,7 @@ export async function createApp(
     recentSearches: new RecentSearches(database),
     routines,
     reminders,
+    agenda,
   };
 }
 

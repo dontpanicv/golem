@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 
 /// The LLM provider, which the whole server shares and only its owner changes, the person's machines and integrations
-/// in the workspace, and the account.
+/// in the workspace, the use of the model, what Golem learned, and the account. `open` opens a thread of the usage.
 struct SettingsView: View {
+    let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var llm: Llm?
     /// The signed shortcuts of the build (ios/scripts/make-shortcuts.py), for the Action button and Back Tap.
@@ -93,6 +94,8 @@ struct SettingsView: View {
             if let workspace = session.workspace {
                 MachinesSection(workspaceID: workspace.id)
                 IntegrationsSection(workspaceID: workspace.id)
+                UsageSection(workspaceID: workspace.id, open: open)
+                LearnedSection(workspaceID: workspace.id)
             }
             if llm?.owner == true {
                 SettingsCard(title: "Server") {
