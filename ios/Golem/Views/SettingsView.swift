@@ -1,8 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// The LLM provider, which the whole server shares and only its owner changes, the person's machines and integrations
-/// in the workspace, the use of the model, what Golem learned, and the account. `open` opens a thread of the usage.
+/// The person's integrations, what Golem learned, machines, the use of the model, the voice, shortcuts, the LLM
+/// provider, which the whole server shares and only its owner changes, and the account, most used first. `open` opens
+/// a thread of the usage.
 struct SettingsView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
@@ -14,6 +15,35 @@ struct SettingsView: View {
 
     var body: some View {
         SettingsList {
+            if let workspace = session.workspace {
+                IntegrationsSection(workspaceID: workspace.id)
+                LearnedSection(workspaceID: workspace.id)
+                MachinesSection(workspaceID: workspace.id)
+                UsageSection(workspaceID: workspace.id, open: open)
+            }
+            if Speaker.isBundled {
+                SettingsCard(title: "Conversation") {
+                    SettingsRow("Voice") {
+                        GolemSelect(
+                            selection: Binding(get: { Speaker.shared.voice }, set: chooseVoice),
+                            options: Speaker.voices.map(\.id),
+                            title: voiceLabel
+                        )
+                        .accessibilityLabel("Voice")
+                    }
+                }
+            }
+            if !shortcuts.isEmpty {
+                SettingsCard(title: "Shortcuts") {
+                    ForEach(shortcuts, id: \.name) { shortcut in
+                        SettingsRow(shortcut.name) {
+                            // The share sheet's Shortcuts app imports it.
+                            ShareLink(item: shortcut.url) { Text("Add") }
+                                .buttonStyle(.secondary)
+                        }
+                    }
+                }
+            }
             SettingsCard(title: "LLM provider") {
                 if let llm {
                     SettingsRow(llm.provider, description: llm.error, descriptionColor: Tokens.Mobile.Colors.danger) {
@@ -67,35 +97,6 @@ struct SettingsView: View {
                 } else {
                     ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.settingsRow)
                 }
-            }
-            if Speaker.isBundled {
-                SettingsCard(title: "Conversation") {
-                    SettingsRow("Voice") {
-                        GolemSelect(
-                            selection: Binding(get: { Speaker.shared.voice }, set: chooseVoice),
-                            options: Speaker.voices.map(\.id),
-                            title: voiceLabel
-                        )
-                        .accessibilityLabel("Voice")
-                    }
-                }
-            }
-            if !shortcuts.isEmpty {
-                SettingsCard(title: "Shortcuts") {
-                    ForEach(shortcuts, id: \.name) { shortcut in
-                        SettingsRow(shortcut.name) {
-                            // The share sheet's Shortcuts app imports it.
-                            ShareLink(item: shortcut.url) { Text("Add") }
-                                .buttonStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            if let workspace = session.workspace {
-                MachinesSection(workspaceID: workspace.id)
-                IntegrationsSection(workspaceID: workspace.id)
-                UsageSection(workspaceID: workspace.id, open: open)
-                LearnedSection(workspaceID: workspace.id)
             }
             if llm?.owner == true {
                 SettingsCard(title: "Server") {

@@ -26,7 +26,7 @@ import { FloatingSidebarButton, Shell } from "../workspaces/shell.tsx";
 
 const workspaceRoute = getRouteApi("/signed-in/w/$workspaceId/settings");
 
-/** A workspace's name, members, and facts; each person's machines and integrations are in Settings. */
+/** A workspace's facts, members, and name, most used first; each person's machines and integrations are in Settings. */
 export function WorkspaceSettingsPage() {
   const { workspaceId } = workspaceRoute.useParams();
   const workspace = useMe().workspaces.find(
@@ -36,23 +36,23 @@ export function WorkspaceSettingsPage() {
     <section className="conversation">
       <FloatingSidebarButton />
       <PageContent title={workspace.name}>
+        <PageSection title="Facts">
+          <FactsSection workspaceId={workspaceId} />
+        </PageSection>
+        <PageSection title="Members">
+          <MembersSection workspace={workspace} />
+        </PageSection>
         {workspace.role === "owner" ? (
           <PageSection title="Workspace">
             <WorkspaceSection workspace={workspace} />
           </PageSection>
         ) : null}
-        <PageSection title="Members">
-          <MembersSection workspace={workspace} />
-        </PageSection>
-        <PageSection title="Facts">
-          <FactsSection workspaceId={workspaceId} />
-        </PageSection>
       </PageContent>
     </section>
   );
 }
 
-/** The LLM provider and its usage, the person's machines and integrations in the workspace, what Golem learned, and the account. The sidebar keeps the last workspace, so settings feel like part of the app. */
+/** The person's integrations, what Golem learned, machines, usage, the LLM provider, and the account, most used first. The sidebar keeps the last workspace, so settings feel like part of the app. */
 export function SettingsPage() {
   const { user, workspaces } = useMe();
   const { data: llm } = useQuery(llmQuery);
@@ -65,25 +65,25 @@ export function SettingsPage() {
       <section className="conversation">
         <FloatingSidebarButton />
         <PageContent title="Settings">
-          <PageSection title="LLM provider">
-            <LlmCard />
-          </PageSection>
           {workspace ? (
             <>
-              <PageSection title="Usage">
-                <UsageSection workspaceId={workspace.id} />
-              </PageSection>
-              <PageSection title="Machines">
-                <MachinesSection workspaceId={workspace.id} />
-              </PageSection>
               <PageSection title="Integrations">
                 <IntegrationsSection workspaceId={workspace.id} />
               </PageSection>
               <PageSection title="What Golem learned">
                 <LearnedSection workspaceId={workspace.id} />
               </PageSection>
+              <PageSection title="Machines">
+                <MachinesSection workspaceId={workspace.id} />
+              </PageSection>
+              <PageSection title="Usage">
+                <UsageSection workspaceId={workspace.id} />
+              </PageSection>
             </>
           ) : null}
+          <PageSection title="LLM provider">
+            <LlmCard />
+          </PageSection>
           {llm?.owner ? (
             <PageSection title="Server">
               <SettingsCard>

@@ -17,18 +17,25 @@ struct WorkspaceSettingsView: View {
 
     var body: some View {
         SettingsList {
-            if session.workspace?.role == "owner" {
-                SettingsCard(title: "Workspace") {
-                    HStack(spacing: Tokens.Space.md) {
-                        GolemTextField(nil, placeholder: "Name", text: $name)
-                            .onSubmit(rename)
-                            .accessibilityLabel("Name")
-                        Button("Save", action: rename)
-                            .buttonStyle(.secondary)
-                            .disabled(!renamed)
-                    }
-                    .padding(Tokens.Space.xl)
+            SettingsCard(title: "Facts") {
+                VStack(alignment: .trailing, spacing: Tokens.Space.md) {
+                    TextField(
+                        "Facts", text: $facts,
+                        prompt: Text("Names, birthdays, addresses, work")
+                            .foregroundStyle(Tokens.Mobile.Colors.placeholder),
+                        axis: .vertical
+                    )
+                    .lineLimit(6...20)
+                    .font(.golem(Tokens.Mobile.FontSize.body))
+                    .foregroundStyle(Tokens.Mobile.Colors.text)
+                    .tint(Tokens.Colors.accent)
+                    .padding(Tokens.Space.lg)
+                    .background(Tokens.Mobile.Colors.fill, in: .rect(cornerRadius: Tokens.Radius.xl))
+                    Button("Save", action: saveFacts)
+                        .buttonStyle(.secondary)
+                        .disabled(facts == savedFacts)
                 }
+                .padding(Tokens.Space.xl)
             }
             SettingsCard(title: "Members") {
                 ForEach(members) { member in
@@ -54,25 +61,18 @@ struct WorkspaceSettingsView: View {
                     .padding(Tokens.Space.xl)
                 }
             }
-            SettingsCard(title: "Facts") {
-                VStack(alignment: .trailing, spacing: Tokens.Space.md) {
-                    TextField(
-                        "Facts", text: $facts,
-                        prompt: Text("Names, birthdays, addresses, work")
-                            .foregroundStyle(Tokens.Mobile.Colors.placeholder),
-                        axis: .vertical
-                    )
-                    .lineLimit(6...20)
-                    .font(.golem(Tokens.Mobile.FontSize.body))
-                    .foregroundStyle(Tokens.Mobile.Colors.text)
-                    .tint(Tokens.Colors.accent)
-                    .padding(Tokens.Space.lg)
-                    .background(Tokens.Mobile.Colors.fill, in: .rect(cornerRadius: Tokens.Radius.xl))
-                    Button("Save", action: saveFacts)
-                        .buttonStyle(.secondary)
-                        .disabled(facts == savedFacts)
+            if session.workspace?.role == "owner" {
+                SettingsCard(title: "Workspace") {
+                    HStack(spacing: Tokens.Space.md) {
+                        GolemTextField(nil, placeholder: "Name", text: $name)
+                            .onSubmit(rename)
+                            .accessibilityLabel("Name")
+                        Button("Save", action: rename)
+                            .buttonStyle(.secondary)
+                            .disabled(!renamed)
+                    }
+                    .padding(Tokens.Space.xl)
                 }
-                .padding(Tokens.Space.xl)
             }
         }
         .phoneTabBar()
