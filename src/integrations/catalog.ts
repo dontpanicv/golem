@@ -2,6 +2,8 @@ import { googleConnector } from "./google.ts";
 import { homeAssistantConnector } from "./home-assistant.ts";
 import { instagramConnector } from "./instagram.ts";
 import type { Connector } from "./integrations.ts";
+import { netatmoConnector } from "./netatmo.ts";
+import { salusConnector } from "./salus.ts";
 import { PASTE_ADDRESS } from "./sign-in.ts";
 import { slackConnector } from "./slack.ts";
 import { whatsAppConnector } from "./whatsapp.ts";
@@ -18,6 +20,8 @@ export function integrationCatalog(
 ): readonly Connector[] {
   return [
     homeAssistantConnector(),
+    netatmoConnector(),
+    salusConnector(),
     {
       id: "rohlik",
       name: "Rohlík",

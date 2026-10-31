@@ -153,12 +153,20 @@ private struct CredentialForm: View {
     @State private var label = ""
     @State private var secret = ""
     @State private var address = ""
+    @State private var username = ""
     @State private var busy = false
 
     var body: some View {
         Dialog(title: "Add \(integration.name) credential") {
             if integration.labeled {
                 GolemTextField("Label", text: $label, autofocus: true)
+            }
+            if let name = integration.username {
+                GolemTextField(name, text: $username, autofocus: true)
+                    .textContentType(.username)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
             }
             if integration.address {
                 GolemTextField("Address", text: $address)
@@ -167,7 +175,8 @@ private struct CredentialForm: View {
                     .autocorrectionDisabled()
             }
             GolemTextField(
-                integration.secretLabel ?? "Secret", text: $secret, secure: true, autofocus: !integration.labeled
+                integration.secretLabel ?? "Secret", text: $secret, secure: true,
+                autofocus: !integration.labeled && integration.username == nil
             )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -178,6 +187,7 @@ private struct CredentialForm: View {
                 .disabled(
                     busy || (integration.labeled && label.isEmpty) || secret.isEmpty
                         || (integration.address && address.isEmpty)
+                        || (integration.username != nil && username.isEmpty)
                 )
         }
     }
@@ -186,10 +196,12 @@ private struct CredentialForm: View {
         busy = true
         Task {
             await session.run {
+                var fields = ["secret": secret]
+                fields["label"] = integration.labeled ? label : nil
+                fields["address"] = integration.address ? address : nil
+                fields["username"] = integration.username == nil ? nil : username
                 added(try await session.api.addCredential(
-                    workspaceID: workspaceID, integrationID: integration.id,
-                    label: integration.labeled ? label : nil, secret: secret,
-                    address: integration.address ? address : nil
+                    workspaceID: workspaceID, integrationID: integration.id, fields: fields
                 ))
                 session.show("Credential added", .success)
                 dismiss()

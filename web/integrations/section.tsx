@@ -51,6 +51,7 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
           label: input.form.get("label") ?? undefined,
           secret: String(input.form.get("secret")),
           address: input.form.get("address") ?? undefined,
+          username: input.form.get("username") ?? undefined,
         },
       }),
     onSuccess: () => {
@@ -254,6 +255,15 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
             required
           />
         )}
+        {adding?.username ? (
+          <TextField
+            autoComplete="username"
+            autoFocus
+            label={adding.username}
+            name="username"
+            required
+          />
+        ) : null}
         {adding?.address === true && (
           <TextField
             autoComplete="off"
@@ -265,8 +275,8 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
           />
         )}
         <TextField
-          autoComplete="off"
-          autoFocus={adding?.labeled === false}
+          autoComplete={adding?.username ? "current-password" : "off"}
+          autoFocus={adding?.labeled === false && !adding.username}
           label={adding?.secretLabel ?? "Secret"}
           name="secret"
           required

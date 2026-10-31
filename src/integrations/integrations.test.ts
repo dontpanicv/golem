@@ -503,6 +503,96 @@ test("a secret of a connector with an address keeps its server's address", async
   });
 });
 
+test("a secret of a connector with an account keeps the account, which names the credential", async () => {
+  const thermostat = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      directory: join(golem.app.config.dataDirectory, "integrations"),
+      catalog: [
+        {
+          id: "thermostat",
+          name: "Thermostat",
+          description: "The heating.",
+          secretLabel: "Password",
+          username: "Email",
+          tools: [
+            {
+              name: "thermostat_secret",
+              description: "The secret a call gets",
+              parameters: Type.Object({}),
+              execute: async (_args, secret) => JSON.parse(secret),
+            },
+          ],
+        },
+      ],
+    }
+  );
+  const add = (username?: string) =>
+    thermostat.addCredential(workspaceId, alice, "thermostat", {
+      secret: "pw",
+      ...(username === undefined ? {} : { username }),
+    });
+  await expect(add()).rejects.toThrow("Email is required");
+  expect((await add(" anna@example.com ")).label).toBe("anna@example.com");
+  expect(thermostat.list(workspaceId, alice)[0]).toMatchObject({
+    labeled: false,
+    username: "Email",
+  });
+  const [tool] = await thermostat.tools(workspaceId);
+  expect(await tool!.execute({}, { userId: alice.id })).toEqual({
+    username: "anna@example.com",
+    secret: "pw",
+  });
+});
+
+test("a sign-in server that does not publish its endpoints signs in at the connector's own", async () => {
+  const { origin } = new URL(signInServer.url);
+  const station: Connector = {
+    id: "station",
+    name: "Station",
+    description: "The weather.",
+    secretLabel: null,
+    oauth: `${origin}/station`,
+    oauthEndpoints: {
+      authorization: `${origin}/oauth2/authorize`,
+      token: `${origin}/token`,
+    },
+    registered: true,
+    tools: [],
+  };
+  const withOwner = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      directory: join(golem.app.config.dataDirectory, "integrations"),
+      catalog: [station],
+      owner: "alice@example.com",
+    }
+  );
+  withOwner.setClient(alice, "station", {
+    clientId: "own-client",
+    clientSecret: "shh",
+  });
+  const { url } = (await withOwner.connect(workspaceId, alice, "station")) as {
+    url: string;
+  };
+  const page = new URL(url);
+  expect(page.pathname).toBe("/oauth2/authorize");
+  const credential = await withOwner.finishConnect(
+    workspaceId,
+    alice,
+    "station",
+    `https://localhost/golem-sign-in?code=code-4&state=${page.searchParams.get("state")}`
+  );
+  expect(credential.label).toBe("anna@work.example");
+  expect(tokenRequests.at(-1)?.get("client_secret")).toBe("shh");
+  withOwner.deleteCredential(workspaceId, alice, credential.id);
+  await withOwner.close();
+});
+
 test("only the server's owner sets Golem's own client, and its MCP server hides the tools that send", async () => {
   const chat: Connector = {
     id: "chat",

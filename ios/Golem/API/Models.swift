@@ -238,6 +238,8 @@ struct Integration: Codable, Hashable, Identifiable {
     let labeled: Bool
     /// Whether the secret also needs the address of the person's own server.
     let address: Bool
+    /// The name of the account that the secret also needs, such as "Email", which names the credential.
+    let username: String?
     /// The steps that set it up, in Markdown; empty when Connect is all.
     let guide: [String]
     /// Golem's own OAuth client, which the server's owner sets; nil for integrations without one.

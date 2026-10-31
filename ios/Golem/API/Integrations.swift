@@ -28,16 +28,11 @@ extension APIClient {
         try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/sign-in", [:])
     }
 
+    /// `fields` has the `secret`, and the `label`, `address`, and `username` that the integration needs.
     func addCredential(
-        workspaceID: String, integrationID: String, label: String?, secret: String, address: String?
+        workspaceID: String, integrationID: String, fields: [String: String]
     ) async throws -> Credential {
-        var body = ["secret": secret]
-        body["label"] = label
-        body["address"] = address
-        return try await post(
-            "/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/credentials",
-            body
-        )
+        try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/credentials", fields)
     }
 
     /// Sets the OAuth client that Golem signs in to an integration with; only the server's owner may.

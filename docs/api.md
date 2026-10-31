@@ -115,7 +115,7 @@ type SearchResult = {
 type RecentSearch = { query: string; searchedAt: number }; // newest first; the same query again, in any case, only moves to the top
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; ownerId: string; ownerName: string; shared: boolean; createdAt: number }; // ownerId: the person who connected it, who alone shares or deletes it; shared: every member's turns use it, else only its owner's
-type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret also needs the address of the person's own server; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
+type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; username: string | null; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret also needs the address of the person's own server; username: the name of the account that the secret also needs, such as "Email", which names the credential; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
 type RoutineRun = {
 	id: string;
 	routineId: string;
@@ -344,7 +344,7 @@ to put that host on the internet while the rest of Golem stays private.
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET …/integrations` | | `Integration[]`, with the person's own credentials and the ones other members shared |
-| `POST …/integrations/:integrationId/credentials` | `{ label?, secret, address? }`; `label` when the integration is `labeled`, `address` when it has `address` | `Credential`, private; `400` unless `connect` is `"secret"`, or when the integration cannot use the secret, such as a Slack cURL whose session Slack refuses |
+| `POST …/integrations/:integrationId/credentials` | `{ label?, secret, address?, username? }`; `label` when the integration is `labeled`, `address` when it has `address`, `username` when it has `username` | `Credential`, private; `400` unless `connect` is `"secret"`, or when the integration cannot use the secret, such as a Slack cURL whose session Slack refuses |
 | `POST …/integrations/:integrationId/connect` | `{ phone }` for `"phone"` | `{ url }`: the integration's sign-in page; `{ code }` for `"phone"` |
 | `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`, private; `400` when the address is not of the person's own sign-in in this workspace, the sign-in did not finish, or the number did not link within a minute |
 | `PUT …/credentials/:credentialId` | `{ shared }` | `Credential`; `404` unless it is the person's own |

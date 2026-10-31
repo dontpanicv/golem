@@ -47,6 +47,8 @@ export interface Integration {
   readonly labeled: boolean;
   /** Whether a secret also needs the address of the person's own server, such as their Home Assistant's. */
   readonly address: boolean;
+  /** The name of the account that a secret also needs, such as `Email`, which names the credential; else `null`. */
+  readonly username: string | null;
   /** The steps that set it up, in Markdown; empty when Connect is all. */
   readonly guide: readonly string[];
   /**
@@ -112,6 +114,11 @@ export interface Connector {
    * `{ address, secret }`.
    */
   readonly address?: boolean;
+  /**
+   * Its secret also needs the person's account, such as the email of their Salus account, under this name; the account
+   * names the credential, and `secretFrom`, else the tools, get the secret as JSON `{ username, secret }`.
+   */
+  readonly username?: string;
   /** The steps that set it up, in Markdown, which Settings shows. */
   readonly guide?: readonly string[];
   readonly tools: readonly ConnectorTool[];
@@ -122,6 +129,11 @@ export interface Connector {
    * then get a fresh access token instead of a secret.
    */
   readonly oauth?: string;
+  /** The sign-in page and token endpoint of an `oauth` server that does not publish them, such as Netatmo's. */
+  readonly oauthEndpoints?: {
+    readonly authorization: string;
+    readonly token: string;
+  };
   /**
    * It signs in with Golem's own OAuth client, which the server's owner sets in Settings, because its sign-in server
    * does not register clients. Only the owner sees it until then.
@@ -287,8 +299,9 @@ export class Integrations {
         name: connector.name,
         connect: connectionOf(connector),
         secretLabel: connector.secretLabel,
-        labeled: !connector.secretFrom,
+        labeled: !(connector.secretFrom || connector.username),
         address: connector.address ?? false,
+        username: connector.username ?? null,
         guide: connector.guide ?? [],
         client: connector.registered ? { clientId, changeable: owner } : null,
         credentials: credentials
@@ -343,14 +356,25 @@ export class Integrations {
     workspaceId: string,
     user: User,
     integrationId: string,
-    input: { label?: string; secret: string; address?: string }
+    input: {
+      label?: string;
+      secret: string;
+      address?: string;
+      username?: string;
+    }
   ): Promise<CredentialSummary> {
     this.workspaces.requireMember(workspaceId, user);
     const connector = this.connector(integrationId);
     if (connectionOf(connector) !== "secret") {
       throw new HttpError(400, "Connect it by signing in");
     }
-    const secret = required(input.secret, "Secret");
+    const pasted = required(input.secret, "Secret");
+    const username = connector.username
+      ? required(input.username?.trim(), connector.username)
+      : undefined;
+    const secret = username
+      ? JSON.stringify({ username, secret: pasted })
+      : pasted;
     if (connector.secretFrom) {
       const made = await connector.secretFrom(secret).catch((error: Error) => {
         throw new HttpError(400, error.message, { cause: error });
@@ -367,7 +391,7 @@ export class Integrations {
       workspaceId,
       user,
       integrationId,
-      required(input.label, "Label"),
+      username ?? required(input.label, "Label"),
       connector.address
         ? JSON.stringify({ address: serverAddress(input.address), secret })
         : secret
@@ -1214,6 +1238,24 @@ class GrantProvider implements OAuthClientProvider {
       response_types: ["code"],
       token_endpoint_auth_method: "none",
     };
+  }
+
+  /** The endpoints of a server that does not publish them, such as Netatmo's; else the SDK discovers them. */
+  discoveryState() {
+    const endpoints = this.connector.oauthEndpoints;
+    const server = this.connector.oauth;
+    return endpoints && server
+      ? {
+          authorizationServerUrl: server,
+          authorizationServerMetadata: {
+            issuer: server,
+            authorization_endpoint: endpoints.authorization,
+            token_endpoint: endpoints.token,
+            response_types_supported: ["code"],
+            token_endpoint_auth_methods_supported: ["client_secret_post"],
+          },
+        }
+      : undefined;
   }
 
   state(): string {

@@ -10,13 +10,13 @@ member. A routine's script cannot send.
 Settings shows the steps that set up each integration: click ⓘ on it. The steps are the `guide` of its connector, in
 `src/integrations/`.
 
-Google needs an OAuth client of your own, which the server's owner (the first of `allowed_emails`) sets with **Client**
+Google and Netatmo need an OAuth client of your own, which the server's owner (the first of `allowed_emails`) sets with **Client**
 on the integration; the next sign-in uses it at once. Until then, only the owner sees it. Google also needs `gog` on the
 Golem machine, Slack `slackcli`, and WhatsApp `wacli`, in the `PATH` of the Golem service; install them, for example
 with `brew install gogcli`, `brew install shaharia-lab/tap/slackcli`, and `brew install openclaw/tap/wacli`, and click
 **Reload** on Configuration in Settings. Golem does not show these integrations without them.
 
-The sign-in pages of Google, Rohlík, and Plaud end at `https://localhost/golem-sign-in?code=…`. Nothing answers
+The sign-in pages of Google, Netatmo, Rohlík, and Plaud end at `https://localhost/golem-sign-in?code=…`. Nothing answers
 at that address, so the browser shows an error page. Copy the address from the address bar and paste it into Golem.
 
 ## Google: Gmail, Calendar, and Drive
@@ -84,3 +84,18 @@ user. The user must be an administrator, because Home Assistant renders template
 
 Agents read the states and history of entities, render templates, for example to find the entities of an area, and
 call services, such as turning on a light or setting a thermostat. They do not call `notify` services.
+
+## Netatmo
+
+Agents read the weather stations of the person's Netatmo account through Netatmo's API: the current values of each
+module, indoor and outdoor, and their history. They change nothing. Netatmo gives tokens only to an app that someone
+made at dev.netatmo.com, with the redirect URI `https://localhost/golem-sign-in`; the server's owner pastes its client
+ID and client secret with **Client**, and each person then clicks **Connect**.
+
+## Salus
+
+Agents read Salus iT500 thermostats, such as the RT310i, and set their target temperature. Salus closed
+salus-it500.com in October 2026, so Golem uses the cloud API of Salus's apps, which is not public; Salus can change it.
+The person types the email and password of the RT310i app; Golem signs in at once, and keeps the email and the MD5 of
+the password, which is what Salus's API takes. Salus removes special characters from a new password without a word, so
+Golem tries a refused password again without them.

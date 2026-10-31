@@ -167,6 +167,8 @@ export interface Integration {
   readonly labeled: boolean;
   /** Whether the secret also needs the address of the person's own server. */
   readonly address: boolean;
+  /** The name of the account that the secret also needs, such as `Email`, which names the credential. */
+  readonly username: string | null;
   /** The steps that set it up, in Markdown; empty when Connect is all. */
   readonly guide: readonly string[];
   /** Golem's own OAuth client, which the server's owner sets: its ID, and whether this person may set it. */

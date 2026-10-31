@@ -37,6 +37,7 @@ export const integrationApiRoutes: readonly Route[] = [
             label: body.label as string | undefined,
             secret: body.secret as string,
             address: body.address as string | undefined,
+            username: body.username as string | undefined,
           }
         )
       )
