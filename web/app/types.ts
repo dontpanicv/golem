@@ -133,6 +133,12 @@ export interface SearchResult {
   readonly updatedAt: number;
 }
 
+/** A query that the person searched, and when they last searched it. */
+export interface RecentSearch {
+  readonly query: string;
+  readonly searchedAt: number;
+}
+
 export interface SearchResponse {
   readonly results: readonly SearchResult[];
   /** False while the search model starts: results then match words only. */

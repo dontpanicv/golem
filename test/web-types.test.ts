@@ -5,7 +5,7 @@ import type { Integration } from "../src/integrations/integrations.ts";
 import type { LlmStatus } from "../src/llm/llm.ts";
 import type { User } from "../src/platform/auth.ts";
 import type { Routine, RoutineRun } from "../src/routines/routines.ts";
-import type { SearchResponse } from "../src/search/search.ts";
+import type { RecentSearch, SearchResponse } from "../src/search/search.ts";
 import type {
   Brief,
   Message,
@@ -37,6 +37,7 @@ const checks: true[] = [
     Web.ThreadState
   >,
   true satisfies Fits<SearchResponse, Web.SearchResponse>,
+  true satisfies Fits<RecentSearch, Web.RecentSearch>,
   true satisfies Fits<Integration, Web.Integration>,
   true satisfies Fits<Routine, Web.Routine>,
   true satisfies Fits<RoutineRun, Web.RoutineRun>,

@@ -72,6 +72,15 @@ final class APIClient {
         let escaped = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
         return try await get("/api/v1/workspaces/\(workspaceID)/search?q=\(escaped)")
     }
+
+    func recentSearches(workspaceID: String) async throws -> RecentSearches {
+        try await get("/api/v1/workspaces/\(workspaceID)/searches")
+    }
+
+    func saveSearch(workspaceID: String, query: String) async throws -> RecentSearches {
+        try await post("/api/v1/workspaces/\(workspaceID)/searches", ["query": query])
+    }
+
     func members(workspaceID: String) async throws -> [Member] {
         try await get("/api/v1/workspaces/\(workspaceID)/members")
     }

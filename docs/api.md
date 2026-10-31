@@ -112,6 +112,7 @@ type SearchResult = {
 	score: number;
 	updatedAt: number;
 };
+type RecentSearch = { query: string; searchedAt: number }; // newest first; the same query again, in any case, only moves to the top
 type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; ownerName: string; createdAt: number };
 type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret also needs the address of the person's own server; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
@@ -332,6 +333,8 @@ to put that host on the internet while the rest of Golem stays private.
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/search?q=…&limit=20` | | `{ results: SearchResult[], semantic: boolean }`; `semantic` is false while the model starts, and results then match words only |
+| `GET /api/v1/workspaces/:workspaceId/searches` | | `{ searches: RecentSearch[] }`: the person's own 10 newest |
+| `POST /api/v1/workspaces/:workspaceId/searches` | `{ query }` | `{ searches: RecentSearch[] }`; the apps save a query when the person presses Enter or opens a result |
 
 ### Integrations (`src/integrations/`)
 

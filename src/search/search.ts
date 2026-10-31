@@ -1,6 +1,8 @@
+import type { Database } from "bun:sqlite";
 import { type FSWatcher, mkdirSync, statSync, watch } from "node:fs";
 import { basename, join } from "node:path";
 import type { Artifacts } from "../artifacts/artifacts.ts";
+import { HttpError } from "../platform/errors.ts";
 import type { Threads } from "../threads/threads.ts";
 import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { documentPrompt, type Embedder, queryPrompt } from "./embedder.ts";
@@ -30,6 +32,46 @@ const SCAN_EVERY_MS = 60_000;
 export interface SearchResponse {
   readonly results: readonly SearchResult[];
   readonly semantic: boolean;
+}
+
+/** A query that a person searched, and when they last searched it. */
+export interface RecentSearch {
+  readonly query: string;
+  readonly searchedAt: number;
+}
+
+/** The newest searches the search page shows. */
+const RECENT_SEARCHES = 10;
+const MAX_QUERY = 200;
+
+/**
+ * What each person searched in a workspace, newest first; the search page shows it before a query. The caller has
+ * checked that the person is a member.
+ */
+export class RecentSearches {
+  constructor(private readonly database: Database) {}
+
+  list(workspaceId: string, userId: string): RecentSearch[] {
+    return this.database
+      .query(
+        "SELECT query, searched_at AS searchedAt FROM recent_search WHERE workspace_id = ? AND user_id = ? ORDER BY searched_at DESC LIMIT ?"
+      )
+      .all(workspaceId, userId, RECENT_SEARCHES) as RecentSearch[];
+  }
+
+  /** Saves a search; the same query again, in any case, only moves to the top. */
+  add(workspaceId: string, userId: string, query: unknown): RecentSearch[] {
+    const text = typeof query === "string" ? query.trim() : "";
+    if (!text || text.length > MAX_QUERY) {
+      throw new HttpError(400, `Query must be 1 to ${MAX_QUERY} characters`);
+    }
+    this.database
+      .query(
+        "INSERT INTO recent_search (workspace_id, user_id, query, searched_at) VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET query = excluded.query, searched_at = excluded.searched_at"
+      )
+      .run(workspaceId, userId, text, Date.now());
+    return this.list(workspaceId, userId);
+  }
 }
 
 /**

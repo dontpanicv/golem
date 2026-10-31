@@ -2064,15 +2064,25 @@ a {
   gap: 3px;
   min-width: 0;
 }
-.search-text strong {
+.search-text > strong {
   font-weight: var(--font-weight-medium);
   color: var(--color-text);
 }
-.search-text span {
+.search-text > span {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-book);
   color: var(--color-text-tertiary);
   overflow-wrap: anywhere;
+}
+.search-snippet {
+  gap: var(--space-xs);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+.search-snippet :is(h1, h2, h3, h4, h5, h6, pre, table) {
+  font-size: inherit;
 }
 .search-row .meta {
   white-space: nowrap;

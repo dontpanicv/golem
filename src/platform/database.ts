@@ -288,6 +288,14 @@ const migrations = [
   // workspaces: a private channel belongs to one member, who alone sees it, its threads, files, artifacts, and
   // routines; `owner_id` is null for a channel every member sees.
   "ALTER TABLE channel ADD COLUMN owner_id TEXT;",
+  // search: what each person searched in a workspace, which the search page shows before a query.
+  `CREATE TABLE recent_search (
+		workspace_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		query TEXT NOT NULL COLLATE NOCASE,
+		searched_at INTEGER NOT NULL,
+		PRIMARY KEY (workspace_id, user_id, query)
+	);`,
 ];
 
 export function openDatabase(path: string): Database {

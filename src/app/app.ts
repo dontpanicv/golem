@@ -18,7 +18,7 @@ import { Reminders } from "../reminders/reminders.ts";
 import { Routines } from "../routines/routines.ts";
 import { type Embedder, embedderRequirements } from "../search/embedder.ts";
 import { extractRequirements, jpeg, readText } from "../search/extract.ts";
-import { Indexer } from "../search/search.ts";
+import { Indexer, RecentSearches } from "../search/search.ts";
 import { Threads } from "../threads/threads.ts";
 import { Workspaces } from "../workspaces/workspaces.ts";
 
@@ -35,6 +35,7 @@ export interface App {
   readonly artifacts: Artifacts;
   readonly notifications: Notifications;
   readonly indexer: Indexer;
+  readonly recentSearches: RecentSearches;
   readonly routines: Routines;
   readonly reminders: Reminders;
 }
@@ -170,6 +171,7 @@ export async function createApp(
     artifacts,
     notifications,
     indexer,
+    recentSearches: new RecentSearches(database),
     routines,
     reminders,
   };

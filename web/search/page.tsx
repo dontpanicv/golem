@@ -1,17 +1,23 @@
 import { useLiveQuery } from "@tanstack/react-db";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  queryOptions,
+  useQuery,
+} from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { fileHref, request } from "../app/api.ts";
+import { queryClient } from "../app/query.ts";
 import type {
   Modality,
+  RecentSearch,
   SearchKind,
   SearchResponse,
   SearchResult,
 } from "../app/types.ts";
 import { Empty } from "../ui/components.tsx";
 import { previewLink } from "../ui/file-preview.tsx";
-import { day } from "../ui/format.ts";
+import { day, dayTime } from "../ui/format.ts";
 import { Icon, type IconName } from "../ui/icon.tsx";
 import { channelsOf, useMe } from "../workspaces/data.ts";
 import { FloatingSidebarButton } from "../workspaces/shell.tsx";
@@ -28,9 +34,38 @@ const MEDIA_ICONS: Partial<Record<Modality, IconName>> = {
   audio: "sound",
 };
 
+// The Markdown renderer loads on its own, once a search shows results.
+const Snippet = lazy(() => import("./snippet.tsx"));
+
 const route = getRouteApi("/signed-in/w/$workspaceId/search");
 
-/** Search across one workspace: results update as you type. */
+function searchesQuery(workspaceId: string) {
+  return queryOptions({
+    queryKey: ["workspaces", workspaceId, "searches"],
+    queryFn: ({ signal }) =>
+      request<{ searches: RecentSearch[] }>(
+        `/workspaces/${workspaceId}/searches`,
+        { signal }
+      ),
+  });
+}
+
+/** Saves a search the person acted on; the list of recent searches is only a help, so a failure stays quiet. */
+function saveSearch(workspaceId: string, query: string): void {
+  if (!query.trim()) {
+    return;
+  }
+  request<{ searches: RecentSearch[] }>(`/workspaces/${workspaceId}/searches`, {
+    method: "POST",
+    body: { query },
+  })
+    .then((saved) =>
+      queryClient.setQueryData(searchesQuery(workspaceId).queryKey, saved)
+    )
+    .catch(() => undefined);
+}
+
+/** Search across one workspace: results update as you type. Before a query, the person's recent searches show. */
 export function SearchPage() {
   const { workspaceId } = route.useParams();
   const { q = "" } = route.useSearch();
@@ -46,6 +81,7 @@ export function SearchPage() {
   const { data: channels = [] } = useLiveQuery({
     query: (builder) => builder.from({ channel: channelsOf(workspaceId) }),
   });
+  const { data: recent } = useQuery(searchesQuery(workspaceId));
   const { data: response } = useQuery({
     queryKey: ["workspaces", workspaceId, "search", debounced],
     queryFn: ({ signal }) =>
@@ -71,13 +107,25 @@ export function SearchPage() {
               autoFocus
               className="input large"
               onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  saveSearch(workspaceId, query);
+                }
+              }}
               placeholder={`Search ${workspace?.name ?? ""}`}
               type="search"
               value={query}
             />
           </label>
           {query.trim() && response ? (
-            <div className="search-results">
+            <div
+              className="search-results"
+              onClickCapture={(event) => {
+                if ((event.target as Element).closest("a.search-row")) {
+                  saveSearch(workspaceId, query);
+                }
+              }}
+            >
               {response.semantic ? null : (
                 <p className="muted search-mode">
                   Matching words only while the search model starts.
@@ -99,6 +147,22 @@ export function SearchPage() {
               )}
             </div>
           ) : null}
+          {query.trim() ? null : (
+            <div className="search-results">
+              {recent?.searches.map((search) => (
+                <button
+                  className="list-row"
+                  key={search.query}
+                  onClick={() => setQuery(search.query)}
+                  type="button"
+                >
+                  <Icon name="clock" />
+                  <span className="name">{search.query}</span>
+                  <span className="meta">{dayTime(search.searchedAt)}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>
@@ -123,7 +187,9 @@ function ResultRow({
       <Icon name={MEDIA_ICONS[result.modality] ?? KIND_ICONS[result.kind]} />
       <span className="search-text">
         <strong>{result.title}</strong>
-        <span>{result.snippet}</span>
+        <Suspense fallback={<span>{result.snippet}</span>}>
+          <Snippet text={result.snippet} />
+        </Suspense>
       </span>
       <span className="meta">{place}</span>
     </>

@@ -1,7 +1,7 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 
-/** Search in one workspace, for the iOS app. */
+/** Search in one workspace, and the person's recent searches there. */
 export const searchApiRoutes: readonly Route[] = [
   [
     "GET",
@@ -22,6 +22,26 @@ export const searchApiRoutes: readonly Route[] = [
           user.id
         )
       );
+    }),
+  ],
+  [
+    "GET",
+    "/api/v1/workspaces/:workspace/searches",
+    api(async ({ app, user, params }) => {
+      const workspace = app.workspaces.requireMember(params.workspace!, user);
+      return json({
+        searches: app.recentSearches.list(workspace.id, user.id),
+      });
+    }),
+  ],
+  [
+    "POST",
+    "/api/v1/workspaces/:workspace/searches",
+    api(async ({ app, user, params, body }) => {
+      const workspace = app.workspaces.requireMember(params.workspace!, user);
+      return json({
+        searches: app.recentSearches.add(workspace.id, user.id, body.query),
+      });
     }),
   ],
 ];

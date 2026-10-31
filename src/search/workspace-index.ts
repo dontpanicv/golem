@@ -581,17 +581,33 @@ function ftsTerm(term: string): string {
   return term.length >= 3 ? `"${term}"*` : `"${term}"`;
 }
 
-/** About 200 characters of the excerpt around the first query term. */
+/**
+ * About 200 characters and at most four lines of the excerpt around the first query term. It keeps the line breaks,
+ * so the apps show its Markdown, and starts at the term's line when that line starts close enough.
+ */
 function snippet(excerpt: string, terms: readonly string[]): string {
-  const text = excerpt.replace(/\s+/g, " ").trim();
-  if (text.length <= 200) {
-    return text;
-  }
+  const text = excerpt
+    .replace(/[^\S\n]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
   const lower = text.toLowerCase();
   const at = Math.min(
     ...terms.map((term) => lower.indexOf(term)).filter((index) => index >= 0),
     text.length
   );
-  const start = at === text.length ? 0 : Math.max(0, at - 60);
-  return `${start > 0 ? "…" : ""}${text.slice(start, start + 200).trim()}${start + 200 < text.length ? "…" : ""}`;
+  let start = 0;
+  if (text.length > 200 && at < text.length) {
+    const line = text.lastIndexOf("\n", at - 1) + 1;
+    start = at - line <= 120 ? line : Math.max(0, at - 60);
+  }
+  const lines = text
+    .slice(start, start + 200)
+    .trim()
+    .split("\n");
+  // The fifth line that holds text, where the snippet ends.
+  const end = lines.flatMap((line, index) => (line ? [index] : []))[4] ?? -1;
+  const kept = (end === -1 ? lines : lines.slice(0, end)).join("\n").trim();
+  const before = start > 0 && text[start - 1] !== "\n";
+  const after = end !== -1 || start + 200 < text.length;
+  return `${before ? "…" : ""}${kept}${after ? "…" : ""}`;
 }

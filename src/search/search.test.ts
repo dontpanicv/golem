@@ -63,7 +63,12 @@ beforeAll(async () => {
       port: 0,
       baseUrl: "http://golem.test",
       shareUrl: null,
-      allowedEmails: ["anna@example.com", "otto@example.com"],
+      allowedEmails: [
+        "anna@example.com",
+        "otto@example.com",
+        "eva@example.com",
+        "karel@example.com",
+      ],
       google: {
         clientId: "test-client.apps.googleusercontent.com",
         clientSecret: "test-secret",
@@ -236,6 +241,52 @@ test("search covers one workspace and never another, also through the agent's re
       (result) => result.title
     )
   ).toEqual(["Payroll"]);
+});
+
+test("each person sees only their own recent searches, newest first, and a search again moves to the top", async () => {
+  const eva = await person("Eva", "eva@example.com");
+  const karel = await person("Karel", "karel@example.com");
+  const home = await app.workspaces.create(eva.user, "Home");
+  const searches = (token: string, query?: string) =>
+    handler(
+      new Request(`http://golem.test/api/v1/workspaces/${home.id}/searches`, {
+        method: query === undefined ? "GET" : "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: query === undefined ? undefined : JSON.stringify({ query }),
+      })
+    );
+  await searches(eva.token, "dentist");
+  await Bun.sleep(2);
+  await searches(eva.token, "  passport ");
+  await Bun.sleep(2);
+  const again = await searches(eva.token, "Dentist");
+  const { searches: list } = (await again.json()) as {
+    searches: { query: string; searchedAt: number }[];
+  };
+  expect(list.map((search) => search.query)).toEqual(["Dentist", "passport"]);
+  expect((await searches(eva.token, " ")).status).toBe(400);
+  expect((await searches(karel.token)).status).toBe(404);
+});
+
+test("a snippet keeps the Markdown lines around the term", async () => {
+  const index = new WorkspaceIndex(":memory:", "model");
+  const text = `# Trip\n\n${"We pack the bags and the snacks. ".repeat(8)}\n\n\n\n- **Ferry** at 9:00   \n- Hotel by the sea\n\n${"Then we rest. ".repeat(20)}`;
+  await sync(index, "notes/trip.md", "1", [{ key: "0", text }]);
+  const [result] = index.search("ferry", null, 5, all);
+  expect(
+    result?.snippet.startsWith(
+      "- **Ferry** at 9:00\n- Hotel by the sea\n\nThen we rest."
+    )
+  ).toBe(true);
+  expect(result?.snippet.endsWith("…")).toBe(true);
+  const short = "Luggage:\n- a\n- b\n- c\n- d\n- e";
+  await sync(index, "notes/luggage.md", "1", [{ key: "0", text: short }]);
+  const [pack] = index.search("luggage", null, 5, all);
+  expect(pack?.snippet).toBe("Luggage:\n- a\n- b\n- c…");
+  index.close();
 });
 
 function mediaWord(input: object): string {

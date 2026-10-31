@@ -2,26 +2,28 @@ import QuickLook
 import SwiftUI
 
 /// Searches the open workspace, never another, from a field at the top as Slack's search; results update as you
-/// type, like the web search page. Before a query it lists the places to go.
+/// type, like the web search page. Before a query it lists the person's recent searches.
 struct SearchView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var query = ""
     @State private var response: SearchResponse?
+    @State private var recent: [RecentSearch] = []
     @State private var preview: URL?
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    if let orchestrator = session.orchestrator {
-                        Button { open(.thread(orchestrator.id)) } label: { ListRow("Golem", systemImage: "sparkles") }
-                            .buttonStyle(.row)
-                    }
-                    ListSectionHeader(title: "Channels")
-                    ForEach(session.channels) { channel in
-                        Button { open(.channel(channel.id)) } label: { ListRow(channel.name, systemImage: "number") }
-                            .buttonStyle(.row)
+                    ForEach(recent) { search in
+                        Button { query = search.query } label: {
+                            ListRow(title: search.query, systemImage: "clock") {
+                                Text(Date(milliseconds: search.searchedAt), format: .relative(presentation: .named))
+                                    .font(.golem(Tokens.Mobile.FontSize.caption))
+                                    .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+                            }
+                        }
+                        .buttonStyle(.row)
                     }
                 } else {
                     if let response, !response.semantic {
@@ -55,11 +57,17 @@ struct SearchView: View {
             text: $query, placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search \(session.workspace?.name ?? "")"
         )
+        .onSubmit(of: .search) { save() }
         .autocorrectionDisabled()
         .phoneTabBar()
         .mobileBackground()
         .quickLookPreview($preview)
         .screenTitle("Search")
+        .task(id: session.workspace?.id) {
+            guard let workspace = session.workspace,
+                  let saved = try? await session.api.recentSearches(workspaceID: workspace.id) else { return }
+            recent = saved.searches
+        }
         .task(id: query) {
             // Waits for a pause in typing; a new keystroke cancels this task.
             try? await Task.sleep(for: .milliseconds(200))
@@ -72,8 +80,20 @@ struct SearchView: View {
         }
     }
 
+    /// Saves a search the person acted on; the list of recent searches is only a help, so a failure stays quiet.
+    private func save() {
+        let text = query.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty, let workspace = session.workspace else { return }
+        Task {
+            if let saved = try? await session.api.saveSearch(workspaceID: workspace.id, query: text) {
+                recent = saved.searches
+            }
+        }
+    }
+
     /// Opens an artifact where it belongs, a saved file in Quick Look, or a thread.
     private func show(_ result: SearchResult) {
+        save()
         if result.kind == "artifact" {
             open(.artifact(channel: result.channelId, artifact: String(result.uri.dropFirst("artifact:".count))))
         } else if let file = savedFile(result), let workspace = session.workspace {
@@ -113,10 +133,8 @@ private struct SearchRow: View {
                 Text(result.title)
                     .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book))
                     .foregroundStyle(Tokens.Mobile.Colors.text)
-                Text(result.snippet)
-                    .font(.golem(Tokens.Mobile.FontSize.small))
+                MarkdownText(text: result.snippet, size: Tokens.Mobile.FontSize.small)
                     .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
-                    .lineLimit(3)
                 Text(place)
                     .font(.golem(Tokens.Mobile.FontSize.caption))
                     .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)

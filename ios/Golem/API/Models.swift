@@ -372,6 +372,17 @@ struct SearchResponse: Codable {
     let semantic: Bool
 }
 
+/// A query that the person searched, and when they last searched it.
+struct RecentSearch: Codable, Hashable, Identifiable {
+    let query: String
+    let searchedAt: Double
+    var id: String { query }
+}
+
+struct RecentSearches: Codable {
+    let searches: [RecentSearch]
+}
+
 struct Profile: Codable {
     let user: User
     let workspaces: [Workspace]
