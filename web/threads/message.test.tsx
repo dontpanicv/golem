@@ -11,7 +11,7 @@ import type { Message, Work } from "../app/types.ts";
 import { TooltipProvider } from "../ui/components.tsx";
 import { ApprovalRequest } from "./approval.tsx";
 import Markdown from "./markdown.tsx";
-import { MessageView, moodOf } from "./message.tsx";
+import { continues, MessageView, moodOf } from "./message.tsx";
 
 /** The HTML of `node` on a page of the app's router. */
 async function render(node: ReactNode): Promise<string> {
@@ -262,4 +262,36 @@ test("the working summary says the step Golem is at, and an approval puts Allow 
   expect(approval).toContain("<p>vacuum.start vacuum.hall</p>");
   expect(approval.indexOf("Allow")).toBeLessThan(approval.indexOf("Deny"));
   expect(approval).not.toContain("Allow for this turn");
+});
+
+test("a turn that another thread's answer started continues Golem's message before it, and says where it came from", async () => {
+  const relayed = message({
+    startedAt: 1000,
+    endedAt: 4000,
+    stopped: false,
+    steps: [
+      { ...call("[SVJ Rokycanova 8](thread:s-1)"), tool: "from_thread" },
+      call("x"),
+    ],
+  });
+  const asked = message({
+    startedAt: 0,
+    endedAt: 1,
+    stopped: false,
+    steps: [],
+  });
+  const person = { ...asked, agent: false, author: "Vojta", work: null };
+  expect(continues(relayed, asked)).toBe(true);
+  expect(continues(relayed, person)).toBe(false);
+  expect(continues(asked, asked)).toBe(false);
+
+  const html = await render(
+    <MessageView continued message={relayed} workspaceId="w" />
+  );
+  expect(html).toContain('class="message continued"');
+  expect(html).not.toContain("message-meta");
+  expect(html).toContain("From SVJ Rokycanova 8");
+  expect(html).toContain(
+    '<span aria-hidden="true" class="step-strip"><i class="done"></i></span>'
+  );
 });

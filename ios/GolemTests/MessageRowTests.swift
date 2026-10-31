@@ -34,4 +34,15 @@ struct MessageRowTests {
         #expect(MessageRow.mood(of: stopped, waiting: false) == nil)
         #expect(MessageRow.mood(of: message("Golem", agent: true, at: 0), waiting: false) == nil)
     }
+
+    @Test func aTurnThatAnotherThreadStartedContinuesGolemsMessage() {
+        let relay = Step(
+            kind: "tool", text: "[SVJ Rokycanova 8](thread:s-1)", tool: "from_thread", input: nil, output: nil,
+            running: false, failed: false)
+        let relayed = message(
+            "Golem", agent: true, at: 30, work: Work(startedAt: 0, endedAt: 1, stopped: false, steps: [relay]))
+        #expect(MessageRow.continues(relayed, after: message("Golem", agent: true, at: 0)))
+        #expect(!MessageRow.continues(relayed, after: message("Vojta", at: 29)))
+        #expect(MessageRow.relayedFrom(relayed) == "SVJ Rokycanova 8")
+    }
 }

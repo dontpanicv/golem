@@ -39,7 +39,7 @@ import {
   uploadFiles,
   useThreadStream,
 } from "./data.ts";
-import { followEnd, MessageView } from "./message.tsx";
+import { continues, followEnd, MessageView } from "./message.tsx";
 import { followed, outbox, sendMessage } from "./outbox.ts";
 
 const threadRoute = getRouteApi("/signed-in/w/$workspaceId/t/$threadId");
@@ -193,8 +193,9 @@ function Thread({
           id="transcript"
           ref={followEnd}
         >
-          {messages.map((message) => (
+          {messages.map((message, index) => (
             <MessageView
+              continued={continues(message, messages[index - 1])}
               key={message.id}
               message={message}
               waiting={message === working && mine.length > 0}

@@ -214,7 +214,9 @@ Used by the workspace switcher and action menus.
 ## Conversation
 
 - Message: avatar, then the author in `medium` `text` and the time in `fontSize.sm` `textQuaternary`; the text in
-  `fontSize.lg` `book` `textSecondary` on a 1.6 line with −0.1 px letter spacing and its line breaks.
+  `fontSize.lg` `book` `textSecondary` on a 1.6 line with −0.1 px letter spacing and its line breaks. A turn of Golem
+  that the answer of another thread started, such as the result of work that Golem asked that thread for, continues
+  Golem's message before it: no avatar, author, or time, 12 px under it, and its work summary says "From <thread>".
 - Work log: between the meta and the text of an agent's answer, what the agent did before it. A summary in
   `fontSize.md` `textTertiary` with tabular numbers, "Working for 12s" counting up each second while it works, then
   "Worked for 14s", or "Stopped after 14s" when someone stopped it, with a disclosure arrow that turns 90° when open;
@@ -341,8 +343,8 @@ iPad keeps the sidebar with the same screens.
   working spinner and "Golem is working"), and the time. Settled threads fold above them. Sending from the composer
   starts a thread.
 - Conversation: as a Slack thread. Each message has the author's 36 pt avatar at the side, the name in `fontSize.row`
-  `semibold` and the time in `caption` over the text; a message of the same author within five minutes shows only its
-  text. Text is `fontSize.body` with inline Markdown; links take the accent. New messages slide up and fade in, and
+  `semibold` and the time in `caption` over the text; a message of the same author within five minutes, or a turn of
+  Golem that another thread's answer started, shows only its text. Text is `fontSize.body` with inline Markdown; links take the accent. New messages slide up and fade in, and
   the newest stays in view. The round voice button is in the bar at the trailing edge; while Golem works, Stop takes
   its place.
 - Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it

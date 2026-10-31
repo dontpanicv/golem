@@ -1101,6 +1101,14 @@ a {
   gap: var(--space-lg);
   max-width: 720px;
 }
+/* A message that continues the one before it: in line with its text, close under it. */
+.message.continued {
+  margin-top: calc(-1 * var(--space-lg));
+}
+.avatar-space {
+  flex: none;
+  width: var(--size-avatar);
+}
 .message-body {
   display: flex;
   flex-direction: column;

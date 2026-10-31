@@ -63,11 +63,22 @@ struct MessageRow: View {
         return message.work.map { $0.stopped ? nil : .done } ?? nil
     }
 
-    /// The message follows one of the same author within five minutes, and has no work log to head.
+    /// The message follows one of the same author within five minutes, and has no work log to head; or it is a turn of
+    /// Golem that the answer of another thread started, such as the result of work that the message before asked for.
     static func continues(_ message: Message, after previous: Message) -> Bool {
-        message.author == previous.author && message.agent == previous.agent && message.work == nil
+        if message.agent, previous.agent, relayedFrom(message) != nil { return true }
+        return message.author == previous.author && message.agent == previous.agent && message.work == nil
             && message.time - previous.time < 5 * 60 * 1000
     }
+
+    /// The title of the thread whose message started this turn, or nil for a turn that a person started.
+    static func relayedFrom(_ message: Message) -> String? {
+        guard let first = message.work?.steps.first, first.tool == relay else { return nil }
+        return String(linked(first.text).characters)
+    }
+
+    /// The step of a turn that another thread's message started.
+    static let relay = "from_thread"
 
     /// One line of text with its inline Markdown (bold, italics, code, links) and each thread link the agent wrote,
     /// `[title](thread:<id>)`, as a link to `thread:<id>`, followed by "working" while the agent of that thread works.
@@ -165,7 +176,11 @@ struct WorkLog: View {
 
     private func label(_ span: String) -> String {
         if working { return "Working for \(span)" }
-        return work.stopped ? "Stopped after \(span)" : "Worked for \(span)"
+        if work.stopped { return "Stopped after \(span)" }
+        if work.steps.first?.tool == MessageRow.relay, let first = work.steps.first {
+            return "From \(String(MessageRow.linked(first.text).characters))"
+        }
+        return "Worked for \(span)"
     }
 
     /// The step the agent is at: the tool it calls, a thought, or the words of its answer.
@@ -230,10 +245,12 @@ private struct StepPixel: View {
 private struct StepStrip: View {
     let steps: [Step]
 
+    private var calls: [Step] { steps.filter { $0.kind == "tool" && $0.tool != MessageRow.relay } }
+
     var body: some View {
         // shortcut: a long work shows only its last 24 calls; open the log for all of them.
         HStack(spacing: 2) {
-            ForEach(Array(steps.filter { $0.kind == "tool" }.suffix(24).enumerated()), id: \.offset) { _, step in
+            ForEach(Array(calls.suffix(24).enumerated()), id: \.offset) { _, step in
                 StepPixel(steps: [step])
             }
         }

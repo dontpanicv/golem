@@ -39,41 +39,47 @@ export const MessageView = memo(MessageCard);
 
 /**
  * `pending`: a message in the outbox, which Golem does not have yet; it says so in place of its time. `waiting`: the
- * agent waits for a person to allow an action of this answer's work.
+ * agent waits for a person to allow an action of this answer's work. `continued`: the message continues the one before
+ * it (`continues`), so it shows no avatar, author, or time.
  */
 function MessageCard({
   message,
   workspaceId,
   pending = false,
   waiting = false,
+  continued = false,
 }: {
   message: Message;
   workspaceId: string;
   pending?: boolean;
   waiting?: boolean;
+  continued?: boolean;
 }) {
   const classes = [
     "message",
     message.failed && "failed",
     message.streaming && "streaming",
     pending && "pending",
+    continued && "continued",
   ]
     .filter(Boolean)
     .join(" ");
   return (
     <article className={classes}>
-      {message.agent ? (
+      {continued ? <span className="avatar-space" /> : null}
+      {!continued && message.agent ? (
         <Mark mood={moodOf(message, waiting)} />
-      ) : (
-        <Avatar name={message.author} />
-      )}
+      ) : null}
+      {continued || message.agent ? null : <Avatar name={message.author} />}
       <div className="message-body">
-        <div className="message-meta">
-          <span className="message-author">{message.author}</span>
-          <time className="message-time">
-            {pending ? "Sending" : clockTime(message.time)}
-          </time>
-        </div>
+        {continued ? null : (
+          <div className="message-meta">
+            <span className="message-author">{message.author}</span>
+            <time className="message-time">
+              {pending ? "Sending" : clockTime(message.time)}
+            </time>
+          </div>
+        )}
         {message.work ? (
           <WorkLog work={message.work} workspaceId={workspaceId} />
         ) : null}
@@ -109,6 +115,25 @@ function MessageCard({
     </article>
   );
 }
+
+/**
+ * Whether an agent's message continues the agent's message before it: a turn that the answer of another thread started,
+ * such as the result of work that the message before asked that thread for.
+ */
+export function continues(message: Message, previous: Message | undefined) {
+  return (
+    message.agent && previous?.agent === true && relayedFrom(message) !== null
+  );
+}
+
+/** The title of the thread whose message started this turn, or null for a turn that a person started. */
+export function relayedFrom(message: Message): string | null {
+  const first = message.work?.steps[0];
+  return first?.tool === RELAY ? first.text.replace(THREAD_LINK, "$1") : null;
+}
+
+/** The step of a turn that another thread's message started. */
+const RELAY = "from_thread";
 
 /**
  * The face of an agent's message: it failed, it works or waits for a person, or it finished its work; an answer with
@@ -204,6 +229,8 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
     );
   } else if (work.stopped) {
     label = `Stopped after ${duration(work.endedAt! - work.startedAt)}`;
+  } else if (work.steps[0]?.tool === RELAY) {
+    label = `From ${work.steps[0].text.replace(THREAD_LINK, "$1")}`;
   }
   return (
     // A new element when the work ends, so it folds then; until then, the person's choice to open or fold it stays.
@@ -331,7 +358,9 @@ function WorkStep({ step, workspaceId }: { step: Step; workspaceId: string }) {
 /** One pixel for each tool call of a finished work, in the gold of the icon's eyes, or `danger` where a call failed. */
 function StepStrip({ steps }: { steps: readonly Step[] }) {
   // shortcut: a long work shows only its last 24 calls; open the log for all of them.
-  const calls = steps.filter((step) => step.kind === "tool").slice(-24);
+  const calls = steps
+    .filter((step) => step.kind === "tool" && step.tool !== RELAY)
+    .slice(-24);
   return calls.length > 0 ? (
     <span aria-hidden="true" className="step-strip">
       {calls.map((step, index) => (
