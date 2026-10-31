@@ -12,6 +12,7 @@ import {
   WorkingSpinner,
 } from "../ui/components.tsx";
 import { day } from "../ui/format.ts";
+import { membersQuery } from "../workspaces/data.ts";
 
 const DAYS = 30;
 const DAY = 24 * 60 * 60 * 1000;
@@ -37,6 +38,10 @@ function usageQuery(workspaceId: string) {
 /** The model use of the last 30 days: the totals, a bar for each day, and where the tokens went. */
 export function UsageSection({ workspaceId }: { workspaceId: string }) {
   const { data: usage } = useQuery(usageQuery(workspaceId));
+  const { data: members = [] } = useQuery(membersQuery(workspaceId));
+  const pictures = new Map(
+    members.map((member) => [member.userId, member.picture])
+  );
   if (!usage) {
     return <SettingsCard>{null}</SettingsCard>;
   }
@@ -98,7 +103,11 @@ export function UsageSection({ workspaceId }: { workspaceId: string }) {
             ...row,
             key: row.userId,
             label: row.name,
-            lead: row.userId ? <Avatar name={row.name} /> : <Mark />,
+            lead: row.userId ? (
+              <Avatar name={row.name} picture={pictures.get(row.userId)} />
+            ) : (
+              <Mark />
+            ),
           }))}
           title="By person"
         />

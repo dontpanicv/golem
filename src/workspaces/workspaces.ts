@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
+import type { ProfilePicture, ProfilePictures } from "../accounts/accounts.ts";
 import type { Auth, User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 
@@ -52,6 +53,8 @@ export interface Facts {
 export interface Member {
   readonly email: string;
   readonly name: string;
+  /** The address of the person's profile picture, or null for none. */
+  readonly picture: string | null;
   readonly role: string;
   readonly userId: string;
 }
@@ -74,6 +77,7 @@ export class Workspaces {
   constructor(
     private readonly database: Database,
     private readonly auth: Auth,
+    private readonly pictures: ProfilePictures,
     /** Called when someone joins a workspace, whose own integrations then reach its agents. */
     private readonly memberAdded: (workspaceId: string) => void = () =>
       undefined,
@@ -502,11 +506,37 @@ export class Workspaces {
 
   members(workspaceId: string, user: User): Member[] {
     this.requireMember(workspaceId, user);
-    return this.database
+    const members = this.database
       .query(
         "SELECT u.id AS userId, u.name, u.email, m.role FROM member m JOIN user u ON u.id = m.userId WHERE m.organizationId = ? ORDER BY m.createdAt"
       )
-      .all(workspaceId) as Member[];
+      .all(workspaceId) as Omit<Member, "picture">[];
+    const pictures = this.pictures.ids(members.map((member) => member.userId));
+    return members.map((member) => ({
+      ...member,
+      picture: picturePath(pictures.get(member.userId)),
+    }));
+  }
+
+  /** The address of the person's own profile picture, or null for none. */
+  pictureOf(user: User): string | null {
+    return picturePath(this.pictures.ids([user.id]).get(user.id));
+  }
+
+  /** A profile picture of the person or of someone who shares a workspace with them; otherwise not found. */
+  picture(pictureId: string, user: User): ProfilePicture {
+    const picture = this.pictures.get(pictureId);
+    const shared =
+      picture.userId === user.id ||
+      this.database
+        .query(
+          "SELECT 1 FROM member a JOIN member b ON b.organizationId = a.organizationId JOIN organization o ON o.id = a.organizationId WHERE a.userId = ? AND b.userId = ? AND o.deletedAt IS NULL"
+        )
+        .get(user.id, picture.userId) !== null;
+    if (!shared) {
+      throw notFound();
+    }
+    return picture;
   }
 
   /** Adds someone who already has an account, for an owner of the workspace. */
@@ -541,7 +571,12 @@ export class Workspaces {
       userId: person.id,
       name: person.name,
       email: person.email,
+      picture: this.pictureOf(person),
       role: "member",
     };
   }
+}
+
+function picturePath(id: string | undefined): string | null {
+  return id ? `/api/v1/pictures/${id}` : null;
 }

@@ -11,7 +11,41 @@ export const workspaceApiRoutes: readonly Route[] = [
       if (app.workspaces.ids().length === 0) {
         await app.workspaces.create(user, "Golem");
       }
-      return json({ user, workspaces: app.workspaces.list(user) });
+      return json({
+        user: { ...user, picture: app.workspaces.pictureOf(user) },
+        workspaces: app.workspaces.list(user),
+      });
+    }),
+  ],
+  [
+    "POST",
+    "/api/v1/me/picture",
+    api(async ({ app, user, files }) => {
+      await app.pictures.set(user.id, files[0]);
+      return json({ picture: app.workspaces.pictureOf(user) });
+    }),
+  ],
+  [
+    "DELETE",
+    "/api/v1/me/picture",
+    api(async ({ app, user }) => {
+      app.pictures.remove(user.id);
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
+    "GET",
+    "/api/v1/pictures/:picture",
+    api(async ({ app, user, params }) => {
+      const picture = app.workspaces.picture(params.picture!, user);
+      return new Response(picture.data, {
+        headers: {
+          "content-type": picture.contentType,
+          "x-content-type-options": "nosniff",
+          // A new picture gets a new id, so this one never changes.
+          "cache-control": "private, max-age=31536000, immutable",
+        },
+      });
     }),
   ],
   [

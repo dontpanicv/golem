@@ -132,6 +132,20 @@ export function membersQuery(workspaceId: string) {
   });
 }
 
+/** The address of a member's profile picture, or null for none or while the members load. */
+export function usePicture(
+  workspaceId: string,
+  userId: string | null
+): string | null {
+  return (
+    useQuery({
+      ...membersQuery(workspaceId),
+      select: (members) =>
+        members.find((member) => member.userId === userId)?.picture ?? null,
+    }).data ?? null
+  );
+}
+
 export function factsQuery(workspaceId: string) {
   return queryOptions({
     queryKey: ["workspaces", workspaceId, "facts"],

@@ -33,7 +33,7 @@ stops getting its event streams.
 ## Types
 
 ```ts
-type User = { id: string; name: string; email: string };
+type User = { id: string; name: string; email: string; picture: string | null }; // picture: the address of the profile picture, or null for none
 type Workspace = { id: string; name: string; role: "owner" | "member" }; // `role` is the person's
 type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: number; settledAt: number | null }; // times are Unix milliseconds
 type Channel = {
@@ -113,7 +113,7 @@ type SearchResult = {
 	updatedAt: number;
 };
 type RecentSearch = { query: string; searchedAt: number }; // newest first; the same query again, in any case, only moves to the top
-type Member = { userId: string; name: string; email: string; role: "owner" | "admin" | "member" };
+type Member = { userId: string; name: string; email: string; picture: string | null; role: "owner" | "admin" | "member" };
 type Credential = { id: string; label: string; ownerId: string; ownerName: string; shared: boolean; createdAt: number }; // ownerId: the person who connected it, who alone shares or deletes it; shared: every member's turns use it, else only its owner's
 type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; username: string | null; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret also needs the address of the person's own server; username: the name of the account that the secret also needs, such as "Email", which names the credential; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
 type RoutineRun = {
@@ -247,6 +247,9 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[] }`; the first person to sign in starts Golem's one workspace, with a `general` channel, and is its owner |
+| `POST /api/v1/me/picture` | `multipart/form-data` with one JPEG, PNG, or WebP file | `{ picture }`: the new address; the apps send a 256 px square. `400` for another kind, `413` over 1 MB |
+| `DELETE /api/v1/me/picture` | | `204`; the person has no picture again |
+| `GET /api/v1/pictures/:pictureId` | | The picture, for its person and the members of their workspace, else `404`. A new picture gets a new address, so the browser keeps this one |
 | `GET /api/v1/workspaces/:workspaceId` | | `{ workspace: Workspace, channels: Channel[] }`: the channels every member sees, and the person's own private ones |
 | `PUT /api/v1/workspaces/:workspaceId` | `{ name }` | `Workspace`; `403` for a member who is not an owner |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name, private? }` | `Channel`; a `private` one is the person's own. `409` if the name exists, also as another person's private channel |

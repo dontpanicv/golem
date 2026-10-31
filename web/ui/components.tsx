@@ -325,16 +325,33 @@ export function Switch({
 /** The number of colors in `avatar` of design/tokens.json. */
 const AVATAR_COLORS = 10;
 
-/** A person's initial on a color picked by the sum of their name's code points, as iOS's `Avatar` picks it, or an agent's on the accent. */
+/** A person's picture, or their initial on a color picked by the sum of their name's code points, as iOS's `Avatar` picks it, or an agent's on the accent. */
 export function Avatar({
   name,
+  picture,
   agent = false,
   size,
 }: {
   name: string;
+  picture?: string | null;
   agent?: boolean;
   size?: "small" | "large";
 }) {
+  const className = ["avatar", agent && "agent", size]
+    .filter(Boolean)
+    .join(" ");
+  if (picture) {
+    return (
+      <img
+        alt=""
+        className={className}
+        // The avatar classes set the shown size.
+        height={48}
+        src={picture}
+        width={48}
+      />
+    );
+  }
   let sum = 0;
   for (const character of name) {
     sum += character.codePointAt(0)!;
@@ -342,7 +359,7 @@ export function Avatar({
   return (
     <span
       aria-hidden="true"
-      className={["avatar", agent && "agent", size].filter(Boolean).join(" ")}
+      className={className}
       style={
         agent
           ? undefined

@@ -112,7 +112,7 @@ export function MembersSection({ workspace }: { workspace: Workspace }) {
           description={member.email}
           key={member.userId}
           label={member.name}
-          lead={<Avatar name={member.name} />}
+          lead={<Avatar name={member.name} picture={member.picture} />}
         >
           <Badge label={member.role} />
         </SettingsRow>

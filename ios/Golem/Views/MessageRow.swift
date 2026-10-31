@@ -22,7 +22,11 @@ struct MessageRow: View {
                     GolemMark(size: Tokens.Mobile.Size.avatar)
                 }
             } else {
-                Avatar(name: message.author, size: Tokens.Mobile.Size.avatar)
+                PersonAvatar(
+                    name: message.author,
+                    picture: message.authorId.flatMap { session.pictures[$0] },
+                    size: Tokens.Mobile.Size.avatar
+                )
             }
             VStack(alignment: .leading, spacing: Tokens.Space.xs) {
                 if !continued {

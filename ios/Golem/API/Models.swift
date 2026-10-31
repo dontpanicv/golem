@@ -6,6 +6,8 @@ struct User: Codable, Hashable {
     let id: String
     let name: String
     let email: String
+    /// The path of the profile picture, or nil for none.
+    let picture: String?
 }
 
 struct Workspace: Codable, Hashable, Identifiable {
@@ -212,6 +214,7 @@ struct Member: Codable, Hashable, Identifiable {
     let userId: String
     let name: String
     let email: String
+    let picture: String?
     let role: String
     var id: String { userId }
 }

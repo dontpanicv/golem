@@ -14,6 +14,7 @@ import { fileKind } from "../ui/file-kind.ts";
 import { previewLink } from "../ui/file-preview.tsx";
 import { clockTime, duration } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
+import { usePicture } from "../workspaces/data.ts";
 import { ThreadLink } from "./thread-link.tsx";
 
 // Markdown and its sanitizer load on their own, once a page shows an agent's answer.
@@ -70,7 +71,9 @@ function MessageCard({
       {!continued && message.agent ? (
         <Mark mood={moodOf(message, waiting)} />
       ) : null}
-      {continued || message.agent ? null : <Avatar name={message.author} />}
+      {continued || message.agent ? null : (
+        <AuthorAvatar message={message} workspaceId={workspaceId} />
+      )}
       <div className="message-body">
         {continued ? null : (
           <div className="message-meta">
@@ -113,6 +116,21 @@ function MessageCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function AuthorAvatar({
+  message,
+  workspaceId,
+}: {
+  message: Message;
+  workspaceId: string;
+}) {
+  return (
+    <Avatar
+      name={message.author}
+      picture={usePicture(workspaceId, message.authorId)}
+    />
   );
 }
 

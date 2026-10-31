@@ -40,7 +40,7 @@ struct WorkspaceSettingsView: View {
             SettingsCard(title: "Members") {
                 ForEach(members) { member in
                     SettingsRow(label: member.name, description: member.email) {
-                        Avatar(name: member.name, size: 32)
+                        PersonAvatar(name: member.name, picture: member.picture, size: 32)
                     } control: {
                         Badge(label: member.role.capitalized)
                     }

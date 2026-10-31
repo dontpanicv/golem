@@ -1,5 +1,11 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { HttpError } from "../platform/errors.ts";
+import type { Database } from "bun:sqlite";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
+import { HttpError, notFound } from "../platform/errors.ts";
 
 /** How long a person has for the Google step of a sign-in. */
 const FLOW_LIFETIME = 10 * 60_000;
@@ -103,6 +109,93 @@ export class AppSignIns {
     }
     return found.token;
   }
+}
+
+/** The largest profile picture; the apps send a small square. */
+const MAX_PICTURE = 1024 ** 2;
+
+export interface ProfilePicture {
+  readonly userId: string;
+  readonly contentType: string;
+  readonly data: Uint8Array;
+}
+
+/**
+ * The pictures people upload for their profile. Each upload is a new row with a new id, so a picture's address never
+ * changes and browsers keep it; a new upload or a removal marks the old one deleted.
+ */
+export class ProfilePictures {
+  constructor(private readonly database: Database) {}
+
+  /** Makes `file` the person's picture, if it is a JPEG, PNG, or WebP; returns its id. */
+  async set(userId: string, file: File | undefined): Promise<string> {
+    const data = new Uint8Array((await file?.arrayBuffer()) ?? []);
+    const contentType = pictureType(data);
+    if (!contentType) {
+      throw new HttpError(400, "Send a JPEG, PNG, or WebP picture");
+    }
+    if (data.length > MAX_PICTURE) {
+      throw new HttpError(413, "The picture is larger than 1 MB");
+    }
+    const id = randomUUID();
+    const now = Date.now();
+    this.database.transaction(() => {
+      this.remove(userId, now);
+      this.database
+        .query(
+          "INSERT INTO profile_picture (id, user_id, content_type, data, created_at) VALUES (?, ?, ?, ?, ?)"
+        )
+        .run(id, userId, contentType, data, now);
+    })();
+    return id;
+  }
+
+  remove(userId: string, now = Date.now()): void {
+    this.database
+      .query(
+        "UPDATE profile_picture SET deleted_at = ? WHERE user_id = ? AND deleted_at IS NULL"
+      )
+      .run(now, userId);
+  }
+
+  /** The id of each person's picture, for the people who have one. */
+  ids(userIds: readonly string[]): Map<string, string> {
+    const rows = this.database
+      .query(
+        `SELECT user_id AS userId, id FROM profile_picture WHERE deleted_at IS NULL AND user_id IN (${userIds.map(() => "?").join(", ")})`
+      )
+      .all(...userIds) as { userId: string; id: string }[];
+    return new Map(rows.map((row) => [row.userId, row.id]));
+  }
+
+  /** A picture that is not deleted; throws not found for any other id. */
+  get(id: string): ProfilePicture {
+    const picture = this.database
+      .query(
+        "SELECT user_id AS userId, content_type AS contentType, data FROM profile_picture WHERE id = ? AND deleted_at IS NULL"
+      )
+      .get(id) as ProfilePicture | null;
+    if (!picture) {
+      throw notFound();
+    }
+    return picture;
+  }
+}
+
+/** The type of a JPEG, PNG, or WebP picture from its first bytes, so nothing else is ever served as a picture. */
+function pictureType(data: Uint8Array): string | undefined {
+  const starts = (bytes: number[], at = 0) =>
+    bytes.every((byte, index) => data[at + index] === byte);
+  if (starts([0xff, 0xd8, 0xff])) {
+    return "image/jpeg";
+  }
+  if (starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return "image/png";
+  }
+  if (starts([0x52, 0x49, 0x46, 0x46]) && starts([0x57, 0x45, 0x42, 0x50], 8)) {
+    return "image/webp";
+  }
+  return undefined;
 }
 
 /** Adds an entry, after it drops the expired ones and, at the limit, the oldest. */

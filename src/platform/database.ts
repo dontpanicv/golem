@@ -6,7 +6,7 @@ import { dirname } from "node:path";
  * Application tables. better-auth owns `user`, `session`, `account`, `verification`, `organization` (workspaces),
  * `member`, and `invitation`; it migrates them itself. Append a migration; never edit one that shipped.
  *
- * Each table has one owner module, and only that module queries it: `workspaces` owns `channel`, `thread`, and `workspace_facts` (and reads
+ * Each table has one owner module, and only that module queries it: `accounts` owns `profile_picture`, `workspaces` owns `channel`, `thread`, and `workspace_facts` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential`, `llm_usage`, `llm_usage_seen`, and its keys in `setting`,
  * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
@@ -397,6 +397,16 @@ const migrations = [
 		ended_at INTEGER
 	);
 	CREATE INDEX live_activity_open ON live_activity (workspace_id, ended_at);`,
+  // accounts: the pictures that people upload for their profile; the newest that is not deleted is theirs.
+  `CREATE TABLE profile_picture (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		content_type TEXT NOT NULL,
+		data BLOB NOT NULL,
+		created_at INTEGER NOT NULL,
+		deleted_at INTEGER
+	);
+	CREATE INDEX profile_picture_user ON profile_picture (user_id, deleted_at);`,
 ];
 
 export function openDatabase(path: string): Database {

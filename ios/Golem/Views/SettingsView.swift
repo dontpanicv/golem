@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -116,9 +117,9 @@ struct SettingsView: View {
             if let user = session.user {
                 SettingsCard(title: "Account") {
                     SettingsRow(label: user.name, description: user.email) {
-                        Avatar(name: user.name, size: 32)
+                        PersonAvatar(name: user.name, picture: user.picture, size: 32)
                     } control: {
-                        EmptyView()
+                        PictureMenu(picture: user.picture)
                     }
                 }
             }
@@ -202,5 +203,61 @@ private struct DeviceLogin: View {
 
     private var host: String {
         URL(string: login.verificationUri)?.host() ?? login.verificationUri
+    }
+}
+
+/// Uploads a picture from the photo library as the person's profile picture, or removes it.
+private struct PictureMenu: View {
+    let picture: String?
+    @Environment(Session.self) private var session
+    @State private var picking = false
+    @State private var photo: PhotosPickerItem?
+
+    /// The longest side of a profile picture that the app uploads, in pixels, as the web app sends it.
+    private static let size: CGFloat = 256
+
+    var body: some View {
+        GolemMenu {
+            MenuItem("Upload picture", systemImage: "photo.on.rectangle") { picking = true }
+            if picture != nil {
+                MenuItem("Remove picture", systemImage: "trash", role: .destructive) {
+                    Task { await session.run { try await session.setPicture(nil) } }
+                }
+            }
+        } label: {
+            Label("Picture actions", systemImage: "ellipsis")
+        }
+        .buttonStyle(.golem(.ghost, .icon))
+        .photosPicker(isPresented: $picking, selection: $photo, matching: .images)
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            photo = nil
+            Task {
+                await session.run {
+                    guard let data = try await item.loadTransferable(type: Data.self), let image = UIImage(data: data)
+                    else { throw APIError(status: 0, message: "Golem cannot read this picture.") }
+                    let file = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).jpg")
+                    try Self.square(image).write(to: file)
+                    try await session.setPicture(file)
+                }
+            }
+        }
+    }
+
+    /// The middle square of a picture as a small JPEG, so every app shows it round and the upload stays small.
+    private static func square(_ image: UIImage) -> Data {
+        let side = min(image.size.width, image.size.height)
+        let length = min(side * image.scale, size)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let scale = length / side
+        return UIGraphicsImageRenderer(size: CGSize(width: length, height: length), format: format).jpegData(
+            withCompressionQuality: 0.9
+        ) { _ in
+            image.draw(in: CGRect(
+                x: (side - image.size.width) / 2 * scale, y: (side - image.size.height) / 2 * scale,
+                width: image.size.width * scale, height: image.size.height * scale
+            ))
+        }
     }
 }

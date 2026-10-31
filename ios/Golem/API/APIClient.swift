@@ -49,6 +49,20 @@ final class APIClient {
     // MARK: Workspaces
 
     func me() async throws -> Profile { try await get("/api/v1/me") }
+
+    /// Makes a JPEG, PNG, or WebP file the person's profile picture.
+    func uploadPicture(_ file: URL) async throws {
+        _ = try await sendForm("/api/v1/me/picture", [:], [file])
+    }
+
+    func removePicture() async throws {
+        _ = try await send("DELETE", "/api/v1/me/picture")
+    }
+
+    /// A profile picture at the path that `User` or `Member` gives.
+    func profilePicture(_ path: String) async throws -> Data {
+        try await send("GET", path).data
+    }
     func workspace(_ id: String) async throws -> WorkspaceDetail { try await get("/api/v1/workspaces/\(id)") }
     func renameWorkspace(_ id: String, name: String) async throws -> Workspace {
         try decode(try await send("PUT", "/api/v1/workspaces/\(id)", ["name": name]).data)

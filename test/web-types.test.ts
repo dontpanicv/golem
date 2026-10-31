@@ -26,7 +26,7 @@ import type * as Web from "../web/app/types.ts";
 type Fits<Sent extends Read, Read> = Sent extends Read ? true : never;
 
 const checks: true[] = [
-  true satisfies Fits<User, Web.User>,
+  true satisfies Fits<User & { picture: string | null }, Web.User>,
   true satisfies Fits<Workspace, Web.Workspace>,
   true satisfies Fits<ThreadSummary, Web.ThreadSummary>,
   true satisfies Fits<Channel, Web.Channel>,

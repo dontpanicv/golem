@@ -260,6 +260,9 @@ a {
   color: var(--color-on-accent);
   user-select: none;
 }
+img.avatar {
+  object-fit: cover;
+}
 .avatar.agent {
   border-radius: var(--radius-sm);
   background: var(--color-accent);

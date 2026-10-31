@@ -69,14 +69,28 @@ extension View {
 
 // MARK: - Small components
 
-/// A person's initial on a color picked by the sum of their name's code points, as the web picks it, or an
-/// agent's on the accent.
+/// A person's picture, or their initial on a color picked by the sum of their name's code points, as the web picks
+/// it, or an agent's on the accent.
 struct Avatar: View {
     let name: String
+    var image: UIImage?
     var agent = false
     var size = Tokens.Size.avatar
 
     var body: some View {
+        if let image {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(.circle)
+                .accessibilityHidden(true)
+        } else {
+            initial
+        }
+    }
+
+    private var initial: some View {
         Text(name.prefix(1).uppercased())
             .font(.golem(size * 0.45, Tokens.FontWeight.medium))
             .foregroundStyle(Tokens.Colors.onAccent)

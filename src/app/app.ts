@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { AppSignIns } from "../accounts/accounts.ts";
+import { AppSignIns, ProfilePictures } from "../accounts/accounts.ts";
 import { Agenda } from "../agenda/agenda.ts";
 import { Artifacts } from "../artifacts/artifacts.ts";
 import { Browser, browserRequirements } from "../browser/browser.ts";
@@ -28,6 +28,7 @@ export interface App {
   readonly database: Database;
   readonly auth: Auth;
   readonly appSignIns: AppSignIns;
+  readonly pictures: ProfilePictures;
   readonly llm: Llm;
   readonly hands: Hands;
   readonly threads: Threads;
@@ -89,9 +90,11 @@ export async function createApp(
         console.error("reloading the tools failed", error)
       );
   };
+  const pictures = new ProfilePictures(database);
   const workspaces = new Workspaces(
     database,
     auth,
+    pictures,
     reloadTools,
     (workspaceId) => threads.forget(workspaceId)
   );
@@ -173,6 +176,7 @@ export async function createApp(
     database,
     auth,
     appSignIns: new AppSignIns(),
+    pictures,
     llm,
     hands,
     threads,

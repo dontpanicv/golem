@@ -4,6 +4,7 @@ export interface User {
   readonly id: string;
   readonly name: string;
   readonly email: string;
+  readonly picture: string | null;
 }
 
 export interface Workspace {
@@ -41,6 +42,7 @@ export interface Member {
   readonly userId: string;
   readonly name: string;
   readonly email: string;
+  readonly picture: string | null;
   readonly role: string;
 }
 

@@ -21,6 +21,8 @@ final class Session {
     private(set) var workspaces: [Workspace] = []
     private(set) var workspace: Workspace?
     private(set) var channels: [Channel] = []
+    /// The path of each member's profile picture in the open workspace, by person.
+    private(set) var pictures: [String: String] = [:]
     /// The open workspace's thread that never ends, which channel lists leave out.
     private(set) var orchestrator: ThreadSummary?
     /// The threads of the open workspace whose agent works.
@@ -129,7 +131,11 @@ final class Session {
         if workspace.id != self.workspace?.id { VoiceSession.shared.talk.end() }
         let detail = try await api.workspace(workspace.id)
         let orchestrator = try await api.orchestrator(workspaceID: workspace.id)
+        let members = try await api.members(workspaceID: workspace.id)
         self.workspace = detail.workspace
+        pictures = Dictionary(uniqueKeysWithValues: members.compactMap { member in
+            member.picture.map { (member.userId, $0) }
+        })
         channels = detail.channels
         self.orchestrator = orchestrator
         UserDefaults.standard.set(workspace.id, forKey: Keys.workspaceID)
@@ -193,6 +199,13 @@ final class Session {
         }
     }
 
+    /// Makes a JPEG file the person's profile picture, or removes it for nil.
+    func setPicture(_ file: URL?) async throws {
+        if let file { try await api.uploadPicture(file) } else { try await api.removePicture() }
+        user = try await api.me().user
+        try await reloadWorkspace()
+    }
+
     func reloadWorkspace() async throws {
         if let workspace { try await open(workspace) }
     }
@@ -247,6 +260,7 @@ final class Session {
         workspaces = []
         workspace = nil
         channels = []
+        pictures = [:]
         orchestrator = nil
         inbox = nil
         loadError = nil

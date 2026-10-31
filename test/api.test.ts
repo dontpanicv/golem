@@ -232,6 +232,36 @@ test("members are listed, and only people who signed in once can be added once",
   ).toEqual({ status: 403, error: "Only an owner can do this" });
 });
 
+test("a profile picture shows to its person and the members of their workspace only", async () => {
+  const eve = await golem.signIn("Eve", "eve@example.com");
+  const { user } = await body(await golem.call("/api/v1/me", { token: bob }));
+  const id = await golem.app.pictures.set(
+    user.id,
+    new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], "picture.jpg")
+  );
+  const picture = `/api/v1/pictures/${id}`;
+  expect(
+    (await body(await golem.call("/api/v1/me", { token: bob }))).user.picture
+  ).toBe(picture);
+  expect(
+    (
+      await body(
+        await golem.call(`/api/v1/workspaces/${workspaceId}/members`, {
+          token: alice,
+        })
+      )
+    ).find((member: { userId: string }) => member.userId === user.id).picture
+  ).toBe(picture);
+  const shown = await golem.call(picture, { token: alice });
+  expect(shown.headers.get("content-type")).toBe("image/jpeg");
+  expect((await golem.call(picture, { token: eve })).status).toBe(404);
+  expect(
+    (await golem.call("/api/v1/me/picture", { token: bob, method: "DELETE" }))
+      .status
+  ).toBe(204);
+  expect((await golem.call(picture, { token: bob })).status).toBe(404);
+});
+
 test("every member writes the workspace's facts, and nobody else reads them", async () => {
   const facts = `/api/v1/workspaces/${workspaceId}/facts`;
   expect(await body(await golem.call(facts, { token: alice }))).toEqual({
