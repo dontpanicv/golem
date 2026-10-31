@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 struct ShareView: View {
     let providers: [NSItemProvider]
     let done: (_ sent: Bool) -> Void
-    @State private var api = ShareView.signedInAPI()
+    @State private var api = APIClient.signedIn()
     @State private var text = ""
     @State private var files: [URL] = []
     @State private var workspaces: [Workspace] = []
@@ -118,20 +118,6 @@ struct ShareView: View {
                 sending = false
             }
         }
-    }
-
-    /// The app's session, which the Keychain shares with this extension.
-    private static func signedInAPI() -> APIClient {
-        let api = APIClient()
-        api.baseURL = Keychain.serverURL
-            ?? Bundle.main.object(forInfoDictionaryKey: "GolemServerURL") as? String ?? ""
-        api.token = Keychain.token
-        // iOS can give a share sheet no network for a moment, which failed at once as "offline"; wait for it.
-        let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForResource = 120
-        api.session = URLSession(configuration: configuration)
-        return api
     }
 
     /// Web links and text as lines of the message; files, pictures, and videos as copies in the temporary folder.

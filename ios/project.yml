@@ -87,6 +87,19 @@ targets:
           else
             echo "warning: no Supertonic in ios/Models (run ios/scripts/fetch-supertonic.sh); there will be no conversation mode"
           fi
+      - name: Bundle shortcuts
+        basedOnDependencyAnalysis: false
+        script: |
+          # Signs the shortcuts that Settings offers (ios/scripts/make-shortcuts.py) once per bundle id, and copies them
+          # into the app. Signing needs this Mac's iCloud account; without it, Settings does not offer them.
+          SIGNED="${SRCROOT}/build/shortcuts/${PRODUCT_BUNDLE_IDENTIFIER}"
+          if python3 "${SRCROOT}/scripts/make-shortcuts.py" "${PRODUCT_BUNDLE_IDENTIFIER}" "${DEVELOPMENT_TEAM}" "$SIGNED"; then
+            DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Shortcuts"
+            mkdir -p "$DEST"
+            rsync -a --delete "$SIGNED/" "$DEST/"
+          else
+            echo "warning: the shortcuts are not signed (shortcuts sign needs iCloud); Settings will not offer them"
+          fi
     settings:
       base:
         # The model scripts write into the app bundle.

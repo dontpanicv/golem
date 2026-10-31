@@ -6,6 +6,10 @@ import UIKit
 struct SettingsView: View {
     @Environment(Session.self) private var session
     @State private var llm: Llm?
+    /// The signed shortcuts of the build (ios/scripts/make-shortcuts.py), for the Action button and Back Tap.
+    private let shortcuts: [(name: String, url: URL)] = ["Ask Golem", "Dictate to Golem"].compactMap { name in
+        Bundle.main.url(forResource: name, withExtension: "shortcut", subdirectory: "Shortcuts").map { (name, $0) }
+    }
 
     var body: some View {
         SettingsList {
@@ -72,6 +76,17 @@ struct SettingsView: View {
                             title: voiceLabel
                         )
                         .accessibilityLabel("Voice")
+                    }
+                }
+            }
+            if !shortcuts.isEmpty {
+                SettingsCard(title: "Shortcuts") {
+                    ForEach(shortcuts, id: \.name) { shortcut in
+                        SettingsRow(shortcut.name) {
+                            // The share sheet's Shortcuts app imports it.
+                            ShareLink(item: shortcut.url) { Text("Add") }
+                                .buttonStyle(.secondary)
+                        }
                     }
                 }
             }

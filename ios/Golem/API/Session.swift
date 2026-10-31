@@ -253,7 +253,7 @@ final class Session {
         UNUserNotificationCenter.current().setBadgeCount(0)
     }
 
-    private enum Keys {
+    enum Keys {
         static let workspaceID = "workspaceID"
     }
 }

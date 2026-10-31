@@ -13,6 +13,20 @@ final class APIClient {
     var onUnauthorized: () -> Void = {}
     var session = URLSession.shared
 
+    /// The app's session from the Keychain, for the Share extension and the intents, which have no `Session`.
+    static func signedIn() -> APIClient {
+        let api = APIClient()
+        api.baseURL = Keychain.serverURL
+            ?? Bundle.main.object(forInfoDictionaryKey: "GolemServerURL") as? String ?? ""
+        api.token = Keychain.token
+        // iOS can give a share sheet no network for a moment, which failed at once as "offline"; wait for it.
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForResource = 120
+        api.session = URLSession(configuration: configuration)
+        return api
+    }
+
     // MARK: Auth
 
     /// Opened in a web authentication session; `challenge` is the base64url SHA-256 of the sign-in's verifier.
