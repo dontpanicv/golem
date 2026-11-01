@@ -81,7 +81,9 @@ struct ChannelDetailsView: View {
     private func routineRow(_ routine: Binding<Routine>) -> some View {
         let value = routine.wrappedValue
         return SettingsRow(
-            value.name, description: value.nextRunAt.map { "Next \(time($0))" } ?? "Paused"
+            value.name,
+            description: value.nextRunAt.map { "Next \(time($0))" } ?? (value.enabled ? value.place?.summary : nil)
+                ?? "Paused"
         ) {
             HStack(spacing: Tokens.Space.xs) {
                 Toggle(isOn: Binding(get: { value.enabled }, set: { setEnabled(routine, $0) })) {}

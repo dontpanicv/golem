@@ -95,8 +95,8 @@ export function itemId(item: AgendaItem): string {
 
 /**
  * The agenda in groups, each only when it has items: what needs the person, the suggestions, then what runs today,
- * tomorrow, in the next 7 days, and later, soonest first, the reminders that wait for a place, and the paused
- * routines. A failed routine shows only in Needs you.
+ * tomorrow, in the next 7 days, and later, soonest first, the reminders that wait for a place, the routines at a
+ * place, and the paused routines. A failed routine shows only in Needs you.
  */
 export function agendaGroups(upcoming: Upcoming, now: number): AgendaGroup[] {
   const failed = upcoming.routines.filter(
@@ -162,6 +162,12 @@ export function agendaGroups(upcoming: Upcoming, now: number): AgendaGroup[] {
       items: upcoming.reminders
         .filter(waitsForPlace)
         .map((reminder) => ({ kind: "reminder", reminder }) as const),
+    },
+    {
+      title: "Routines at a place",
+      items: others
+        .filter((routine) => routine.enabled && routine.place !== null)
+        .map((routine) => ({ kind: "routine", routine }) as const),
     },
     {
       title: "Paused",

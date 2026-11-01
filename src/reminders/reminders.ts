@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { Place, Places } from "../places/places.ts";
+import type { Place, PlaceEvent, Places } from "../places/places.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type { Threads } from "../threads/threads.ts";
@@ -27,9 +27,6 @@ export interface Reminder {
   readonly deliveredAt: number | null;
   readonly cancelledAt: number | null;
 }
-
-/** A person arrives at a place, or leaves it. */
-export type PlaceEvent = "arrive" | "leave";
 
 export interface ReminderPlace
   extends Pick<Place, "id" | "name" | "latitude" | "longitude" | "radius"> {

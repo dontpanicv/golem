@@ -11,6 +11,7 @@ function routine(id: string, fields: Partial<Routine>): Routine {
     channelId: "channel",
     name: id,
     schedule: "0 7 * * *",
+    place: null,
     enabled: true,
     nextRunAt: null,
     threadId: null,
@@ -19,12 +20,24 @@ function routine(id: string, fields: Partial<Routine>): Routine {
   };
 }
 
-test("the agenda shows what needs the person, the suggestions, then what runs by day, soonest first, the reminders at a place, and the paused routines", () => {
+test("the agenda shows what needs the person, the suggestions, then what runs by day, soonest first, the reminders at a place, the routines at a place, and the paused routines", () => {
   const upcoming: Upcoming = {
     routines: [
       routine("later", { nextRunAt: NOW + 10 * 24 * HOUR }),
       routine("today", { nextRunAt: NOW + 2 * HOUR }),
       routine("paused", { enabled: false }),
+      routine("home", {
+        schedule: null,
+        place: {
+          id: "place",
+          name: "Home",
+          latitude: 50.1,
+          longitude: 14.4,
+          radius: 200,
+          event: "arrive",
+          personId: "alice",
+        },
+      }),
       routine("broken", {
         nextRunAt: NOW + HOUR,
         lastRun: {
@@ -126,6 +139,7 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
     ["This week", ["week"]],
     ["Later", ["later"]],
     ["At a place", ["cottage"]],
+    ["Routines at a place", ["home"]],
     ["Paused", ["paused"]],
   ]);
 });

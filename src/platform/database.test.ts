@@ -10,7 +10,10 @@ test("the workspace's one orchestrator from before becomes the own of the person
     .get() as { user_version: number };
   // The state before the migration of the orchestrators and the one after it: one orchestrator of the workspace,
   // made by Golem, no OAuth clients, no channel emojis, no facts, no private channels, and no recent searches.
-  database.run(`DROP TABLE place;
+  database.run(`ALTER TABLE routine DROP COLUMN place_id;
+	ALTER TABLE routine DROP COLUMN place_event;
+	ALTER TABLE routine DROP COLUMN place_person_id;
+	DROP TABLE place;
 	ALTER TABLE reminder DROP COLUMN place_id;
 	ALTER TABLE reminder DROP COLUMN place_event;
 	ALTER TABLE reminder DROP COLUMN triggered_at;
@@ -28,7 +31,7 @@ test("the workspace's one orchestrator from before becomes the own of the person
 	CREATE UNIQUE INDEX thread_orchestrator ON thread (workspace_id) WHERE orchestrator = 1;
 	INSERT INTO channel (id, workspace_id, name, created_by, created_at) VALUES ('general', 'home', 'general', 'alice', 1), ('food', 'home', 'food', 'bob', 2);
 	INSERT INTO thread (id, workspace_id, channel_id, title, created_by, created_at, updated_at, orchestrator) VALUES ('golem', 'home', 'food', 'Golem', 'golem', 1, 1, 1), ('dinner', 'home', 'food', 'Dinner', 'bob', 1, 1, 0);
-	PRAGMA user_version = ${version - 13};`);
+	PRAGMA user_version = ${version - 14};`);
   migrate(database);
   expect(
     database
@@ -56,7 +59,10 @@ test("own credentials and machines become private ones in their owner's workspac
     .get() as { user_version: number };
   // The tables before: a null workspace is a person's own. Alice paired the NAS both ways, and Bob's own "mac" has the
   // name of Alice's.
-  database.run(`DROP TABLE place;
+  database.run(`ALTER TABLE routine DROP COLUMN place_id;
+	ALTER TABLE routine DROP COLUMN place_event;
+	ALTER TABLE routine DROP COLUMN place_person_id;
+	DROP TABLE place;
 	ALTER TABLE reminder DROP COLUMN place_id;
 	ALTER TABLE reminder DROP COLUMN place_event;
 	ALTER TABLE reminder DROP COLUMN triggered_at;
@@ -80,7 +86,7 @@ test("own credentials and machines become private ones in their owner's workspac
 		('alices-mac', NULL, 'mac', '[]', 1, 'a', 'macos', 'arm64', '1', 4, 'alice'),
 		('bobs-mac', NULL, 'mac', '[]', 1, 'b', 'macos', 'arm64', '1', 5, 'bob');
 	UPDATE machine SET deleted_at = 1 WHERE id = 'old-nas';
-	PRAGMA user_version = ${version - 7};`);
+	PRAGMA user_version = ${version - 8};`);
   migrate(database);
   expect(
     database

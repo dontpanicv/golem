@@ -12,7 +12,7 @@ import {
   SettingsRow,
   Switch,
 } from "../ui/components.tsx";
-import { clockTime, weekdayTime } from "../ui/format.ts";
+import { clockTime, placeWords, weekdayTime } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { channelsOf } from "../workspaces/data.ts";
 import { PanelHeader } from "../workspaces/shell.tsx";
@@ -147,7 +147,7 @@ function AgendaRow({
           reminder={item.reminder}
           when={
             item.reminder.place && item.reminder.triggeredAt === null
-              ? `${item.reminder.place.event === "arrive" ? "Arrive at" : "Leave"} ${item.reminder.place.name}`
+              ? placeWords(item.reminder.place)
               : when(item.reminder.dueAt)
           }
           workspaceId={workspaceId}
@@ -186,13 +186,16 @@ function RoutineRow({
     <SettingsRow
       compact
       description={[
-        when ?? scheduleWords(routine.schedule),
+        when ??
+          (routine.place
+            ? placeWords(routine.place)
+            : scheduleWords(routine.schedule ?? "")),
         channel && `#${channel}`,
       ]
         .filter(Boolean)
         .join(" · ")}
       label={routine.name}
-      lead={<Icon name="play" />}
+      lead={<Icon name={routine.place ? "place" : "play"} />}
     >
       {children}
       <Switch

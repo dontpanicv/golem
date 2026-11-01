@@ -18,7 +18,7 @@ import {
   SettingsRow,
   Switch,
 } from "../ui/components.tsx";
-import { weekdayTime } from "../ui/format.ts";
+import { placeWords, weekdayTime } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { showError, showToast } from "../ui/toast.tsx";
 import { channelsOf } from "../workspaces/data.ts";
@@ -128,14 +128,10 @@ export function ChannelDetails() {
           <SettingsCard>
             {rows.map((routine) => (
               <SettingsRow
-                description={
-                  routine.nextRunAt === null
-                    ? "Paused"
-                    : `Next ${weekdayTime(routine.nextRunAt)}`
-                }
+                description={routineWhen(routine)}
                 key={routine.id}
                 label={routine.name}
-                lead={<Icon name="play" />}
+                lead={<Icon name={routine.place ? "place" : "play"} />}
               >
                 <Switch
                   checked={routine.enabled}
@@ -238,4 +234,17 @@ export function ChannelDetails() {
       ) : null}
     </>
   );
+}
+
+/** Its next run, its place, or Paused. */
+function routineWhen(routine: Routine): string {
+  if (!routine.enabled) {
+    return "Paused";
+  }
+  if (routine.place) {
+    return placeWords(routine.place);
+  }
+  return routine.nextRunAt === null
+    ? "Paused"
+    : `Next ${weekdayTime(routine.nextRunAt)}`;
 }

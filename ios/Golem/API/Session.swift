@@ -107,10 +107,11 @@ final class Session {
         try? await api.addDevice(token: token, environment: Push.environment)
     }
 
-    /// Watches the places of the person's pending reminders at a place in the open workspace (`PlaceWatcher`).
+    /// Watches the places of the person's pending reminders and routines at a place in the open workspace
+    /// (`PlaceWatcher`).
     func watchPlaces() async {
         guard let workspace, let user, let upcoming = try? await api.upcoming(workspaceID: workspace.id) else { return }
-        await PlaceWatcher.shared.watch(upcoming.reminders, userID: user.id, workspaceID: workspace.id)
+        await PlaceWatcher.shared.watch(upcoming, userID: user.id, workspaceID: workspace.id)
     }
 
     /// Loads the user and the workspaces, then opens the last workspace.

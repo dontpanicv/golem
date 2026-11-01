@@ -82,7 +82,8 @@ beforeAll(async () => {
     golem.app.workspaces,
     integrations,
     golem.app.threads,
-    golem.app.indexer
+    golem.app.indexer,
+    golem.app.places
   );
   // The memory and the channel briefs ask the model in the background too.
   golem.faux.setResponses(Array.from({ length: 200 }, () => agent));
@@ -139,10 +140,20 @@ function agent(context: Context) {
       instructions: "Nothing.",
     });
   }
+  if (text.endsWith("Warm the cabin when I arrive")) {
+    return call("routines_create", {
+      name: "Cabin",
+      place: "cabin",
+      instructions: "Turn on the heating.",
+    });
+  }
   if (text.endsWith("Test a script")) {
     return call("routines_test_script", {
       script: 'text("hello"); return [1, 2];',
     });
+  }
+  if (text.includes("arrives at Cottage")) {
+    return fauxAssistantMessage("The heating is on.");
   }
   return fauxAssistantMessage("Ok.");
 }
@@ -295,7 +306,8 @@ test("a connector without a credential fails the script", async () => {
     golem.app.workspaces,
     other,
     golem.app.threads,
-    golem.app.indexer
+    golem.app.indexer,
+    golem.app.places
   );
   const result = await scripts.test(workspaceId, null, SCRIPT, undefined, null);
   expect(result).toMatchObject({ ok: false });
@@ -402,6 +414,84 @@ test("a routine runs at most every 15 minutes, whatever its schedule says", asyn
   routines.delete(routine.id, alice);
 });
 
+test("a routine at a place runs each time its person's iPhone reports the event, at most every 15 minutes", async () => {
+  const cottage = golem.app.places.create(workspaceId, alice, {
+    name: "Cottage",
+    latitude: 49.1,
+    longitude: 16.2,
+    radius: 300,
+    shared: false,
+  });
+  const input = {
+    name: "Heating",
+    instructions: "Turn on the heating.",
+    createdBy: alice.id,
+  };
+  const place = {
+    id: cottage.id,
+    event: "arrive",
+    personId: alice.id,
+  } as const;
+  expect(() =>
+    routines.create(workspaceId, channelId, {
+      ...input,
+      id: crypto.randomUUID(),
+      schedule: "0 7 * * *",
+      place,
+    })
+  ).toThrow("Give a routine a schedule or a place.");
+  expect(() =>
+    routines.create(workspaceId, channelId, {
+      ...input,
+      id: crypto.randomUUID(),
+      place: { ...place, id: "elsewhere" },
+    })
+  ).toThrow("Give a place that the person and the writer use");
+  const routine = routines.create(workspaceId, channelId, {
+    ...input,
+    id: crypto.randomUUID(),
+    place,
+  });
+  expect(routine).toMatchObject({
+    schedule: null,
+    nextRunAt: null,
+    place: { name: "Cottage", event: "arrive", personId: alice.id },
+  });
+  routines.trigger(routine.id, alice);
+  const ran = await until(
+    async () => routines.get(routine.id, alice),
+    ({ lastRun }) => lastRun?.outcome === "posted"
+  );
+  expect(
+    (await golem.app.threads.messages(threadOf(ran.threadId))).messages.at(-1)
+      ?.text
+  ).toBe("The heating is on.");
+  // A second report soon after, as at the edge of the circle, runs nothing.
+  routines.trigger(routine.id, alice);
+  expect(routines.get(routine.id, alice).lastRun?.id).toBe(ran.lastRun!.id);
+  // A pause and a new name keep its place, and a schedule takes its place.
+  expect(
+    golem.app.routines.update(
+      workspaceId,
+      null,
+      routine.id,
+      { name: "Warm cottage" },
+      alice.id
+    ).place?.name
+  ).toBe("Cottage");
+  const scheduled = routines.update(
+    workspaceId,
+    null,
+    routine.id,
+    { schedule: "0 7 * * *" },
+    alice.id
+  );
+  expect(scheduled).toMatchObject({ place: null, schedule: "0 7 * * *" });
+  expect(scheduled.nextRunAt).toBeNumber();
+  expect(() => routines.trigger(routine.id, alice)).toThrow("Not found");
+  routines.delete(routine.id, alice);
+});
+
 test("a run that a stop cuts off goes on at the next start, and the agent does its work once", async () => {
   const { threads } = golem.app;
   let answered: Promise<string | null> | undefined;
@@ -424,7 +514,8 @@ test("a run that a stop cuts off goes on at the next start, and the agent does i
     golem.app.workspaces,
     integrations,
     stopping,
-    golem.app.indexer
+    golem.app.indexer,
+    golem.app.places
   );
   const routine = beforeStop.create(workspaceId, channelId, {
     id: crypto.randomUUID(),
@@ -525,7 +616,8 @@ function restart(): Routines {
     golem.app.workspaces,
     integrations,
     golem.app.threads,
-    golem.app.indexer
+    golem.app.indexer,
+    golem.app.places
   );
   started.start();
   return started;
@@ -590,5 +682,25 @@ test("agents create routines and test scripts", async () => {
   );
   expect(toolResults.at(-1)).toContain(
     "The agent would get:\nhello\n[\n  1,\n  2\n]"
+  );
+
+  golem.app.places.create(workspaceId, alice, {
+    name: "Cabin",
+    latitude: 49.1,
+    longitude: 16.2,
+    radius: 300,
+    shared: false,
+  });
+  await golem.app.threads.send(
+    thread.id,
+    alice,
+    "Warm the cabin when I arrive"
+  );
+  await until(
+    () => golem.app.threads.messages(ref()),
+    (state) => !state.running && state.messages.length === 8
+  );
+  expect(toolResults.at(-1)).toContain(
+    "When: each time Alice arrives at Cabin"
   );
 });

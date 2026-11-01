@@ -164,14 +164,15 @@ export async function createApp(
     artifacts,
     embedder
   );
+  const places = new Places(database, workspaces);
   const routines = new Routines(
     database,
     workspaces,
     integrations,
     threads,
-    indexer
+    indexer,
+    places
   );
-  const places = new Places(database, workspaces);
   const reminders = new Reminders(database, workspaces, threads, places);
   const agenda = new Agenda(database, workspaces, threads, routines, reminders);
   return {

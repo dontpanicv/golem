@@ -136,6 +136,11 @@ final class APIClient {
         _ = try await send("POST", "/api/v1/routines/\(id)/runs")
     }
 
+    /// Tells Golem that the person arrived at or left the place of their routine, which then runs.
+    func triggerRoutine(_ id: String) async throws {
+        _ = try await send("POST", "/api/v1/routines/\(id)/trigger")
+    }
+
     func deleteRoutine(_ id: String) async throws {
         _ = try await send("DELETE", "/api/v1/routines/\(id)")
     }

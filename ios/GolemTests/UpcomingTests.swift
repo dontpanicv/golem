@@ -4,7 +4,7 @@ import Testing
 @testable import Golem
 
 /// Upcoming puts what needs the person first, then the suggestions, then routines and reminders by day, soonest
-/// first, then the reminders that wait for a place, then the paused routines.
+/// first, then the reminders that wait for a place, then the routines at a place, then the paused routines.
 @Suite("Upcoming groups")
 struct UpcomingTests {
     private let calendar: Calendar = {
@@ -18,7 +18,8 @@ struct UpcomingTests {
     private func hours(_ hours: Double) -> Double { (now.timeIntervalSince1970 + hours * 3600) * 1000 }
 
     private func routine(
-        _ id: String, at next: Double?, enabled: Bool = true, outcome: RoutineRun.Outcome? = nil
+        _ id: String, at next: Double?, enabled: Bool = true, outcome: RoutineRun.Outcome? = nil,
+        place: RoutinePlace? = nil
     ) -> Routine {
         let run = outcome.map {
             RoutineRun(
@@ -26,8 +27,9 @@ struct UpcomingTests {
             )
         }
         return Routine(
-            id: id, channelId: "general", name: id, schedule: "0 8 * * *", instructions: "", script: nil,
-            enabled: enabled, nextRunAt: enabled ? next : nil, threadId: nil, lastRun: run
+            id: id, channelId: "general", name: id, schedule: place == nil ? "0 8 * * *" : nil, place: place,
+            instructions: "", script: nil, enabled: enabled, nextRunAt: enabled ? next : nil, threadId: nil,
+            lastRun: run
         )
     }
 
@@ -56,6 +58,13 @@ struct UpcomingTests {
                 routine("broken", at: hours(1), outcome: .failed),
                 routine("stopped", at: nil, enabled: false),
                 routine("morning", at: hours(22), outcome: .posted),
+                routine(
+                    "heating", at: nil,
+                    place: RoutinePlace(
+                        id: "cottage", name: "Cottage", latitude: 49.1, longitude: 16.2, radius: 300, event: .leave,
+                        personId: "me"
+                    )
+                ),
             ],
             reminders: [
                 reminder("soon", at: hours(1)), reminder("friday", at: hours(24 * 5)), reminder("now", at: hours(-1)),
@@ -72,7 +81,7 @@ struct UpcomingTests {
 
         let groups = upcoming.groups(now: now, calendar: calendar)
 
-        #expect(groups.map(\.kind) == [.needsYou, .suggested, .today, .tomorrow, .thisWeek, .later, .atPlace, .paused])
+        #expect(groups.map(\.kind) == [.needsYou, .suggested, .today, .tomorrow, .thisWeek, .later, .atPlace, .routinesAtPlace, .paused])
         #expect(names(groups) == [
             "Needs you": ["approval:allow", "routine:broken"],
             "Suggested": ["suggestion:idea"],
@@ -81,6 +90,7 @@ struct UpcomingTests {
             "This week": ["reminder:friday"],
             "Later": ["routine:weekly"],
             "At a place": ["reminder:tent"],
+            "Routines at a place": ["routine:heating"],
             "Paused": ["routine:stopped"],
         ])
     }

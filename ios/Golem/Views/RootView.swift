@@ -29,8 +29,8 @@ struct RootView: View {
             if let tapped = Push.tapped(url) { Push.shared.tapped = tapped }
         }
         .task(id: session.workspace?.id) { await session.watchPlaces() }
-        // Threads read on screen read their notifications, so the inbox and the app icon load again. A reminder at a
-        // place that an agent made while the app was open is watched once the app goes to the background.
+        // Threads read on screen read their notifications, so the inbox and the app icon load again. A reminder or a
+        // routine at a place that an agent made while the app was open is watched once the app goes to the background.
         .onChange(of: scenePhase) {
             if scenePhase != .inactive {
                 Task {

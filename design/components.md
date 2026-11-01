@@ -208,11 +208,12 @@ Used by the workspace switcher and action menus.
 ## Upcoming
 
 - The sidebar's Upcoming item, after Inbox, has the `clock` icon. The page is the Settings column; its groups, each
-  only with items, are Needs you, Suggested, Today, Tomorrow, This week (the next 7 days), Later, At a place, and Paused,
+  only with items, are Needs you, Suggested, Today, Tomorrow, This week (the next 7 days), Later, At a place, Routines at a place, and Paused,
   each a section title over a card of compact rows. A routine row has the `play` icon, its name, its schedule in words and its
   channel, a failed badge after a failed run, and its switch; a reminder row has the `clock` icon, its text, its time,
   and a secondary Cancel button; a reminder at a place has the `place` icon and "Arrive at Cottage" or "Leave Office"
-  in place of the time. iOS has the same screen from a row at the top of Home and in the sidebar.
+  in place of the time; so does a routine at a place, in place of its schedule, also in a channel's Routines. iOS has the
+  same screen from a row at the top of Home and in the sidebar.
 - Suggestion: a compact row with its kind's icon, the name, when it runs, and secondary Decline and primary Accept
   buttons. In the person's orchestrator the waiting suggestions sit in one card over the composer, as wide as it.
 

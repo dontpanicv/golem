@@ -427,6 +427,11 @@ const migrations = [
   `ALTER TABLE reminder ADD COLUMN place_id TEXT;
 	ALTER TABLE reminder ADD COLUMN place_event TEXT;
 	ALTER TABLE reminder ADD COLUMN triggered_at INTEGER;`,
+  // routines: a routine at a place runs each time the iPhone of `place_person_id` reports that they arrived or left
+  // (`place_event`); its `schedule` is '' and its `next_run_at` null. Null for a routine on a schedule.
+  `ALTER TABLE routine ADD COLUMN place_id TEXT;
+	ALTER TABLE routine ADD COLUMN place_event TEXT;
+	ALTER TABLE routine ADD COLUMN place_person_id TEXT;`,
 ];
 
 export function openDatabase(path: string): Database {

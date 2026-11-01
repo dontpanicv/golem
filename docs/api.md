@@ -129,11 +129,12 @@ type Routine = {
 	id: string;
 	channelId: string;
 	name: string;
-	schedule: string; // a cron expression in the server's time zone
+	schedule: string | null; // a cron expression in the server's time zone; null for a routine at a place
+	place: { id: string; name: string; latitude: number; longitude: number; radius: number; event: "arrive" | "leave"; personId: string } | null; // a routine at a place runs each time personId's iPhone reports the event; null: a routine on a schedule
 	instructions: string;
 	script: string | null; // code mode JavaScript that collects what is new before the agent sees it
 	enabled: boolean;
-	nextRunAt: number | null; // null while paused
+	nextRunAt: number | null; // null while paused, and for a routine at a place
 	threadId: string | null; // where its agent answers; set at the first run that reaches the agent
 	lastRun: RoutineRun | null;
 };
@@ -472,6 +473,7 @@ the person enters on their phone, in Linked devices; then `sign-in` waits up to 
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/routines` | | `{ routines: Routine[], runs: RoutineRun[] }`; the 20 newest runs, newest first |
 | `PUT /api/v1/routines/:routineId` | `{ enabled }` | `Routine` |
 | `POST /api/v1/routines/:routineId/runs` | | `202`; the run shows in the list; `409` while it runs |
+| `POST /api/v1/routines/:routineId/trigger` | | `202`; the iPhone of the routine's person reports that they arrived at or left its place, and it runs, unless it ran in the last 15 minutes. `404` unless the person is its `place.personId`; `409` while it is paused |
 | `DELETE /api/v1/routines/:routineId` | | `204`; its thread stays |
 
 People create and change routines by asking an agent in a thread: agents have the `routines_create`,
@@ -480,6 +482,11 @@ who last wrote its instructions or script; a change of only its name, schedule, 
 person tests a script with the values the routine stored. When that person is no longer a member, each run fails until
 a member changes the routine. A run that a stop or a restart of Golem cuts off stays `running`, and ends when Golem
 starts again and its agent answers; the script does not run again.
+
+A routine at a place has a place, `arrive` or `leave`, and a person in place of a schedule. The place must be one that
+the person and the writer of the routine both use, and the person must see its channel. The person's iPhone watches
+the places of the routines in their Upcoming and reports each event; then the routine runs, at most every 15 minutes.
+A removed place keeps its routines.
 
 ### One-time reminders (`src/reminders/`)
 

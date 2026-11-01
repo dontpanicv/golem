@@ -280,17 +280,37 @@ struct RoutineRun: Codable, Hashable, Identifiable {
     let error: String?
 }
 
+/// Work a channel does on a schedule, or each time a person arrives at or leaves its `place`.
 struct Routine: Codable, Hashable, Identifiable {
     let id: String
     let channelId: String
     let name: String
-    let schedule: String
+    /// A cron expression; nil for a routine at a place.
+    let schedule: String?
+    let place: RoutinePlace?
     let instructions: String
     let script: String?
     var enabled: Bool
     let nextRunAt: Double?
     let threadId: String?
     let lastRun: RoutineRun?
+}
+
+/// A person arrives at a place, or leaves it.
+enum PlaceEvent: String, Codable { case arrive, leave }
+
+/// The place that a routine runs at, the event, and the person whose iPhone reports it.
+struct RoutinePlace: Codable, Hashable {
+    let id: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let radius: Int
+    let event: PlaceEvent
+    let personId: String
+
+    /// "Arrive at Cottage", "Leave Office"
+    var summary: String { event == .arrive ? "Arrive at \(name)" : "Leave \(name)" }
 }
 
 struct ChannelRoutines: Codable {

@@ -40,6 +40,14 @@ export function weekdayTime(milliseconds: number): string {
   });
 }
 
+/** Arrive at Cottage, Leave Office */
+export function placeWords(place: {
+  readonly name: string;
+  readonly event: "arrive" | "leave";
+}): string {
+  return `${place.event === "arrive" ? "Arrive at" : "Leave"} ${place.name}`;
+}
+
 /** 26 Oct */
 export function day(milliseconds: number): string {
   return new Date(milliseconds).toLocaleDateString("en-GB", {

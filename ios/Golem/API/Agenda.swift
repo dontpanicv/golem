@@ -57,14 +57,12 @@ struct Reminder: Codable, Hashable, Identifiable {
 
 /// The place that a reminder waits for, and whether for an arrival or a departure.
 struct ReminderPlace: Codable, Hashable {
-    enum Event: String, Codable { case arrive, leave }
-
     let id: String
     let name: String
     let latitude: Double
     let longitude: Double
     let radius: Int
-    let event: Event
+    let event: PlaceEvent
 
     /// "Arrive at Cottage", "Leave Office"
     var summary: String { event == .arrive ? "Arrive at \(name)" : "Leave \(name)" }

@@ -3,7 +3,7 @@ import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 
-/** A place that a person marked on a map, which a reminder waits for. */
+/** A place that a person marked on a map, which a reminder or a routine waits for. */
 export interface Place {
   readonly id: string;
   readonly name: string;
@@ -17,6 +17,9 @@ export interface Place {
   /** Whether every member's turns use it; else only its owner's. */
   readonly shared: boolean;
 }
+
+/** A person arrives at a place, or leaves it. */
+export type PlaceEvent = "arrive" | "leave";
 
 export type PlaceInput = Pick<
   Place,

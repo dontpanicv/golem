@@ -150,7 +150,7 @@ export class Agenda {
       .inWorkspace(workspaceId, personId)
       .map(
         (routine) =>
-          `- Routine "${routine.name}" (${routine.schedule})${routine.enabled ? "" : ", paused"}`
+          `- Routine "${routine.name}" (${routine.place ? `when they ${routine.place.event === "arrive" ? "arrive at" : "leave"} ${routine.place.name}` : routine.schedule})${routine.enabled ? "" : ", paused"}`
       );
     const reminders = this.pendingReminders(workspaceId, user).map(
       (reminder) =>

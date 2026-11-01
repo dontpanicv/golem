@@ -197,8 +197,15 @@ export interface Routine {
   readonly id: string;
   readonly channelId: string;
   readonly name: string;
-  /** A cron expression in the server's time zone. */
-  readonly schedule: string;
+  /** A cron expression in the server's time zone; null for a routine at a place. */
+  readonly schedule: string | null;
+  /** The place, the event, and the member whose iPhone reports it; null for a routine on a schedule. */
+  readonly place:
+    | (Pick<Place, "id" | "name" | "latitude" | "longitude" | "radius"> & {
+        readonly event: "arrive" | "leave";
+        readonly personId: string;
+      })
+    | null;
   readonly enabled: boolean;
   /** Null while paused. */
   readonly nextRunAt: number | null;

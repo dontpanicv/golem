@@ -29,7 +29,7 @@ src/
 ├── llm/                     The shared LLM provider, its stored login, and the agents' web search
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── integrations/            The connectors, their tools, and the credentials of workspaces and people
-├── places/                  The places that people mark on a map, which reminders wait for, and the map tiles
+├── places/                  The places that people mark on a map, which reminders and routines wait for, and the map tiles
 ├── artifacts/               The pages and small apps agents make for a channel, their link pages, and their data
 ├── browser/                 The headless Chrome of each thread and person, which agents visit websites with
 ├── notifications/           Each person's inbox, the devices that get pushes, and the APNs sender
