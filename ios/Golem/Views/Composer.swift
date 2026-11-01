@@ -57,10 +57,12 @@ struct FileChips: View {
     }
 }
 
-/// A message box with the files picked, or dropped on it, to send with it, and dictation into it (``MicButton``):
-/// a glass field as Linear's comment field, with the add button at the start, the mic at the end, and the send
-/// button once there is something to send. `owner` keys the dictation: the thread, or the channel of a new thread.
-/// While `sending`, the send button spins. The Golem thread's composer starts dictating on a ``Dictation`` request.
+/// A message box with the files picked, or dropped on it, to send with it, and dictation into it (``MicButton``),
+/// as T3's: a glass field with the add button at the start, then the mic and the round send button. While the text
+/// fits one line, all sit in one row; else the text spans the field over them. `owner` keys the dictation: the thread,
+/// or the channel of a new thread. While `sending`, the send button spins. With `stop`, while the agent works, an empty
+/// composer shows Stop in the send button's place, and the send button steers. The Golem thread's composer starts
+/// dictating on a ``Dictation`` request.
 struct Composer: View {
     let owner: String
     let placeholder: String
@@ -68,6 +70,7 @@ struct Composer: View {
     @Binding var files: [URL]
     var sending = false
     var autofocus = false
+    var stop: (() -> Void)?
     let send: () -> Void
     @Environment(Session.self) private var session
     @State private var gesture: MicButton.Gesture?
@@ -83,13 +86,14 @@ struct Composer: View {
     private var canSend: Bool { !draft.isEmpty || !files.isEmpty || active }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Tokens.Mobile.Size.voice / 2)
         VStack(alignment: .leading, spacing: 0) {
             if !files.isEmpty {
                 FileChips(names: files.map(\.lastPathComponent)) { files.remove(at: $0) }
                     .padding(.horizontal, Tokens.Space.lg)
                     .padding(.top, Tokens.Space.sm)
             }
-            HStack(alignment: .bottom, spacing: 0) {
+            ComposerLayout(multiline: !recording && draft.contains("\n"), inset: Tokens.Space.lg) {
                 if recording {
                     RecordingBar(
                         startedAt: listener.startedAt, holding: gesture == .hold,
@@ -98,6 +102,7 @@ struct Composer: View {
                     .padding(.leading, Tokens.Space.lg)
                     .padding(.trailing, Tokens.Space.md)
                     .frame(minHeight: Tokens.Mobile.Size.voice)
+                    .layoutValue(key: ComposerLayout.Fills.self, value: true)
                 } else {
                     AttachMenu { files += $0 } label: {
                         Image(systemName: "plus")
@@ -107,29 +112,24 @@ struct Composer: View {
                             .contentShape(.rect)
                     }
                     .accessibilityLabel("Attach file")
-                    field
+                    field.layoutValue(key: ComposerLayout.Fills.self, value: true)
                 }
                 MicButton(
                     gesture: $gesture, recording: recording, level: active ? listener.level : 0,
                     start: startListening, cancel: cancel, keep: keep, submit: submit
                 )
                 .frame(height: Tokens.Mobile.Size.voice)
-                if canSend {
-                    Button(action: submit) {
-                        if sending {
-                            ProgressView().controlSize(.mini).tint(Tokens.Colors.onAccent)
-                        } else {
-                            Label("Send", systemImage: "arrow.up").labelStyle(.iconOnly)
-                        }
-                    }
-                    .accessibilityLabel(sending ? "Sending" : "Send")
-                    .buttonStyle(.send)
+                sendButton
                     .frame(width: Tokens.Size.listRow, height: Tokens.Mobile.Size.voice)
                     .padding(.trailing, Tokens.Space.xs)
-                }
             }
         }
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Tokens.Mobile.Size.voice / 2))
+        .glassEffect(.regular.interactive(), in: shape)
+        // T3's soft shadow, only outside the field, so that the glass stays clear.
+        .background {
+            shape.fill(.black).shadow(Tokens.Shadows.composer)
+                .mask(Rectangle().inset(by: -Tokens.Space.xxl).subtracting(shape))
+        }
         .animation(Tokens.Easing.ease(Tokens.Duration.fast), value: canSend)
         .dropDestination(for: PickedFile.self) { dropped, _ in
             files += dropped.map(\.url)
@@ -172,7 +172,7 @@ struct Composer: View {
                     prompt: Text(placeholder).foregroundStyle(Tokens.Mobile.Colors.placeholder), axis: .vertical
                 )
                 .foregroundStyle(Tokens.Mobile.Colors.text)
-                .lineLimit(1...8)
+                .lineLimit(1...4)
                 .tint(Tokens.Colors.accent)
                 .focused($focused)
                 .onAppear { if autofocus { focused = true } }
@@ -182,6 +182,26 @@ struct Composer: View {
         }
         .font(.golem(Tokens.Mobile.FontSize.body))
         .padding(.vertical, 14)
+    }
+
+    /// Send, or Steer while the agent works; gray while there is nothing to send. Stop takes its place while the agent
+    /// works and there is nothing to send.
+    @ViewBuilder private var sendButton: some View {
+        if let stop, !canSend {
+            Button("Stop", systemImage: "stop.fill", action: stop)
+                .buttonStyle(.send(Tokens.Mobile.Colors.danger))
+        } else {
+            Button(action: submit) {
+                if sending {
+                    ProgressView().controlSize(.mini).tint(Tokens.Colors.onAccent)
+                } else {
+                    Image(systemName: stop == nil ? "arrow.up" : "arrow.turn.left.up")
+                }
+            }
+            .accessibilityLabel(sending ? "Sending" : stop == nil ? "Send" : "Steer")
+            .buttonStyle(.send())
+            .disabled(!canSend)
+        }
     }
 
     /// Listens after the typed draft; a conversation in progress ends.
@@ -220,6 +240,59 @@ struct Composer: View {
     private func cancel() {
         gesture = nil
         listener.cancel()
+    }
+}
+
+/// The composer's row, as T3's: the subview that ``Fills`` takes the room the others leave, while its text fits one
+/// line and has no line break. Else it spans the composer, and the others sit in a row under it: those before it at the
+/// start, those after it at the end. One layout for both keeps the field, and with it the keyboard's focus.
+private struct ComposerLayout: Layout {
+    struct Fills: LayoutValueKey { static let defaultValue = false }
+
+    let multiline: Bool
+    /// The room at each side of the text that spans the composer.
+    let inset: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.reduce(0) { $0 + $1.sizeThatFits(.unspecified).width }
+        return CGSize(width: width, height: frames(width: width, subviews: subviews).map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, frames(width: bounds.width, subviews: subviews)) {
+            let origin = CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY)
+            subview.place(at: origin, proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func frames(width: CGFloat, subviews: Subviews) -> [CGRect] {
+        let sizes = subviews.map { $0[Fills.self] ? .zero : $0.sizeThatFits(.unspecified) }
+        guard let fill = subviews.firstIndex(where: { $0[Fills.self] }) else { return [] }
+        let room = max(0, width - sizes.reduce(0) { $0 + $1.width })
+        let row = sizes.map(\.height).max() ?? 0
+        let inline = subviews[fill].sizeThatFits(ProposedViewSize(width: room, height: nil)).height
+        // Without a width, a field has no ideal width; at an endless one it has one line.
+        let oneLine = subviews[fill].sizeThatFits(ProposedViewSize(width: .infinity, height: nil)).height
+        if !multiline, inline <= oneLine + 1 {
+            let height = max(row, inline)
+            var x: CGFloat = 0
+            return sizes.indices.map { index in
+                let size = index == fill ? CGSize(width: room, height: inline) : sizes[index]
+                defer { x += size.width }
+                return CGRect(x: x, y: height - size.height, width: size.width, height: size.height)
+            }
+        }
+        let text = subviews[fill].sizeThatFits(ProposedViewSize(width: width - 2 * inset, height: nil)).height
+        var leading: CGFloat = 0
+        var trailing = width - sizes[(fill + 1)...].reduce(0) { $0 + $1.width }
+        return sizes.indices.map { index in
+            if index == fill { return CGRect(x: inset, y: 0, width: width - 2 * inset, height: text) }
+            let size = sizes[index]
+            let x = index < fill ? leading : trailing
+            if index < fill { leading += size.width } else { trailing += size.width }
+            // The row takes half the field's bottom padding, so the buttons sit close under the text.
+            return CGRect(x: x, y: text - inset / 2 + row - size.height, width: size.width, height: size.height)
+        }
     }
 }
 

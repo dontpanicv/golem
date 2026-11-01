@@ -11,6 +11,7 @@ const paths = {
   panel:
     '<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M10 3v10"/>', // sidebar.right
   send: '<path d="M8 13V3M4 7l4-4 4 4"/>', // arrow.up
+  steer: '<path d="M13 12H8a2 2 0 0 1-2-2V3M3 6l3-3 3 3"/>', // arrow.turn.left.up
   attach:
     '<path d="m13 7.5-5 5a3 3 0 0 1-4.5-4.5l5.5-5.5a2 2 0 0 1 3 3L6.5 11a1 1 0 0 1-1.5-1.5L10 4.5"/>', // paperclip
   file: '<path d="M9 2H4.5a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5V5z"/><path d="M9 2v3h3"/>', // doc

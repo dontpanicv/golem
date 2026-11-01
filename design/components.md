@@ -252,9 +252,9 @@ Used by the workspace switcher and action menus.
   the sidebar, in a channel's thread list, after each thread link while that thread's agent works, and in iOS rows.
   iOS writes "· working" after a thread link.
 - Shimmer: the words Golem is at now, in `textTertiary` with a light of `text` running over them every 2.2 s.
-- Stop: while the agent works, a small secondary button with a stop icon and "Stop" in the thread's header, far from
-  Send, so that nobody stops the agent by mistake. iOS shows a stop icon in Talk's place at the trailing edge of the
-  navigation bar. Stop also stops the threads the agent asked for something, which still work on that message.
+- Stop: while the agent works and the composer is empty, the composer's send button is Stop, with a stop icon. With
+  text or files in the composer, it is Send again, with a steer icon (`arrow.turn.left.up`) and "Steer". Stop also
+  stops the threads the agent asked for something, which still work on that message.
 - Approval: in the transcript after the messages, in line with their text, for the person it asks only, while the
   agent waits for them to allow an action. `surfaceRaised`, a 0.5 px `ringControl`, `radius.md`, padding 8 × 12, and a
   3 px `gold` edge at its start; the action in `fontSize.md` monospace `textSecondary`, wrapped; 8 px below, at the
@@ -360,11 +360,12 @@ iPad keeps the sidebar with the same screens.
 - Conversation: as a Slack thread. Each message has the author's 36 pt avatar at the side, the name in `fontSize.row`
   `semibold` and the time in `caption` over the text; a message of the same author within five minutes, or a turn of
   Golem that another thread's answer started, shows only its text. Text is `fontSize.body` with inline Markdown; links take the accent. New messages slide up and fade in, and
-  the newest stays in view. The round voice button is in the bar at the trailing edge; while Golem works, Stop takes
-  its place.
+  the newest stays in view. The round voice button is in the bar at the trailing edge.
 - Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it
-  shows. The composer is a glass field, radius 24: add (+), the text, the mic, and the send button once there is
-  something to send. Content fades under the glass bars at the top and bottom. Dragging the content closes the
+  shows. The composer is a glass field, radius 24, with the `composer` shadow, as T3's: add (+), the text, the mic,
+  and a `send` (30 pt) circle in a 44 pt touch target: `fill` with a `textQuaternary` arrow while there is nothing to
+  send, else the accent; Stop in `danger`. While the text fits one line, all sit in one row; else the text spans the
+  field, up to 4 lines, over the row of buttons. Content fades under the glass bars at the top and bottom. Dragging the content closes the
   keyboard.
 - Activity: as Slack's. All and Unread pills; each notification has Golem's avatar, its title and the day, as the
   web's Inbox, "in #" and the channel, two lines of text, and an accent dot while unread.

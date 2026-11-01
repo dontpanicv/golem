@@ -161,6 +161,7 @@ enum Tokens {
 			static let tabBar: CGFloat = 56
 			static let tabBarBottom: CGFloat = 24
 			static let voice: CGFloat = 48
+			static let send: CGFloat = 30
 			static let settingsRow: CGFloat = 43
 			static let homeIndicator: CGFloat = 34
 			static let avatar: CGFloat = 36
@@ -168,6 +169,7 @@ enum Tokens {
 	}
 
 	enum Shadows {
+		static let composer: [Shadow] = [Shadow(y: 6, blur: 28, color: Color(light: "#00000026", dark: "#00000000")), Shadow(y: 6, blur: 28, color: Color(light: "#00000000", dark: "#00000059"))]
 		static let low: [Shadow] = [Shadow(y: 3, blur: 6, color: Color(light: "#00000005", dark: "#00000000")), Shadow(y: 1, blur: 1, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 0.5, blur: 1, color: Color(light: "#00000000", dark: "#0000004d"))]
 		static let menu: [Shadow] = [Shadow(y: 6, blur: 18, color: Color(light: "#00000005", dark: "#00000000")), Shadow(y: 3, blur: 9, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 1, blur: 1, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 3, blur: 8, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 2, blur: 5, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 1, blur: 1, color: Color(light: "#00000000", dark: "#00000020"))]
 		static let modal: [Shadow] = [Shadow(y: 9, blur: 48, color: Color(light: "#00000014", dark: "#00000000")), Shadow(y: 6, blur: 24, color: Color(light: "#0000001a", dark: "#00000000")), Shadow(y: 1, blur: 1, color: Color(light: "#0000000a", dark: "#00000000")), Shadow(y: 4, blur: 40, color: Color(light: "#00000000", dark: "#0000001a")), Shadow(y: 3, blur: 20, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 3, blur: 12, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 2, blur: 8, color: Color(light: "#00000000", dark: "#00000020")), Shadow(y: 1, blur: 1, color: Color(light: "#00000000", dark: "#00000020"))]

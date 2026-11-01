@@ -1,7 +1,7 @@
 import QuickLook
 import SwiftUI
 
-/// One thread, as a Slack thread: messages with their author's avatar, the approvals after them, Stop at the top, and
+/// One thread, as a Slack thread: messages with their author's avatar, the approvals after them, and
 /// the title capsule with the thread's menu. Loads its state, then follows the server-sent events until the view
 /// disappears.
 struct ConversationView: View {
@@ -125,17 +125,9 @@ struct ConversationView: View {
                 }
                 .accessibilityHint("Shows the thread's menu")
             }
-            // While Golem works, Stop takes Talk's place: at the top, far from Send and the microphone, so that nobody
-            // stops the agent by mistake, and alone, so that the bar does not fold it into a menu.
             ToolbarItem(placement: .topBarTrailing) {
-                if state?.running == true {
-                    Button("Stop", systemImage: "stop.fill") {
-                        Task { await session.run { try await session.api.stopThread(threadID) } }
-                    }
-                } else {
-                    Button("Talk with Golem", systemImage: "waveform", action: startTalk)
-                        .disabled(talk.isOn && talk.thread == threadID)
-                }
+                Button("Talk with Golem", systemImage: "waveform", action: startTalk)
+                    .disabled(talk.isOn && talk.thread == threadID)
             }
         }
         .quickLookPreview($preview)
@@ -182,7 +174,8 @@ struct ConversationView: View {
                 } else {
                     Composer(
                         owner: threadID, placeholder: isOrchestrator ? "Message Golem" : "Reply",
-                        draft: $draft, files: $files, sending: sending, send: send
+                        draft: $draft, files: $files, sending: sending,
+                        stop: state?.running == true ? { stopThread() } : nil, send: send
                     )
                 }
             }
@@ -235,6 +228,10 @@ struct ConversationView: View {
             }
             sending = false
         }
+    }
+
+    private func stopThread() {
+        Task { await session.run { try await session.api.stopThread(threadID) } }
     }
 
     private func startTalk() {

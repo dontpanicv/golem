@@ -171,15 +171,6 @@ function Thread({
             )
           }
         >
-          {running ? (
-            // In the header, far from Send, so that nobody stops the agent by mistake.
-            <Button
-              icon="stop"
-              label="Stop"
-              onClick={() => stopThread(threadId).catch(showError)}
-              size="small"
-            />
-          ) : null}
           {isOrchestrator ? null : (
             <Button
               icon={settled ? "inbox" : "check"}
@@ -231,6 +222,9 @@ function Thread({
         <Composer
           clearAtOnce
           onSend={(text, files) => sendMessage(threadId, text, files)}
+          onStop={
+            running ? () => stopThread(threadId).catch(showError) : undefined
+          }
           placeholder={
             isOrchestrator ? "Message Golem" : `Message #${channel?.name ?? ""}`
           }

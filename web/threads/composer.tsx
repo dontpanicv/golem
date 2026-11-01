@@ -6,16 +6,19 @@ import { showError } from "../ui/toast.tsx";
 /**
  * A message box for text and files. Files are picked, dropped on it, or pasted into it. Enter sends; Shift+Enter adds a
  * line. With `clearAtOnce`, the box clears as the message is sent, as a sent message shows in the thread at once, and
- * gets its text back if it fails; otherwise it is busy until `onSend` ends.
+ * gets its text back if it fails; otherwise it is busy until `onSend` ends. With `onStop`, while the agent works, an empty
+ * box shows Stop in Send's place, and Send steers.
  */
 export function Composer({
   placeholder,
   onSend,
   clearAtOnce = false,
+  onStop,
 }: {
   placeholder: string;
   onSend: (text: string, files: readonly File[]) => Promise<unknown>;
   clearAtOnce?: boolean;
+  onStop?: () => void;
 }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<readonly File[]>([]);
@@ -23,8 +26,10 @@ export function Composer({
   const [dropping, setDropping] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
 
+  const filled = text.trim() !== "" || files.length > 0;
+
   const send = async () => {
-    if (busy || !(text.trim() || files.length > 0)) {
+    if (busy || !filled) {
       return;
     }
     const sent = { text, files };
@@ -151,14 +156,24 @@ export function Composer({
           type="file"
         />
         <span className="spacer" />
-        <Button
-          icon="send"
-          label="Send"
-          shortcut="↵"
-          size="tiny"
-          type="submit"
-          variant="primary"
-        />
+        {onStop && !filled ? (
+          <Button
+            icon="stop"
+            label="Stop"
+            onClick={onStop}
+            size="tiny"
+            variant="primary"
+          />
+        ) : (
+          <Button
+            icon={onStop ? "steer" : "send"}
+            label={onStop ? "Steer" : "Send"}
+            shortcut="↵"
+            size="tiny"
+            type="submit"
+            variant="primary"
+          />
+        )}
       </div>
     </form>
   );

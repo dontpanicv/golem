@@ -81,13 +81,33 @@ extension ButtonStyle where Self == GolemButtonStyle {
     static var secondary: GolemButtonStyle { GolemButtonStyle(variant: .secondary) }
     static var ghost: GolemButtonStyle { GolemButtonStyle(variant: .ghost) }
     static var danger: GolemButtonStyle { GolemButtonStyle(variant: .danger) }
-    /// The composer's send button: a tiny primary circle.
-    static var send: GolemButtonStyle { GolemButtonStyle(variant: .primary, size: .tiny) }
     static func golem(
         _ variant: GolemButtonStyle.Variant, _ size: GolemButtonStyle.Size = .regular
     ) -> GolemButtonStyle {
         GolemButtonStyle(variant: variant, size: size)
     }
+}
+
+/// The composer's send button, as T3's: a 30 pt circle of `tint` in a 44 pt touch target, gray while disabled.
+struct SendButtonStyle: ButtonStyle {
+    var tint = Tokens.Colors.accent
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .labelStyle(.iconOnly)
+            .font(.system(size: Tokens.Size.icon, weight: .semibold))
+            .foregroundStyle(isEnabled ? Tokens.Colors.onAccent : Tokens.Mobile.Colors.textQuaternary)
+            .frame(width: Tokens.Mobile.Size.send, height: Tokens.Mobile.Size.send)
+            .background(isEnabled ? tint : Tokens.Mobile.Colors.fill, in: .circle)
+            .frame(minWidth: Tokens.Size.listRow, minHeight: Tokens.Size.listRow)
+            .contentShape(.rect)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+extension ButtonStyle where Self == SendButtonStyle {
+    static func send(_ tint: Color = Tokens.Colors.accent) -> SendButtonStyle { SendButtonStyle(tint: tint) }
 }
 
 /// A text link: the sign-in and sign-up switch.
