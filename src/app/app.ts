@@ -174,7 +174,14 @@ export async function createApp(
     places
   );
   const reminders = new Reminders(database, workspaces, threads, places);
-  const agenda = new Agenda(database, workspaces, threads, routines, reminders);
+  const agenda = new Agenda(
+    database,
+    workspaces,
+    threads,
+    routines,
+    reminders,
+    places
+  );
   return {
     config,
     database,

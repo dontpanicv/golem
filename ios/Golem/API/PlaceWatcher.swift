@@ -2,39 +2,43 @@ import CoreLocation
 import UIKit
 import UserNotifications
 
-/// What waits for the person at a place.
-private enum WatchedKind: String, Codable { case reminder, routine }
-
-/// Watches the places of the person's pending reminders and routines at a place with `CLMonitor`, and tells Golem when
-/// they arrive or leave; only the event goes to Golem, never where the person is. iOS starts the app in the background
-/// for such an event, also when it does not run, so `resume` runs at every launch.
+/// Watches the places that Golem gives for the person (`watched-places`) with `CLMonitor`, and tells Golem when they
+/// arrive or leave; only that goes to Golem, never where the person is, and Golem decides what is due. iOS starts the
+/// app in the background for such an event, also when it does not run, so `resume` runs at every launch.
 final class PlaceWatcher {
     static let shared = PlaceWatcher()
 
-    /// What the watcher keeps of a reminder or a routine across launches.
+    /// What the watcher keeps of a place across launches.
     private struct Watched: Codable {
-        let kind: WatchedKind
         let workspaceID: String
-        /// The reminder's text, or the routine's name.
-        let text: String
-        let event: PlaceEvent
-        /// The latitude, longitude, and radius of the circle; a place that moved is watched again.
-        let circle: [Double]
-        /// Whether the person was in the circle when iOS last said. A new reminder starts outside; a new routine waits
-        /// until iOS first says, so it runs only when the person next crosses the circle.
+        var place: WatchedPlace
+        /// Whether the person was in the circle when iOS last said; nil until iOS first says after the watch starts.
         var inside: Bool?
-        /// The event of a reminder came, but Golem did not get it; the app tells Golem again on the next `watch`.
-        var unreported: Bool
     }
 
-    private static let key = "watchedPlaces"
+    /// What the iPhone saw at a place; it waits here until Golem has it, as without a connection.
+    private struct Report: Codable, Equatable {
+        let workspaceID: String
+        let placeID: String
+        let event: PlaceEvent
+        /// When it happened, in Unix milliseconds.
+        let time: Double
+        /// The first state after the watch started, which is no crossing.
+        let initial: Bool
+    }
+
+    private static let watchedKey = "watchedPlaces"
+    private static let reportsKey = "placeReports"
     private let manager = CLLocationManager()
     private var opening: Task<CLMonitor, Never>?
     private var session: CLServiceSession?
-    /// The watched reminders and routines, by id.
-    private var watched: [String: Watched] = UserDefaults.standard.data(forKey: key)
-        .flatMap { try? JSONDecoder().decode([String: Watched].self, from: $0) } ?? [:] {
-        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(watched), forKey: Self.key) }
+    /// The watched places, by id.
+    private var watched: [String: Watched] = stored(watchedKey) ?? [:] {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(watched), forKey: Self.watchedKey) }
+    }
+    /// The reports that Golem did not get yet, oldest first.
+    private var reports: [Report] = stored(reportsKey) ?? [] {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(reports), forKey: Self.reportsKey) }
     }
 
     /// Opens the monitor at launch while it watches a place, so the event that started the app arrives.
@@ -42,32 +46,11 @@ final class PlaceWatcher {
         if !watched.isEmpty { Task { _ = await monitor() } }
     }
 
-    /// Watches the places of the person's pending reminders and enabled routines at a place in the workspace, stops
-    /// watching the others, and tells Golem the events of reminders that it did not get.
-    func watch(_ upcoming: Upcoming, userID: String, workspaceID: String) async {
-        let unreported = watched.filter(\.value.unreported)
-        for (id, item) in unreported {
-            await report(id, item)
-        }
-        let reminders = upcoming.reminders.filter {
-            $0.recipientId == userID && $0.waitsForPlace && unreported[$0.id] == nil
-        }.compactMap { reminder in
-            reminder.place.map { place in
-                (reminder.id, Watched(
-                    kind: .reminder, workspaceID: workspaceID, text: reminder.text, event: place.event,
-                    circle: [place.latitude, place.longitude, Double(place.radius)], inside: false, unreported: false
-                ))
-            }
-        }
-        let routines = upcoming.routines.filter { $0.enabled && $0.place?.personId == userID }.compactMap { routine in
-            routine.place.map { place in
-                (routine.id, Watched(
-                    kind: .routine, workspaceID: workspaceID, text: routine.name, event: place.event,
-                    circle: [place.latitude, place.longitude, Double(place.radius)], inside: nil, unreported: false
-                ))
-            }
-        }
-        let wanted = Dictionary(reminders + routines) { first, _ in first }
+    /// Watches the places that Golem gives for the person in the workspace, stops watching the others, and sends the
+    /// reports that Golem did not get.
+    func watch(_ places: [WatchedPlace], workspaceID: String) async {
+        await sendReports()
+        let wanted = Dictionary(places.map { ($0.id, $0) }) { first, _ in first }
         guard !wanted.isEmpty || !watched.isEmpty else { return }
         if !wanted.isEmpty, [.notDetermined, .authorizedWhenInUse].contains(manager.authorizationStatus) {
             // iOS asks for While Using first, and for Always when the first event comes.
@@ -79,17 +62,21 @@ final class PlaceWatcher {
             await monitor.remove(id)
             watched[id] = nil
         }
-        for (id, item) in wanted where watched[id]?.circle != item.circle {
-            watched[id] = item
-            // A reminder assumes outside: one who is in the circle now gets an event at once, which an arrival reminds
-            // of. A routine lets iOS find out first.
+        for (id, place) in wanted {
+            if let item = watched[id], item.workspaceID == workspaceID, Self.sameCircle(item.place, place) {
+                // The same circle, maybe with other reminders.
+                watched[id]?.place = place
+                continue
+            }
+            watched[id] = Watched(workspaceID: workspaceID, place: place, inside: nil)
+            // iOS finds out first whether the person is in the circle, and says so as the first event.
             await monitor.add(
                 CLMonitor.CircularGeographicCondition(
-                    center: CLLocationCoordinate2D(latitude: item.circle[0], longitude: item.circle[1]),
-                    radius: item.circle[2]
+                    center: CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude),
+                    radius: CLLocationDistance(place.radius)
                 ),
                 identifier: id,
-                assuming: item.kind == .reminder ? .unsatisfied : .unknown
+                assuming: .unknown
             )
         }
         if watched.isEmpty {
@@ -103,6 +90,7 @@ final class PlaceWatcher {
         let monitor = await monitor()
         for id in await monitor.identifiers { await monitor.remove(id) }
         watched = [:]
+        reports = []
         session?.invalidate()
         session = nil
     }
@@ -123,48 +111,59 @@ final class PlaceWatcher {
     }
 
     private func handle(_ event: CLMonitor.Event) async {
-        guard var item = watched[event.identifier], !item.unreported, event.state != .unknown else { return }
+        guard var item = watched[event.identifier], event.state != .unknown else { return }
         let inside = event.state == .satisfied
-        let happened = item.inside != nil && inside != item.inside && inside == (item.event == .arrive)
+        guard inside != item.inside else { return }
+        let report = Report(
+            workspaceID: item.workspaceID, placeID: event.identifier, event: inside ? .arrive : .leave,
+            time: event.date.timeIntervalSince1970 * 1000, initial: item.inside == nil
+        )
         item.inside = inside
-        item.unreported = happened && item.kind == .reminder
         watched[event.identifier] = item
-        guard happened else { return }
-        guard item.kind == .reminder else {
-            // shortcut: a routine that Golem does not hear of now does not run; queue it if late runs are wanted.
-            await report(event.identifier, item)
-            return
+        reports.append(report)
+        await sendReports()
+        guard reports.contains(report) else { return }
+        // Without a connection, as in the mountains, the person still gets the reminders that Golem would make due.
+        let due = item.place.reminders.filter {
+            $0.event == report.event && (!report.initial || report.event == .arrive)
         }
-        await monitor().remove(event.identifier)
-        if !(await report(event.identifier, item)) {
-            // Without a connection, as in the mountains, the person still gets the reminder.
+        for reminder in due {
             let content = UNMutableNotificationContent()
             content.title = "Golem"
-            content.body = item.text
+            content.body = reminder.text
             try? await UNUserNotificationCenter.current().add(
-                UNNotificationRequest(identifier: event.identifier, content: content, trigger: nil)
+                UNNotificationRequest(identifier: reminder.id, content: content, trigger: nil)
             )
+        }
+        watched[event.identifier]?.place.reminders.removeAll { due.contains($0) }
+    }
+
+    /// Sends the waiting reports in order, in the time iOS gives a background app, until one cannot go.
+    private func sendReports() async {
+        guard !reports.isEmpty else { return }
+        let task = UIApplication.shared.beginBackgroundTask()
+        defer { UIApplication.shared.endBackgroundTask(task) }
+        let api = APIClient.signedIn()
+        for report in reports {
+            do {
+                try await api.reportPlace(
+                    workspaceID: report.workspaceID, placeID: report.placeID, event: report.event, at: report.time,
+                    initial: report.initial
+                )
+            } catch let error as APIError where error.status == 400 || error.status == 404 {
+                // Golem no longer watches the place for the person.
+            } catch {
+                return
+            }
+            reports.removeAll { $0 == report }
         }
     }
 
-    /// Tells Golem that the event of a reminder or a routine came, in the time iOS gives a background app; forgets a
-    /// reminder once Golem has it, and keeps watching a routine.
-    @discardableResult
-    private func report(_ id: String, _ item: Watched) async -> Bool {
-        let task = UIApplication.shared.beginBackgroundTask()
-        defer { UIApplication.shared.endBackgroundTask(task) }
-        do {
-            let api = APIClient.signedIn()
-            switch item.kind {
-            case .reminder: try await api.triggerReminder(workspaceID: item.workspaceID, reminderID: id)
-            case .routine: try await api.triggerRoutine(id)
-            }
-        } catch let error as APIError where error.status == 404 || error.status == 409 {
-            // Cancelled or paused, or no longer the person's.
-        } catch {
-            return false
-        }
-        if item.kind == .reminder { watched[id] = nil }
-        return true
+    private static func sameCircle(_ first: WatchedPlace, _ second: WatchedPlace) -> Bool {
+        first.latitude == second.latitude && first.longitude == second.longitude && first.radius == second.radius
+    }
+
+    private static func stored<Value: Decodable>(_ key: String) -> Value? {
+        UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(Value.self, from: $0) }
     }
 }

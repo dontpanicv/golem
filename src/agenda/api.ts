@@ -4,7 +4,7 @@ import { HttpError } from "../platform/errors.ts";
 
 /**
  * Each person's agenda: what Golem runs for them, what waits for them, and the automations Golem suggests; and the
- * reports of their iPhone that they arrived at or left the place of a reminder.
+ * places that their iPhone watches for it, with its reports that they arrived or left.
  */
 export const agendaApiRoutes: readonly Route[] = [
   [
@@ -31,11 +31,19 @@ export const agendaApiRoutes: readonly Route[] = [
     }),
   ],
   [
-    "POST",
-    "/api/v1/workspaces/:workspace/reminders/:reminder/trigger",
+    "GET",
+    "/api/v1/workspaces/:workspace/watched-places",
     api(async ({ app, user, params }) =>
-      json(app.reminders.trigger(params.workspace!, user, params.reminder!))
+      json({ places: app.agenda.watchedPlaces(params.workspace!, user) })
     ),
+  ],
+  [
+    "POST",
+    "/api/v1/workspaces/:workspace/watched-places/:place/reports",
+    api(async ({ app, user, params, body }) => {
+      app.agenda.reportPlace(params.workspace!, user, params.place!, body);
+      return new Response(null, { status: 204 });
+    }),
   ],
   [
     "DELETE",

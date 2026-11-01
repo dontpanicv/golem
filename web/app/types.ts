@@ -396,6 +396,16 @@ export interface Reminder {
   readonly triggeredAt: number | null;
 }
 
+/** A place that the person's iPhone watches; the web app does not watch places. */
+export interface WatchedPlace
+  extends Pick<Place, "id" | "name" | "latitude" | "longitude" | "radius"> {
+  readonly reminders: readonly {
+    readonly id: string;
+    readonly text: string;
+    readonly event: "arrive" | "leave";
+  }[];
+}
+
 export interface Upcoming {
   readonly routines: readonly Routine[];
   readonly reminders: readonly Reminder[];

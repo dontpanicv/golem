@@ -25,9 +25,21 @@ extension APIClient {
         _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/places/\(placeID)")
     }
 
-    /// Tells Golem that the person arrived at or left the place of their reminder, which is then due.
-    func triggerReminder(workspaceID: String, reminderID: String) async throws {
-        _ = try await send("POST", "/api/v1/workspaces/\(workspaceID)/reminders/\(reminderID)/trigger")
+    /// The places that this iPhone watches for the person: those of their pending reminders and enabled routines at a
+    /// place.
+    func watchedPlaces(workspaceID: String) async throws -> [WatchedPlace] {
+        let found: WatchedPlaces = try await get("/api/v1/workspaces/\(workspaceID)/watched-places")
+        return found.places
+    }
+
+    /// Tells Golem that the person arrived at or left a watched place at `at`; Golem decides what is due.
+    func reportPlace(
+        workspaceID: String, placeID: String, event: PlaceEvent, at milliseconds: Double, initial: Bool
+    ) async throws {
+        _ = try await send(
+            "POST", "/api/v1/workspaces/\(workspaceID)/watched-places/\(placeID)/reports",
+            ["event": event.rawValue, "at": milliseconds, "initial": initial]
+        )
     }
 }
 
@@ -54,6 +66,27 @@ struct Place: Codable, Hashable, Identifiable {
 
     var input: Input { Input(name: name, latitude: latitude, longitude: longitude, radius: radius, shared: shared) }
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+}
+
+/// A place that the iPhone watches, with the person's pending reminders there, which it shows itself without a
+/// connection.
+struct WatchedPlace: Codable, Hashable, Identifiable {
+    struct Reminder: Codable, Hashable {
+        let id: String
+        let text: String
+        let event: PlaceEvent
+    }
+
+    let id: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let radius: Int
+    var reminders: [Reminder]
+}
+
+private struct WatchedPlaces: Codable {
+    let places: [WatchedPlace]
 }
 
 private struct Places: Codable {

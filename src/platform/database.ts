@@ -9,7 +9,7 @@ import { dirname } from "node:path";
  * Each table has one owner module, and only that module queries it: `accounts` owns `profile_picture`, `workspaces` owns `channel`, `thread`, and `workspace_facts` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential`, `llm_usage`, `llm_usage_seen`, and its keys in `setting`,
- * `hands` owns `machine`, `places` owns `place`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
+ * `hands` owns `machine`, `places` owns `place` and `place_presence`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
  * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, `agenda` owns `suggestion`, and `notifications` owns `notification`,
  * `push_device`, and `live_activity`. Start a new migration with a comment that names its owner.
  */
@@ -432,6 +432,15 @@ const migrations = [
   `ALTER TABLE routine ADD COLUMN place_id TEXT;
 	ALTER TABLE routine ADD COLUMN place_event TEXT;
 	ALTER TABLE routine ADD COLUMN place_person_id TEXT;`,
+  // places: whether each person was in each place when their iPhone last said, and when; only the last state, no
+  // history. The iPhone reports a state only at a crossing or when it starts to watch the place.
+  `CREATE TABLE place_presence (
+		place_id TEXT NOT NULL,
+		person_id TEXT NOT NULL,
+		inside INTEGER NOT NULL,
+		at INTEGER NOT NULL,
+		PRIMARY KEY (place_id, person_id)
+	);`,
 ];
 
 export function openDatabase(path: string): Database {

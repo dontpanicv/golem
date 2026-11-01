@@ -254,16 +254,20 @@ run at a place instead of on a schedule; the iPhone tells Golem when it happens.
   `leave`, and the person whose arrival or departure runs it. It runs each time that event comes, in its channel's
   thread, as a routine on a schedule does, but at most every 15 minutes, as a person at the edge of the circle goes in
   and out. It shows under "Routines at a place" in Upcoming, where the person pauses it.
-- **The iPhone watches.** The app watches the places of its person's pending reminders and routines with Core Location
-  (`CLMonitor`), so iOS wakes the app in the background when they cross the circle, also when the app does not run.
-  The first such reminder asks for location access: iOS asks "While Using" first, and "Always" when the first
-  event comes. Only the event goes to Golem, never where the person is.
-  A new reminder starts as "outside", so a person who is already at the place gets an arrival reminder at once; a new
-  routine first learns where the person is, so it runs only when they next cross the circle.
-- **Golem reminds.** When the event comes, the reminder is due at once: its thread wakes, the agent writes the
-  reminder, and it comes as a time-sensitive push. A second report of the same event changes nothing, and a cancelled
-  reminder stays quiet. Without a connection, as in the mountains, the iPhone shows the reminder itself and tells
-  Golem when it is online again. A routine that Golem does not hear of in time does not run late.
+- **The iPhone watches; Golem decides.** The iPhone is only a sensor. Golem gives it the places of its person's
+  pending reminders and routines, one circle for each place however many wait there, and the app watches them with
+  Core Location (`CLMonitor`), so iOS wakes it in the background when the person crosses a circle, also when the app
+  does not run. The first such place asks for location access: iOS asks "While Using" first, and "Always" when the
+  first event comes. The app tells Golem only "arrived at Cottage at 12:03" or "left Cottage", never where the person
+  is, and Golem keeps only the last state at each place, with no history. Golem then decides what is due: the
+  reminders and routines of that place, person, and event, a pause, and the 15 minutes between two runs.
+- **A new reminder or routine.** A new reminder starts as "outside", so a person who is already at the place gets an
+  arrival reminder at once. A new routine waits for the next crossing.
+- **Golem reminds.** The reminder is due at once: its thread wakes, the agent writes the reminder, and it comes as a
+  time-sensitive push. A second report of the same state changes nothing, and a cancelled reminder stays quiet.
+- **Without a connection**, as in the mountains, the iPhone keeps each report with its time and sends it when it is
+  online again; it also shows the reminders of that place itself. Golem still makes a late reminder due, but does not
+  run a routine for a crossing that it hears of more than 15 minutes late.
 
 ### More
 

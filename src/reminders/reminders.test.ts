@@ -300,7 +300,7 @@ test("a reminder runs as the person who asked for it or last changed it, not as 
   database.close();
 });
 
-test("a reminder at a place waits until its person's iPhone reports the event, once", async () => {
+test("a reminder at a place waits until its person arrives or leaves, once", async () => {
   const { database, places, reminders, calls } = setup();
   const cottage = places.create("home", alice, {
     name: "Cottage",
@@ -350,20 +350,59 @@ test("a reminder at a place waits until its person's iPhone reports the event, o
     event: "arrive",
   });
   expect(reminders.tick(Date.now() + 60_000)).toEqual([]);
-  expect(() => reminders.trigger("home", bob, reminder!.id)).toThrow(
-    "Not found"
+  // Only the recipient's arrival, at this place, after the reminder was made, makes it due.
+  const at = Date.now();
+  expect(reminders.atPlace("home", bob.id, cottage.id, "arrive", at)).toEqual(
+    []
   );
+  expect(reminders.atPlace("home", alice.id, cottage.id, "leave", at)).toEqual(
+    []
+  );
+  expect(
+    reminders.atPlace("home", alice.id, cottage.id, "arrive", at - 60_000)
+  ).toEqual([]);
   // A removed place keeps its reminder.
   places.remove("home", alice, cottage.id);
-  const triggered = reminders.trigger("home", alice, reminder!.id);
-  expect(triggered.triggeredAt).toBeNumber();
-  expect(triggered.place?.name).toBe("Cottage");
-  await Bun.sleep(0);
-  expect(reminders.trigger("home", alice, reminder!.id)).toMatchObject({
-    dueAt: triggered.dueAt,
+  await Promise.all(
+    reminders.atPlace("home", alice.id, cottage.id, "arrive", at)
+  );
+  const [delivered] = reminders.list("home", alice, null);
+  expect(delivered).toMatchObject({
+    triggeredAt: at,
+    dueAt: at,
     deliveredAt: expect.any(Number),
+    place: { name: "Cottage" },
   });
-  await Bun.sleep(0);
+  expect(
+    reminders.atPlace("home", alice.id, cottage.id, "arrive", at + 1)
+  ).toEqual([]);
   expect(calls).toEqual([`reminder:${reminder!.id}:0`]);
+  database.close();
+});
+
+test("a reminder for an arrival where its person is now is due at once", () => {
+  const { database, places, reminders } = setup();
+  const home = places.create("home", alice, {
+    name: "Home",
+    latitude: 50.1,
+    longitude: 14.4,
+    radius: 200,
+    shared: false,
+  });
+  places.record(home.id, alice.id, {
+    event: "arrive",
+    at: Date.now(),
+    initial: true,
+  });
+  const create = (id: string, event: "arrive" | "leave") =>
+    reminders.create("home", alice, "thread", alice.id, {
+      id,
+      text: "Water the plants",
+      place: { id: home.id, event },
+      timeZone: "Europe/Prague",
+      createdBy: alice.id,
+    });
+  expect(create("arrive", "arrive").triggeredAt).toBeNumber();
+  expect(create("leave", "leave").triggeredAt).toBeNull();
   database.close();
 });

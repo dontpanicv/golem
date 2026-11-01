@@ -265,28 +265,33 @@ export class Routines {
   }
 
   /**
-   * Runs the person's routine at a place, when their iPhone reports the event that it waits for. A report within 15
-   * minutes of the last run changes nothing, as a person at the edge of the circle goes in and out.
+   * Runs the enabled routines that wait for the person's arrival at or departure from a place, when their iPhone reports
+   * it. A routine that ran in the last 15 minutes does not run again, as a person at the edge of the circle goes in and
+   * out.
    */
-  trigger(routineId: string, user: User): void {
-    const row = this.rowFor(routineId, user);
-    if (row.placePersonId !== user.id) {
-      throw notFound();
-    }
-    if (row.enabled !== 1) {
-      throw new HttpError(409, `${row.name} is paused`);
-    }
+  atPlace(
+    workspaceId: string,
+    personId: string,
+    placeId: string,
+    event: PlaceEvent
+  ): Promise<RoutineRun>[] {
     const now = Date.now();
-    const last = this.routineOf(row).lastRun;
-    if (
-      this.running.has(row.id) ||
-      (last && last.startedAt > now - MIN_ROUTINE_GAP)
-    ) {
-      return;
-    }
-    this.run(row, now).catch(() => {
-      // The run records its own failure; this one is a database closed while it ran.
-    });
+    return this.live(
+      this.database
+        .query(
+          `SELECT ${ROUTINE_COLUMNS} FROM routine WHERE workspace_id = ? AND place_person_id = ? AND place_id = ? AND place_event = ? AND enabled = 1 AND deleted_at IS NULL`
+        )
+        .all(workspaceId, personId, placeId, event) as RoutineRow[],
+      personId
+    )
+      .filter((row) => {
+        const last = this.routineOf(row).lastRun;
+        return !(
+          this.running.has(row.id) ||
+          (last && last.startedAt > now - MIN_ROUTINE_GAP)
+        );
+      })
+      .map((row) => this.run(row, now));
   }
 
   /** The routines of a workspace in the channels `realm` sees, for its agents. */

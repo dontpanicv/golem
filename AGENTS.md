@@ -37,6 +37,8 @@ addresses, or code and data from employers or clients.
   documented in `docs/api.md`, that calls the module's service in `src/<module>/<module>.ts`; both apps use it. The web
   app is a React single-page app in `web/`; the server sends it for every app path and has no other pages.
 - Agents make and change reminders with tools; a person sees their pending ones in Upcoming and cancels one there.
+- The iPhone only reports what it sees at the places that Golem gives it (`src/agenda/`); Golem decides which reminders
+  and routines are due. Golem keeps only each person's last state at a place, never where they are.
 - Golem stays quiet by default: background work notifies a person only when they must act or asked for it, and a
   routine or reminder answers `QUIET` when nothing needs anyone.
 - Consent first: Golem makes no routine, reminder, or message that no person asked for. It suggests one

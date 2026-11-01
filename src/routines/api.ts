@@ -1,10 +1,7 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 
-/**
- * The routines of a channel. Agents create and change them; people pause, run, and delete them, and the iPhone of a
- * routine's person reports that they arrived at or left its place.
- */
+/** The routines of a channel. Agents create and change them; people pause, run, and delete them. */
 export const routineApiRoutes: readonly Route[] = [
   [
     "GET",
@@ -27,14 +24,6 @@ export const routineApiRoutes: readonly Route[] = [
     "/api/v1/routines/:routine/runs",
     api(async ({ app, user, params }) => {
       app.routines.runNow(params.routine!, user);
-      return new Response(null, { status: 202 });
-    }),
-  ],
-  [
-    "POST",
-    "/api/v1/routines/:routine/trigger",
-    api(async ({ app, user, params }) => {
-      app.routines.trigger(params.routine!, user);
       return new Response(null, { status: 202 });
     }),
   ],

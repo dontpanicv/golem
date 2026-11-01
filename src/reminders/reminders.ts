@@ -19,7 +19,7 @@ export interface Reminder {
   readonly timeZone: string;
   /** The place and the event that a reminder at a place waits for; null for a reminder at a time. */
   readonly place: ReminderPlace | null;
-  /** When the person's iPhone reported the event of a reminder at a place. */
+  /** When the person arrived at or left the place of a reminder at a place, as their iPhone reported. */
   readonly triggeredAt: number | null;
   readonly attempts: number;
   readonly nextAttemptAt: number;
@@ -54,7 +54,7 @@ type ReminderWorkspaces = Pick<
   | "threadsIn"
 >;
 type ReminderThreads = Pick<Threads, "instruct" | "realm" | "requester">;
-type ReminderPlaces = Pick<Places, "find" | "usable">;
+type ReminderPlaces = Pick<Places, "find" | "inside" | "usable">;
 
 interface ReminderRow extends Omit<Reminder, "place"> {
   readonly placeId: string | null;
@@ -119,7 +119,7 @@ export class Reminders {
     const when = this.when(workspaceId, recipientId, input, now);
     this.database
       .query(
-        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, place_id, place_event, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, place_id, place_event, triggered_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         input.id,
@@ -133,6 +133,7 @@ export class Reminders {
         when.dueAt,
         when.placeId,
         when.placeEvent,
+        when.triggeredAt,
         now,
         now
       );
@@ -197,7 +198,7 @@ export class Reminders {
     const when = this.when(workspaceId, reminder.recipientId, input, now);
     this.database
       .query(
-        "UPDATE reminder SET text = ?, created_by = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, place_id = ?, place_event = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
+        "UPDATE reminder SET text = ?, created_by = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, place_id = ?, place_event = ?, triggered_at = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
       )
       .run(
         required(input.text, "Reminder"),
@@ -207,6 +208,7 @@ export class Reminders {
         when.dueAt,
         when.placeId,
         when.placeEvent,
+        when.triggeredAt,
         now,
         id,
         workspaceId
@@ -231,28 +233,22 @@ export class Reminders {
   }
 
   /**
-   * Makes the person's reminder at a place due now, when their iPhone reports the event that it waits for; a second
-   * report changes nothing.
+   * Makes the person's pending reminders at a place that wait for this event due, when their iPhone reports that they
+   * arrived or left at `at`; a reminder made after that time waits for the next one.
    */
-  trigger(workspaceId: string, user: User, id: string): Reminder {
-    const reminder = this.get(workspaceId, user, user.id, id);
-    if (reminder.recipientId !== user.id || reminder.place === null) {
-      throw notFound();
-    }
-    if (reminder.cancelledAt !== null) {
-      throw new HttpError(409, "This reminder was cancelled.");
-    }
-    if (reminder.triggeredAt !== null) {
-      return reminder;
-    }
-    const now = Date.now();
-    this.database
+  atPlace(
+    workspaceId: string,
+    personId: string,
+    placeId: string,
+    event: PlaceEvent,
+    at: number
+  ): Promise<void>[] {
+    const { changes } = this.database
       .query(
-        "UPDATE reminder SET triggered_at = ?, due_at = ?, next_attempt_at = ?, updated_at = ? WHERE id = ? AND triggered_at IS NULL"
+        "UPDATE reminder SET triggered_at = $at, due_at = $at, next_attempt_at = $at, updated_at = $now WHERE workspace_id = $workspaceId AND recipient_id = $personId AND place_id = $placeId AND place_event = $event AND created_at <= $at AND triggered_at IS NULL AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL"
       )
-      .run(now, now, now, now, id);
-    this.tick(now);
-    return this.get(workspaceId, user, user.id, id);
+      .run({ at, now: Date.now(), workspaceId, personId, placeId, event });
+    return changes > 0 ? this.tick() : [];
   }
 
   /** Runs due reminders, also after the machine was off at their due time. */
@@ -350,6 +346,7 @@ export class Reminders {
     dueAt: number;
     placeId: string | null;
     placeEvent: PlaceEvent | null;
+    triggeredAt: number | null;
   } {
     if ((input.at === undefined) === (input.place === undefined)) {
       throw new HttpError(400, "Give a reminder a time or a place.");
@@ -359,6 +356,7 @@ export class Reminders {
         dueAt: dueTime(input.at, input.timeZone, now),
         placeId: null,
         placeEvent: null,
+        triggeredAt: null,
       };
     }
     const { id, event } = input.place!;
@@ -378,7 +376,15 @@ export class Reminders {
         "Give a place that the recipient and the asker use, and arrive or leave."
       );
     }
-    return { dueAt: now, placeId: id, placeEvent: event };
+    // A new reminder starts as outside: one for an arrival where the person is now is due at once.
+    const inside =
+      event === "arrive" && this.places.inside(id, recipientId) === true;
+    return {
+      dueAt: now,
+      placeId: id,
+      placeEvent: event,
+      triggeredAt: inside ? now : null,
+    };
   }
 
   private reminderOf({ placeId, placeEvent, ...row }: ReminderRow): Reminder {

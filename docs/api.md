@@ -130,7 +130,7 @@ type Routine = {
 	channelId: string;
 	name: string;
 	schedule: string | null; // a cron expression in the server's time zone; null for a routine at a place
-	place: { id: string; name: string; latitude: number; longitude: number; radius: number; event: "arrive" | "leave"; personId: string } | null; // a routine at a place runs each time personId's iPhone reports the event; null: a routine on a schedule
+	place: { id: string; name: string; latitude: number; longitude: number; radius: number; event: "arrive" | "leave"; personId: string } | null; // a routine at a place runs each time personId arrives or leaves; null: a routine on a schedule
 	instructions: string;
 	script: string | null; // code mode JavaScript that collects what is new before the agent sees it
 	enabled: boolean;
@@ -231,10 +231,10 @@ type Reminder = {
 	recipientId: string;
 	createdBy: string | null; // the person who asked for it
 	text: string;
-	dueAt: number; // for a reminder at a place: when it was made, until the iPhone reports the event
+	dueAt: number; // for a reminder at a place: when it was made, until the person arrives or leaves
 	timeZone: string;
 	place: { id: string; name: string; latitude: number; longitude: number; radius: number; event: "arrive" | "leave" } | null; // what a reminder at a place waits for; null: a reminder at a time
-	triggeredAt: number | null; // when the iPhone reported the event of a reminder at a place
+	triggeredAt: number | null; // when the person arrived at or left the place of a reminder at a place, as their iPhone reported
 	deliveredAt: number | null;
 	cancelledAt: number | null;
 };
@@ -243,6 +243,14 @@ type Upcoming = {
 	reminders: Reminder[]; // pending, for the person or from them, soonest first
 	suggestions: Suggestion[]; // oldest first; at most 3
 	approvals: { threadId: string; approval: Approval }[]; // what waits for the person to allow it
+};
+type WatchedPlace = {
+	id: string;
+	name: string;
+	latitude: number;
+	longitude: number;
+	radius: number;
+	reminders: { id: string; text: string; event: "arrive" | "leave" }[]; // the pending reminders here, which the iPhone shows itself without a connection
 };
 type ActivityState = { status: "working" | "waiting"; title: string; threads: number }; // a Live Activity's content state: waiting: for the person to allow an action; title: the thread that works now; threads: how many work on it now
 ```
@@ -473,7 +481,6 @@ the person enters on their phone, in Linked devices; then `sign-in` waits up to 
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/routines` | | `{ routines: Routine[], runs: RoutineRun[] }`; the 20 newest runs, newest first |
 | `PUT /api/v1/routines/:routineId` | `{ enabled }` | `Routine` |
 | `POST /api/v1/routines/:routineId/runs` | | `202`; the run shows in the list; `409` while it runs |
-| `POST /api/v1/routines/:routineId/trigger` | | `202`; the iPhone of the routine's person reports that they arrived at or left its place, and it runs, unless it ran in the last 15 minutes. `404` unless the person is its `place.personId`; `409` while it is paused |
 | `DELETE /api/v1/routines/:routineId` | | `204`; its thread stays |
 
 People create and change routines by asking an agent in a thread: agents have the `routines_create`,
@@ -484,9 +491,9 @@ a member changes the routine. A run that a stop or a restart of Golem cuts off s
 starts again and its agent answers; the script does not run again.
 
 A routine at a place has a place, `arrive` or `leave`, and a person in place of a schedule. The place must be one that
-the person and the writer of the routine both use, and the person must see its channel. The person's iPhone watches
-the places of the routines in their Upcoming and reports each event; then the routine runs, at most every 15 minutes.
-A removed place keeps its routines.
+the person and the writer of the routine both use, and the person must see its channel. It runs each time the person
+crosses the circle for its event, at most every 15 minutes, and not for a crossing that Golem hears of more than 15
+minutes late. A new routine waits for the next crossing. A removed place keeps its routines.
 
 ### One-time reminders (`src/reminders/`)
 
@@ -497,8 +504,9 @@ last changed it, not for its recipient; a reminder from before this rule uses on
 Agents make and change reminders; a person sees their pending ones in Upcoming and cancels one there.
 
 A reminder at a place has a place and `arrive` or `leave` in place of a time. The place must be one that its recipient
-and the person who asks both use. The recipient's iPhone watches the places of their pending reminders and reports the
-event; then the reminder is due at once. The iPhone gets a new reminder when the app opens or goes to the background.
+and the person who asks both use. It is due once the recipient crosses the circle for its event after it was made, also
+when Golem hears of it late. A new reminder starts as outside: one for an arrival where the recipient is now is due at
+once.
 
 ### Agenda (`src/agenda/`)
 
@@ -506,8 +514,15 @@ event; then the reminder is due at once. The iPhone gets a new reminder when the
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/upcoming` | | `Upcoming`: what Golem runs for the person and what waits for them |
 | `POST /api/v1/workspaces/:workspaceId/suggestions/:suggestionId` | `{ accept: boolean }` | `204`; `accept` makes the routine in its channel, or the reminder in the person's orchestrator, both as theirs; else Golem does not suggest it again. `404` for another person's suggestion; `409` when its channel is gone or its time has passed |
-| `POST /api/v1/workspaces/:workspaceId/reminders/:reminderId/trigger` | | `Reminder`; the recipient's iPhone reports that they arrived at or left its place, and the reminder is due now. A second report changes nothing. `404` unless the person is its recipient and it is at a place; `409` after it was cancelled |
+| `GET /api/v1/workspaces/:workspaceId/watched-places` | | `{ places: WatchedPlace[] }`: the places that the person's iPhone watches, those of their pending reminders and enabled routines at a place |
+| `POST /api/v1/workspaces/:workspaceId/watched-places/:placeId/reports` | `{ event: "arrive" \| "leave", at, initial }` | `204`; the iPhone saw the person arrive or leave at `at` (Unix milliseconds; a time in the future is now). `initial`: the first state after it started to watch the place, which is no crossing. A report older than the last one, or of the same state, changes nothing. `400` for another body; `404` unless the person's iPhone watches the place |
 | `DELETE /api/v1/workspaces/:workspaceId/reminders/:reminderId` | | `204`; cancels a pending reminder for the person or from them; `404` for another one; `409` while it runs or after it was delivered |
+
+The iPhone watches the places of `watched-places` with Core Location and tells Golem only what it sees there, never
+where the person is. Golem keeps only each person's last state at each place, and decides what is due: a crossing
+makes due the reminders and runs the routines of its event. The first state after the iPhone starts to watch a place
+makes due only the reminders for an arrival, as a reminder starts as outside. The iPhone gets a new place when the app
+opens or goes to the background.
 
 Golem suggests and never makes an automation itself: a suggestion waits, with no push, until its person accepts or
 declines it. A person has at most 3 waiting; Golem drops one with the same name as one they already had, and one whose

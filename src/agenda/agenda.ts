@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { Place, PlaceEvent, Places } from "../places/places.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import {
@@ -33,6 +34,19 @@ export interface Suggestion {
   readonly createdAt: number;
 }
 
+/**
+ * A place that a person's iPhone watches, because a pending reminder or an enabled routine waits for them there. It
+ * has the texts of the reminders, which the iPhone shows itself when it has no connection.
+ */
+export interface WatchedPlace
+  extends Pick<Place, "id" | "name" | "latitude" | "longitude" | "radius"> {
+  readonly reminders: readonly {
+    readonly id: string;
+    readonly text: string;
+    readonly event: PlaceEvent;
+  }[];
+}
+
 /** What Golem will do for a person, and what waits for them. */
 export interface Upcoming {
   readonly routines: readonly Routine[];
@@ -51,17 +65,23 @@ export type AgendaWorkspaces = Pick<
   "channelsIn" | "members" | "requireMember"
 >;
 export type AgendaThreads = Pick<Threads, "approvalsFor" | "orchestrator">;
-export type AgendaRoutines = Pick<Routines, "create" | "inWorkspace">;
+export type AgendaRoutines = Pick<
+  Routines,
+  "atPlace" | "create" | "inWorkspace"
+>;
 export type AgendaReminders = Pick<
   Reminders,
-  "cancel" | "create" | "get" | "list"
+  "atPlace" | "cancel" | "create" | "get" | "list"
 >;
+export type AgendaPlaces = Pick<Places, "record">;
 
 /** A person has at most this many suggestions waiting, so Golem asks little. */
 const MAX_OPEN = 3;
 /** The answered suggestions that a review sees, so that it does not ask again. */
 const ANSWERED = 20;
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+/** A routine does not run for an arrival or a departure that Golem hears of later than this. */
+const ROUTINE_EVENT_AGE = 15 * 60_000;
 const COLUMNS =
   "id, kind, name, text, schedule, at, channel_id AS channelId, thread_id AS threadId, created_at AS createdAt";
 
@@ -72,7 +92,8 @@ interface SuggestionRow extends Omit<Suggestion, "at"> {
 /**
  * Each person's agenda: the routines and reminders that Golem runs for them, the approvals that wait for them, and the
  * automations that Golem suggests. Golem suggests and never makes an automation itself: a suggestion becomes a
- * routine or a reminder only when its person accepts it.
+ * routine or a reminder only when its person accepts it. The person's iPhone watches the places of their reminders and
+ * routines and reports only what it sees there; Golem decides what is due.
  */
 export class Agenda {
   constructor(
@@ -80,7 +101,8 @@ export class Agenda {
     private readonly workspaces: AgendaWorkspaces,
     private readonly threads: AgendaThreads,
     private readonly routines: AgendaRoutines,
-    private readonly reminders: AgendaReminders
+    private readonly reminders: AgendaReminders,
+    private readonly places: AgendaPlaces
   ) {}
 
   /**
@@ -273,6 +295,92 @@ export class Agenda {
     }
   }
 
+  /** The places that the person's iPhone watches: those of their pending reminders and enabled routines at a place. */
+  watchedPlaces(workspaceId: string, user: User): WatchedPlace[] {
+    this.workspaces.requireMember(workspaceId, user);
+    const places = new Map<string, WatchedPlace>();
+    const add = (
+      place: Pick<Place, "id" | "name" | "latitude" | "longitude" | "radius">
+    ) => {
+      const watched = places.get(place.id) ?? {
+        id: place.id,
+        name: place.name,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        radius: place.radius,
+        reminders: [],
+      };
+      places.set(place.id, watched);
+      return watched.reminders as WatchedPlace["reminders"][number][];
+    };
+    for (const reminder of this.pendingReminders(workspaceId, user)) {
+      if (
+        reminder.place &&
+        reminder.triggeredAt === null &&
+        reminder.recipientId === user.id
+      ) {
+        add(reminder.place).push({
+          id: reminder.id,
+          text: reminder.text,
+          event: reminder.place.event,
+        });
+      }
+    }
+    for (const routine of this.routines.inWorkspace(workspaceId, user.id)) {
+      if (routine.enabled && routine.place?.personId === user.id) {
+        add(routine.place);
+      }
+    }
+    return [...places.values()];
+  }
+
+  /**
+   * Takes what the person's iPhone saw at one of their watched places, and makes due what waits for it. A crossing
+   * makes due the reminders and runs the routines of its event; the first state after the iPhone starts to watch the
+   * place is no crossing, but a reminder starts as outside, so an arrival there is due. A report older than the last
+   * one, or a second one of the same state, changes nothing.
+   */
+  reportPlace(
+    workspaceId: string,
+    user: User,
+    placeId: string,
+    input: unknown
+  ): void {
+    const report = placeReport(input);
+    if (
+      !this.watchedPlaces(workspaceId, user).some(({ id }) => id === placeId)
+    ) {
+      throw notFound();
+    }
+    const recorded = this.places.record(placeId, user.id, report);
+    if (recorded === "stale") {
+      return;
+    }
+    const inside = report.event === "arrive";
+    const crossed = !report.initial && recorded.before !== inside;
+    if (crossed || (report.initial && inside)) {
+      this.reminders.atPlace(
+        workspaceId,
+        user.id,
+        placeId,
+        report.event,
+        report.at
+      );
+    }
+    if (crossed && Date.now() - report.at <= ROUTINE_EVENT_AGE) {
+      for (const run of this.routines.atPlace(
+        workspaceId,
+        user.id,
+        placeId,
+        report.event
+      )) {
+        run.catch(() => {
+          // The run records its own failure; this one is a database closed while it ran.
+        });
+      }
+    }
+  }
+
   private pendingReminders(workspaceId: string, user: User): Reminder[] {
     return this.reminders
       .list(workspaceId, user, user.id)
@@ -293,6 +401,27 @@ function answerOf(row: {
     return "waiting";
   }
   return row.accepted ? "accepted" : "declined";
+}
+
+/** A report of the iPhone from a request body; a time in the future, as from a clock that is wrong, is now. */
+function placeReport(input: unknown): {
+  readonly event: PlaceEvent;
+  readonly at: number;
+  readonly initial: boolean;
+} {
+  const { event, at, initial } = (input ?? {}) as Record<string, unknown>;
+  if (
+    !(event === "arrive" || event === "leave") ||
+    typeof at !== "number" ||
+    !Number.isFinite(at) ||
+    typeof initial !== "boolean"
+  ) {
+    throw new HttpError(
+      400,
+      "Send event as arrive or leave, at in Unix milliseconds, and initial"
+    );
+  }
+  return { event, at: Math.min(at, Date.now()), initial };
 }
 
 function suggestionOf(row: SuggestionRow): Suggestion {

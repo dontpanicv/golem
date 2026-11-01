@@ -110,8 +110,8 @@ final class Session {
     /// Watches the places of the person's pending reminders and routines at a place in the open workspace
     /// (`PlaceWatcher`).
     func watchPlaces() async {
-        guard let workspace, let user, let upcoming = try? await api.upcoming(workspaceID: workspace.id) else { return }
-        await PlaceWatcher.shared.watch(upcoming, userID: user.id, workspaceID: workspace.id)
+        guard let workspace, let places = try? await api.watchedPlaces(workspaceID: workspace.id) else { return }
+        await PlaceWatcher.shared.watch(places, workspaceID: workspace.id)
     }
 
     /// Loads the user and the workspaces, then opens the last workspace.

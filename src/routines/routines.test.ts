@@ -414,7 +414,7 @@ test("a routine runs at most every 15 minutes, whatever its schedule says", asyn
   routines.delete(routine.id, alice);
 });
 
-test("a routine at a place runs each time its person's iPhone reports the event, at most every 15 minutes", async () => {
+test("a routine at a place runs each time its person arrives or leaves, at most every 15 minutes", async () => {
   const cottage = golem.app.places.create(workspaceId, alice, {
     name: "Cottage",
     latitude: 49.1,
@@ -457,18 +457,24 @@ test("a routine at a place runs each time its person's iPhone reports the event,
     nextRunAt: null,
     place: { name: "Cottage", event: "arrive", personId: alice.id },
   });
-  routines.trigger(routine.id, alice);
-  const ran = await until(
-    async () => routines.get(routine.id, alice),
-    ({ lastRun }) => lastRun?.outcome === "posted"
+  // Only its person's arrival at its place runs it.
+  expect(routines.atPlace(workspaceId, alice.id, cottage.id, "leave")).toEqual(
+    []
   );
+  expect(routines.atPlace(workspaceId, "bob", cottage.id, "arrive")).toEqual(
+    []
+  );
+  const [run] = routines.atPlace(workspaceId, alice.id, cottage.id, "arrive");
+  expect(await run).toMatchObject({ outcome: "posted" });
+  const ran = routines.get(routine.id, alice);
   expect(
     (await golem.app.threads.messages(threadOf(ran.threadId))).messages.at(-1)
       ?.text
   ).toBe("The heating is on.");
-  // A second report soon after, as at the edge of the circle, runs nothing.
-  routines.trigger(routine.id, alice);
-  expect(routines.get(routine.id, alice).lastRun?.id).toBe(ran.lastRun!.id);
+  // A second arrival soon after, as at the edge of the circle, runs nothing.
+  expect(routines.atPlace(workspaceId, alice.id, cottage.id, "arrive")).toEqual(
+    []
+  );
   // A pause and a new name keep its place, and a schedule takes its place.
   expect(
     golem.app.routines.update(
@@ -488,7 +494,9 @@ test("a routine at a place runs each time its person's iPhone reports the event,
   );
   expect(scheduled).toMatchObject({ place: null, schedule: "0 7 * * *" });
   expect(scheduled.nextRunAt).toBeNumber();
-  expect(() => routines.trigger(routine.id, alice)).toThrow("Not found");
+  expect(routines.atPlace(workspaceId, alice.id, cottage.id, "arrive")).toEqual(
+    []
+  );
   routines.delete(routine.id, alice);
 });
 

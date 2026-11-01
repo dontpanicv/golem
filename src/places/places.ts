@@ -21,6 +21,17 @@ export interface Place {
 /** A person arrives at a place, or leaves it. */
 export type PlaceEvent = "arrive" | "leave";
 
+/**
+ * What a person's iPhone saw at a place: a crossing, or the first state after it starts to watch the place (`initial`),
+ * when the person did not cross the circle.
+ */
+export interface PlaceReport {
+  readonly event: PlaceEvent;
+  /** When it happened; a report that waited for a connection comes late. */
+  readonly at: number;
+  readonly initial: boolean;
+}
+
 export type PlaceInput = Pick<
   Place,
   "name" | "latitude" | "longitude" | "radius" | "shared"
@@ -126,6 +137,46 @@ export class Places {
       throw notFound();
     }
     return this.find(workspaceId, placeId)!;
+  }
+
+  /**
+   * Keeps what the person's iPhone saw at a place as their last state there, and gives the state before it, or null
+   * when there was none. Gives `stale` for a report older than the last one, which changes nothing.
+   */
+  record(
+    placeId: string,
+    personId: string,
+    report: PlaceReport
+  ): { readonly before: boolean | null } | "stale" {
+    const last = this.database
+      .query(
+        "SELECT inside, at FROM place_presence WHERE place_id = ? AND person_id = ?"
+      )
+      .get(placeId, personId) as { inside: number; at: number } | null;
+    if (last && last.at > report.at) {
+      return "stale";
+    }
+    this.database
+      .query(
+        "INSERT INTO place_presence (place_id, person_id, inside, at) VALUES ($placeId, $personId, $inside, $at) ON CONFLICT (place_id, person_id) DO UPDATE SET inside = $inside, at = $at"
+      )
+      .run({
+        placeId,
+        personId,
+        inside: report.event === "arrive" ? 1 : 0,
+        at: report.at,
+      });
+    return { before: last ? last.inside === 1 : null };
+  }
+
+  /** Whether the person was in the place when their iPhone last said; null when it never said. */
+  inside(placeId: string, personId: string): boolean | null {
+    const last = this.database
+      .query(
+        "SELECT inside FROM place_presence WHERE place_id = ? AND person_id = ?"
+      )
+      .get(placeId, personId) as { inside: number } | null;
+    return last ? last.inside === 1 : null;
   }
 
   /** Removes the person's own place; its name gets `~<id>`, so it is free again. */

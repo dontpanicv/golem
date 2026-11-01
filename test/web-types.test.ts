@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import type { Suggestion, Upcoming } from "../src/agenda/agenda.ts";
+import type {
+  Suggestion,
+  Upcoming,
+  WatchedPlace,
+} from "../src/agenda/agenda.ts";
 import type * as Server from "../src/artifacts/artifacts.ts";
 import type { MachineSummary, Pairing } from "../src/hands/hands.ts";
 import type { Integration } from "../src/integrations/integrations.ts";
@@ -49,6 +53,7 @@ const checks: true[] = [
   true satisfies Fits<MachineSummary, Web.Machine>,
   true satisfies Fits<Pairing, Web.Pairing>,
   true satisfies Fits<Place, Web.Place>,
+  true satisfies Fits<WatchedPlace, Web.WatchedPlace>,
   true satisfies Fits<LlmStatus, Web.LlmStatus>,
   true satisfies Fits<
     Omit<UsageReport, "threads" | "people"> & {

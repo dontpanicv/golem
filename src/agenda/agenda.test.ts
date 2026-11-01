@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { startTestApp, type TestApp } from "../../test/harness.ts";
+import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 
 let golem: TestApp;
@@ -130,4 +130,97 @@ test("an accepted reminder waits in the person's orchestrator, shows in Upcoming
     204
   );
   expect(golem.app.agenda.upcoming(home.id, alice).reminders).toEqual([]);
+});
+
+test("the iPhone watches the places of its person's reminders and routines, and Golem decides what a report makes due", async () => {
+  const home = await golem.app.workspaces.create(alice, "Places");
+  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const cottage = golem.app.places.create(home.id, alice, {
+    name: "Cottage",
+    latitude: 49.1,
+    longitude: 16.2,
+    radius: 300,
+    shared: false,
+  });
+  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  const reminder = golem.app.reminders.create(
+    home.id,
+    alice,
+    orchestrator.id,
+    alice.id,
+    {
+      id: crypto.randomUUID(),
+      text: "Pack the tent",
+      place: { id: cottage.id, event: "arrive" },
+      timeZone: "Europe/Prague",
+      createdBy: alice.id,
+    }
+  );
+  const routine = golem.app.routines.create(home.id, general!.id, {
+    id: crypto.randomUUID(),
+    name: "Heating",
+    place: { id: cottage.id, event: "leave", personId: alice.id },
+    instructions: "Turn off the heating.",
+    createdBy: alice.id,
+  });
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const base = `/api/v1/workspaces/${home.id}/watched-places`;
+  expect(await (await golem.call(base, { token })).json()).toEqual({
+    places: [
+      {
+        id: cottage.id,
+        name: "Cottage",
+        latitude: 49.1,
+        longitude: 16.2,
+        radius: 300,
+        reminders: [
+          { id: reminder.id, text: "Pack the tent", event: "arrive" },
+        ],
+      },
+    ],
+  });
+  const report = (body: unknown, place = cottage.id) =>
+    golem.call(`${base}/${place}/reports`, { token, body });
+  // Each report is after the reminder was made, and none is in the future.
+  const now = Date.now();
+  await Bun.sleep(50);
+  expect((await report({ event: "arrive", at: now })).status).toBe(400);
+  expect(
+    (await report({ event: "arrive", at: now, initial: false }, "elsewhere"))
+      .status
+  ).toBe(404);
+  const bobToken = await golem.signIn("Bob", "bob@example.com");
+  expect(
+    (
+      await golem.call(`${base}/${cottage.id}/reports`, {
+        token: bobToken,
+        body: { event: "arrive", at: now, initial: false },
+      })
+    ).status
+  ).toBe(404);
+  // The iPhone starts to watch while Alice is away: no crossing, nothing is due.
+  expect(
+    (await report({ event: "leave", at: now, initial: true })).status
+  ).toBe(204);
+  expect(
+    golem.app.reminders.get(home.id, alice, alice.id, reminder.id)
+  ).toMatchObject({ triggeredAt: null });
+  expect(golem.app.routines.get(routine.id, alice).lastRun).toBeNull();
+  // She arrives: the reminder is due, and the iPhone stops watching for it.
+  await report({ event: "arrive", at: now + 20, initial: false });
+  expect(
+    golem.app.reminders.get(home.id, alice, alice.id, reminder.id).triggeredAt
+  ).toBe(now + 20);
+  expect(golem.app.agenda.watchedPlaces(home.id, alice)[0]!.reminders).toEqual(
+    []
+  );
+  // A report that waited for a connection, older than the last one, changes nothing.
+  await report({ event: "leave", at: now + 10, initial: false });
+  expect(golem.app.routines.get(routine.id, alice).lastRun).toBeNull();
+  // She leaves: the routine runs.
+  await report({ event: "leave", at: now + 30, initial: false });
+  await until(
+    async () => golem.app.routines.get(routine.id, alice).lastRun,
+    (run) => run !== null && run.outcome !== "running"
+  );
 });
