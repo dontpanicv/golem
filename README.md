@@ -123,6 +123,46 @@ setup of each one.
 A connector is a file in `src/integrations/`. A connector with an MCP server gives its tools as they are, under its
 namespace.
 
+### Search and recall
+
+The workspace has one search index, `index.sqlite`, on the server. The Search page of both apps and the agents'
+`recall` tool use it, so a person and their agent find the same things.
+
+- **What goes in.** The messages of every thread, the text of every artifact, and every file in the workspace and its
+  channels:
+  - documents (Markdown, Office, OpenDocument, mail, calendars, and more) in chunks of about 1800 characters;
+  - PDFs page by page, where a scanned page is rendered as a picture and read with OCR;
+  - pictures, at most 1024 pixels long, and screenshots with their OCR text;
+  - audio in 30-second windows, without silence;
+  - video as a frame every 3 seconds when the shot changes, plus its sound as audio.
+
+  An answer card goes in as the words on the card. A file that Golem cannot read is still found by its name.
+- **Words.** SQLite FTS5 with stemming finds the words of the query; a title counts three times as much as the text.
+- **Meaning.** Google's [EmbeddingGemma 2](https://huggingface.co/ggml-org/embeddinggemma-2-GGUF) runs on the
+  server, in a pinned [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` that Golem starts and stops.
+  On the first start Golem downloads the text model (310 MB) and the picture and audio encoders (555 MB) and checks
+  their SHA-256. Text that reads as prose, pictures, and audio all get a 768-dimension vector in **one shared space**,
+  so a question in words finds a photo of a receipt or a voice memo, also when no word matches. The vectors are
+  float16 rows in SQLite, compared by brute force: at family scale that takes milliseconds, with no vector database.
+- **Ranking.** It follows [DigUp](https://github.com/ARahim3/DigUp). For each source, the best match of its vectors
+  becomes a z-score against all the scores of the query, measured for each kind, because pictures and audio score on
+  another scale than text. The share of query words that a source contains adds to it. A source shows when it stands
+  out by meaning (z ≥ 3) or holds at least half of the words, so a search shows nothing rather than noise. A query of
+  ids or numbers counts the words more.
+- **Privacy.** Before it ranks, a search leaves out what its person may not see. A person finds the channels that every
+  member sees, their own private channels, and their own Golem thread. An agent's `recall` sees what the person of its turn
+  sees: in your Golem thread or private channel that is you, and in a shared channel it is the person whose message the
+  agent answers.
+- **Recall.** Agents call `recall` with a question in plain words, and get up to 20 results (8 by default), each with
+  its kind, title, date, the link of its thread, and a snippet. They are told to recall before they say that they do
+  not know.
+- **The Search page.** Results come as you type, each with the Markdown lines around the first word that matches.
+  Before a query, the page shows your recent searches and Golem.
+- **Freshness.** Golem indexes a thread a second after it changes and checks the files every minute; it reads and
+  embeds again only what changed. Until the model runs, search finds words only, and the Search page says so.
+
+[docs/data.md](docs/data.md) has every file kind and the details.
+
 ### More
 
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
@@ -137,9 +177,6 @@ namespace.
   finds nothing, the run ends without the model. A reminder is at a time or at a place.
 - **Upcoming and suggestions.** Upcoming shows your routines, reminders, approvals, and the suggestions that wait for
   you. Accept a suggestion and it becomes a routine or a reminder.
-- **Search.** Keywords and meaning in one index, for text, pictures, audio, video, PDFs, and scanned documents.
-  [EmbeddingGemma 2](https://huggingface.co/ggml-org/embeddinggemma-2-GGUF) runs on the server with
-  [llama.cpp](https://github.com/ggml-org/llama.cpp). See [docs/data.md](docs/data.md).
 - **The model.** Golem uses ChatGPT, signed in once with the device login of OpenAI's Codex. The server's owner
   chooses the model and the effort for everybody.
 
