@@ -2403,6 +2403,65 @@ test("a script gets a connector tool's long answer whole, and an error for one t
   }
 });
 
+test("a script saves a tool's long answer as a file and gives a file to a tool, and the model sees neither text", async () => {
+  const home = await golem.app.workspaces.create(alice, "Piping");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const work = golem.app.workspaces.createChannel(home.id, alice, "work", true);
+  const counted: number[] = [];
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-piping-"));
+  const threads = savingThreads(
+    dataDirectory,
+    () => Promise.reject(new Error("unused")),
+    async () => null,
+    {},
+    {},
+    {
+      namespaces: () => [
+        { name: "notes", prefix: "notes_", description: "Notes." },
+      ],
+      tools: async () => [
+        {
+          name: "notes_transcript",
+          description: "The transcript of a note",
+          parameters: Type.Object({}),
+          execute: async () => `# Standup\n${"said a thing\n".repeat(5000)}`,
+        },
+        {
+          name: "notes_count",
+          description: "Counts the characters of a text",
+          parameters: Type.Object({ text: Type.String() }),
+          execute: async (args) => {
+            counted.push((args as { text: string }).text.length);
+            return "counted";
+          },
+        },
+      ],
+    }
+  );
+  try {
+    const summary = await threads.create(
+      home.id,
+      alice,
+      general.id,
+      'Run code: const saved = await tools.save_file({ content: await tools.notes_transcript({}), name: "standup.md", channel: "work" }); const id = /file (\\S+) in/.exec(saved)[1]; text(await tools.notes_count({ text: await tools.read_file({ file: id }) })); return id;'
+    );
+    await answeredIn(threads, home.id, summary.id);
+    const [file] = await threads.files({
+      workspaceId: home.id,
+      channelId: work.id,
+    });
+    const { path } = await threads.file(home.id, alice, file!.id);
+    expect(await Bun.file(path).text()).toStartWith("# Standup\n");
+    expect(counted).toEqual([10 + 13 * 5000]);
+    expect(toolResults.at(-1)).toContain("counted");
+    expect(toolResults.at(-1)).toContain(file!.id);
+    expect(toolResults.at(-1)).not.toContain("said a thing");
+  } finally {
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test("a connector tool that acts as a person asks before every call, and never for the rest of the turn", async () => {
   const home = await golem.app.workspaces.create(alice, "Sending");
   const general = golem.app.workspaces.channels(home.id, alice)[0]!;
@@ -2575,7 +2634,7 @@ function savingThreads(
       recall: async () => ({ results: [] }),
       automations: () => "",
       suggest: () => undefined,
-      read: async () => null,
+      read: (path) => Bun.file(path).text(),
       picture: async () => null,
       tools: async () => [],
     }
