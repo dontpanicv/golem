@@ -23,6 +23,9 @@ SQLite and Markdown.
 - **It does real work.** Golem runs commands on your Macs and Linux machines, reads your mail and calendar, controls
   the heating, orders the groceries, and browses the web. It asks before it sends, buys, or runs a destructive
   command.
+- **It works on your computers.** Pair your Macs and Linux machines once, and Golem uses them as you would from a
+  terminal. From your phone on the train: "start the photo backup on the home server and tell me when it is done".
+  Golem starts the job on the server, the job keeps running when your phone sleeps, and Golem tells you when it ends.
 - **It makes pages and small apps.** Ask for an invite, a poll, a packing list, or a game, and Golem builds it as an
   artifact that keeps its own data. Keep it for the family, or share a public link with anyone, while the rest of
   Golem stays private.
@@ -91,17 +94,51 @@ matters, which keeps the context small.
 
 ### Hands and machines
 
-Agents use your computers through [`hands`](hands/), a small Rust daemon for macOS and Linux. It is Golem's copy of
-the `hands` daemon of [Mycroft](https://github.com/dontpanicv/mycroft), built on the pi-env daemon of
-[Pi](https://github.com/earendil-works/pi).
+Agents use your computers through [`hands`](hands/), a small daemon for macOS and Linux, written in Rust. Golem
+never runs a model on a machine and never sends it a credential: the machine only does what the agent asks, as the
+person who installed it. `hands` is Golem's copy of the `hands` daemon of
+[Mycroft](https://github.com/dontpanicv/mycroft), built on the pi-env daemon of [Pi](https://github.com/earendil-works/pi).
 
-- **Add machine** in your Settings shows one command to paste on the machine. It downloads `hands`, checks its
-  SHA-256, installs it as a service, and pairs it with you over TLS 1.3. Golem pins the machine's certificate.
-- Agents run commands and long jobs there, and read, write, and edit files: `hands_exec`, `hands_job_start`,
-  `hands_read`, `hands_edit`, `hands_copy_file`, and more.
-- A machine is private to your turns until you share it with every member.
-- Before a command that [dcg (destructive command guard)](https://github.com/Dicklesworthstone/destructive_command_guard)
-  flags, the agent waits until the person who paired the machine allows it.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/machines-dark.svg">
+  <img alt="A person clicks Add machine; Golem gives a curl command with a one-time code. On the machine the install script downloads the script and binary pinned to Golem's TLS key, checks the SHA-256, and runs golem-hands install --pair, which posts the machine's name, addresses, port, and certificate hash to Golem and gets the person's Ed25519 key. Later Golem opens wss to every address with the certificate pinned, gets a nonce, and signs it. When dcg flags a command, Golem asks the person; after Allow it sends job.start, and the machine returns the output and exit code." src="docs/assets/machines-light.svg">
+</picture>
+
+- **Pairing.** **Add machine** in your own Settings shows one command, with a code of 16 letters that works once,
+  for 10 minutes. Paste it into a terminal on the Mac or the Linux machine. The script downloads the binary for that
+  system over HTTPS pinned to Golem's TLS key, checks its SHA-256, and runs `golem-hands install --pair`. That installs
+  `hands` as a user service (launchd on a Mac, systemd on Linux) and sends Golem the machine's name, addresses, port,
+  and the SHA-256 of its certificate. Golem answers with your Ed25519 public key, which Golem derives from its secret
+  key, one for each person. From then on the machine trusts that key, and Golem trusts that certificate. On a Mac,
+  `install` then walks you through the permissions, one at a time: Accessibility, Screen Recording, the Desktop,
+  Documents, and Downloads folders, Local Network, and optionally Full Disk Access.
+- **Transport.** The machine listens on one port: WebSocket over TLS 1.3 ([rustls](https://github.com/rustls/rustls)
+  and [tungstenite](https://github.com/snapview/tungstenite-rs)), with a self-signed ECDSA P-256 certificate. Golem
+  connects to every address of the machine at once (its LAN address, its VPN address, its hostname) and keeps the
+  first that authenticates, with the certificate pinned. The machine sends a fresh nonce; Golem signs it, with the hash of
+  the certificate, with your Ed25519 key. Until the signature checks out, the machine accepts nothing else, and the
+  handshake must end within 10 seconds. After that, each WebSocket message is one binary frame of pi-env's protocol:
+  `exec`, `open`, `pread`, `write`, `close`, `listFiles`, and the `job.*` operations.
+- **The daemon.** For each connection, the listener starts its own `serve` process, so one crash ends only that
+  connection. Commands of `exec` end with the connection. Long work is a **job** instead: a supervisor starts it in
+  its own process group, writes its output and exit code to disk, and keeps it running when the connection drops or
+  the supervisor restarts. Agents read its output later, wait for it, or cancel it. Finished jobs stay for 7 days. The
+  service gets the `PATH` of your shell, so commands find `brew`, `npm`, `cargo`, or `gh` as your terminal does. The
+  machine also announces itself over Bonjour (`_golem-hands._tcp`).
+- **The network.** Golem connects to the machine, so the Golem server must reach it: on the same network, or over a
+  VPN such as Tailscale or NetBird. `golem-hands install --bind <address>` limits the listener to one address, such
+  as the VPN one. The machine needs no public address.
+- **Tools.** Agents use the machine from code mode: `hands_exec` for a command, `hands_job_start`, `hands_job_wait`,
+  and `hands_job_cancel` for long work, `hands_read`, `hands_write`, `hands_edit`, and `hands_list` for files, and
+  `hands_copy_file` to put a file of the channel on the machine; `save_file` brings a result back.
+- **Approvals.** Before a command that
+  [dcg (destructive command guard)](https://github.com/Dicklesworthstone/destructive_command_guard) flags, such as
+  `rm -rf` or `git push --force`, the agent waits until a person allows it: the person who paired the machine when the
+  turn is somebody else's, or else the turn's own person. The question shows in the thread and comes as a push
+  notification with Allow and Deny.
+- **Who can use it.** A machine is private to your turns until you share it with every member. Several people can pair
+  the same machine; it trusts each of their keys. `golem-hands unpair` takes a key away, also on open connections.
+  Treat a paired machine as shell access for Golem, as the user who installed `hands`.
 
 ### Integrations
 

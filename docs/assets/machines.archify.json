@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Pairing a machine and running a command on it",
+    "output": ".archify/machines/machines.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/dontpanicv/golem.git",
+      "revision": "65055bf0ff395c93f01efff0a1c59223fffabd67"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "Settings · web or iPhone",
+      "icon": "person"
+    },
+    {
+      "id": "golem",
+      "type": "backend",
+      "label": "Golem",
+      "sublabel": "the server",
+      "sources": [
+        {
+          "path": "src/hands/hands.ts",
+          "line": 194,
+          "label": "startPairing"
+        },
+        {
+          "path": "src/hands/hands.ts",
+          "line": 283,
+          "label": "pair"
+        }
+      ]
+    },
+    {
+      "id": "script",
+      "type": "frontend",
+      "label": "Install script",
+      "sublabel": "curl | sh on the machine",
+      "sources": [
+        {
+          "path": "hands/scripts/pair-install.sh",
+          "line": 27,
+          "end_line": 34,
+          "label": "sha256"
+        }
+      ]
+    },
+    {
+      "id": "hands",
+      "type": "security",
+      "label": "hands daemon",
+      "sublabel": "Rust · macOS or Linux",
+      "sources": [
+        {
+          "path": "hands/README.md",
+          "line": 65,
+          "label": "listener"
+        },
+        {
+          "path": "src/hands/connection.ts",
+          "line": 132,
+          "label": "wss"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 485,
+      "label": "Pair, once"
+    },
+    {
+      "from": 495,
+      "to": 655,
+      "label": "Connect"
+    },
+    {
+      "from": 665,
+      "to": 915,
+      "label": "Work"
+    }
+  ],
+  "messages": [
+    {
+      "id": "add-machine",
+      "from": "person",
+      "to": "golem",
+      "y": 170,
+      "label": "Add machine"
+    },
+    {
+      "id": "command",
+      "from": "golem",
+      "to": "person",
+      "y": 210,
+      "label": "curl …/hands/<code> | sh",
+      "variant": "return",
+      "note": "one code of 16 letters, for 10 minutes"
+    },
+    {
+      "id": "paste",
+      "from": "person",
+      "to": "script",
+      "y": 270,
+      "label": "paste in a terminal"
+    },
+    {
+      "id": "download",
+      "from": "script",
+      "to": "golem",
+      "y": 310,
+      "label": "GET script + binary",
+      "variant": "security",
+      "note": "pinned to Golem's TLS key; SHA-256 checked"
+    },
+    {
+      "id": "install",
+      "from": "script",
+      "to": "hands",
+      "y": 370,
+      "label": "golem-hands install --pair",
+      "note": "launchd or systemd user service"
+    },
+    {
+      "id": "pair",
+      "from": "hands",
+      "to": "golem",
+      "y": 420,
+      "label": "POST /hands/<code>/pair",
+      "variant": "emphasis",
+      "note": "name, addresses, port, certificate SHA-256"
+    },
+    {
+      "id": "person-key",
+      "from": "golem",
+      "to": "hands",
+      "y": 470,
+      "label": "the person's Ed25519 key",
+      "variant": "return"
+    },
+    {
+      "id": "open",
+      "from": "golem",
+      "to": "hands",
+      "y": 515,
+      "label": "wss://<address>:<port>/v1",
+      "variant": "security",
+      "note": "TLS 1.3 to every address at once; certificate pinned"
+    },
+    {
+      "id": "nonce",
+      "from": "hands",
+      "to": "golem",
+      "y": 575,
+      "label": "hello + nonce",
+      "variant": "return"
+    },
+    {
+      "id": "auth",
+      "from": "golem",
+      "to": "hands",
+      "y": 610,
+      "label": "auth: signed nonce",
+      "variant": "security",
+      "note": "Ed25519 over certificate hash + nonce"
+    },
+    {
+      "id": "ask",
+      "from": "golem",
+      "to": "person",
+      "y": 685,
+      "label": "Allow this command?",
+      "variant": "default",
+      "note": "only when dcg flags it"
+    },
+    {
+      "id": "allow",
+      "from": "person",
+      "to": "golem",
+      "y": 740,
+      "label": "Allow",
+      "variant": "return"
+    },
+    {
+      "id": "job",
+      "from": "golem",
+      "to": "hands",
+      "y": 780,
+      "label": "job.start (binary frame)",
+      "variant": "emphasis",
+      "note": "the supervisor keeps the job after the connection ends"
+    },
+    {
+      "id": "result",
+      "from": "hands",
+      "to": "golem",
+      "y": 845,
+      "label": "output + exit code",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Pairing",
+      "items": [
+        "Add machine in your own Settings makes a one-time command",
+        "The machine trusts the Ed25519 key of the person who paired it",
+        "Golem pins the machine's self-signed certificate"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Transport",
+      "items": [
+        "WebSocket over TLS 1.3, one port, closed to anyone unpaired",
+        "Nothing but auth is accepted before the signature",
+        "Each connection gets its own serve process"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Work",
+      "items": [
+        "Files: read, write, edit, list; commands with exec",
+        "Jobs run under a supervisor and outlive the connection",
+        "A command that dcg flags waits for the person"
+      ]
+    }
+  ]
+}
