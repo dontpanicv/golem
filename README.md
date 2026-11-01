@@ -286,12 +286,43 @@ in [docs/api.md](docs/api.md).
   - A **Live Activity** shows the work for your message on the Lock Screen and in the Dynamic Island.
   - The **Share** extension sends a link, text, pictures, or files to Golem.
   - **Places** on a map start [reminders when you arrive or leave](#reminders-at-a-place).
-  - **Voice, on the device.** Hold the mic to dictate in Czech or English with
-    [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra). The wave button starts a hands-free
-    conversation, and Golem speaks its answer with [Supertonic-3](https://huggingface.co/Supertone/supertonic-3).
-    Both run on the iPhone through [FluidAudio](https://github.com/FluidInference/FluidAudio).
+  - **Voice, on the device:** dictation in every composer, and a hands-free conversation with Golem
+    ([below](#voice-on-the-iphone)).
 
 You build the iOS app yourself with Xcode and install it on your family's iPhones. It is not in the App Store.
+
+### Voice on the iPhone
+
+Everything that hears or speaks runs on the iPhone itself, on its Neural Engine. No audio leaves the phone: Golem
+gets only the text, and the thinking happens on the server, with ChatGPT, as for a typed message.
+
+| Job | Model | Runs with |
+| --- | --- | --- |
+| Speech to text | [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), 25 European languages, Czech and English among them; it tells the language by itself | [FluidAudio](https://github.com/FluidInference/FluidAudio) and Core ML |
+| Text to speech | [Supertonic-3](https://huggingface.co/Supertone/supertonic-3), in Czech or English, for each sentence the language it is in | FluidAudio and Core ML |
+| Is this speech? | Apple's built-in sound classifier (SoundAnalysis) | iOS, nothing to download |
+| Echo cancellation | Apple's voice processing of the audio engine | iOS |
+
+The two models are in the app (about 630 MB and 170 MB; `ios/scripts/fetch-*.sh` downloads them before the build),
+so they work without a connection and nothing is downloaded on the phone.
+
+- **Dictation.** Hold the mic in any composer and talk, then let go to send. Slide left to cancel, or slide up or tap
+  to keep it listening. The words show in the field as you talk: Parakeet transcribes everything said again every
+  second and at every pause, so the text comes in short steps, and the final text is one pass over all of it. Only
+  what the sound classifier calls speech is transcribed, so a fan or typing never turns into "Thank you." The Action
+  button, Siri, and Shortcuts can start it too: **Dictate to Golem** opens your Golem thread with the mic on, and
+  **Ask Golem** sends a question with a screenshot and the clipboard without opening the app, and the answer comes
+  as a notification.
+- **Conversation.** The wave button in a thread starts a hands-free conversation. The microphone stays on with echo
+  cancellation. A pause ends your turn: a short one after a finished sentence, a longer one after "and…", "um", or a
+  comma, in Czech and English. Your words go to the thread as a voice message, which tells the agent to answer as
+  people speak: plain sentences, one to three of them, and one short sentence before it uses a tool. Golem says each
+  sentence as it streams in: Supertonic makes a sentence while the one before it plays, in 80 ms buffers.
+- **Cutting in.** With headphones, your voice stops Golem at once, and what it did not say yet is dropped. On the
+  iPhone's speaker, echo cancellation leaves enough of Golem's own voice to sound like words, so only "stop", "wait",
+  and the like cut in there; a tap on the orb always does. What the microphone hears while Golem speaks is never sent.
+- **It keeps going.** A conversation goes on with the screen locked and when you leave the thread's screen. Ending it
+  stops the microphone and the voice, never the work: the agent finishes, and the answer is in the thread.
 
 ## Self-hosting
 
