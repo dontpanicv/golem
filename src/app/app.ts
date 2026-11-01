@@ -145,6 +145,10 @@ export async function createApp(
       recall: (workspaceId, query, limit, personId) =>
         indexer.search(workspaceId, query, limit, personId),
       changed: (workspaceId) => indexer.touch(workspaceId),
+      moved: (threadId, channelId) => {
+        routines.moveWithThread(threadId, channelId);
+        agenda.moveWithThread(threadId, channelId);
+      },
       tools: async (workspaceId) => [
         ...(await routines.tools(workspaceId)),
         ...reminders.tools(workspaceId),

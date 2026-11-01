@@ -119,3 +119,23 @@ test("many messages go in parts, each a version", async () => {
   expect(briefs.through("a")).toBe(20);
   briefs.close();
 });
+
+test("a restart starts the brief from nothing, and unread threads are read from their first message", async () => {
+  const { briefs, prompts } = briefsOf(
+    (prompt) =>
+      `<summary>Trips.</summary>\n<brief>\n## Now\n- ${prompt.includes("Prague") ? "Prague" : "Train"} [Thread a](thread:a)\n</brief>`
+  );
+  await briefs.merge(
+    trips,
+    [message("a", 3, "Prague in May"), message("b", 5, "By train")],
+    signal
+  );
+  briefs.restart("trips");
+  briefs.unread(["b"]);
+  expect(briefs.latest("trips")).toBeNull();
+  expect([briefs.through("a"), briefs.through("b")]).toEqual([3, -1]);
+  await briefs.merge(trips, [message("b", 5, "By train")], signal);
+  expect(prompts.at(-1)).toContain("<brief>\n(none yet)\n</brief>");
+  expect(briefs.latest("trips")?.text).toContain("Train");
+  briefs.close();
+});

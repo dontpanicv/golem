@@ -78,7 +78,7 @@ export const channelsOf = keyed((workspaceId: string) =>
   )
 );
 
-/** The threads of every channel of a workspace. Settling one shows at once. */
+/** The threads of every channel of a workspace. Settling or moving one shows at once. */
 export const threadsOf = keyed((workspaceId: string) =>
   createCollection(
     queryCollectionOptions({
@@ -93,10 +93,14 @@ export const threadsOf = keyed((workspaceId: string) =>
       onUpdate: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           await request(
-            `/workspaces/${workspaceId}/threads/${mutation.key}/settled`,
+            mutation.changes.channelId
+              ? `/workspaces/${workspaceId}/threads/${mutation.key}/channel`
+              : `/workspaces/${workspaceId}/threads/${mutation.key}/settled`,
             {
               method: "POST",
-              body: { settled: mutation.modified.settledAt !== null },
+              body: mutation.changes.channelId
+                ? { channelId: mutation.modified.channelId }
+                : { settled: mutation.modified.settledAt !== null },
             }
           );
         }

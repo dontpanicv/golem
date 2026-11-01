@@ -12,7 +12,13 @@ import { fileHref } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
 import type { ThreadSummary } from "../app/types.ts";
 import { ArtifactList, ArtifactPreview } from "../artifacts/panel.tsx";
-import { Button, Dialog, Empty, WorkingSpinner } from "../ui/components.tsx";
+import {
+  Button,
+  Dialog,
+  Empty,
+  Menu,
+  WorkingSpinner,
+} from "../ui/components.tsx";
 import { previewLink } from "../ui/file-preview.tsx";
 import { dayTime, size } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
@@ -32,6 +38,7 @@ import { Composer } from "./composer.tsx";
 import {
   filesOf,
   messagesOf,
+  moveThread,
   type Place,
   placeKey,
   startThread,
@@ -98,13 +105,12 @@ function Thread({
   /** Cards over the composer. */
   cards: ReactNode;
 }) {
-  const { data: channel } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ channel: channelsOf(workspaceId) })
-        .where(({ channel: row }) => eq(row.id, thread.channelId))
-        .findOne(),
+  const { data: channels = [] } = useLiveQuery({
+    query: (q) => q.from({ channel: channelsOf(workspaceId) }),
   });
+  const channel = channels.find(
+    (candidate) => candidate.id === thread.channelId
+  );
   const { data: messages = [] } = useLiveQuery({
     query: (q) =>
       q
@@ -172,13 +178,43 @@ function Thread({
           }
         >
           {isOrchestrator ? null : (
-            <Button
-              icon={settled ? "inbox" : "check"}
-              label={settled ? "Un-settle thread" : "Settle thread"}
-              onClick={() => setSettled(workspaceId, threadId, !settled)}
-              size="icon"
-              variant="ghost"
-            />
+            <>
+              <Menu
+                entries={[
+                  { kind: "label", label: "Move to" },
+                  ...channels.map((candidate) => ({
+                    kind: "action" as const,
+                    label: candidate.name,
+                    icon: candidate.ownerId
+                      ? ("lock" as const)
+                      : ("hash" as const),
+                    current: candidate.id === thread.channelId,
+                    onSelect: () =>
+                      moveThread(
+                        workspaceId,
+                        threadId,
+                        thread.channelId,
+                        candidate.id
+                      ),
+                  })),
+                ]}
+                trigger={
+                  <Button
+                    icon="forward"
+                    label="Move thread"
+                    size="icon"
+                    variant="ghost"
+                  />
+                }
+              />
+              <Button
+                icon={settled ? "inbox" : "check"}
+                label={settled ? "Un-settle thread" : "Settle thread"}
+                onClick={() => setSettled(workspaceId, threadId, !settled)}
+                size="icon"
+                variant="ghost"
+              />
+            </>
           )}
           <PanelToggle />
         </PanelHeader>

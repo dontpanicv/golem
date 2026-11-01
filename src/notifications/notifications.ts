@@ -183,6 +183,13 @@ export class Notifications {
     return { notifications, unread, badge: this.badge(user) };
   }
 
+  /** Gives the notifications of a thread the channel it moved to. */
+  moveWithThread(threadId: string, channelId: string): void {
+    this.database
+      .query("UPDATE notification SET channel_id = ? WHERE thread_id = ?")
+      .run(channelId, threadId);
+  }
+
   /** Marks one notification of the person read, or all of them in the workspace for a null `id`. */
   read(workspaceId: string, user: User, id: string | null): Inbox {
     this.workspaces.requireMember(workspaceId, user);

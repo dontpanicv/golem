@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -280,6 +281,10 @@ function agent(context: Context, options?: SimpleStreamOptions) {
       [fauxToolCall("notify", { text: notify[2]!, to: [notify[1]!] })],
       { stopReason: "toolUse" }
     );
+  }
+  const move = /Move to #([\w-]+)$/.exec(text);
+  if (move) {
+    return call("move_thread", { channel: move[1]! });
   }
   const other = /Tell thread ([\w-]+) hi$/.exec(text);
   if (other) {
@@ -1327,6 +1332,167 @@ test("a person's memory has their own thread and the channels' threads, and sear
       .then(({ results }) => results.map((result) => result.uri));
   expect(await found(alice)).toContain(`thread:${alices.id}`);
   expect(await found(bob)).not.toContain(`thread:${alices.id}`);
+});
+
+test("a thread moves with its artifacts, its own files, and a note; into a private channel only by its starter, and the others lose it at once", async () => {
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const bobToken = await golem.signIn("Bob", "bob@example.com");
+  const home = await golem.app.workspaces.create(alice, "Moves");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const work = golem.app.workspaces.createChannel(home.id, alice, "work");
+  const mine = golem.app.workspaces.createChannel(home.id, alice, "mine", true);
+  const bobs = await golem.app.threads.orchestrator(home.id, bob);
+  const shared = (
+    await golem.app.threads.upload(home.id, general!.id, alice, [
+      new File(["Shared list"], "shared.txt"),
+    ])
+  )[0]!;
+  const trip = await golem.app.threads.create(
+    home.id,
+    alice,
+    general!.id,
+    `Plan the Rome trip with file ${shared.id}`,
+    [new File(["Flights at nine"], "flights.txt")]
+  );
+  const other = await golem.app.threads.create(
+    home.id,
+    bob,
+    general!.id,
+    `Also file ${shared.id}`
+  );
+  for (const id of [trip.id, other.id]) {
+    await until(
+      () => golem.app.threads.messages(golem.app.workspaces.thread(id, alice)),
+      (state) => !state.running && state.messages.length === 2
+    );
+  }
+  golem.app.artifacts.create(
+    golem.app.workspaces.thread(trip.id, alice),
+    general!.id,
+    { title: "Rome", html: "<p>Rome</p>", requestKey: `rome:${trip.id}` }
+  );
+  const move = (threadId: string, channelId: string, as = token) =>
+    golem.call(`/api/v1/workspaces/${home.id}/threads/${threadId}/channel`, {
+      token: as,
+      method: "POST",
+      body: { channelId },
+    });
+  const names = async (channelId: string) =>
+    (
+      await golem.app.threads.files(
+        golem.app.threads.place(home.id, channelId, alice)
+      )
+    ).map((file) => file.name);
+
+  const moved = await move(trip.id, work.id);
+  expect(moved.status).toBe(200);
+  expect(((await moved.json()) as { channelId: string }).channelId).toBe(
+    work.id
+  );
+  // The shared file stays for the other thread that mentions it.
+  expect(await names(general!.id)).toEqual(["shared.txt"]);
+  expect(await names(work.id)).toEqual(["flights.txt"]);
+  expect(
+    golem.app.artifacts
+      .inPlace(home.id, work.id, alice)
+      .map((artifact) => artifact.title)
+  ).toEqual(["Rome"]);
+  const { messages } = await golem.app.threads.messages(
+    golem.app.workspaces.thread(trip.id, alice)
+  );
+  expect([messages.at(-1)?.author, messages.at(-1)?.text]).toEqual([
+    "Alice",
+    "_Moved this thread from #general to #work._",
+  ]);
+
+  expect((await move(other.id, mine.id, bobToken)).status).toBe(404);
+  expect((await move(other.id, mine.id)).status).toBe(403);
+  expect((await move(bobs.id, general!.id, bobToken)).status).toBe(400);
+  expect((await move(trip.id, "nowhere")).status).toBe(404);
+  expect((await move(trip.id, general!.id, bobToken)).status).toBe(200);
+
+  // The lines of the trip's messages in Bob's memory, once it has them.
+  const bobRemembers = async () => {
+    const path = join(
+      golem.app.config.dataDirectory,
+      "workspaces",
+      home.id,
+      "memories",
+      `${bobs.id}.sqlite`
+    );
+    if (!(await Bun.file(path).exists())) {
+      return "";
+    }
+    const memory = new Database(path, { readonly: true });
+    try {
+      return (
+        memory
+          .query("SELECT text FROM line WHERE level = 0 AND thread_id = ?")
+          .all(trip.id) as { text: string }[]
+      )
+        .map((line) => line.text)
+        .join("\n");
+    } finally {
+      memory.close();
+    }
+  };
+  await until(bobRemembers, (lines) => lines.includes("Rome trip"));
+  await golem.app.indexer.scan(home.id);
+  const found = (searcher: User) =>
+    golem.app.indexer
+      .search(home.id, "Rome", 20, searcher.id)
+      .then(({ results }) => results.map((result) => result.uri));
+  expect(await found(bob)).toContain(`thread:${trip.id}`);
+
+  expect((await move(trip.id, mine.id)).status).toBe(200);
+  // Without a scan: search, the thread, and Bob's memory lose it at once.
+  expect(await found(bob)).not.toContain(`thread:${trip.id}`);
+  expect(await found(alice)).toContain(`thread:${trip.id}`);
+  expect(
+    (await golem.call(`/api/v1/threads/${trip.id}`, { token: bobToken })).status
+  ).toBe(404);
+  expect(await bobRemembers()).not.toContain("Rome trip");
+
+  const busy = await golem.app.threads.create(
+    home.id,
+    alice,
+    general!.id,
+    "Take your time"
+  );
+  await until(
+    () =>
+      golem.app.threads.messages(golem.app.workspaces.thread(busy.id, alice)),
+    (state) => state.running
+  );
+  expect((await move(busy.id, work.id)).status).toBe(409);
+  await golem.call(`/api/v1/threads/${busy.id}/stop`, {
+    token,
+    method: "POST",
+  });
+
+  // A person asks the agent to move its own thread.
+  const asked = await golem.app.threads.create(
+    home.id,
+    alice,
+    general!.id,
+    "Move to #work"
+  );
+  const answered = await until(
+    () =>
+      golem.app.threads.messages(golem.app.workspaces.thread(asked.id, alice)),
+    (state) => !state.running && state.messages.length === 3
+  );
+  // The note comes before the answer of the turn that moved the thread.
+  expect(answered.messages.map((message) => message.text)).toEqual([
+    "Move to #work",
+    "_Moved this thread from #general to #work._",
+    "Ok.",
+  ]);
+  expect(golem.app.workspaces.thread(asked.id, alice).channelId).toBe(work.id);
+  expect(
+    answered.messages[2]?.work?.steps.map((step) => [step.tool, step.output])
+  ).toEqual([["move_thread", expect.stringContaining("to #work.")]]);
 });
 
 test("the orchestrator gets its own instructions, also after they change, and a channel thread gets none of them", async () => {
@@ -2405,6 +2571,7 @@ function savingThreads(
     golem.app.notifications,
     {
       changed: () => undefined,
+      moved: () => undefined,
       recall: async () => ({ results: [] }),
       automations: () => "",
       suggest: () => undefined,
@@ -2450,6 +2617,7 @@ test("the model calls the core tools itself, and every other tool from codemode 
     "delete_file",
     "list_channels",
     "list_files",
+    "move_thread",
     "notify",
     "read_file",
     "read_thread",

@@ -283,6 +283,15 @@ export class Artifacts {
       .map((row) => this.artifact(row));
   }
 
+  /** Moves the artifacts that a thread made in its channel to the channel it moved to. */
+  moveWithThread(threadId: string, from: string, to: string): void {
+    this.database
+      .query(
+        "UPDATE artifact SET channel_id = ? WHERE thread_id = ? AND channel_id = ?"
+      )
+      .run(to, threadId, from);
+  }
+
   /**
    * The artifacts of a channel of the person's workspace from every thread, settled or not, or the workspace's own for
    * a null `channelId`; newest first.

@@ -14,6 +14,7 @@ import type {
   ThreadState,
   ThreadSummary,
 } from "../app/types.ts";
+import { showError } from "../ui/toast.tsx";
 import { meQuery, refreshInbox, threadsOf } from "../workspaces/data.ts";
 
 /** The last state each open thread's event stream sent, and who waits for the next one. */
@@ -256,6 +257,32 @@ function messageForm(fields: {
 export interface Place {
   readonly workspaceId: string;
   readonly channelId: string | null;
+}
+
+/**
+ * Moves a thread to another channel: it shows there at once, and goes back with the reason if Golem refuses. Then both
+ * channels show the files and artifacts that moved with it.
+ */
+export async function moveThread(
+  workspaceId: string,
+  threadId: string,
+  from: string,
+  to: string
+): Promise<void> {
+  try {
+    await threadsOf(workspaceId).update(threadId, (draft) => {
+      draft.channelId = to;
+    }).isPersisted.promise;
+  } catch (error) {
+    showError(error);
+    return;
+  }
+  const keys = [from, to].map((channelId) =>
+    placeKey({ workspaceId, channelId })
+  );
+  await queryClient.invalidateQueries({
+    predicate: ({ queryKey }) => keys.some((key) => queryKey.includes(key)),
+  });
 }
 
 export function placeKey(place: Place): string {

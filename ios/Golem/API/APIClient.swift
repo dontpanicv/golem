@@ -99,6 +99,12 @@ final class APIClient {
         ) as ThreadSummary
     }
 
+    func moveThread(workspaceID: String, threadID: String, channelID: String) async throws {
+        _ = try await post(
+            "/api/v1/workspaces/\(workspaceID)/threads/\(threadID)/channel", ["channelId": channelID]
+        ) as ThreadSummary
+    }
+
     func search(workspaceID: String, query: String) async throws -> SearchResponse {
         // `&`, `+`, and `=` are allowed in a query but would end or change the `q` value.
         let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+="))

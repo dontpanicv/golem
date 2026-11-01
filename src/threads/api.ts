@@ -55,15 +55,40 @@ export const threadApiRoutes: readonly Route[] = [
     }),
   ],
   [
+    "POST",
+    "/api/v1/workspaces/:workspace/threads/:thread/channel",
+    api(async ({ app, user, params, body }) => {
+      if (typeof body.channelId !== "string") {
+        throw new HttpError(400, "Choose a channel");
+      }
+      return json(
+        summary(
+          await app.threads.move(
+            params.workspace!,
+            user,
+            params.thread!,
+            body.channelId
+          )
+        )
+      );
+    }),
+  ],
+  [
     "GET",
     "/api/v1/threads/:thread/events",
     api(async ({ app, user, params }) => {
       const thread = app.workspaces.thread(params.thread!, user);
       return eventStream(
         async (send) => {
-          const stop = await app.threads.watch(thread, (state) =>
-            send("thread", { thread: summary(thread), ...state })
-          );
+          const stop = await app.threads.watch(thread, (state) => {
+            // The thread as it is now, such as in the channel it moved to; nothing once the person no longer sees it.
+            const current = app.workspaces
+              .threadsIn(thread.workspaceId, user.id)
+              .find((candidate) => candidate.id === thread.id);
+            if (current) {
+              send("thread", { thread: summary(current), ...state });
+            }
+          });
           // While a screen follows the thread, its person sees what happens there and gets no notification for it.
           const unwatch = app.notifications.watch(user, thread.id);
           return async () => {

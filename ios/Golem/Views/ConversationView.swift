@@ -102,6 +102,17 @@ struct ConversationView: View {
                     Button("Files and artifacts", systemImage: "sidebar.right") { showArtifacts = true }
                     if !isOrchestrator, let thread = state?.thread {
                         Button("Open #\(channelName)", systemImage: "number") { open(.channel(thread.channelId)) }
+                        Menu("Move to", systemImage: "arrow.right") {
+                            ForEach(session.channels.filter { $0.id != thread.channelId }) { channel in
+                                Button(channel.name, systemImage: channel.ownerId == nil ? "number" : "lock") {
+                                    Task {
+                                        await session.run {
+                                            try await session.moveThread(threadID: threadID, channelID: channel.id)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
                                systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
                             Task {

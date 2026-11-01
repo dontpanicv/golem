@@ -79,13 +79,35 @@ export class Briefs {
 		)`);
   }
 
-  /** The newest brief of a channel; `null` before its first merge. */
+  /** The newest brief of a channel; `null` before its first merge, or after `restart`. */
   latest(channelId: string): Brief | null {
-    return this.database
+    const brief = this.database
       .query(
         "SELECT text, created_at AS updatedAt FROM brief WHERE channel_id = ? ORDER BY version DESC LIMIT 1"
       )
       .get(channelId) as Brief | null;
+    return brief?.text ? brief : null;
+  }
+
+  /** Starts the channel's brief again from nothing, as an empty version; the versions before it stay. */
+  restart(channelId: string): void {
+    this.database
+      .query(
+        "INSERT INTO brief (channel_id, version, text, created_at) SELECT ?, coalesce(max(version), 0) + 1, '', ? FROM brief WHERE channel_id = ?"
+      )
+      .run(channelId, Date.now(), channelId);
+  }
+
+  /** Lets the next brief of their channel read the threads from their first message. */
+  unread(threadIds: readonly string[]): void {
+    const reset = this.database.query(
+      "UPDATE brief_read SET through_message_id = -1 WHERE thread_id = ?"
+    );
+    this.database.transaction(() => {
+      for (const threadId of threadIds) {
+        reset.run(threadId);
+      }
+    })();
   }
 
   /** The last message of a thread that a brief has read; -1 before any. */

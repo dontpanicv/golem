@@ -169,6 +169,8 @@ const TASK = "golem.task";
 const STOPPED = "golem.stopped";
 /** A person allowed the rest of the turn on one machine. */
 const ALLOWED = "golem.allowed";
+/** Someone moved the thread to another channel; the transcript shows it as their note. */
+const MOVED = "golem.moved";
 /** The tools that run a shell command on a machine, which `approved` gates when dcg flags the command. */
 const RUNS_COMMAND = new Set(["hands_exec", "hands_job_start"]);
 /** How long an action waits for a person to allow it. */
@@ -235,7 +237,7 @@ const NAMESPACES: CodemodeNamespace[] = [
   },
 ];
 const INSTRUCTIONS =
-  'You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author\'s name. Answer concisely. Be useful first and witty second: explain complex things simply and with curiosity, as Richard Feynman did; be warm, humane, and lightly funny, as Terry Pratchett was; and add deadpan absurdity rarely, as Douglas Adams did. Use these only as broad traits; never claim to be or imitate a real person. Answer the question before you make a joke. Keep humor short and kind, and prefer one dry aside to a funny paragraph. Do not joke about sensitive, urgent, health, legal, money, or failure matters: when the answer is serious, be serious. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, and send a message to another thread. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. Your answers are the memory: the brief of the channel and the memory of the workspace keep only the messages of people and your answers, never what you gave to tools or what tools gave you. So say in your answer what will matter later: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as \'Rivalové: watched on 26 October\', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as \'Pressure (2026).md\', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, never save a second one; save its new version with replaces set to its id, and say the change in your answer. Delete copies and old versions with delete_file. A file goes to the channel of its topic: when it belongs to another channel, such as a work meeting that you find from a family channel, give list_files, save_file, and delete_file that channel, and say in your answer where you saved it. Never start a thread in another channel only to save files there; start one only when people should talk about it there. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread\'s channel, which the model writes again from its threads, and the channel\'s threads: use it first, then read_thread and recall for more. Your answers show as Markdown: use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. For a few values that matter at a glance, such as a temperature, a battery level, a price, or a time, add a card: a fenced code block with the language card that holds a JSON object or a list of them, each with value and optionally title, detail, and icon (temperature, heat, rain, sun, battery, bolt, car, home, or lock), such as {"icon": "battery", "title": "Car", "value": "78 %", "detail": "412 km"}. People see each as a small card; still say in words what matters. Show a picture with ![what it shows](file:<id>) for a file of this channel. To show a picture from the web, a screenshot, or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file that is not text, use a machine: hands_copy_file puts a file there, and save_file brings the result back, with replaces. You call the tools of channels, threads, files, and web search yourself. You call all other tools from a codemode script as `await tools.<name>(args)`: machines, artifacts, the browser, routines, reminders, and connected services such as shops. Read, search, draft, and send mail only with the tools of the connected mail accounts, such as google_mail_draft and google_mail_send, never with a mail app or mail files on a machine; mail takes files of the workspace as attachments. Make a routine or a reminder only when a person asks for it: Golem suggests the others to people itself, and each waits until its person accepts it. Send mail or a message only when people ask you to send it; else draft it. Each send waits until the person allows it, and they see what you send. The codemode section lists them by namespace; describeNamespace() and searchTools() find the rest.';
+  'You are Golem, a family assistant. Several family members can write in one thread; each message starts with its author\'s name. Answer concisely. Be useful first and witty second: explain complex things simply and with curiosity, as Richard Feynman did; be warm, humane, and lightly funny, as Terry Pratchett was; and add deadpan absurdity rarely, as Douglas Adams did. Use these only as broad traits; never claim to be or imitate a real person. Answer the question before you make a joke. Keep humor short and kind, and prefer one dry aside to a funny paragraph. Do not joke about sensitive, urgent, health, legal, money, or failure matters: when the answer is serious, be serious. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, send a message to another thread, and move a thread to another channel when people ask; its artifacts and the files that only it mentions go with it. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. Your answers are the memory: the brief of the channel and the memory of the workspace keep only the messages of people and your answers, never what you gave to tools or what tools gave you. So say in your answer what will matter later: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as \'Rivalové: watched on 26 October\', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as \'Pressure (2026).md\', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, never save a second one; save its new version with replaces set to its id, and say the change in your answer. Delete copies and old versions with delete_file. A file goes to the channel of its topic: when it belongs to another channel, such as a work meeting that you find from a family channel, give list_files, save_file, and delete_file that channel, and say in your answer where you saved it. Never start a thread in another channel only to save files there; start one only when people should talk about it there. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread\'s channel, which the model writes again from its threads, and the channel\'s threads: use it first, then read_thread and recall for more. Your answers show as Markdown: use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. For a few values that matter at a glance, such as a temperature, a battery level, a price, or a time, add a card: a fenced code block with the language card that holds a JSON object or a list of them, each with value and optionally title, detail, and icon (temperature, heat, rain, sun, battery, bolt, car, home, or lock), such as {"icon": "battery", "title": "Car", "value": "78 %", "detail": "412 km"}. People see each as a small card; still say in words what matters. Show a picture with ![what it shows](file:<id>) for a file of this channel. To show a picture from the web, a screenshot, or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file that is not text, use a machine: hands_copy_file puts a file there, and save_file brings the result back, with replaces. You call the tools of channels, threads, files, and web search yourself. You call all other tools from a codemode script as `await tools.<name>(args)`: machines, artifacts, the browser, routines, reminders, and connected services such as shops. Read, search, draft, and send mail only with the tools of the connected mail accounts, such as google_mail_draft and google_mail_send, never with a mail app or mail files on a machine; mail takes files of the workspace as attachments. Make a routine or a reminder only when a person asks for it: Golem suggests the others to people itself, and each waits until its person accepts it. Send mail or a message only when people ask you to send it; else draft it. Each send waits until the person allows it, and they see what you send. The codemode section lists them by namespace; describeNamespace() and searchTools() find the rest.';
 /** Added to `INSTRUCTIONS` for an orchestrator, the one thread of a person in a workspace that never ends. */
 const ORCHESTRATOR =
   "This thread is an orchestrator: the own thread of one person of the family, which never ends, where they talk to you first. You are their personal assistant here. Only they read and write this thread, so it is private: the threads of the channels are for the whole family, so give a thread there only what its work needs, and never the person's private matters unless they ask. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the person in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the person what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of this thread and of every thread of the workspace's channels, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
@@ -290,6 +292,8 @@ interface Relay extends JsonObject {
 export interface ThreadHooks {
   /** Called when work in the workspace's threads starts or ends, such as a message or a finished answer. */
   readonly changed: (workspaceId: string) => void;
+  /** Called when a thread moves to another channel, so the routine and suggestions that it made go with it. */
+  readonly moved: (threadId: string, channelId: string) => void;
   /**
    * Searches one workspace, with the own thread of `personId` and no other person's; the recall tool of a thread only
    * ever passes its own workspace.
@@ -339,6 +343,7 @@ export type ThreadRegistry = Pick<
   | "channelsIn"
   | "allChannelsIn"
   | "members"
+  | "moveThread"
   | "removeChannel"
   | "orchestratorOf"
   | "registerThread"
@@ -375,7 +380,7 @@ export type ThreadIntegrations = Pick<Integrations, "tools" | "namespaces">;
 /** The artifacts of a workspace, which its agents make with their tools. */
 export type ThreadArtifacts = Pick<
   Artifacts,
-  "content" | "inWorkspace" | "tools"
+  "content" | "inWorkspace" | "moveWithThread" | "tools"
 >;
 
 /** The browser that agents visit websites with. */
@@ -387,7 +392,12 @@ export type ThreadBrowser = Pick<
 /** The inboxes of the workspace's people, which agents fill when something needs them. */
 export type ThreadNotifications = Pick<
   Notifications,
-  "activities" | "endActivity" | "notify" | "startActivity" | "updateActivity"
+  | "activities"
+  | "endActivity"
+  | "moveWithThread"
+  | "notify"
+  | "startActivity"
+  | "updateActivity"
 >;
 
 /** One Pi Durable session per workspace, in `data/workspaces/<workspace>/session.sqlite`; a thread is one conversation in it. */
@@ -520,6 +530,139 @@ export class Threads {
       ...(steer ? { whenBusy: "steer" as const } : {}),
     });
     this.registry.touchThread(thread.id);
+  }
+
+  /**
+   * Moves a thread of the person's workspace to another channel they see; see `relocate`. `409` while its agent works,
+   * so no save of the running turn races the files that move.
+   */
+  async move(
+    workspaceId: string,
+    user: User,
+    threadId: string,
+    channelId: string
+  ): Promise<ThreadSummary> {
+    this.registry.requireMember(workspaceId, user);
+    if ((await this.workingNow(workspaceId)).includes(threadId)) {
+      throw new HttpError(409, "Move the thread when its agent is done");
+    }
+    return this.relocate(workspaceId, user.id, user, threadId, channelId);
+  }
+
+  /**
+   * Moves a thread that `realm` sees to another channel for `person`, with what belongs to it: its artifacts, the
+   * files of its channel that it mentions and no other thread there does, its notifications, routine, and
+   * suggestions, and what Golem learned from it. The new channel's brief reads the thread from its start; when the move
+   * takes the thread from people, their memories and the old channel's brief lose it. The thread gets a note of who
+   * moved it.
+   */
+  private async relocate(
+    workspaceId: string,
+    realm: Realm,
+    person: User,
+    threadId: string,
+    channelId: string,
+    inTurn = false
+  ): Promise<ThreadSummary & ThreadRef> {
+    const { thread, from, to } = this.registry.moveThread(
+      workspaceId,
+      realm,
+      person.id,
+      threadId,
+      channelId
+    );
+    if (from.id === to.id) {
+      return thread;
+    }
+    this.artifacts.moveWithThread(thread.id, from.id, to.id);
+    this.notifications.moveWithThread(thread.id, to.id);
+    this.hooks.moved(thread.id, to.id);
+    // Opens the workspace's session, and with it its briefs.
+    const conversation = await this.conversation(thread);
+    await this.moveFiles(workspaceId, thread, from.id, to.id);
+    const moved: Moved = {
+      by: person.id,
+      author: person.name,
+      from: from.name,
+      to: to.name,
+      at: Date.now(),
+      inTurn,
+    };
+    await conversation.submit(
+      { type: "write", entry: { kind: MOVED, data: moved } },
+      BACKGROUND_CONTEXT
+    );
+    this.learnedOf(workspaceId).moveThread(thread.id, to.id, to.ownerId);
+    const briefs = this.briefs.get(workspaceId)!;
+    const reread = [thread.id];
+    if (from.ownerId === null && to.ownerId !== null) {
+      // The others no longer see the thread, so the old channel's brief is written again from the threads that stay.
+      briefs.restart(from.id);
+      reread.push(
+        ...from.threads
+          .filter((candidate) => candidate.id !== thread.id)
+          .map((candidate) => candidate.id)
+      );
+    }
+    briefs.unread(reread);
+    for (const id of reread) {
+      this.caughtUp.delete(id);
+      for (const waiting of this.unbriefed.values()) {
+        waiting.delete(id);
+      }
+    }
+    this.forget(workspaceId);
+    this.catchUp(workspaceId);
+    this.hooks.changed(workspaceId);
+    return thread;
+  }
+
+  /**
+   * Moves the files of channel `from` that the thread mentions, with their old versions, to channel `to`. A file that
+   * another thread of `from` mentions stays, so that thread keeps it.
+   */
+  private async moveFiles(
+    workspaceId: string,
+    thread: ThreadRef,
+    from: string,
+    to: string
+  ): Promise<void> {
+    const source = this.filesDirectory({ workspaceId, channelId: from });
+    const target = this.filesDirectory({ workspaceId, channelId: to });
+    const mentions = async (candidate: ThreadRef) =>
+      JSON.stringify((await this.messages(candidate)).messages);
+    const said = await mentions(thread);
+    let moving = (await this.files({ workspaceId, channelId: from })).filter(
+      (file) => said.includes(file.id)
+    );
+    for (const other of this.registry.allThreadsIn(workspaceId)) {
+      if (moving.length === 0) {
+        return;
+      }
+      if (other.channelId === from && other.ownerId === null) {
+        const text = await mentions(other);
+        moving = moving.filter((file) => !text.includes(file.id));
+      }
+    }
+    if (moving.length === 0) {
+      return;
+    }
+    const deleted = join(dirname(source), "deleted");
+    const versions = await readdir(deleted).catch(() => []);
+    await mkdir(target, { recursive: true });
+    for (const file of moving) {
+      const name = `${file.id}-${file.name}`;
+      await rename(join(source, name), join(target, name));
+      for (const version of versions.filter((entry) =>
+        entry.startsWith(file.id)
+      )) {
+        await mkdir(join(dirname(target), "deleted"), { recursive: true });
+        await rename(
+          join(deleted, version),
+          join(dirname(target), "deleted", version)
+        );
+      }
+    }
   }
 
   /**
@@ -2322,6 +2465,7 @@ export class Threads {
       this.deleteChannelTool(workspaceId),
       this.readThreadTool(workspaceId),
       this.startThreadTool(workspaceId),
+      this.moveThreadTool(workspaceId),
       this.sendToThreadTool(workspaceId),
       this.notifyTool(workspaceId),
       this.listFilesTool(workspaceId),
@@ -2856,6 +3000,72 @@ export class Threads {
             {
               type: "text",
               text: `Started ${threadLink(thread)} in #${channel.name}.`,
+            },
+          ],
+        };
+      },
+    });
+  }
+
+  private moveThreadTool(workspaceId: string) {
+    return defineTool({
+      name: "move_thread",
+      description:
+        "Move a thread to another channel of the workspace, with its artifacts and the files that no other thread of its channel mentions. Move a thread only when people ask for it.",
+      parameters: Type.Object({
+        channel: Type.String({ description: "The channel name" }),
+        thread: Type.Optional(
+          Type.String({ description: "The thread id; default this thread" })
+        ),
+      }),
+      // A rerun after a crash finds the thread in its new channel and moves nothing.
+      replay: "safe",
+      execute: async (args, api) => {
+        const requester = await this.requester(workspaceId, api.conversationId);
+        if (!requester) {
+          throw new Error("Move a thread only when a person asks for it.");
+        }
+        const realm = await this.realm(workspaceId, api.conversationId);
+        const here = this.threadOf(workspaceId, api.conversationId);
+        const threadId = args.thread ?? here.id;
+        const name = channelName(args.channel);
+        const channel = this.registry
+          .channelsIn(workspaceId, realm)
+          .find((candidate) => candidate.name === name);
+        if (!channel) {
+          throw new Error(
+            `There is no channel #${name}. list_channels shows the channels.`
+          );
+        }
+        // This thread moves while its agent works: the agent itself asks, after the files it saved.
+        if (
+          threadId !== here.id &&
+          (await this.workingNow(workspaceId)).includes(threadId)
+        ) {
+          throw new Error(
+            "The agent of that thread works now. Move it when it is done."
+          );
+        }
+        let thread: ThreadSummary & ThreadRef;
+        try {
+          thread = await this.relocate(
+            workspaceId,
+            realm,
+            requester,
+            threadId,
+            channel.id,
+            threadId === here.id
+          );
+        } catch (error) {
+          throw new Error(`The thread stays: ${(error as Error).message}.`, {
+            cause: error,
+          });
+        }
+        return {
+          output: [
+            {
+              type: "text",
+              text: `Moved ${threadLink(thread)} to #${channel.name}.`,
             },
           ],
         };
@@ -3469,7 +3679,11 @@ export function threadMessages(
   const messages: Message[] = [];
   let startedAt = 0;
   let turn: Turn | undefined;
-  const answer = (streaming: boolean) => {
+  // A move in the agent's turn keeps the turn open, so its answer comes after the note.
+  const answer = (streaming: boolean, keepTurn = false) => {
+    if (keepTurn) {
+      return;
+    }
     const message = turn && turnMessage(turn, startedAt, streaming);
     // The answer to a task that needs nobody's attention.
     if (message && message.text.trim() !== "QUIET") {
@@ -3479,29 +3693,12 @@ export function threadMessages(
   };
   for (const entry of [...earlier, ...view.entries]) {
     const model = entry.model?.[0];
-    if (
-      entry.kind === AUTHORED ||
-      entry.kind === RELAYED ||
-      entry.kind === TASK
-    ) {
+    if ([AUTHORED, RELAYED, TASK].includes(entry.kind)) {
       answer(false);
       startedAt = (model as UserMessage | undefined)?.timestamp ?? 0;
     }
     if (entry.kind === AUTHORED) {
-      const data = entry.data as unknown as Authored;
-      messages.push({
-        id: String(entry.id),
-        authorId: data.authorId,
-        author: data.author,
-        agent: false,
-        text: data.text,
-        // Messages from before files have none.
-        files: data.files ?? [],
-        time: startedAt,
-        failed: false,
-        streaming: false,
-        work: null,
-      });
+      messages.push(authoredMessage(entry, startedAt));
     } else if (entry.kind === RELAYED) {
       // What another thread's agent sent is for this agent: it shows in the work of the answer it starts.
       const data = entry.data as unknown as Relay;
@@ -3527,6 +3724,9 @@ export function threadMessages(
     } else if (entry.kind === STOPPED) {
       turn ??= { id: String(entry.id), responses: [], results: new Map() };
       turn.stoppedAt = (entry.data as { at: number }).at;
+    } else if (entry.kind === MOVED) {
+      answer(false, (entry.data as unknown as Moved).inTurn);
+      messages.push(movedMessage(entry));
     }
   }
   if (running) {
@@ -3537,6 +3737,40 @@ export function threadMessages(
   }
   answer(running);
   return { messages, running };
+}
+
+function authoredMessage(entry: EntryRecord, startedAt: number): Message {
+  const data = entry.data as unknown as Authored;
+  return {
+    id: String(entry.id),
+    authorId: data.authorId,
+    author: data.author,
+    agent: false,
+    text: data.text,
+    // Messages from before files have none.
+    files: data.files ?? [],
+    time: startedAt,
+    failed: false,
+    streaming: false,
+    work: null,
+  };
+}
+
+/** The note of a move, as a message of the person who moved the thread. */
+function movedMessage(entry: EntryRecord): Message {
+  const data = entry.data as unknown as Moved;
+  return {
+    id: String(entry.id),
+    authorId: data.by,
+    author: data.author,
+    agent: false,
+    text: `_Moved this thread from #${data.from} to #${data.to}._`,
+    files: [],
+    time: data.at,
+    failed: false,
+    streaming: false,
+    work: null,
+  };
 }
 
 /** Whether the agent works, and the response it is writing. */
@@ -3696,6 +3930,19 @@ interface Authored extends JsonObject {
   readonly authorId: string;
   readonly text: string;
   readonly files: FileRef[];
+}
+
+/**
+ * Who moved a thread, from which channel to which, by name, and when; `inTurn` when the agent moved it in its turn, whose
+ * answer then comes after the note.
+ */
+interface Moved extends JsonObject {
+  readonly by: string;
+  readonly author: string;
+  readonly from: string;
+  readonly to: string;
+  readonly at: number;
+  readonly inTurn: boolean;
 }
 
 /** The person a message is for: its author, or the person whose request another thread's agent passes on. */

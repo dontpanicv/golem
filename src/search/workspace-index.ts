@@ -166,9 +166,11 @@ export class WorkspaceIndex {
       readonly segments: readonly Segment[];
     }>
   ): Promise<void> {
-    const existing = this.database
-      .query("SELECT id, version FROM sources WHERE uri = ?")
-      .get(source.uri) as { id: number; version: string } | null;
+    const existing =
+      (this.database
+        .query("SELECT id, version FROM sources WHERE uri = ?")
+        .get(source.uri) as { id: number; version: string } | null) ??
+      this.movedFile(source);
     if (existing?.version === source.version) {
       return;
     }
@@ -215,6 +217,36 @@ export class WorkspaceIndex {
       }
     })();
     this.vectors = null;
+  }
+
+  /**
+   * The source of a channel file that moved to another channel, such as with its thread, now under its new path and
+   * channel. The same id, name, and version show that it is the same file, so it keeps its segments and vectors.
+   */
+  private movedFile(
+    source: SourceInput
+  ): { id: number; version: string } | null {
+    const name = /^channels\/[^/]+\/files\/([^/]+)$/.exec(source.uri)?.[1];
+    const moved =
+      name &&
+      (
+        this.database
+          .query(
+            "SELECT id, uri, version FROM sources WHERE kind = 'file' AND uri LIKE 'channels/%' AND version IN (?, ?)"
+          )
+          .all(source.version, `waiting for the model: ${source.version}`) as {
+          id: number;
+          uri: string;
+          version: string;
+        }[]
+      ).find((row) => row.uri.endsWith(`/files/${name}`));
+    if (!moved) {
+      return null;
+    }
+    this.database
+      .query("UPDATE sources SET uri = ?, channel_id = ? WHERE id = ?")
+      .run(source.uri, source.channelId ?? null, moved.id);
+    return moved;
   }
 
   /** Keeps an unchanged segment and its vector; replaces a changed one. */

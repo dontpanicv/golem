@@ -427,6 +427,36 @@ test("a picture without a vector is read again until the model gives one, and ag
   index.close();
 });
 
+test("a channel file that moves to another channel keeps its segments and vectors", async () => {
+  const index = new WorkspaceIndex(":memory:", "model");
+  const file = (channelId: string) => ({
+    uri: `channels/${channelId}/files/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b-plan.txt`,
+    kind: "file" as const,
+    title: "plan",
+    channelId,
+    version: "1700000000000:42",
+    updatedAt: 0,
+  });
+  await index.sync(file("home"), async () => ({
+    segments: [{ key: "0", text: prose("holiday") }],
+  }));
+  embedWaiting(index);
+  let read = false;
+  await index.sync(file("work"), async () => {
+    read = true;
+    return { segments: [] };
+  });
+  expect(read).toBe(false);
+  index.prune(new Set([file("work").uri]));
+  expect(index.counts()).toEqual({ sources: 1, segments: 1, waiting: 0 });
+  expect(
+    index
+      .search("holiday", bagOfWords(prose("holiday")), 5, all)
+      .map((result) => [result.uri, result.channelId])
+  ).toEqual([[file("work").uri, "work"]]);
+  index.close();
+});
+
 test("prune removes sources that are gone, with their keywords", async () => {
   const index = new WorkspaceIndex(":memory:", "model");
   await sync(index, "notes/keep.md", "1", [

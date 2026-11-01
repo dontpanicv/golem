@@ -254,6 +254,13 @@ final class Session {
         try await reloadWorkspace()
     }
 
+    /// Moves a thread to another channel, with its artifacts and the files that only it mentions.
+    func moveThread(threadID: String, channelID: String) async throws {
+        guard let workspace else { return }
+        try await api.moveThread(workspaceID: workspace.id, threadID: threadID, channelID: channelID)
+        try await reloadWorkspace()
+    }
+
     /// Runs an action and shows its error in a toast.
     func run(_ action: () async throws -> Void) async {
         do { try await action() } catch is CancellationError {} catch URLError.cancelled {} catch {

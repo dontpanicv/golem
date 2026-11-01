@@ -249,6 +249,15 @@ export class Routines {
     return this.get(routineId, user);
   }
 
+  /** Moves the routine that runs in a thread to the channel the thread moved to, so its results stay in its channel. */
+  moveWithThread(threadId: string, channelId: string): void {
+    this.database
+      .query(
+        "UPDATE routine SET channel_id = ? WHERE thread_id = ? AND deleted_at IS NULL"
+      )
+      .run(channelId, threadId);
+  }
+
   delete(routineId: string, user: User): void {
     this.softDelete(this.rowFor(routineId, user).id);
   }

@@ -58,6 +58,11 @@ data/
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
   Artifact records that were deleted still count toward the artifact's limits, until a member clears the data, which
   moves the records aside with `~<time>` after their scope.
+- **A thread moves with what it made.** A thread that moves to another channel takes its artifacts, its routine,
+  and the files of its old channel that it mentions and no other thread there does, with their old versions. The
+  index keeps their vectors. When the move takes the thread from people, their memories make its lines `(deleted)`,
+  and the old channel's brief is written again from the threads that stay; the new channel's brief reads the whole
+  thread. `session.sqlite` keeps the conversation, with a note of the move.
 - **One workspace, with private channels.** Every byte of the family's data is under `data/workspaces/<workspace-id>/`.
   A private channel (`channel.owner_id`) belongs to one member: its threads, files, artifacts, routines, and the memory
   lines of its messages are theirs alone. Every read names whose view it serves (`Realm` in

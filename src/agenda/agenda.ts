@@ -159,6 +159,15 @@ export class Agenda {
       );
   }
 
+  /** Gives the open suggestions of a thread the channel it moved to, where an accepted routine then runs. */
+  moveWithThread(threadId: string, channelId: string): void {
+    this.database
+      .query(
+        "UPDATE suggestion SET channel_id = ? WHERE thread_id = ? AND answered_at IS NULL AND deleted_at IS NULL"
+      )
+      .run(channelId, threadId);
+  }
+
   /** What a review may not suggest to a person again, as lines: their routines, reminders, and suggestions. */
   automations(workspaceId: string, personId: string): string {
     const person = this.workspaces

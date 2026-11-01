@@ -226,6 +226,15 @@ export class Learned {
     );
   }
 
+  /** Gives what Golem learned from a thread the channel and realm that the thread moved to. */
+  moveThread(threadId: string, channelId: string, realm: Realm): void {
+    this.database
+      .query(
+        "UPDATE learned SET channel_id = CASE WHEN channel_id IS NULL THEN NULL ELSE ? END, realm = ? WHERE thread_id = ?"
+      )
+      .run(channelId, realm, threadId);
+  }
+
   /**
    * Reviews the new messages of a thread: changes what Golem learned in the thread's realm, moves the thread past the
    * messages, and returns the automations the model suggests.

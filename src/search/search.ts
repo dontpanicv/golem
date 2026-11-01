@@ -180,10 +180,10 @@ export class Indexer {
     const channels = new Set(
       this.directory.channelsIn(workspaceId, realm).map((channel) => channel.id)
     );
-    const othersOwn = new Set(
+    // Threads as the person sees them now: a thread that moved leaves search at once, before the next scan.
+    const threads = new Set(
       this.directory
-        .allThreadsIn(workspaceId)
-        .filter((thread) => thread.ownerId !== null && thread.ownerId !== realm)
+        .threadsIn(workspaceId, realm)
         .map((thread) => `thread:${thread.id}`)
     );
     const artifacts = new Set(
@@ -199,7 +199,7 @@ export class Indexer {
         (source) =>
           (source.channelId === null || channels.has(source.channelId)) &&
           (source.kind !== "artifact" || artifacts.has(source.uri)) &&
-          !othersOwn.has(source.uri)
+          (source.kind !== "thread" || threads.has(source.uri))
       ),
       semantic: vector !== null,
     };
@@ -261,8 +261,8 @@ export class Indexer {
           title: thread.title,
           threadId: thread.id,
           channelId: thread.channelId,
-          // A new name also indexes the thread again.
-          version: `${await this.threads.version(thread)}:${thread.title}`,
+          // A new name or channel also indexes the thread again; unchanged messages keep their vectors.
+          version: `${await this.threads.version(thread)}:${thread.title}:${thread.channelId}`,
           updatedAt: thread.updatedAt,
         },
         async () => {
@@ -291,7 +291,7 @@ export class Indexer {
           title: artifact.title,
           threadId: artifact.threadId,
           channelId: artifact.channelId ?? undefined,
-          version: String(artifact.updatedAt),
+          version: `${artifact.updatedAt}:${artifact.channelId}`,
           updatedAt: artifact.updatedAt,
         },
         async () => ({

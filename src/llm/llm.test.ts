@@ -422,6 +422,7 @@ describe("SqliteCredentialStore", () => {
 
 const hooks = {
   changed: () => undefined,
+  moved: () => undefined,
   recall: async () => ({ results: [] }),
   automations: () => "",
   suggest: () => undefined,
@@ -443,6 +444,7 @@ const noIntegrations = { tools: async () => [], namespaces: () => [] };
 const noArtifacts = {
   content: () => "",
   inWorkspace: () => [],
+  moveWithThread: () => undefined,
   tools: () => [],
 };
 const noNotifications = {
@@ -453,6 +455,7 @@ const noNotifications = {
     readAt: null,
   }),
   activities: () => [],
+  moveWithThread: () => undefined,
   startActivity: () => undefined,
   updateActivity: () => undefined,
   endActivity: () => undefined,
@@ -543,6 +546,9 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     },
     agentMember: () => ({ id: "user-1", name: "Alice", email: "" }),
     members: () => [],
+    moveThread: () => {
+      throw new Error("No moves here");
+    },
   };
   const threads = new Threads(
     dataDirectory,

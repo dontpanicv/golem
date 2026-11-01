@@ -511,6 +511,57 @@ export class Workspaces {
       .run(Date.now(), threadId);
   }
 
+  /**
+   * Moves a thread of a channel that `realm` sees to another channel it sees; `Threads.move` moves what goes with it.
+   * Only the person who started a thread moves it into a private channel, which takes it from the others.
+   */
+  moveThread(
+    workspaceId: string,
+    realm: Realm,
+    personId: string,
+    threadId: string,
+    channelId: string
+  ): {
+    readonly thread: ThreadSummary & ThreadRef;
+    readonly from: Channel;
+    readonly to: Channel;
+  } {
+    const thread = this.threadsIn(workspaceId, realm).find(
+      (candidate) => candidate.id === threadId
+    );
+    const channels = this.channelsIn(workspaceId, realm);
+    const from = channels.find(
+      (candidate) => candidate.id === thread?.channelId
+    );
+    const to = channels.find((candidate) => candidate.id === channelId);
+    if (!(thread && from && to)) {
+      throw notFound();
+    }
+    if (thread.ownerId !== null) {
+      throw new HttpError(400, "This thread stays where it is");
+    }
+    if (from.id === to.id) {
+      return { thread, from, to };
+    }
+    const { createdBy } = this.database
+      .query("SELECT created_by AS createdBy FROM thread WHERE id = ?")
+      .get(threadId) as { createdBy: string };
+    if (to.ownerId !== null && createdBy !== personId) {
+      throw new HttpError(
+        403,
+        "Only the person who started a thread moves it into a private channel"
+      );
+    }
+    this.database
+      .query("UPDATE thread SET channel_id = ? WHERE id = ?")
+      .run(to.id, threadId);
+    return {
+      thread: { ...thread, channelId: to.id, realm: to.ownerId },
+      from,
+      to,
+    };
+  }
+
   /** Moves a thread into or out of its channel's settled list. */
   setThreadSettled(
     workspaceId: string,
