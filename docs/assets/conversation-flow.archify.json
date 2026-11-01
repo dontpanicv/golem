@@ -1,0 +1,316 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How a conversation flows through Golem",
+    "output": ".archify/conversation-flow/conversation-flow.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/dontpanicv/golem.git",
+      "revision": "485ca721b29b0c40251c61a9361fccbb84a4fa7d"
+    }
+  },
+  "stages": [
+    {
+      "label": "Person"
+    },
+    {
+      "label": "Agents"
+    },
+    {
+      "label": "Context"
+    },
+    {
+      "label": "Memory"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Family member",
+      "sublabel": "web · iPhone · Watch",
+      "stage": 0,
+      "row": 1,
+      "icon": "person"
+    },
+    {
+      "id": "golem",
+      "type": "frontend",
+      "label": "Golem",
+      "sublabel": "own endless thread",
+      "tag": "memory tree",
+      "stage": 1,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/threads/threads.ts",
+          "line": 240,
+          "end_line": 242,
+          "label": "ORCHESTRATOR"
+        },
+        {
+          "path": "src/threads/memory.ts",
+          "line": 45,
+          "label": "zoom"
+        }
+      ]
+    },
+    {
+      "id": "threads",
+      "type": "backend",
+      "label": "Channel threads",
+      "sublabel": "one per topic",
+      "tag": "Pi Durable",
+      "stage": 1,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/threads/threads.ts",
+          "line": 2266,
+          "label": "Harness.open"
+        },
+        {
+          "path": "src/threads/threads.ts",
+          "line": 1574,
+          "label": "createConversation"
+        }
+      ]
+    },
+    {
+      "id": "sections",
+      "type": "security",
+      "label": "Prompt sections",
+      "sublabel": "same text until it changes",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/threads/threads.ts",
+          "line": 2373,
+          "end_line": 2376,
+          "label": "sections"
+        }
+      ]
+    },
+    {
+      "id": "facts",
+      "type": "database",
+      "label": "Workspace facts",
+      "sublabel": "family writes them",
+      "stage": 2,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/workspaces/workspaces.ts",
+          "line": 340,
+          "label": "factsOf"
+        },
+        {
+          "path": "src/threads/threads.ts",
+          "line": 2124,
+          "label": "factsSection"
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "cloud",
+      "label": "Code mode",
+      "sublabel": "machines · services · web",
+      "tag": "sandbox",
+      "stage": 2,
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/threads/threads.ts",
+          "line": 207,
+          "label": "NAMESPACES"
+        },
+        {
+          "path": "src/threads/threads.ts",
+          "line": 2250,
+          "label": "codemode"
+        }
+      ]
+    },
+    {
+      "id": "brief",
+      "type": "database",
+      "label": "Channel brief",
+      "sublabel": "rewritten when quiet",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/threads/brief.ts",
+          "line": 15,
+          "label": "brief prompt"
+        },
+        {
+          "path": "src/threads/threads.ts",
+          "line": 1808,
+          "label": "briefWhenQuiet"
+        }
+      ]
+    },
+    {
+      "id": "learned",
+      "type": "database",
+      "label": "Learned facts",
+      "sublabel": "people · how-to",
+      "stage": 3,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/threads/learned.ts",
+          "line": 20,
+          "label": "learning loop"
+        },
+        {
+          "path": "src/threads/threads.ts",
+          "line": 1928,
+          "label": "reviewWhenQuiet"
+        }
+      ]
+    },
+    {
+      "id": "index",
+      "type": "database",
+      "label": "Search index",
+      "sublabel": "words + meaning",
+      "stage": 3,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/search/search.ts",
+          "line": 166,
+          "label": "search"
+        },
+        {
+          "path": "src/threads/threads.ts",
+          "line": 2561,
+          "label": "recall"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "ask-golem",
+      "from": "person",
+      "to": "golem",
+      "label": "asks Golem",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ask-channel",
+      "from": "person",
+      "to": "threads",
+      "label": "or a channel"
+    },
+    {
+      "id": "delegate",
+      "from": "golem",
+      "to": "threads",
+      "label": "send_to_thread",
+      "variant": "emphasis"
+    },
+    {
+      "id": "relay-back",
+      "from": "threads",
+      "to": "golem",
+      "label": "answer relayed",
+      "variant": "dashed"
+    },
+    {
+      "id": "run-tools",
+      "from": "threads",
+      "to": "tools",
+      "label": "codemode script"
+    },
+    {
+      "id": "keep-brief",
+      "from": "threads",
+      "to": "brief",
+      "label": "quiet 10 min",
+      "variant": "dashed"
+    },
+    {
+      "id": "learn",
+      "from": "threads",
+      "to": "learned",
+      "label": "learning loop",
+      "variant": "dashed"
+    },
+    {
+      "id": "index-messages",
+      "from": "threads",
+      "to": "index",
+      "label": "indexed",
+      "variant": "dashed"
+    },
+    {
+      "id": "brief-in",
+      "from": "brief",
+      "to": "sections",
+      "label": "channel brief"
+    },
+    {
+      "id": "learned-in",
+      "from": "learned",
+      "to": "sections",
+      "label": "what it learned"
+    },
+    {
+      "id": "facts-in",
+      "from": "facts",
+      "to": "sections",
+      "label": "facts"
+    },
+    {
+      "id": "prompt-golem",
+      "from": "sections",
+      "to": "golem",
+      "label": "every turn",
+      "variant": "emphasis"
+    },
+    {
+      "id": "prompt-threads",
+      "from": "sections",
+      "to": "threads",
+      "label": "every turn",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Golem, the endless thread",
+      "items": [
+        "Each person has one thread that never ends",
+        "It answers simple things and hands the rest to a channel thread",
+        "A memory tree of 512-byte summaries; zoom opens older messages"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Channels and threads",
+      "items": [
+        "A thread is one Pi Durable conversation",
+        "Answers come back to Golem at most two hops away",
+        "Code mode scripts call machines, services, the browser and artifacts"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "What carries over",
+      "items": [
+        "The channel brief is rewritten after 10 quiet minutes",
+        "The learning loop keeps facts about people and how-tos",
+        "Workspace facts are what the family writes itself"
+      ]
+    }
+  ]
+}

@@ -56,3 +56,6 @@ ios/Models
 
 # temporary UI tests that take simulator screenshots of the iOS app
 ios/GolemUITests
+
+# archify working folders (the README keeps only the rendered pictures)
+.archify

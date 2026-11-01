@@ -2,181 +2,349 @@
 
 # Golem
 
-A family AI assistant and second brain that runs on our own machines. No cloud and no central server.
+A family AI assistant and second brain that runs on your own machine. One server in your home, one app for the whole
+family on the web and the iPhone, and no cloud service between you and your data.
 
 In Prague legend, Rabbi Loew shaped the Golem from clay to serve and protect his community. This one is made from
-SQLite and markdown.
+SQLite and Markdown.
 
-## Goals
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/golem-demo-dark.gif">
+  <img alt="Mia asks Golem to warm the living room before the family lands. Golem works through three steps and answers with cards for the room, the rain tonight, and the car." src="docs/assets/golem-demo.gif">
+</picture>
 
-- **One assistant on every device.** The office Mac mini, the home server, and the MacBook each run Golem; the iPhone
-  talks to it.
-- **No single point of failure.** Every machine holds a full copy of the data. One machine can go down; a machine that
-  comes back catches up.
-- **Plain, durable data.** Knowledge is markdown that Obsidian can open. Structured history is append-only files.
-  Indexes can be rebuilt.
+## Why Golem
 
-## Design
+- **One assistant for the family.** Everybody talks to the same Golem. It knows who writes each message, what each
+  person wants, and what the family decided last week.
+- **It remembers.** Each channel keeps a brief that Golem writes again when a conversation goes quiet. A learning
+  loop keeps short facts about each person and how things are done. The family writes its own facts too. Golem reads
+  all of it before every answer.
+- **It does real work.** Golem runs commands on your Macs and Linux machines, reads your mail and calendar, controls
+  the heating, orders the groceries, browses the web, and makes small apps and pages. It asks before it sends,
+  buys, or runs a destructive command.
+- **It stays quiet.** Background work tells a person only when they must act or asked to know. Golem makes no routine,
+  reminder, or message that nobody asked for: it suggests one, and the suggestion waits until its person accepts it.
+- **Your data stays with you.** One server, one SQLite database, Markdown files, and a search index that runs on the
+  machine. Each person's own channels, machines, accounts, and places are private until they share them.
 
-| Data | Writer | Replication |
+## How a conversation flows
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/conversation-flow-dark.svg">
+  <img alt="A family member asks Golem, their own endless thread, or writes in a channel thread. Golem sends work to channel threads with send_to_thread, and the answers come back to it. Channel threads run code mode scripts. When a thread goes quiet, the channel brief is written again, the learning loop updates the learned facts, and the messages go into the search index. The brief, the learned facts, and the workspace facts become prompt sections that every turn reads." src="docs/assets/conversation-flow-light.svg">
+</picture>
+
+- **The family has one workspace.** It holds channels, such as `#general`, `#home`, or `#travel`. A channel is open to
+  every member, or private to one person.
+- **A channel holds threads.** A thread is one conversation about one thing. Several people can write in it, and its
+  agent knows who wrote each message. A thread that is done is settled; its files and artifacts stay in the channel.
+- **Golem is your endless thread.** Each person has one thread with Golem that never ends: the **Golem** tab. It
+  answers simple things itself and gives other work to the thread of the right channel, or starts one. The answer
+  comes back to your Golem thread. A message passes between threads at most twice, so agents cannot talk to each other
+  without end.
+- **The endless thread does not get slow.** A memory tree of short summaries covers every message you can see. Old
+  messages fold into it, and the agent opens a summary again with `zoom` when it needs the details.
+- **The channel brief.** When a thread is quiet for 10 minutes, or settled, a background model writes the channel's
+  brief again: its purpose, what is happening now, the decisions, the open questions, and what each person wants.
+  Every thread of the channel starts from it.
+- **Learned facts.** The learning loop reads the new messages and keeps facts about each person and how-tos for each
+  channel. It can also suggest a routine or a reminder. You see, change, and remove what it learned in Settings, and it
+  does not learn a removed fact again.
+- **Workspace facts.** The family writes facts about itself in Workspace settings: names, birthdays, addresses, work.
+- **Recall.** Every message, file, note, and artifact goes into the search index. Agents look things up there with the
+  `recall` tool before they say that they do not know.
+
+The brief, the learned facts, the workspace facts, and the paired machines are prompt sections. A section keeps the
+same text until its content changes, so the model's prompt cache stays warm.
+
+## Under the hood
+
+### Pi Durable
+
+Agents run on [Pi Durable](https://github.com/earendil-works/pi), the durable agent runtime of Earendil. The workspace
+has one Pi Durable session, and each thread is one conversation in it, with its transcript, runs, and tasks. A run that
+a restart stopped continues when Golem starts again, and messages that came while Golem was off are caught up. A
+tool that is safe to repeat, such as `send_to_thread`, runs again after a crash and finds the message it sent before.
+The endless Golem thread compacts itself when its context gets long.
+
+### Code mode
+
+The model calls only a small set of core tools directly: channels, threads, files, `recall`, and web search. Every
+other tool is in a namespace that the model uses from a short TypeScript script, in the code mode sandbox of
+[Pi](https://github.com/earendil-works/pi) (`pi-codemode`, 256 MB, its own worker):
+
+```ts
+const events = await tools.google_calendar_events({ account: "home", from: "today", to: "sunday" });
+const lights = await tools.home_assistant_states({ account: "home", domain: "light" });
+return { events, lightsOn: lights.filter((light) => light.state === "on").length };
+```
+
+The namespaces are `hands_` (machines), `artifacts_`, `browser_`, `routines_`, `reminders_`, and one for each
+connected integration, such as `google_` or `home_assistant_`. The agent finds tools with `describeNamespace()` and
+`searchTools()`, so the prompt does not list hundreds of tools. One script can call many tools and return only what
+matters, which keeps the context small.
+
+### Hands and machines
+
+Agents use your computers through [`hands`](hands/), a small Rust daemon for macOS and Linux. It is Golem's copy of
+the `hands` daemon of [Mycroft](https://github.com/dontpanicv/mycroft), built on the pi-env daemon of
+[Pi](https://github.com/earendil-works/pi).
+
+- **Add machine** in your Settings shows one command to paste on the machine. It downloads `hands`, checks its
+  SHA-256, installs it as a service, and pairs it with you over TLS 1.3. Golem pins the machine's certificate.
+- Agents run commands and long jobs there, and read, write, and edit files: `hands_exec`, `hands_job_start`,
+  `hands_read`, `hands_edit`, `hands_copy_file`, and more.
+- A machine is private to your turns until you share it with every member.
+- Before a command that [dcg (destructive command guard)](https://github.com/Dicklesworthstone/destructive_command_guard)
+  flags, the agent waits until the person who paired the machine allows it.
+
+### Integrations
+
+Each person connects their own accounts in Settings. An account is private to their turns until they share it, and
+a person can connect several accounts of one service, such as a work and a home Google account. Agents send mail and
+messages as a person only after that person allows each one. [docs/integrations.md](docs/integrations.md) has the
+setup of each one.
+
+| Integration | What agents do | How it connects |
 | --- | --- | --- |
-| Notes and captures (markdown) | Any device | Peer-to-peer file sync (Syncthing) |
-| Agent state ([Pi Durable](https://github.com/earendil-works/pi)) | One SQLite file per workspace, written by the machine that runs it | Streamed to the other machines (Litestream) |
-| Scheduled jobs | The machine that wins the claim | Claims in a 3-node Raft table (rqlite) |
-| Structured history | The job that pulled it | Immutable Parquet files, synced as files |
-| Search index | Each device | Not replicated; rebuilt locally |
+| Google (Gmail, Calendar, Drive) | Search and read mail, draft, send after approval, calendar, files | Google sign-in, through [gog](https://github.com/openclaw/gogcli) |
+| Home Assistant | Read and control the home | Long-lived access token |
+| Netatmo | Weather station and thermostat | Netatmo sign-in |
+| Salus | Heating | Email and password ([salus-it500-cloud](https://github.com/Peterka35/salus-it500-cloud)) |
+| Tesla | Car state, charging history, open the car after approval | Tesla Fleet API sign-in, [vehicle-command](https://github.com/teslamotors/vehicle-command) |
+| Rohlík | Groceries | Rohlík's MCP server |
+| Plaud | Recordings and their notes | Plaud's MCP server |
+| Slack | Read and send after approval | A request of the Slack web app, pasted as cURL, through [slackcli](https://github.com/shaharia-lab/slackcli) |
+| WhatsApp | Read and send after approval | A linked device, through [wacli](https://github.com/openclaw/wacli) |
+| X | Read | Session cookies, through [Rettiwt-API](https://github.com/Rishikant181/Rettiwt-API) |
+| Instagram | Read | Session cookie |
 
-The machines connect over a WireGuard mesh VPN. The apps need Golem's `https` address: put a TLS proxy, such as
-Caddy, in front of Golem on the mesh.
+A connector is a file in `src/integrations/`. A connector with an MCP server gives its tools as they are, under its
+namespace.
 
-## Tech Stack
+### More
 
-| Layer | Choice |
-| --- | --- |
-| Runtime | [Bun](https://bun.sh) |
-| Language | [TypeScript](https://www.typescriptlang.org) |
-| Application framework | [Effect](https://effect.website) |
-| Database | [SQLite](https://sqlite.org) through `bun:sqlite` |
-| Accounts | [better-auth](https://www.better-auth.com) with Google sign-in only |
-| LLM | ChatGPT through device login, shared by every workspace |
-| Frontend | [React](https://react.dev) single-page app with [TanStack Router](https://tanstack.com/router) and [TanStack DB](https://tanstack.com/db): local data, instant changes, live updates over server-sent events |
-| iOS app | SwiftUI, project generated by [XcodeGen](https://github.com/yonaskolb/XcodeGen) |
-| Agents | [Pi Durable](https://github.com/earendil-works/pi) |
-
-## Structure
-
-- **Workspaces.** A person can belong to several. Workspaces share nothing except the LLM provider.
-- **Channels.** Members create them; each workspace starts with `general`.
-- **Threads.** A thread lives in a channel and is one conversation in its workspace's Pi Durable session. Several
-  family members can write in it; the agent knows who wrote each message. An agent can list the channels, read
-  another thread, start a thread in any channel, and send a message to another thread, whose agent can answer back.
-  A message passes between threads at most twice, so agents cannot keep talking to each other.
-- **Search.** Each workspace has its own index: keywords plus meaning from Google's EmbeddingGemma 2, run locally.
-  Search and the agents' `recall` tool never cross workspaces. See [docs/data.md](docs/data.md).
-- **Hands.** Agents can use machines: Macs and Linux computers that run the [`hands`](hands/) daemon, Golem's own copy
-  of Mycroft's. They run commands and long jobs there, and read and edit files. **Add machine** in Settings gives a
-  command to paste on the machine; it installs `hands` and pairs it with that person. A machine is private, for that
-  person's turns, until they share it with every agent in the workspace.
-- **Integrations.** A connector in `src/integrations/` gives agents the tools of an outside system, such as a school
-  information system. A person adds credentials in Settings. A credential is private, for that person's turns, where
-  it comes first, until they share it with the turns of every member. A person can connect
-  several accounts of one integration, such as Google accounts for work and home. Google (Gmail, Calendar, Drive),
-  Rohlík, and Plaud connect through a sign-in, Slack with a request of its web app pasted as cURL, WhatsApp through a
-  device linked to the person's number, and X and Instagram with the cookies of the person's session. Agents send mail
-  and messages as a person only after that person allows each one.
-  [docs/integrations.md](docs/integrations.md) shows the setup. Secrets never leave the server.
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
-  [agent-browser](https://github.com/vercel-labs/agent-browser). They read pages, click, fill in forms, and see
-  screenshots. They search the web with ChatGPT's own search, over the same ChatGPT login, because search engines
-  block a headless browser. They reach public addresses only, never the files of the server or the home network, and
-  they ask before they buy, book, or send anything. After a turn read the web or a connected service, a command or a
-  file change on a machine waits for its person to allow it.
-- **Routines.** A channel can do work on a schedule, such as checking the school system every morning. People ask an
-  agent in plain words; it writes the schedule, the instructions, and, for work that is the same every time, a script
-  that collects what is new. The script runs in a code mode sandbox and calls the connectors' tools; when it finds
-  nothing, the run ends without the LLM. Otherwise the agent of the routine's thread judges what the script found,
-  and posts in that thread or stays quiet. When a script fails, the agent repairs it. The channel's page shows its
-  summary, its routines, and their runs under its threads.
-- **Settings.** `/settings` connects the LLM provider and chooses the model, for everyone. Each workspace's settings
-  hold its members, its machines, and its integrations.
+  [agent-browser](https://github.com/vercel-labs/agent-browser). They search the web with ChatGPT's own search,
+  because search engines block a headless browser. All their web traffic goes through one egress that blocks the
+  server, the home network, and private addresses.
+- **Artifacts.** Agents make pages and small apps: an invite, a poll, a game, a printable schedule. They run in a
+  sandbox on their own address, never on Golem's origin, and a public one can have a link of four words on a second
+  host ([docs/artifacts-sharing.md](docs/artifacts-sharing.md)).
+- **Routines and reminders.** Ask in plain words: "check the school system every morning", "remind me when I leave
+  work". A routine is a schedule, instructions, and an optional script that collects what is new; when the script
+  finds nothing, the run ends without the model. A reminder is at a time or at a place.
+- **Upcoming and suggestions.** Upcoming shows your routines, reminders, approvals, and the suggestions that wait for
+  you. Accept a suggestion and it becomes a routine or a reminder.
+- **Search.** Keywords and meaning in one index, for text, pictures, audio, video, PDFs, and scanned documents.
+  [EmbeddingGemma 2](https://huggingface.co/ggml-org/embeddinggemma-2-GGUF) runs on the server with
+  [llama.cpp](https://github.com/ggml-org/llama.cpp). See [docs/data.md](docs/data.md).
+- **The model.** Golem uses ChatGPT, signed in once with the device login of OpenAI's Codex. The server's owner
+  chooses the model and the effort for everybody.
 
-The iOS app is a thin client with the same functionality; it talks to the JSON API in [docs/api.md](docs/api.md).
+## The apps
 
-On the iPhone you can also talk instead of type, on the device itself:
+The web app and the iOS app do the same things, with one design system modeled on Linear. Both talk to the JSON API
+in [docs/api.md](docs/api.md).
 
-- **Dictation.** Hold the mic in a composer and talk, then let go to send; slide left to cancel, or slide up or tap
-  to keep it on. The words appear in the field as you speak, in Czech or English. It uses
-  [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) by Moondream (CC-BY-4.0), built on NVIDIA's
-  Parakeet TDT 0.6B v3 (CC-BY-4.0), in FluidInference's Core ML conversion, run by
-  [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache-2.0).
-- **Conversation.** The wave button in a thread starts a hands-free conversation: a pause ends your turn, and Golem
-  says its answer aloud as it writes it, each sentence in Czech or English, whichever it is in. Say "stop" or tap the
-  orb to cut in. The voice is [Supertonic-3](https://huggingface.co/Supertone/supertonic-3) by Supertone (BigScience
-  Open RAIL-M, with use restrictions), in FluidInference's Core ML conversion.
+- **Web.** A React single-page app that keeps its data local, shows each change at once, and stays current over
+  server-sent events. It opens on what it showed last, also before the server answers.
+- **iPhone.** A native SwiftUI app with the navigation of Slack's iOS app and the look of Linear's.
+  - **Push notifications** with Reply, Snooze, and Done, and Allow or Deny for an approval, also on the Apple Watch.
+    Siri reads a message aloud and sends your spoken reply.
+  - A **Live Activity** shows the work for your message on the Lock Screen and in the Dynamic Island.
+  - The **Share** extension sends a link, text, pictures, or files to Golem.
+  - **Places** on a map start reminders when you arrive or leave.
+  - **Voice, on the device.** Hold the mic to dictate in Czech or English with
+    [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra). The wave button starts a hands-free
+    conversation, and Golem speaks its answer with [Supertonic-3](https://huggingface.co/Supertone/supertonic-3).
+    Both run on the iPhone through [FluidAudio](https://github.com/FluidInference/FluidAudio).
 
-## Interface
+You build the iOS app yourself with Xcode and install it on your family's iPhones. It is not in the App Store.
 
-The layout crosses Slack and T3 Code. The sidebar lists channels with their threads nested below them. The thread
-fills the main panel, and a side panel shows the artifacts, files, and previews of its channel, which stay there
-after the thread is settled. The app opens on the last
-channel or thread you had open on that device, or on #general.
+## Self-hosting
 
-The web app and the iOS app share one design system, modeled on Linear's clean style:
+### What you need
 
-- `design/tokens.json` holds every color (light and dark), type size, space, radius, size, and shadow.
-- `bun run tokens` generates `public/tokens.css` and `ios/Golem/Design/Tokens.swift` from it.
-- `design/components.md` specifies every component: buttons, fields, selects, menus, switches, checkboxes, tooltips,
-  dialogs, toasts, and settings cards, with their motion.
-- Web components are in `public/styles.css` and `web/ui/`; iOS components are in
-  `ios/Golem/Design/`.
-- `design/icon.svg` is Golem's face: the clay golem in an 8 × 8 grid, with the aleph of אמת (truth), the letter
-  that gives it life, as the dark cell on its forehead. It is the iOS app icon, the web favicon, and Golem's avatar
-  in both apps. `public/icon.svg` and `ios/Golem/Assets.xcassets/Mark.imageset/` are copies of it, and
-  `rsvg-convert` renders the PNG icons from it.
-- Both use [Inter](https://rsms.me/inter/) (SIL Open Font License) and follow the system light or dark appearance.
+- **A Mac with Apple silicon**, such as a Mac mini, that stays on. Linux on x86-64 or arm64 also works for the server.
+- **[Bun](https://bun.sh)**, and these tools, which Golem checks before it starts:
+  `brew install ffmpeg poppler tesseract dicklesworthstone/tap/dcg cloudflared`.
+- **[Rust](https://rustup.rs)**, to build the `hands` binaries that Golem gives to the machines that pair:
+  `rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl`,
+  and for the Linux binaries on a Mac, `brew install zig && cargo install --locked cargo-zigbuild`.
+- **A domain on Cloudflare**, for the tunnel and the HTTPS address. Google sign-in needs `https` on a public name.
+- **A Google Cloud project** for Google sign-in. Nobody can sign in with a password.
+- **A ChatGPT account** for the model.
+- **Optional:** an Apple Developer account and Xcode for the iPhone app and its push notifications, and `gog`,
+  `slackcli`, `wacli`, or `tesla-control` for those integrations.
+
+### Run it
+
+```sh
+git clone https://github.com/dontpanicv/golem.git && cd golem
+bun install
+bunx --bun agent-browser install   # Chrome for the agents' browser, if Google Chrome is not installed
+hands/scripts/build-release.sh     # the hands binaries for macOS and Linux
+bun start                          # makes config/golem.toml on the first start, then stops
+```
+
+Fill in `config/golem.toml` and start Golem again:
+
+```toml
+base_url = "https://golem.example.com"
+allowed_emails = ["you@example.com", "partner@example.com"]   # the first one is the server's owner
+
+[google]
+client_id = "….apps.googleusercontent.com"
+client_secret = "…"
+```
+
+[google-sign-in.md](google-sign-in.md) shows how to make the Google client. Then sign in, connect ChatGPT in
+Settings, and add the other members in Workspace settings. Each person adds their own machines and accounts in their
+Settings.
+
+Golem keeps everything in two folders ([docs/data.md](docs/data.md)). `GOLEM_CONFIG` and `GOLEM_DATA` move them.
+
+- `config/`: `golem.toml` and `secret.key`. Keep a copy of it safe and apart from the data backups.
+- `data/`: the database, the threads, the files, the search index and its model, and the logs. Back it up offsite.
+
+### The recommended deployment: a Mac mini behind a Cloudflare Tunnel
+
+This setup opens no port on your router and keeps the server off the internet:
+
+1. **Golem listens only on `127.0.0.1:3000`**, which is the default `host` in `config/golem.toml`.
+2. **`cloudflared` connects out to Cloudflare** and brings the traffic for `golem.example.com` to `127.0.0.1:3000`.
+   Cloudflare holds the TLS certificate. There is no open port, no dynamic DNS, and no reverse proxy to keep up to
+   date.
+3. **Only the people in `allowed_emails` can sign in**, with Google.
+4. **Public artifact links use a second host**, such as `a.example.com`, on the same tunnel. Its ingress lets through
+   only the paths of an artifact, and Golem answers there only for public artifacts
+   ([docs/artifacts-sharing.md](docs/artifacts-sharing.md)).
+
+Make a tunnel in the Cloudflare dashboard (Zero Trust › Networks › Tunnels) with these public hostnames, and save its
+token in `config/share-tunnel.token`:
+
+| Hostname | Path | Service |
+| --- | --- | --- |
+| `golem.example.com` | | `http://127.0.0.1:3000` |
+| `a.example.com` | `^/[a-z]+(-[a-z]+){1,3}(/content\|/rpc)?$` | `http://127.0.0.1:3000` |
+| | everything else | `http_status:404` |
+
+Then install both services, which start at login and restart when they stop:
+
+```sh
+scripts/install-service.sh         # Golem, as the LaunchAgent dev.golem.server; logs in data/logs/golem.log
+scripts/install-share-tunnel.sh    # cloudflared, as the LaunchAgent dev.golem.share
+```
+
+Set `share_url = "https://a.example.com"` in `config/golem.toml`. In the Cloudflare zone, turn off Email
+Obfuscation, because it breaks the app's content policy, and do not cache the Golem host except `/app/` and
+`/assets/`. `sudo scripts/install-service.sh --daemon` runs Golem from boot, before anyone logs in.
+
+To update: `git pull && bun install`, then the restart command that `install-service.sh` printed, such as
+`launchctl kickstart -k gui/$(id -u)/dev.golem.server`. Golem builds the web app when it starts.
+
+### The iPhone app
+
+```sh
+brew install xcodegen
+ios/scripts/fetch-parakeet.sh      # ~630 MB, the dictation model
+ios/scripts/fetch-supertonic.sh    # ~170 MB, the voice
+cd ios && xcodegen generate && open Golem.xcodeproj
+```
+
+Put your values in `ios/Config/Local.xcconfig`, which git ignores: `DEVELOPMENT_TEAM`, `GOLEM_BUNDLE_ID`,
+`GOLEM_SERVER_URL` (`https://golem.example.com`), and `GOLEM_ASSOCIATED_DOMAIN` (`golem.example.com`). On the server,
+set `ios_app_id = "<DEVELOPMENT_TEAM>.<GOLEM_BUNDLE_ID>"`, so that Google sign-in returns to the app. For push
+notifications, add an APNs key as `config/apns.p8` and its `[apns]` table (`key_id`, `team_id`, `topic`).
+
+### Let your agent set it up
+
+Paste this prompt into a coding agent, such as Claude Code or Codex, on the Mac that will run Golem:
+
+```text
+Set up Golem (https://github.com/dontpanicv/golem) on this Mac as a self-hosted server for my family.
+
+1. Read README.md, google-sign-in.md, docs/artifacts-sharing.md, and docs/integrations.md first.
+2. Check that this is a Mac with Apple silicon. Install what is missing with Homebrew: bun, ffmpeg, poppler,
+   tesseract, dicklesworthstone/tap/dcg, cloudflared, rustup (then a stable Rust), zig, and cargo-zigbuild.
+3. Clone the repository to ~/golem, run `bun install`, `bunx --bun agent-browser install`, and
+   `hands/scripts/build-release.sh`.
+4. Run `bun start` once, so Golem writes config/golem.toml, and stop it.
+5. Ask me for: the Golem hostname (such as golem.example.com), the artifact hostname (such as a.example.com),
+   and the Google emails of the family, the owner first. Write base_url, allowed_emails, and share_url into
+   config/golem.toml. Keep host = "127.0.0.1".
+6. Guide me through the Google OAuth client of google-sign-in.md, with the redirect URI
+   https://<golem hostname>/api/auth/callback/google, and write client_id and client_secret into config/golem.toml.
+   I do the steps in the Google Cloud console myself.
+7. Guide me to make a Cloudflare Tunnel with the two public hostnames of the README (the artifact host with its
+   path rule, and a 404 for everything else), and to save its token in config/share-tunnel.token.
+8. Run scripts/install-service.sh and scripts/install-share-tunnel.sh. Check that https://<golem hostname>
+   opens Golem and that data/logs/golem.log shows no requirement that is missing.
+9. Tell me to sign in, connect ChatGPT in Settings, and add the family in Workspace settings.
+
+Never print, commit, or send the secrets in config/. Stop and ask me before any step that you cannot undo.
+```
 
 ## Development
 
 ```sh
-bun install
-bun run dev        # http://localhost:3000
+bun run dev        # http://localhost:3000, rebuilds the web app on every change
 bun test
 bun run typecheck
 bun run lint       # Ultracite (Biome); `bun run format` fixes what it can
 bun run lint:ios   # SwiftLint (`brew install swiftlint`)
 ```
 
-Golem checks the machine before it starts and prints one line for each requirement. It does not start until all of
-them are there:
+- `src/` is a modular monolith: one module for each domain, each with its service, routes, and tests
+  ([docs/modular-monolith.md](docs/modular-monolith.md)). `web/` has the same modules.
+- `design/tokens.json` holds every color, size, space, radius, and shadow; `bun run tokens` makes the CSS and the
+  Swift tokens from it. `design/components.md` is the spec of every component, on the web and on iOS.
+- `design/icon.svg` is Golem's face: the clay golem in an 8 × 8 grid, with the aleph of אמת (truth), the letter that
+  gives it life, as the dark cell on its forehead.
+- `.claude/skills/` has the agent skills of this repository, such as
+  [Stageshow](https://github.com/benjitaylor/skills), which made the demo above
+  (`.claude/skills/stageshow/examples/golem-demo/`). The diagram above is made with
+  [Archify](https://github.com/tt-a1i/archify) from `docs/assets/conversation-flow.archify.json`.
 
-```sh
-brew install ffmpeg poppler tesseract   # media, scanned PDFs, and OCR in search
-brew install dicklesworthstone/tap/dcg  # tells the destructive commands on machines, which wait for a person
-bunx --bun agent-browser install        # Chrome for the agents' browser, if Google Chrome is not installed
-hands/scripts/build-release.sh          # the hands binaries for the machines that pair
-```
+## Credits
 
-People sign in with Google; nobody can create an account in another way. Before the first start, do the steps in
-[google-sign-in.md](google-sign-in.md). Then sign in and connect ChatGPT in Settings.
+Golem stands on the work of these projects and people:
 
-Golem keeps everything in two gitignored folders ([docs/data.md](docs/data.md)):
-
-- `config/`: `golem.toml` (address, port, allowed people, Google OAuth client) and `secret.key`. Golem creates both
-  on first start; fill in `golem.toml` and restart. Keep a copy of `config/` safe and apart from data backups.
-- `data/`: databases, threads, notes, files, search indexes, the search model, and logs. Back it up offsite.
-
-`GOLEM_CONFIG` and `GOLEM_DATA` move the folders.
-
-To keep Golem running on a Mac, run `scripts/install-service.sh` in the checkout. It installs a LaunchAgent that runs
-`bun start` and restarts it; logs go to `data/logs/golem.log`. To update: `git pull && bun install`, then
-`launchctl kickstart -k user/$(id -u)/dev.golem.server`.
-
-Machines install the `hands` binaries that Golem builds from `hands/` (needs Rust, and on a Mac
-`brew install zig && cargo install --locked cargo-zigbuild` for the Linux builds):
-
-```sh
-hands/scripts/build-release.sh   # hands/dist/hands-<os>-<arch>, which Golem serves to machines that pair
-```
-
-iOS (needs Xcode and `brew install xcodegen`):
-
-```sh
-cd ios
-xcodegen generate
-open Golem.xcodeproj
-```
-
-Put machine-specific values in `ios/Config/Local.xcconfig` (gitignored): `DEVELOPMENT_TEAM`, `GOLEM_BUNDLE_ID`,
-`GOLEM_SERVER_URL`, the server the app opens by default, and `GOLEM_ASSOCIATED_DOMAIN`, the host of that server.
-Google sign-in returns to the server's https address, so the server's `config/golem.toml` sets `ios_app_id` to
-`<DEVELOPMENT_TEAM>.<GOLEM_BUNDLE_ID>`. When Apple's CDN cannot reach the server, as on a VPN, write
-`GOLEM_ASSOCIATED_DOMAIN = <host>?mode=developer` and turn on Associated Domains Development in the iPhone's Settings >
-Developer.
-
-`ios/scripts/fetch-parakeet.sh` (~630 MB) and `ios/scripts/fetch-supertonic.sh` (~170 MB) download the voice models
-into `ios/Models` (gitignored), and the build puts them in the app. Without them, the app has no dictation and no
-conversation.
+- **Agents:** [Pi](https://github.com/earendil-works/pi) by Earendil (Pi Durable, Pi Codemode, Pi AI, and Chord);
+  the `hands` daemon of [Mycroft](https://github.com/dontpanicv/mycroft); the memory tree follows
+  [UniiChat](https://github.com/VictorTaelin/UniiChat); the search ranking follows
+  [DigUp](https://github.com/ARahim3/DigUp); web search follows [pi-web-access](https://github.com/nicobailon/pi-web-access);
+  [destructive_command_guard](https://github.com/Dicklesworthstone/destructive_command_guard);
+  [agent-browser](https://github.com/vercel-labs/agent-browser); the
+  [Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk).
+- **Server:** [Bun](https://bun.sh), [TypeScript](https://www.typescriptlang.org), [Effect](https://effect.website),
+  [SQLite](https://sqlite.org), [better-auth](https://www.better-auth.com), [llama.cpp](https://github.com/ggml-org/llama.cpp),
+  [FFmpeg](https://ffmpeg.org), [Poppler](https://poppler.freedesktop.org),
+  [Tesseract](https://github.com/tesseract-ocr/tesseract), [unpdf](https://github.com/unjs/unpdf), and
+  [Cloudflare Tunnel](https://github.com/cloudflare/cloudflared).
+- **Web:** [React](https://react.dev), [TanStack Router, Query, and DB](https://tanstack.com),
+  [Radix](https://www.radix-ui.com), [react-markdown](https://github.com/remarkjs/react-markdown),
+  [Shiki](https://shiki.style), [Leaflet](https://leafletjs.com) with [OpenStreetMap](https://www.openstreetmap.org),
+  [Chart.js](https://www.chartjs.org), [docx-preview](https://github.com/VolodymyrBaydalka/docxjs), and
+  [read-excel-file](https://gitlab.com/catamphetamine/read-excel-file).
+- **iOS:** SwiftUI, [XcodeGen](https://github.com/yonaskolb/XcodeGen), and
+  [FluidAudio](https://github.com/FluidInference/FluidAudio).
+- **Integrations:** [gog](https://github.com/openclaw/gogcli), [wacli](https://github.com/openclaw/wacli),
+  [slackcli](https://github.com/shaharia-lab/slackcli), [Rettiwt-API](https://github.com/Rishikant181/Rettiwt-API),
+  [vehicle-command](https://github.com/teslamotors/vehicle-command),
+  [salus-it500-cloud](https://github.com/Peterka35/salus-it500-cloud), and TeslaMate for the charging log.
+- **Models:** [EmbeddingGemma 2](https://huggingface.co/ggml-org/embeddinggemma-2-GGUF) by Google (Apache 2.0);
+  [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) by Moondream (CC-BY-4.0), built on NVIDIA's
+  Parakeet TDT 0.6B v3 (CC-BY-4.0); [Supertonic-3](https://huggingface.co/Supertone/supertonic-3) by Supertone
+  (BigScience Open RAIL-M, with use restrictions); the Core ML conversions of both are by FluidInference.
+- **Design:** the look of [Linear](https://linear.app), the navigation of Slack's iOS app, the layout of
+  [T3 Code](https://github.com/pingdotgg/t3code), and the [Inter](https://rsms.me/inter/) font (SIL Open Font
+  License).
+- **Tools for this repository:** [Stageshow](https://github.com/benjitaylor/skills) by Benji Taylor (MIT) and
+  [Archify](https://github.com/tt-a1i/archify).
 
 ## Status
 
-Early design. We are building in public.
+Golem runs our family every day. It is early, it changes often, and we build it in public.
