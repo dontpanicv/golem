@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "An agent sets an alarm on the person's iPhone",
+    "output": ".archify/phone/phone.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/dontpanicv/golem.git",
+      "revision": "2ca4da350225d1a596f2ba80a6b64b6aedfb5592"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "talks or types",
+      "icon": "person"
+    },
+    {
+      "id": "app",
+      "type": "frontend",
+      "label": "Golem app",
+      "sublabel": "iPhone · on screen",
+      "sources": [
+        {
+          "path": "ios/Golem/Phone/PhoneLink.swift",
+          "line": 93,
+          "label": "follow"
+        },
+        {
+          "path": "ios/Golem/Phone/PhoneLink.swift",
+          "line": 102,
+          "label": "answer"
+        }
+      ]
+    },
+    {
+      "id": "golem",
+      "type": "backend",
+      "label": "Golem",
+      "sublabel": "agent + phone module",
+      "sources": [
+        {
+          "path": "src/phone/tools.ts",
+          "line": 447,
+          "label": "phoneTools"
+        },
+        {
+          "path": "src/phone/phone.ts",
+          "line": 76,
+          "label": "call"
+        },
+        {
+          "path": "src/phone/api.ts",
+          "line": 8,
+          "label": "stream"
+        }
+      ]
+    },
+    {
+      "id": "ios",
+      "type": "security",
+      "label": "Apple frameworks",
+      "sublabel": "AlarmKit, EventKit, HealthKit…",
+      "sources": [
+        {
+          "path": "ios/Golem/Phone/Alarms.swift",
+          "line": 42,
+          "label": "AlarmKit"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 245,
+      "label": "Open the app"
+    },
+    {
+      "from": 255,
+      "to": 540,
+      "label": "Ask"
+    },
+    {
+      "from": 550,
+      "to": 660,
+      "label": "Answer"
+    }
+  ],
+  "messages": [
+    {
+      "id": "stream",
+      "from": "app",
+      "to": "golem",
+      "y": 175,
+      "label": "GET /api/v1/phone/calls",
+      "variant": "security",
+      "note": "event stream, open only while the app is on screen"
+    },
+    {
+      "id": "ask",
+      "from": "person",
+      "to": "app",
+      "y": 280,
+      "label": "Wake me at 6:30"
+    },
+    {
+      "id": "message",
+      "from": "app",
+      "to": "golem",
+      "y": 320,
+      "label": "message to the thread",
+      "note": "the agent's script calls phone_alarm_set"
+    },
+    {
+      "id": "call",
+      "from": "golem",
+      "to": "app",
+      "y": 380,
+      "label": "event: call { id, name, arguments }",
+      "variant": "emphasis",
+      "note": "to the newest stream of the turn's person; no approval"
+    },
+    {
+      "id": "schedule",
+      "from": "app",
+      "to": "ios",
+      "y": 440,
+      "label": "AlarmManager.schedule",
+      "note": "iOS asks for access on the first use"
+    },
+    {
+      "id": "scheduled",
+      "from": "ios",
+      "to": "app",
+      "y": 500,
+      "label": "alarm id",
+      "variant": "return"
+    },
+    {
+      "id": "answer",
+      "from": "app",
+      "to": "golem",
+      "y": 575,
+      "label": "POST /api/v1/phone/calls/:id",
+      "variant": "return",
+      "note": "text, or JPEGs from Photos or the camera"
+    },
+    {
+      "id": "reply",
+      "from": "golem",
+      "to": "person",
+      "y": 630,
+      "label": "Alarm set for 6:30",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Tools",
+      "items": [
+        "Alarms and timers, Reminders, Calendar, Contacts",
+        "Messages, mail, calls, Apple Music, Photos, camera",
+        "Health, location, Maps, clipboard, flashlight, Home, Wallet"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Transport",
+      "items": [
+        "The phone opens the stream; Golem never connects to it",
+        "A call waits only in memory, up to 3 minutes",
+        "A closed stream fails its waiting calls at once"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Limits",
+      "items": [
+        "Only the turn's own person's phone",
+        "App closed: the tool says the phone is not connected",
+        "Messages, calls, and Wallet wait for the person's tap"
+      ]
+    }
+  ]
+}

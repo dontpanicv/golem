@@ -26,6 +26,8 @@ SQLite and Markdown.
 - **It works on your computers.** Pair your Macs and Linux machines once, and Golem uses them as you would from a
   terminal. From your phone on the train: "start the photo backup on the home server and tell me when it is done".
   Golem starts the job on the server, the job keeps running when your phone sleeps, and Golem tells you when it ends.
+- **It works on your iPhone.** While the app is open, Golem sets alarms and timers, adds to Apple Reminders and the
+  calendar, plays music, looks at photos, and reads Apple Health on the phone itself: "wake me at 6:30".
 - **It makes pages and small apps.** Ask for an invite, a poll, a packing list, or a game, and Golem builds it as an
   artifact that keeps its own data. Keep it for the family, or share a public link with anyone, while the rest of
   Golem stays private.
@@ -139,6 +141,38 @@ person who installed it. `hands` is Golem's copy of the `hands` daemon of
 - **Who can use it.** A machine is private to your turns until you share it with every member. Several people can pair
   the same machine; it trusts each of their keys. `golem-hands unpair` takes a key away, also on open connections.
   Treat a paired machine as shell access for Golem, as the user who installed `hands`.
+
+### The iPhone as hands
+
+"Wake me at 6:30." "Start a 12-minute timer for the pasta." "Put milk on the shopping list." "What is on my calendar
+tomorrow?" The agents still live on the server, but while the Golem app is open, they can use the iPhone itself, as
+they use a paired machine.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/phone-dark.svg">
+  <img alt="While the Golem app is on screen, it holds GET /api/v1/phone/calls open. The person says Wake me at 6:30; the app sends the message to the thread, and the agent's script calls phone_alarm_set. Golem sends the call on the newest stream of the turn's person, with no approval. The app calls AlarmManager.schedule, and iOS asks for access on the first use. The app posts the answer to /api/v1/phone/calls/:id, as text or JPEGs, and the agent answers Alarm set for 6:30." src="docs/assets/phone-light.svg">
+</picture>
+
+- **Transport.** The phone accepts no connections, so it connects to Golem: while the app is on screen, it holds an
+  event stream open (`GET /api/v1/phone/calls`). A `phone_*` tool sends its call on the newest stream of the turn's
+  person and waits up to 3 minutes, in memory only, for the answer (`POST /api/v1/phone/calls/:id`, with text, or
+  JPEGs from Photos or the camera). When the stream closes, its waiting calls fail at once; with no stream, the tool
+  tells the agent that the phone is not connected.
+- **Tools.** Each tool uses one of Apple's own frameworks; there are no workarounds:
+  - Alarms and timers that ring also in silent mode, with the countdown on the Lock Screen (AlarmKit).
+  - Apple Reminders and every calendar on the phone: read, add, change, and delete (EventKit).
+  - Contacts: find, add, and change.
+  - Messages, mail, and phone or FaceTime calls: iOS fills them in, and the person taps Send or Call.
+  - Apple Music in the Music app: play a song, an album, a playlist, or an artist, and control playback (MusicKit).
+  - Photos: find photos by date, kind, or favorite, look at one, and save a workspace picture or video.
+  - The camera: the person takes a photo or scans pages (VisionKit), and the agent looks at them.
+  - Apple Health: daily values, sleep, and workouts; and log water, caffeine, weight, body fat, or mindful minutes.
+  - The location with its address, and directions in Apple Maps.
+  - Links, the clipboard, the battery and storage, the flashlight, and the screen brightness.
+  - Apple Home scenes, and accessories on or off (HomeKit); and Wallet passes (PassKit).
+- **Who can use it.** A tool acts only on the phone of the person whose turn it is, and needs no approval. iOS asks
+  for each kind of access once, on its first use. Golem cannot see the Clock app's own alarms, Apple Notes, or other
+  apps: iOS gives no app access to them.
 
 ### Integrations
 
