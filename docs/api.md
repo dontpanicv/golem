@@ -411,7 +411,7 @@ to put that host on the internet while the rest of Golem stays private.
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/search?q=…&limit=20` | | `{ results: SearchResult[], semantic: boolean }`; `semantic` is false while the model starts, and results then match words only |
 | `GET /api/v1/workspaces/:workspaceId/searches` | | `{ searches: RecentSearch[] }`: the person's own 10 newest |
-| `POST /api/v1/workspaces/:workspaceId/searches` | `{ query }` | `{ searches: RecentSearch[] }`; the apps save a query when the person presses Enter or opens a result |
+| `POST /api/v1/workspaces/:workspaceId/searches` | `{ query }` | `{ searches: RecentSearch[] }`; the apps save a query when the person presses Enter or opens a result, or when its results rest a second |
 
 ### Integrations (`src/integrations/`)
 

@@ -50,7 +50,7 @@ function searchesQuery(workspaceId: string) {
   });
 }
 
-/** Saves a search the person acted on; the list of recent searches is only a help, so a failure stays quiet. */
+/** Saves a search the person acted on or that found something; the list of recent searches is only a help, so a failure stays quiet. */
 function saveSearch(workspaceId: string, query: string): void {
   if (!query.trim()) {
     return;
@@ -82,7 +82,7 @@ export function SearchPage() {
     query: (builder) => builder.from({ channel: channelsOf(workspaceId) }),
   });
   const { data: recent } = useQuery(searchesQuery(workspaceId));
-  const { data: response } = useQuery({
+  const { data: response, isPlaceholderData } = useQuery({
     queryKey: ["workspaces", workspaceId, "search", debounced],
     queryFn: ({ signal }) =>
       request<SearchResponse>(
@@ -93,6 +93,14 @@ export function SearchPage() {
     placeholderData: keepPreviousData,
     gcTime: 0,
   });
+  // A search counts once its results rest a second, so the words typed on the way to it do not.
+  useEffect(() => {
+    if (query !== debounced || isPlaceholderData || !response?.results.length) {
+      return;
+    }
+    const timer = setTimeout(() => saveSearch(workspaceId, debounced), 1000);
+    return () => clearTimeout(timer);
+  }, [query, debounced, isPlaceholderData, response, workspaceId]);
   const names = new Map(channels.map((channel) => [channel.id, channel.name]));
   return (
     <section className="conversation">
