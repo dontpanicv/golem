@@ -21,8 +21,11 @@ SQLite and Markdown.
   loop keeps short facts about each person and how things are done. The family writes its own facts too. Golem reads
   all of it before every answer.
 - **It does real work.** Golem runs commands on your Macs and Linux machines, reads your mail and calendar, controls
-  the heating, orders the groceries, browses the web, and makes small apps and pages. It asks before it sends,
-  buys, or runs a destructive command.
+  the heating, orders the groceries, and browses the web. It asks before it sends, buys, or runs a destructive
+  command.
+- **It makes pages and small apps.** Ask for an invite, a poll, a packing list, or a game, and Golem builds it as an
+  artifact that keeps its own data. Keep it for the family, or share a public link with anyone, while the rest of
+  Golem stays private.
 - **It stays quiet.** Background work tells a person only when they must act or asked to know. Golem makes no routine,
   reminder, or message that nobody asked for: it suggests one, and the suggestion waits until its person accepts it.
 - **Your data stays with you.** One server, one SQLite database, Markdown files, and a search index that runs on the
@@ -163,15 +166,45 @@ The workspace has one search index, `index.sqlite`, on the server. The Search pa
 
 [docs/data.md](docs/data.md) has every file kind and the details.
 
+### Artifacts
+
+An artifact is a page or a small app that an agent writes in HTML: an invite with RSVPs, a poll, a shared shopping
+list, a game, or a schedule to print or save as a PDF. It belongs to the channel of the thread that made it and
+stays there when the thread is settled. The side panel of a thread shows the artifacts of its channel, and the iPhone
+app shows them in the same way.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/artifacts-dark.svg">
+  <img alt="A family member opens golem.example.com, and anyone with a link opens a.example.com. Both hosts are on Cloudflare and reach the Mac mini through an outbound cloudflared tunnel; the public host passes only artifact paths and answers 404 to the rest. Golem listens on 127.0.0.1:3000, checks who may open the artifact, and shows it in a sandboxed page. The page keeps its data through the golem runtime in golem.sqlite, where the thread agent writes the HTML." src="docs/assets/artifacts-light.svg">
+</picture>
+
+- **Members or public.** A new artifact is for members: only signed-in people who can see its channel open it, so an
+  artifact of a private channel stays private. Any member who sees it, or an agent, can make it public; then anyone
+  with its link opens it, without an account. A link is four words, such as `amber-fox-lake-moss`: easy to know again,
+  and too many to guess. A name is never given out again, also after a delete.
+- **Data without a backend.** The page keeps data through `golem`, a small runtime that Golem puts at its start:
+  `golem.mine` for the records of one visitor, `golem.shared` for the records that everybody shares, and
+  `golem.everyone` to list the records of all visitors, such as the answers of a poll. Visitors give their name with
+  `golem.setName`. The records are rows in `golem.sqlite`; agents read and change them with `artifacts_data` and
+  `artifacts_set_data`, and the side panel shows them under **Data**.
+- **A sandbox, never Golem's origin.** The HTML runs in a frame without `allow-same-origin`, so it cannot read Golem's
+  cookies or call Golem's API. Its content policy lets scripts come only from three public CDNs (jsDelivr,
+  unpkg, and cdnjs), and styles and fonts also from Google Fonts. It blocks every network request
+  (`connect-src 'none'`), so data goes only through `golem`. Golem serves a page that a person or an agent wrote only
+  from its own `content` address, never from a path of the app.
+- **The public host.** Public links use their own host, such as `a.example.com`, on the same Cloudflare Tunnel as
+  Golem. Three layers keep the rest of Golem private: the tunnel lets through only `/<name>`, `/<name>/content`, and
+  `/<name>/rpc` and answers `404` to everything else; Golem answers on that host only for public artifacts, and does
+  not tell a members artifact from a missing one; and Golem listens only on `127.0.0.1`. An address that asks for 20
+  links that do not exist in 10 minutes gets `429`. [docs/artifacts-sharing.md](docs/artifacts-sharing.md) has the
+  setup.
+
 ### More
 
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
   [agent-browser](https://github.com/vercel-labs/agent-browser). They search the web with ChatGPT's own search,
   because search engines block a headless browser. All their web traffic goes through one egress that blocks the
   server, the home network, and private addresses.
-- **Artifacts.** Agents make pages and small apps: an invite, a poll, a game, a printable schedule. They run in a
-  sandbox on their own address, never on Golem's origin, and a public one can have a link of four words on a second
-  host ([docs/artifacts-sharing.md](docs/artifacts-sharing.md)).
 - **Routines and reminders.** Ask in plain words: "check the school system every morning", "remind me when I leave
   work". A routine is a schedule, instructions, and an optional script that collects what is new; when the script
   finds nothing, the run ends without the model. A reminder is at a time or at a place.
@@ -256,8 +289,7 @@ This setup opens no port on your router and keeps the server off the internet:
    date.
 3. **Only the people in `allowed_emails` can sign in**, with Google.
 4. **Public artifact links use a second host**, such as `a.example.com`, on the same tunnel. Its ingress lets through
-   only the paths of an artifact, and Golem answers there only for public artifacts
-   ([docs/artifacts-sharing.md](docs/artifacts-sharing.md)).
+   only the paths of an artifact, and Golem answers there only for public artifacts (see [Artifacts](#artifacts)).
 
 Make a tunnel in the Cloudflare dashboard (Zero Trust › Networks › Tunnels) with these public hostnames, and save its
 token in `config/share-tunnel.token`:
@@ -342,8 +374,8 @@ bun run lint:ios   # SwiftLint (`brew install swiftlint`)
   gives it life, as the dark cell on its forehead.
 - `.claude/skills/` has the agent skills of this repository, such as
   [Stageshow](https://github.com/benjitaylor/skills), which made the demo above
-  (`.claude/skills/stageshow/examples/golem-demo/`). The diagram above is made with
-  [Archify](https://github.com/tt-a1i/archify) from `docs/assets/conversation-flow.archify.json`.
+  (`.claude/skills/stageshow/examples/golem-demo/`). The diagrams are made with
+  [Archify](https://github.com/tt-a1i/archify) from `docs/assets/*.archify.json`.
 
 ## Credits
 

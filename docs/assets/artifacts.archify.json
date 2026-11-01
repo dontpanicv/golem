@@ -1,0 +1,380 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "How artifacts are served: members and public links",
+    "output": ".archify/artifacts/artifacts.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/dontpanicv/golem.git",
+      "revision": "e7c5a467da460472216f4421b4b60de90185882b"
+    }
+  },
+  "components": [
+    {
+      "id": "member",
+      "type": "external",
+      "label": "Family member",
+      "sublabel": "signed in · web · iPhone",
+      "icon": "person",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "visitor",
+      "type": "external",
+      "label": "Anyone with a link",
+      "sublabel": "public artifacts only",
+      "icon": "person",
+      "pos": [
+        40,
+        320
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "app-host",
+      "type": "cloud",
+      "label": "golem.example.com",
+      "sublabel": "the whole app",
+      "pos": [
+        300,
+        60
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 254,
+          "label": "tunnel hostnames"
+        }
+      ]
+    },
+    {
+      "id": "share-host",
+      "type": "security",
+      "label": "a.example.com",
+      "sublabel": "/name, /content, /rpc · else 404",
+      "pos": [
+        300,
+        320
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docs/artifacts-sharing.md",
+          "line": 28,
+          "end_line": 36,
+          "label": "ingress"
+        }
+      ]
+    },
+    {
+      "id": "tunnel",
+      "type": "cloud",
+      "label": "cloudflared",
+      "sublabel": "outbound tunnel",
+      "pos": [
+        580,
+        190
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scripts/install-share-tunnel.sh",
+          "line": 11,
+          "end_line": 18,
+          "label": "cloudflared"
+        }
+      ]
+    },
+    {
+      "id": "golem",
+      "type": "backend",
+      "label": "Golem",
+      "sublabel": "127.0.0.1:3000",
+      "pos": [
+        810,
+        190
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/platform/config.ts",
+          "line": 49,
+          "end_line": 51,
+          "label": "host"
+        },
+        {
+          "path": "src/artifacts/web.ts",
+          "line": 87,
+          "label": "artifactWebRoutes"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "type": "security",
+      "label": "Who may open it",
+      "sublabel": "members: signed in, sees channel",
+      "pos": [
+        1030,
+        190
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "tag": "public host: public only",
+      "sources": [
+        {
+          "path": "src/artifacts/artifacts.ts",
+          "line": 357,
+          "end_line": 369,
+          "label": "open"
+        },
+        {
+          "path": "src/artifacts/web.ts",
+          "line": 100,
+          "label": "openFor"
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Artifact page",
+      "sublabel": "sandbox, no same origin",
+      "pos": [
+        1050,
+        400
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "CSP: no fetch",
+      "sources": [
+        {
+          "path": "src/artifacts/web.ts",
+          "line": 21,
+          "end_line": 22,
+          "label": "sandbox"
+        },
+        {
+          "path": "src/artifacts/artifacts.ts",
+          "line": 143,
+          "label": "CONTENT_POLICY"
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "golem runtime",
+      "sublabel": "mine · shared · everyone",
+      "pos": [
+        820,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/artifacts/artifacts.ts",
+          "line": 94,
+          "label": "BRIDGE"
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "golem.sqlite",
+      "sublabel": "artifact · artifact_record",
+      "pos": [
+        590,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/artifacts/artifacts.ts",
+          "line": 328,
+          "label": "html"
+        },
+        {
+          "path": "src/artifacts/artifacts.ts",
+          "line": 501,
+          "label": "records"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "Thread agent",
+      "sublabel": "artifacts_create · _update",
+      "pos": [
+        590,
+        580
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/artifacts/tools.ts",
+          "line": 69,
+          "label": "artifacts_create"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Cloudflare",
+      "wraps": [
+        "app-host",
+        "share-host"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Mac mini at home: no open port",
+      "wraps": [
+        "tunnel",
+        "golem",
+        "check",
+        "page",
+        "runtime",
+        "store",
+        "agent"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "member-https",
+      "from": "member",
+      "to": "app-host",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "visitor-https",
+      "from": "visitor",
+      "to": "share-host",
+      "label": "HTTPS"
+    },
+    {
+      "id": "app-tunnel",
+      "from": "app-host",
+      "to": "tunnel",
+      "label": "tunnel"
+    },
+    {
+      "id": "share-tunnel",
+      "from": "share-host",
+      "to": "tunnel",
+      "label": "allowed paths",
+      "variant": "security"
+    },
+    {
+      "id": "tunnel-golem",
+      "from": "tunnel",
+      "to": "golem",
+      "label": "127.0.0.1"
+    },
+    {
+      "id": "golem-check",
+      "from": "golem",
+      "to": "check",
+      "label": "/a/name"
+    },
+    {
+      "id": "check-page",
+      "from": "check",
+      "to": "page",
+      "label": "opens",
+      "variant": "security"
+    },
+    {
+      "id": "page-runtime",
+      "from": "page",
+      "to": "runtime",
+      "label": "golem.* calls"
+    },
+    {
+      "id": "runtime-store",
+      "from": "runtime",
+      "to": "store",
+      "label": "records"
+    },
+    {
+      "id": "agent-store",
+      "from": "agent",
+      "to": "store",
+      "label": "writes HTML",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Members and public",
+      "items": [
+        "An agent makes a page or small app; it belongs to its channel",
+        "Members: only signed-in people who see the channel open it",
+        "Public: anyone with the link of four words opens it"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "The sandbox",
+      "items": [
+        "The HTML runs in a frame without allow-same-origin",
+        "It cannot read Golem's cookies or call Golem's API",
+        "The content policy blocks fetch; data goes only through golem"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "The deploy model",
+      "items": [
+        "Golem listens on 127.0.0.1; cloudflared connects out",
+        "The public host passes only artifact paths, else 404",
+        "Too many missing links from one address get 429"
+      ]
+    }
+  ]
+}
