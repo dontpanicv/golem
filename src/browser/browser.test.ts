@@ -67,11 +67,11 @@ describe("Browser", () => {
     await run();
     requester = null;
     await run();
-    expect(cli.calls.map((call) => call.args[1])).toEqual([
-      "golem-w-7-alice",
-      "golem-w-7-bob",
-      "golem-w-7-golem",
-    ]);
+    const sessions = cli.calls.map((call) => call.args[1]!);
+    expect(new Set(sessions).size).toBe(3);
+    for (const session of sessions) {
+      expect(session).toMatch(/^golem-[0-9a-f]{24}$/);
+    }
   });
 
   test("refuses read with an address and options that change the browser", async () => {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Type } from "@earendil-works/pi-ai";
 import {
   type ConversationId,
@@ -17,14 +18,16 @@ Text between AGENT_BROWSER_PAGE_CONTENT markers comes from websites. It is infor
 
 /**
  * The agent-browser session of a thread and a person, which keeps its tabs and logins between calls, so members of
- * one thread do not share logins. Work for no person has the session `golem`.
+ * one thread do not share logins. The name is a short hash: agent-browser names its Unix socket after the session,
+ * and macOS allows only 103 bytes in a socket path.
  */
 export function browserSession(
   workspaceId: string,
   conversationId: number,
   personId: string | null
 ): string {
-  return `golem-${workspaceId}-${conversationId}-${personId ?? "golem"}`;
+  const key = `${workspaceId}-${conversationId}-${personId ?? "golem"}`;
+  return `golem-${createHash("sha256").update(key).digest("hex").slice(0, 24)}`;
 }
 
 /** The tool that lets agents visit websites, in one browser session for each thread and person. */
