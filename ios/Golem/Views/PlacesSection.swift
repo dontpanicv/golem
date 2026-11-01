@@ -22,6 +22,7 @@ struct PlacesSection: View {
                 if place.ownerId == session.user?.id {
                     SettingsRow(place.name, description: "\(place.radius) m · \(place.shared ? "Shared" : "Private")") {
                         Toggle("Private", isOn: Binding(get: { !place.shared }, set: { share($place, !$0) }))
+                            .toggleStyle(.golemSwitch)
                             .labelsHidden()
                         GolemMenu {
                             MenuItem("Change place", systemImage: "mappin.and.ellipse") {
