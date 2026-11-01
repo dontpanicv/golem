@@ -149,6 +149,41 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
             }
             label={integration.name}
           >
+            {integration.client?.changeable ? (
+              <Button
+                icon="key"
+                label="Client"
+                onClick={() => setSettingClient(integration)}
+                size="small"
+              />
+            ) : null}
+            {integration.connect === "sign-in" && (
+              <Button
+                disabled={
+                  connect.isPending || integration.client?.clientId === null
+                }
+                icon="link"
+                label="Connect"
+                onClick={() => connect.mutate(integration)}
+                size="small"
+              />
+            )}
+            {integration.connect === "phone" && (
+              <Button
+                icon="link"
+                label="Link number"
+                onClick={() => setLinking({ integration, code: null })}
+                size="small"
+              />
+            )}
+            {integration.connect === "secret" && (
+              <Button
+                icon="plus"
+                label="Add credential"
+                onClick={() => setAdding(integration)}
+                size="small"
+              />
+            )}
             {integration.guide.length > 0 && (
               <Button
                 icon="info"
@@ -196,44 +231,6 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
               />
             )
           )}
-          <div className="settings-row compact">
-            {integration.connect === "sign-in" && (
-              <Button
-                disabled={
-                  connect.isPending || integration.client?.clientId === null
-                }
-                icon="link"
-                label="Connect"
-                onClick={() => connect.mutate(integration)}
-                size="small"
-              />
-            )}
-            {integration.client?.changeable ? (
-              <Button
-                icon="key"
-                label="Client"
-                onClick={() => setSettingClient(integration)}
-                size="small"
-                variant="ghost"
-              />
-            ) : null}
-            {integration.connect === "phone" && (
-              <Button
-                icon="link"
-                label="Link number"
-                onClick={() => setLinking({ integration, code: null })}
-                size="small"
-              />
-            )}
-            {integration.connect === "secret" && (
-              <Button
-                icon="plus"
-                label="Add credential"
-                onClick={() => setAdding(integration)}
-                size="small"
-              />
-            )}
-          </div>
         </SettingsCard>
       ))}
       <Dialog

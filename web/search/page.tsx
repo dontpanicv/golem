@@ -65,7 +65,7 @@ function saveSearch(workspaceId: string, query: string): void {
     .catch(() => undefined);
 }
 
-/** Search across one workspace: results update as you type. Before a query, the person's recent searches show. */
+/** Search across one workspace: results update as you type. Before a query, the person's recent searches show, then Golem. */
 export function SearchPage() {
   const { workspaceId } = route.useParams();
   const { q = "" } = route.useSearch();
@@ -161,6 +161,14 @@ export function SearchPage() {
                   <span className="meta">{dayTime(search.searchedAt)}</span>
                 </button>
               ))}
+              <Link
+                className="list-row"
+                params={{ workspaceId }}
+                to="/w/$workspaceId/orchestrator"
+              >
+                <Icon name="golem" />
+                <span className="name">Golem</span>
+              </Link>
             </div>
           )}
         </div>
@@ -187,9 +195,11 @@ function ResultRow({
       <Icon name={MEDIA_ICONS[result.modality] ?? KIND_ICONS[result.kind]} />
       <span className="search-text">
         <strong>{result.title}</strong>
-        <Suspense fallback={<span>{result.snippet}</span>}>
-          <Snippet text={result.snippet} />
-        </Suspense>
+        {result.snippet ? (
+          <Suspense fallback={<span>{result.snippet}</span>}>
+            <Snippet text={result.snippet} />
+          </Suspense>
+        ) : null}
       </span>
       <span className="meta">{place}</span>
     </>

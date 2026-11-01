@@ -7,6 +7,7 @@ struct UsageSection: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var usage: Usage?
+    @State private var members: [Member] = []
 
     private static let days = 30
 
@@ -21,10 +22,11 @@ struct UsageSection: View {
                 DayBars(days: usage.days, count: Self.days)
                     .padding(.horizontal, Tokens.Mobile.Size.margin)
                     .padding(.vertical, Tokens.Space.md)
-                group("Sources", usage.sources) { sourceName($0.source) }
-                group("Models", usage.models) { modelName($0.model) }
+                // The same groups as the web's: sub-headings in the section.
+                group("By source", usage.sources) { sourceName($0.source) }
+                group("By model", usage.models) { modelName($0.model) }
                 if !usage.threads.isEmpty {
-                    ListSectionHeader(title: "Threads")
+                    ListSubheading("Top threads")
                     ForEach(usage.threads, id: \.threadId) { thread in
                         Button { thread.threadId.map { open(.thread($0)) } } label: {
                             SettingsRow(thread.title ?? "", description: "\(tokens(thread.tokens)) tokens") {
@@ -35,18 +37,40 @@ struct UsageSection: View {
                         .buttonStyle(.row)
                     }
                 }
-                if let people = usage.people { group("People", people) { $0.name ?? "" } }
+                if let people = usage.people, !people.isEmpty {
+                    ListSubheading("By person")
+                    ForEach(people, id: \.self) { row in
+                        SettingsRow(label: row.name ?? "", description: "\(tokens(row.tokens)) tokens") {
+                            // Work for nobody is Golem's own.
+                            if let userId = row.userId, !userId.isEmpty {
+                                PersonAvatar(
+                                    name: row.name ?? "", picture: members.first { $0.userId == userId }?.picture
+                                )
+                            } else {
+                                GolemMark()
+                            }
+                        } control: {
+                            value(cost(row.cost))
+                        }
+                    }
+                }
             } else {
                 ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.settingsRow)
             }
         }
-        .task { await session.run { usage = try await session.api.usage(workspaceID: workspaceID, days: Self.days) } }
+        .task {
+            await session.run {
+                usage = try await session.api.usage(workspaceID: workspaceID, days: Self.days)
+                // Only the server's owner sees people, with their pictures.
+                if usage?.people != nil { members = try await session.api.members(workspaceID: workspaceID) }
+            }
+        }
     }
 
     @ViewBuilder
     private func group(_ title: String, _ rows: [UsageTotals], name: @escaping (UsageTotals) -> String) -> some View {
         if !rows.isEmpty {
-            ListSectionHeader(title: title)
+            ListSubheading(title)
             ForEach(rows, id: \.self) { row in
                 SettingsRow(name(row), description: "\(tokens(row.tokens)) tokens") { value(cost(row.cost)) }
             }

@@ -210,11 +210,15 @@ struct NavRow: View {
     var emoji: String?
     /// A private channel, which only its person sees.
     var locked = false
+    /// Golem's face in place of the symbol.
+    var golem = false
 
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
             Group {
-                if let emoji {
+                if golem {
+                    GolemGlyph(size: 12)
+                } else if let emoji {
                     Text(emoji).font(.system(size: Tokens.Size.icon * 0.8))
                 } else {
                     Image(systemName: systemImage)
@@ -257,13 +261,13 @@ struct SectionHeader: View {
     }
 }
 
-struct EmptyState: View {
+struct EmptyState<Icon: View>: View {
     let title: String
-    let systemImage: String
+    @ViewBuilder let icon: Icon
 
     var body: some View {
         VStack(spacing: Tokens.Space.sm) {
-            Image(systemName: systemImage)
+            icon
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(Tokens.Colors.textQuaternary)
             Text(title)
@@ -272,5 +276,11 @@ struct EmptyState: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Tokens.Space.xxxl)
+    }
+}
+
+extension EmptyState where Icon == Image {
+    init(title: String, systemImage: String) {
+        self.init(title: title) { Image(systemName: systemImage) }
     }
 }

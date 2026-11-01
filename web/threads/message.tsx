@@ -251,12 +251,9 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
     label = `From ${work.steps[0].text.replace(THREAD_LINK, "$1")}`;
   }
   return (
-    // A new element when the work ends, so it folds then; until then, the person's choice to open or fold it stays.
-    <details
-      className={working ? "work working" : "work"}
-      key={working ? "working" : "done"}
-      open={working}
-    >
+    // React sets `open` only when `working` changes, so it folds when the work ends; until then, the person's choice
+    // to open or fold it stays.
+    <details className={working ? "work working" : "work"} open={working}>
       <summary className="work-summary">
         <span>{label}</span>
         {groups.length > 0 ? (

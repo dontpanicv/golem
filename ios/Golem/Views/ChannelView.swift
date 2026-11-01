@@ -47,7 +47,7 @@ struct ChannelView: View {
         .defaultScrollAnchor(.bottom)
         .scrollDismissesKeyboard(.interactively)
         .overlay {
-            if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything", systemImage: "sparkles") }
+            if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything") { GolemGlyph(size: 24) } }
         }
         .dismissesKeyboardOnTap()
         .safeAreaBar(edge: .bottom) {

@@ -209,8 +209,8 @@ private struct Sidebar: View {
         ScrollView {
             VStack(spacing: 1) {
                 if let orchestrator = session.orchestrator {
-                    row("Golem", systemImage: "tray", destination: .thread(orchestrator.id),
-                        working: session.working.contains(orchestrator.id))
+                    row("Golem", systemImage: "", destination: .thread(orchestrator.id),
+                        working: session.working.contains(orchestrator.id), golem: true)
                 }
                 row("Inbox", systemImage: "bell", destination: .inbox, count: session.inbox?.unread)
                 row("Search", systemImage: "magnifyingglass", destination: .search)
@@ -268,14 +268,14 @@ private struct Sidebar: View {
 
     private func row(
         _ title: String, systemImage: String, destination: Destination, working: Bool = false, count: Int? = nil,
-        emoji: String? = nil, locked: Bool = false
+        emoji: String? = nil, locked: Bool = false, golem: Bool = false
     ) -> some View {
         Button {
             open(destination)
         } label: {
             NavRow(
                 title: title, systemImage: systemImage, selected: selection == destination,
-                count: count == 0 ? nil : count, working: working, emoji: emoji, locked: locked
+                count: count == 0 ? nil : count, working: working, emoji: emoji, locked: locked, golem: golem
             )
         }
         .buttonStyle(.plain)

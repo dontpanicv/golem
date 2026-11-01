@@ -159,6 +159,9 @@ test("plain text keeps what a person reads of Markdown", () => {
     "Title one two quoted bold"
   );
   expect(plainText("See [Rome](thread:abc) | 3 |")).toBe("See Rome 3");
+  expect(
+    plainText('Done.\n\n```card\n[{"value":"78 %"}]\n```\n\nTake the umbrella.')
+  ).toBe("Done. Take the umbrella.");
 });
 
 test("APNs gets a provider token signed with the key, and a push that opens the thread", () => {

@@ -82,6 +82,19 @@ struct GolemFace: View {
     }
 }
 
+/// Golem's face as a glyph in one color, the foreground's: the icon's face with its marks and eyes cut out, from the
+/// same 8 × 8 pixels. A size of a whole number of points per pixel keeps it sharp. The web's `golem` icon is the same.
+struct GolemGlyph: View {
+    var size: CGFloat = 16
+
+    var body: some View {
+        PixelShape(path: "M0 0H8V7H7V8H1V7H0ZM3 1H5V2H3ZM2 5H6V6H2ZM1 2H3V3H1ZM5 2H7V3H5Z")
+            .fill(style: FillStyle(eoFill: true))
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
 /// Four pixels in a square that light in turn, clockwise: Golem works.
 struct PixelSpinner: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

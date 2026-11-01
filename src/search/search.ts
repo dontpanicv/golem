@@ -270,10 +270,12 @@ export class Indexer {
           const segments = messages
             .filter((message) => !(message.streaming || message.failed))
             .flatMap((message) =>
-              chunk(`${message.author}: ${message.text}`).map((text, part) => ({
-                key: `${message.id}:${part}`,
-                text,
-              }))
+              chunk(`${message.author}: ${cardWords(message.text)}`).map(
+                (text, part) => ({
+                  key: `${message.id}:${part}`,
+                  text,
+                })
+              )
             );
           return { segments };
         }
@@ -470,4 +472,42 @@ export class Indexer {
     }
     return join(this.dataDirectory, "workspaces", workspaceId);
   }
+}
+
+/**
+ * A message with its fenced `card` blocks as the words people read on the cards, a list item for each card, so search
+ * matches and shows them as text. A block that is not valid stays, as the apps show it as code.
+ *
+ * @example cardWords('```card\n{"title": "Car", "value": "78 %", "detail": "412 km"}\n```') // "- Car: 78 %, 412 km"
+ */
+export function cardWords(text: string): string {
+  return text.replace(
+    /^```card[^\n]*\n([\s\S]*?)^```[^\S\n]*$/gm,
+    (block, json: string) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        return block;
+      }
+      const cards = (Array.isArray(parsed) ? parsed : [parsed]) as {
+        title?: unknown;
+        value?: unknown;
+        detail?: unknown;
+      }[];
+      if (!cards.every((card) => typeof card?.value === "string")) {
+        return block;
+      }
+      return cards
+        .map((card) => {
+          const value = [card.value, card.detail]
+            .filter((part) => typeof part === "string" && part)
+            .join(", ");
+          return typeof card.title === "string" && card.title
+            ? `- ${card.title}: ${value}`
+            : `- ${value}`;
+        })
+        .join("\n");
+    }
+  );
 }

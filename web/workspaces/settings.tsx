@@ -114,7 +114,9 @@ export function MembersSection({ workspace }: { workspace: Workspace }) {
           label={member.name}
           lead={<Avatar name={member.name} picture={member.picture} />}
         >
-          <Badge label={member.role} />
+          <Badge
+            label={member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+          />
         </SettingsRow>
       ))}
       {workspace.role === "owner" ? (
@@ -128,10 +130,7 @@ export function MembersSection({ workspace }: { workspace: Workspace }) {
             });
           }}
         >
-          <SettingsRow
-            description="They need a Golem account first."
-            label="Add a member"
-          >
+          <SettingsRow label="Add a member">
             <input
               aria-label="Email"
               className="input"

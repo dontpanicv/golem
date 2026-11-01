@@ -158,8 +158,26 @@ struct ArtifactWebView: UIViewRepresentable {
         context.coordinator.call = call
         if context.coordinator.content != content {
             context.coordinator.content = content
+            let scripts = view.configuration.userContentController
+            scripts.removeAllUserScripts()
+            if !Self.hasViewport(content) { scripts.addUserScript(Self.viewport) }
             view.loadHTMLString(content, baseURL: nil)
         }
+    }
+
+    /// A page without a viewport would lay out 980 pt wide and shrink to fit, as on a desktop.
+    private static let viewport = WKUserScript(
+        source: """
+        const viewport = document.createElement("meta");
+        viewport.name = "viewport";
+        viewport.content = "width=device-width, initial-scale=1";
+        document.documentElement.prepend(viewport);
+        """,
+        injectionTime: .atDocumentStart, forMainFrameOnly: true
+    )
+
+    static func hasViewport(_ html: String) -> Bool {
+        html.range(of: #"<meta[^>]+name\s*=\s*["']?viewport"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {

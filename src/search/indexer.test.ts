@@ -246,7 +246,7 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
           createdAt: 1,
           updatedAt: 1,
         },
-        html: "<html><head><title>x</title><style>.ferry{}</style></head><body><p>Ferry at 9:00</p></body></html>",
+        html: "<html><head><title>x</title><style>.ferry{}</style></head><body><h1>Island trip</h1><p>Ferry at 9:00</p></body></html>",
       },
     ]),
     null
@@ -268,21 +268,22 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
       ["file", "channels/c1/files/tickets.txt", null, "c1"],
       ["thread", "thread:t1", "t1", "c1"],
     ]);
-    expect(
-      results.find((result) => result.kind === "artifact")?.snippet
-    ).toContain("Ferry at 9:00");
+    // The artifact's heading repeats its title, so the snippet leaves it out.
+    expect(results.find((result) => result.kind === "artifact")?.snippet).toBe(
+      "Ferry at 9:00"
+    );
     expect(results.find((result) => result.kind === "thread")?.snippet).toBe(
       "Anna: We take the ferry to the island"
     );
     expect((await indexer.search("family", "draft", 20, null)).results).toEqual(
       []
     );
-    // A file Golem cannot read is still found by its name.
+    // A file Golem cannot read is still found by its name, with no snippet of its stored path.
     expect(
       (await indexer.search("family", "broken report", 20, null)).results.map(
-        (result) => result.uri
+        (result) => [result.uri, result.snippet]
       )
-    ).toEqual(["files/broken report.docx"]);
+    ).toEqual([["files/broken report.docx", ""]]);
     expect(() => indexer.status("../other")).toThrow("Invalid workspace id");
   } finally {
     await indexer.close();

@@ -1248,16 +1248,14 @@ img.avatar {
 }
 /* Cards that an agent writes (cards.tsx): a value that matters, with a pixel icon on the icon's dark tile. */
 .cards {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: var(--space-md);
 }
 .card {
   display: flex;
-  flex: 1 1 160px;
   align-items: flex-start;
   gap: var(--space-lg);
-  max-width: 280px;
   padding: var(--space-md) var(--space-lg);
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
@@ -1329,6 +1327,20 @@ img.avatar {
 }
 .work[open] .disclosure {
   rotate: 90deg;
+}
+/* The work opens and folds, so the answer under it moves and does not jump. */
+.work {
+  interpolate-size: allow-keywords;
+}
+.work::details-content {
+  height: 0;
+  overflow: clip;
+  transition:
+    height var(--duration-normal) var(--easing-standard),
+    content-visibility var(--duration-normal) allow-discrete;
+}
+.work[open]::details-content {
+  height: auto;
 }
 /* The steps of a finished work, one pixel for each tool call. */
 .step-strip {

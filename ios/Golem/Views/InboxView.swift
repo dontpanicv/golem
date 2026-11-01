@@ -61,7 +61,8 @@ struct InboxView: View {
                             .foregroundStyle(Tokens.Mobile.Colors.title)
                             .lineLimit(1)
                         Spacer(minLength: Tokens.Space.md)
-                        Text(Date(milliseconds: notification.createdAt), format: .relative(presentation: .named))
+                        // The day, as the web's Inbox writes it.
+                        Text(Date(milliseconds: notification.createdAt), format: .dateTime.day().month(.abbreviated))
                             .font(.golem(Tokens.Mobile.FontSize.caption))
                             .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                     }

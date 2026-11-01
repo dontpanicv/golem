@@ -14,6 +14,7 @@ import { allRoutes } from "../app/routes.ts";
 import type { User } from "../platform/auth.ts";
 import { Secrets } from "../platform/secrets.ts";
 import type { Embedder } from "./embedder.ts";
+import { cardWords } from "./search.ts";
 import {
   chunk,
   isProse,
@@ -269,6 +270,18 @@ test("each person sees only their own recent searches, newest first, and a searc
   expect(list.map((search) => search.query)).toEqual(["Dentist", "passport"]);
   expect((await searches(eva.token, " ")).status).toBe(400);
   expect((await searches(karel.token)).status).toBe(404);
+});
+
+test("a card block is indexed as the words on its cards", () => {
+  expect(
+    cardWords(
+      'Done.\n\n```card\n[{"icon": "rain", "title": "Tonight", "value": "Rain at 21:00", "detail": "70 %"}, {"value": "78 %"}]\n```\n\nTake the umbrella.'
+    )
+  ).toBe(
+    "Done.\n\n- Tonight: Rain at 21:00, 70 %\n- 78 %\n\nTake the umbrella."
+  );
+  const invalid = '```card\n{"title": "No value"}\n```';
+  expect(cardWords(invalid)).toBe(invalid);
 });
 
 test("a snippet keeps the Markdown lines around the term", async () => {

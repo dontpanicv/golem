@@ -45,13 +45,11 @@ struct PhoneShell: View {
                         }
                     }
                 }
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Close", systemImage: "xmark") { sheet = nil }
-                    }
-                }
             }
             .environment(\.phoneTabBar, nil)
+            .environment(\.closeSheet) { sheet = nil }
+            // A sheet does not take the shell's tint: its glass buttons are plain too.
+            .tint(Tokens.Mobile.Colors.title)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             withAnimation(.smooth(duration: Tokens.Duration.normal)) { bar.keyboard = true }
@@ -94,6 +92,7 @@ struct PhoneShell: View {
         NavigationStack(path: Binding { paths[tab] ?? [] } set: { paths[tab] = $0 }) {
             root(tab).navigationDestination(for: Destination.self) { screen($0) }
         }
+        .headerTitleRoom()
     }
 
     @ViewBuilder
@@ -209,10 +208,11 @@ extension PhoneShell.Tab {
         }
     }
 
-    var systemImage: String {
+    /// Golem's tab shows its face (``GolemGlyph``) instead of a symbol.
+    var systemImage: String? {
         switch self {
         case .home: "house"
-        case .golem: "sparkles"
+        case .golem: nil
         case .activity: "bell"
         case .search: "magnifyingglass"
         }
@@ -273,11 +273,17 @@ private struct TabBar: View {
             select(tab)
         } label: {
             VStack(spacing: Tokens.Space.xxs) {
-                Image(systemName: tab.systemImage)
-                    .font(.system(size: 18, weight: .medium))
-                    .symbolVariant(selected ? .fill : .none)
-                    .symbolEffect(.bounce, value: taps[tab, default: 0])
-                    .frame(height: 22)
+                Group {
+                    if let systemImage = tab.systemImage {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 18, weight: .medium))
+                            .symbolVariant(selected ? .fill : .none)
+                            .symbolEffect(.bounce, value: taps[tab, default: 0])
+                    } else {
+                        GolemGlyph(size: 16)
+                    }
+                }
+                .frame(height: 22)
                     .overlay(alignment: .topTrailing) {
                         if tab == .activity, unread > 0 {
                             Text("\(unread)")

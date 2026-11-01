@@ -462,7 +462,7 @@ const placeRoute = getRouteApi("/signed-in/w/$workspaceId");
  */
 function PlacePanel({ place }: { place: Place }) {
   const [open, setOpen] = usePanelOpen();
-  const [tab, setTab] = useState<"files" | "artifacts">("files");
+  const [tab, setTab] = useState<"files" | "artifacts">("artifacts");
   const { artifact } = placeRoute.useSearch({
     select: (search) => search as { artifact?: string },
   });
@@ -496,13 +496,13 @@ function PlacePanel({ place }: { place: Place }) {
           />
         ) : (
           <div className="tabs" role="tablist">
-            <Tab current={tab} id="files" label="Files" onSelect={setTab} />
             <Tab
               current={tab}
               id="artifacts"
               label="Artifacts"
               onSelect={setTab}
             />
+            <Tab current={tab} id="files" label="Files" onSelect={setTab} />
           </div>
         )}
         <Button

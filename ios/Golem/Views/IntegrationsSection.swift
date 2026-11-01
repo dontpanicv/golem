@@ -18,7 +18,28 @@ struct IntegrationsSection: View {
         SettingsCard(title: "Integrations") {
             ForEach($integrations) { $integration in
                 if integration.id != integrations.first?.id { ListSeparator() }
+                // The integration's actions sit in its row, as on the web: Client, then the way to connect, then help.
                 SettingsRow(integration.name, description: summary(integration)) {
+                    if integration.client?.changeable == true {
+                        Button("Client") { settingClient = integration }
+                            .buttonStyle(.secondary)
+                            .fixedSize()
+                    }
+                    switch integration.connect {
+                    case .signIn:
+                        Button("Connect") { connect(integration) }
+                            .buttonStyle(.secondary)
+                            .fixedSize()
+                            .disabled(integration.client.map { $0.clientId == nil } ?? false)
+                    case .phone:
+                        Button("Link number") { linking = integration }
+                            .buttonStyle(.secondary)
+                            .fixedSize()
+                    case .secret:
+                        Button("Add credential") { addingTo = integration }
+                            .buttonStyle(.secondary)
+                            .fixedSize()
+                    }
                     if !integration.guide.isEmpty {
                         Button("Set up \(integration.name)", systemImage: "info.circle") { guiding = integration }
                             .labelStyle(.iconOnly)
@@ -46,27 +67,6 @@ struct IntegrationsSection: View {
                         SettingsRow(credential.label, description: "Shared by \(credential.ownerName)")
                     }
                 }
-                HStack {
-                    switch integration.connect {
-                    case .signIn:
-                        Button("Connect", systemImage: "link") { connect(integration) }
-                            .buttonStyle(.golem(.ghost, .small))
-                            .disabled(integration.client.map { $0.clientId == nil } ?? false)
-                    case .phone:
-                        Button("Link number", systemImage: "link") { linking = integration }
-                            .buttonStyle(.golem(.ghost, .small))
-                    case .secret:
-                        Button("Add credential", systemImage: "plus") { addingTo = integration }
-                            .buttonStyle(.golem(.ghost, .small))
-                    }
-                    if integration.client?.changeable == true {
-                        Button("Client", systemImage: "key") { settingClient = integration }
-                            .buttonStyle(.golem(.ghost, .small))
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, Tokens.Space.md)
-                .padding(.vertical, Tokens.Space.lg)
             }
         }
         .task { await load() }

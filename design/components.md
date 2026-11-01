@@ -128,7 +128,9 @@ Used by the workspace switcher and action menus.
 
 ## Sidebar
 
-- 244 wide on the canvas, 12 px side padding. It starts with Golem, with no workspace name above it.
+- 244 wide on the canvas, 12 px side padding. It starts with Golem, with no workspace name above it. Golem's icon is
+  its face in one color (`golem`): the icon's 8 × 8 pixels with the marks and eyes cut out, 1.5 px a pixel. iOS uses
+  the same glyph for the Golem tab, the Golem row of Search, and "Ask Golem anything".
 - Item: 28 high, 1 px apart, padding 0 × 9 × 0 × 8, `radius.md`, a 14 px icon 6 px before the label,
   `fontSize.md` `medium` `textTertiary`. Hover: `fillHover` at once and `text` in 150 ms. Current: `fillActive`, `text`.
   Count: `fontSize.xs` `book`. A channel with an emoji shows it in place of the `#` icon, `fontSize.sm`, centered in
@@ -165,6 +167,10 @@ Used by the workspace switcher and action menus.
   `textTertiary` 3 px below, control at the right. Compact rows (lists of people, machines, runs) are min 44 high with
   8 px vertical padding.
 - A leading icon sits in a 32 px `fillIcon` square with `radius.sm`; a leading avatar is 24 px.
+- An integration is one card. Its first row has the name and the count of accounts, and at the right its actions as
+  small buttons: Client (for the server's owner, when it has one), then the way to connect (Connect, Link number, or
+  Add credential), then the info button of its guide. Each credential is a compact row under it. On a narrow page the
+  buttons wrap under the name.
 - A text field for long text, such as the workspace's facts, fills the card with 16 px padding, min 160 high, a 1.5
   line height, and its Save button at the bottom right.
 - Text in a section, such as a channel summary: `fontSize.md` `textSecondary` on a 22 px line, with its line breaks.
@@ -249,7 +255,7 @@ Used by the workspace switcher and action menus.
   targets.
 - Cards: an agent writes a fenced `card` block with a JSON object, or a list of them (`value`, and optionally `title`,
   `detail`, and `icon`). Each shows as a card: `surfaceRaised`, a 0.5 px `ringControl`, shadow `low`, `radius.md`,
-  padding 8 × 12, 160 to 280 px wide in a wrapping row 8 px apart; a 28 px pixel icon (temperature, heat, rain, sun,
+  padding 8 × 12, in a grid of equal columns at least 160 px wide, 8 px apart; a 28 px pixel icon (temperature, heat, rain, sun,
   battery, bolt, car, home, lock) in `gold` on the icon's dark tile, the title in `fontSize.xs` `medium` capitals
   `textTertiary`, the value in `fontSize.lg` `semibold` `text` with tabular numbers, and the detail in `fontSize.sm`
   `textTertiary`. A block that is not valid shows as code. iOS shows one card in a row on a phone.
@@ -299,6 +305,7 @@ Used by the workspace switcher and action menus.
 
 ## Artifact preview
 
+- The panel has two tabs, Artifacts and then Files, and opens on Artifacts.
 - The Artifacts tab lists the thread's artifacts as list rows: artifact icon, title, and the number of people who
   opened it as meta. A row opens the artifact in the panel, with a close button that returns to the Artifacts list.
 - The artifact has a bar (padding 4 16, 0.5 px `border` below): the title in `medium`, cut with an ellipsis, a
@@ -318,9 +325,9 @@ iPad keeps the sidebar with the same screens.
   `textSecondary` for unselected pills and icons, `textTertiary` for captions, `textQuaternary` for section titles and
   chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
 - Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt glass capsule 20 pt
-  from the screen edges and 24 pt above the bottom: Home, Golem, Activity, Search, and You, each an 18 pt icon over its
-  `tabLabel` name. You opens a native menu with Settings and Workspace settings. The open one is `title` on a
-  `tabSelected` capsule that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
+  from the screen edges and 24 pt above the bottom: Home, Golem, Activity, Search, and You, each an 18 pt icon (Golem's
+  face glyph, 16 pt) over its `tabLabel` name. You opens a native menu with Settings and Workspace settings. The open
+  one is `title` on a `tabSelected` capsule that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
   screen. The keyboard covers the bar.
 - Tabs keep their own stacks and fade into each other in 200 ms. Golem, Activity, and Search open in their tabs; a
   channel or a thread opens on the open tab's stack. Settings and Workspace settings open as sheets with a close
@@ -351,17 +358,19 @@ iPad keeps the sidebar with the same screens.
   shows. The composer is a glass field, radius 24: add (+), the text, the mic, and the send button once there is
   something to send. Content fades under the glass bars at the top and bottom. Dragging the content closes the
   keyboard.
-- Activity: as Slack's. All and Unread pills; each notification has Golem's avatar, its title and the time, "in #"
-  and the channel, two lines of text, and an accent dot while unread.
-- Search: as Slack's. The field sits at the top under the title; before a query the screen lists Golem and the
-  channels. Scrolling closes the keyboard.
+- Activity: as Slack's. All and Unread pills; each notification has Golem's avatar, its title and the day, as the
+  web's Inbox, "in #" and the channel, two lines of text, and an accent dot while unread.
+- Search: as Slack's. The field sits at the top under the title. Before a query the screen lists the person's recent
+  searches, then one row for Golem, with Golem's face glyph, that opens Golem; no channels. The web's search page is
+  the same. Scrolling closes the keyboard.
 - Artifacts: a sheet on iPhone with Artifacts and Files pills and a glass close button; an open artifact has a glass
   back button. Each screen keeps its own panel.
 - Motion: springs (`snappy`) for the tab selection, folding, the panel, and new rows; native menus and pushes keep the
   system's own.
 - Settings: flat groups on the page, no cards: a section title, rows 43 high with the label 20 pt in and the value at
-  the right; a select is the value and an up-and-down chevron opening a native menu. Sign out is a `danger` row with
-  its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.
+  the right (a 44 pt control reaches over the row's padding and does not make it taller); a group inside a section,
+  such as "By model" in Usage, has a sub-heading in `caption` `medium` `textTertiary`; a select is the value and an
+  up-and-down chevron opening a native menu. Sign out is a `danger` row with its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.
 - Menus: native. Sheets: a 40 pt round glass close button at the left and the title in the middle,
   `fontSize.sheetTitle` `semibold`; fields are `fill` with radius 12 and a 1 pt accent outline when focused.
 - Live Activity: on the Lock Screen, a status symbol, the working thread's title in `fontSize.row` `semibold`, the

@@ -439,9 +439,10 @@ export class Notifications {
   }
 }
 
-/** Markdown as one line of plain text: link texts stay, pictures, markup, and tags go. */
+/** Markdown as one line of plain text: link texts stay, pictures, cards, markup, and tags go. */
 export function plainText(markdown: string): string {
   return markdown
+    .replace(/^```card[^\n]*\n[\s\S]*?^```[^\S\n]*$/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/<[^>]*>/g, "")

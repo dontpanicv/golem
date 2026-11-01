@@ -54,6 +54,7 @@ struct SettingsView: View {
                                 if llm.owner {
                                     Button("Disconnect") { update { try await session.api.llmLogout() } }
                                         .buttonStyle(.secondary)
+                                        .fixedSize()
                                 }
                             } else if !llm.owner {
                                 Badge(label: "Not connected")

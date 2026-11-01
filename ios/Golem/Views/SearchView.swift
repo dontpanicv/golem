@@ -2,7 +2,7 @@ import QuickLook
 import SwiftUI
 
 /// Searches the open workspace, never another, from a field at the top as Slack's search; results update as you
-/// type, like the web search page. Before a query it lists the person's recent searches.
+/// type, like the web search page. Before a query it lists the person's recent searches, then Golem.
 struct SearchView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
@@ -22,6 +22,12 @@ struct SearchView: View {
                                     .font(.golem(Tokens.Mobile.FontSize.caption))
                                     .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                             }
+                        }
+                        .buttonStyle(.row)
+                    }
+                    if let orchestrator = session.orchestrator {
+                        Button { open(.thread(orchestrator.id)) } label: {
+                            ListRow(title: "Golem", golem: true) { EmptyView() }
                         }
                         .buttonStyle(.row)
                     }
@@ -133,8 +139,10 @@ private struct SearchRow: View {
                 Text(result.title)
                     .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book))
                     .foregroundStyle(Tokens.Mobile.Colors.text)
-                MarkdownText(text: result.snippet, size: Tokens.Mobile.FontSize.small)
-                    .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+                if !result.snippet.isEmpty {
+                    MarkdownText(text: result.snippet, size: Tokens.Mobile.FontSize.small)
+                        .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+                }
                 Text(place)
                     .font(.golem(Tokens.Mobile.FontSize.caption))
                     .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)

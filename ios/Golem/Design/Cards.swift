@@ -61,7 +61,8 @@ struct SettingsRow<Leading: View, Control: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            control
+            // A control keeps its 44 pt touch target over the row's padding, so it does not make the row taller.
+            control.padding(.vertical, -Tokens.Space.sm)
         }
         .padding(.horizontal, Tokens.Mobile.Size.margin)
         .padding(.vertical, Tokens.Space.sm)

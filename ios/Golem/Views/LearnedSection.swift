@@ -12,14 +12,9 @@ struct LearnedSection: View {
 
     var body: some View {
         SettingsCard(title: "What Golem learned") {
-            if learned.isEmpty { SettingsRow("Nothing yet") }
+            if learned.isEmpty { SettingsRow("Nothing yet", labelColor: Tokens.Mobile.Colors.textTertiary) { EmptyView() } }
             ForEach(groups, id: \.title) { group in
-                Text(group.title)
-                    .font(.golem(Tokens.Mobile.FontSize.caption, Tokens.FontWeight.medium))
-                    .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
-                    .padding(.horizontal, Tokens.Mobile.Size.margin)
-                    .padding(.top, Tokens.Space.md)
-                    .accessibilityAddTraits(.isHeader)
+                ListSubheading(group.title)
                 ForEach(group.entries) { row($0) }
             }
         }

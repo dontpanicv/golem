@@ -61,7 +61,7 @@ struct ConversationView: View {
         .scrollDismissesKeyboard(.interactively)
         .overlay {
             if let state {
-                if state.messages.isEmpty { EmptyState(title: "Ask Golem anything", systemImage: "sparkles") }
+                if state.messages.isEmpty { EmptyState(title: "Ask Golem anything") { GolemGlyph(size: 24) } }
             } else if let failure {
                 EmptyState(title: failure, systemImage: "wifi.exclamationmark")
             } else {

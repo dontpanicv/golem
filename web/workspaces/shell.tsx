@@ -299,7 +299,7 @@ function WorkspaceNav({
               to="/w/$workspaceId/t/$threadId"
             >
               <NavContent
-                icon="inbox"
+                icon="golem"
                 label="Golem"
                 threadId={orchestrator.id}
               />

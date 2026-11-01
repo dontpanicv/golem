@@ -45,6 +45,10 @@ const paths = {
   link: '<path d="M7 9a2.5 2.5 0 0 0 3.5 0l2-2A2.5 2.5 0 0 0 9 3.5l-.75.75M9 7a2.5 2.5 0 0 0-3.5 0l-2 2A2.5 2.5 0 0 0 7 12.5l.75-.75"/>', // link
   clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/>', // clock
   lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>', // lock
+  // Golem's face from the icon's 8 × 8 pixels, in one color with its marks and eyes cut out: 12 of the 14 px of
+  // a navigation icon, so each pixel is 1.5 px, whole device pixels on a Retina screen. iOS: GolemGlyph.
+  golem:
+    '<svg x="1.142857" y="1.142857" width="13.714286" height="13.714286" viewBox="0 0 8 8" shape-rendering="crispEdges"><path d="M0 0H8V7H7V8H1V7H0ZM3 1H5V2H3ZM2 5H6V6H2ZM1 2H3V3H1ZM5 2H7V3H5Z" fill="currentColor" fill-rule="evenodd" stroke="none"/></svg>',
 } as const;
 
 export type IconName = keyof typeof paths;

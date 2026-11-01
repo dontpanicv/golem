@@ -7,24 +7,10 @@ import SwiftUI
 
 extension View {
     /// The screen's title at the leading edge of the navigation bar, level with its glass buttons, as Linear's
-    /// top-level screens show it. The bar's own title stays for accessibility and the back menu.
+    /// top-level screens show it. The bar's own title stays for accessibility and the back menu. In a sheet
+    /// (``EnvironmentValues/closeSheet``), the title is in the middle with the close button at the leading edge.
     func screenTitle(_ title: String) -> some View {
-        navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(removing: .title)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Text(title)
-                        .font(.golem(Tokens.Mobile.FontSize.title, Tokens.FontWeight.semibold))
-                        .foregroundStyle(Tokens.Mobile.Colors.title)
-                        .lineLimit(1)
-                        .fixedSize()
-                        // Linear's title starts 12 pt from the edge, where the bar puts its first item at 20.
-                        .padding(.leading, -8)
-                        .accessibilityAddTraits(.isHeader)
-                }
-                .sharedBackgroundVisibility(.hidden)
-            }
+        modifier(ScreenTitle(title: title))
     }
 
     /// A pushed screen: the bar holds only the back button and the glass buttons, as on Linear's issue screen; the
@@ -35,12 +21,80 @@ extension View {
             .toolbar(removing: .title)
     }
 
+    /// Lets the ``HeaderTitle`` of the screens inside grow to the trailing button of the bar: the width less the
+    /// 20 pt margins, the 44 pt back and trailing buttons, the gaps of 16 pt beside the capsule, and its padding.
+    func headerTitleRoom() -> some View { modifier(HeaderTitleRoom()) }
+
     /// The page background of a mobile screen.
     func mobileBackground() -> some View {
         background(Tokens.Mobile.Colors.background)
             .scrollContentBackground(.hidden)
             // Content fades under the glass bars, as Linear's does.
             .scrollEdgeEffectStyle(.soft, for: .all)
+    }
+}
+
+extension EnvironmentValues {
+    /// The widest a ``HeaderTitle`` fits between the back button and one trailing button; ``View/headerTitleRoom()``
+    /// sets it from the screen's width.
+    @Entry var headerTitleWidth: CGFloat = 220
+    /// Closes the sheet that shows the screen; ``View/screenTitle(_:)`` then draws a sheet's title.
+    @Entry var closeSheet: (() -> Void)?
+}
+
+private struct HeaderTitleRoom: ViewModifier {
+    @State private var width: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.headerTitleWidth, width.map { max($0 - 2 * (20 + 44 + 16) - 12, 120) } ?? 220)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+private struct ScreenTitle: ViewModifier {
+    let title: String
+    @Environment(\.closeSheet) private var closeSheet
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let closeSheet {
+            // As Linear's sheets: a round glass close button and the title in the middle. The bar keeps its title
+            // here, as removing it also removes the middle item.
+            content
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Close", systemImage: "xmark", action: closeSheet)
+                    }
+                    ToolbarItem(placement: .principal) {
+                        Text(title)
+                            .font(.golem(Tokens.Mobile.FontSize.sheetTitle, Tokens.FontWeight.semibold))
+                            .foregroundStyle(Tokens.Mobile.Colors.title)
+                            .lineLimit(1)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                }
+        } else {
+            content
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(removing: .title)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Text(title)
+                            .font(.golem(Tokens.Mobile.FontSize.title, Tokens.FontWeight.semibold))
+                            .foregroundStyle(Tokens.Mobile.Colors.title)
+                            .lineLimit(1)
+                            .fixedSize()
+                            // Linear's title starts 12 pt from the edge, where the bar puts its first item at 20.
+                            .padding(.leading, -8)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                }
+        }
     }
 }
 
@@ -115,16 +169,14 @@ struct ListSectionHeader: View {
 
     var body: some View {
         HStack {
-            Button { open?() } label: {
-                Text(title)
-                    .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
-                    .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
-                    .frame(minHeight: Tokens.Size.listRow)
-                    .contentShape(.rect)
+            // A heading that opens nothing is plain text: a disabled button would dim it.
+            if let open {
+                Button(action: open) { label }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(.isHeader)
+            } else {
+                label.accessibilityAddTraits(.isHeader)
             }
-            .buttonStyle(.plain)
-            .disabled(open == nil)
-            .accessibilityAddTraits(.isHeader)
             Spacer()
             if let add {
                 Button(add.label, systemImage: "plus", action: add.action)
@@ -137,6 +189,30 @@ struct ListSectionHeader: View {
         }
         .padding(.horizontal, Tokens.Mobile.Size.margin)
     }
+
+    private var label: some View {
+        Text(title)
+            .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
+            .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+            .frame(minHeight: Tokens.Size.listRow)
+            .contentShape(.rect)
+    }
+}
+
+/// A heading inside a list section, as "About Anna" in What Golem learned: smaller and dimmer than the section's.
+struct ListSubheading: View {
+    let title: String
+
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title)
+            .font(.golem(Tokens.Mobile.FontSize.caption, Tokens.FontWeight.medium))
+            .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
+            .padding(.horizontal, Tokens.Mobile.Size.margin)
+            .padding(.top, Tokens.Space.md)
+            .accessibilityAddTraits(.isHeader)
+    }
 }
 
 /// A list row: an icon, a title, and trailing content. Rows sit 10 pt in from the screen edge with their content
@@ -148,11 +224,17 @@ struct ListRow<Trailing: View>: View {
     var working = false
     /// Shows in place of the symbol when set.
     var emoji: String?
+    /// Golem's face in place of the symbol, for a row that opens Golem.
+    var golem = false
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
-            if let emoji {
+            if golem {
+                GolemGlyph(size: 16)
+                    .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+                    .frame(width: 21)
+            } else if let emoji {
                 Text(emoji)
                     .font(.system(size: 15))
                     .frame(width: 21)
@@ -163,10 +245,14 @@ struct ListRow<Trailing: View>: View {
                     .frame(width: 21)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book))
-                    .foregroundStyle(Tokens.Mobile.Colors.text)
-                    .lineLimit(1)
+                // The spinner follows the title on its line, also over a subtitle.
+                HStack(spacing: Tokens.Space.md) {
+                    Text(title)
+                        .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book))
+                        .foregroundStyle(Tokens.Mobile.Colors.text)
+                        .lineLimit(1)
+                    if working { PixelSpinner() }
+                }
                 if let subtitle {
                     Text(subtitle)
                         .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
@@ -174,7 +260,6 @@ struct ListRow<Trailing: View>: View {
                         .lineLimit(1)
                 }
             }
-            if working { PixelSpinner() }
             Spacer(minLength: 0)
             trailing
         }
@@ -282,6 +367,7 @@ struct FoldingSection<Content: View>: View {
 struct HeaderTitle: View {
     let title: String
     var caption: String?
+    @Environment(\.headerTitleWidth) private var maxWidth
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -297,7 +383,8 @@ struct HeaderTitle: View {
         }
         .lineLimit(1)
         .padding(.horizontal, Tokens.Space.sm)
-        .frame(maxWidth: 220, alignment: .leading)
+        // The capsule hugs the title and grows up to the trailing button; any wider, the bar folds it into a menu.
+        .frame(maxWidth: maxWidth, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }

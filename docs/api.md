@@ -108,7 +108,7 @@ type SearchResult = {
 	title: string;
 	threadId: string | null;
 	channelId: string | null;
-	snippet: string;
+	snippet: string; // Markdown around the term; "" for a file found by its name
 	score: number;
 	updatedAt: number;
 };

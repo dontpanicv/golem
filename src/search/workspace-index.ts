@@ -360,13 +360,21 @@ export class WorkspaceIndex {
     return scored.slice(0, limit).map(({ source, score, segment }) => {
       const row = this.database
         .query(
-          "SELECT src.uri, src.kind, src.title, src.thread_id AS threadId, src.channel_id AS channelId, src.updated_at AS updatedAt, s.excerpt, s.modality, s.loc FROM sources src JOIN segments s ON s.id = ? WHERE src.id = ?"
+          "SELECT src.uri, src.kind, src.title, src.thread_id AS threadId, src.channel_id AS channelId, src.updated_at AS updatedAt, s.key, s.excerpt, s.modality, s.loc FROM sources src JOIN segments s ON s.id = ? WHERE src.id = ?"
         )
         .get(segment, source) as Omit<SearchResult, "snippet" | "score"> & {
+        key: string;
         excerpt: string;
       };
-      const { excerpt, ...result } = row;
-      return { ...result, snippet: snippet(excerpt, terms), score };
+      const { key, excerpt, ...result } = row;
+      // A file found by its stored path shows its title only; the path holds its id.
+      const text = key === "name" ? "" : snippet(excerpt, terms);
+      return {
+        ...result,
+        snippet:
+          result.kind === "artifact" ? withoutTitle(text, result.title) : text,
+        score,
+      };
     });
   }
 
@@ -579,6 +587,11 @@ function queryTerms(query: string): string[] {
 function ftsTerm(term: string): string {
   // Terms of three or more characters also match words that start with them, as while typing.
   return term.length >= 3 ? `"${term}"*` : `"${term}"`;
+}
+
+/** An artifact's text starts with its heading, which the result already shows as its title. */
+function withoutTitle(text: string, title: string): string {
+  return text.startsWith(title) ? text.slice(title.length).trimStart() : text;
 }
 
 /**

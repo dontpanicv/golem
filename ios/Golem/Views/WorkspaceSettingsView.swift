@@ -35,7 +35,9 @@ struct WorkspaceSettingsView: View {
                         .buttonStyle(.secondary)
                         .disabled(facts == savedFacts)
                 }
-                .padding(Tokens.Space.xl)
+                // The field lines up with the section's title and rows; the title's row is its space above.
+                .padding(.horizontal, Tokens.Mobile.Size.margin)
+                .padding(.bottom, Tokens.Space.lg)
             }
             SettingsCard(title: "Members") {
                 ForEach(members) { member in
@@ -58,7 +60,8 @@ struct WorkspaceSettingsView: View {
                             .buttonStyle(.secondary)
                             .disabled(email.isEmpty)
                     }
-                    .padding(Tokens.Space.xl)
+                    .padding(.horizontal, Tokens.Mobile.Size.margin)
+                    .padding(.vertical, Tokens.Space.md)
                 }
             }
             if session.workspace?.role == "owner" {
@@ -71,7 +74,8 @@ struct WorkspaceSettingsView: View {
                             .buttonStyle(.secondary)
                             .disabled(!renamed)
                     }
-                    .padding(Tokens.Space.xl)
+                    .padding(.horizontal, Tokens.Mobile.Size.margin)
+                    .padding(.bottom, Tokens.Space.lg)
                 }
             }
         }

@@ -12,8 +12,11 @@ struct UpcomingView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
+                DetailTitle(title: "Upcoming")
+                    .padding(.horizontal, Tokens.Mobile.Size.margin)
+                    .padding(.vertical, Tokens.Space.md)
                 ForEach(groups) { group in
-                    if group.id != groups.first?.id { ListSeparator() }
+                    ListSeparator()
                     ListSectionHeader(title: group.kind.rawValue)
                     ForEach(group.items) { row($0, in: group.kind) }
                 }
@@ -29,7 +32,7 @@ struct UpcomingView: View {
         .refreshable { await session.run { try await load() } }
         .phoneTabBar()
         .mobileBackground()
-        .screenTitle("Upcoming")
+        .pushedScreen("Upcoming")
     }
 
     private func load() async throws {
@@ -63,12 +66,10 @@ struct UpcomingView: View {
                 MenuItem("Cancel reminder", systemImage: "xmark", role: .destructive) { cancel(reminder) }
             }
         case let .suggestion(suggestion):
-            SuggestionCard(suggestion: suggestion) {
+            SuggestionCard(suggestion: suggestion, card: false) {
                 upcoming?.suggestions.removeAll { $0.id == suggestion.id }
                 Task { try? await load() }
             }
-            .padding(.horizontal, Tokens.Mobile.Size.margin)
-            .padding(.vertical, Tokens.Space.xs)
         }
     }
 
@@ -128,22 +129,43 @@ struct UpcomingView: View {
     }
 }
 
-/// A routine or a reminder that Golem suggests, with Decline and Accept. `answered` takes it away.
+/// A routine or a reminder that Golem suggests, with Decline and Accept: a compact row in Upcoming, and a card over
+/// the composer of the person's Golem. `answered` takes it away.
 struct SuggestionCard: View {
     let suggestion: Suggestion
+    var card = true
     let answered: () -> Void
     @Environment(Session.self) private var session
     @State private var busy = false
 
     var body: some View {
+        if card {
+            content(title: Tokens.Mobile.FontSize.small, detail: Tokens.Mobile.FontSize.caption)
+                .padding(Tokens.Space.lg)
+                .raisedCard(ring: Tokens.Colors.ringControl)
+        } else {
+            // As a `ListRow`, with the kind's icon of the routine and reminder rows.
+            HStack(spacing: Tokens.Space.md) {
+                Image(systemName: suggestion.kind == .routine ? "arrow.clockwise" : "bell")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
+                    .frame(width: 21)
+                content(title: Tokens.Mobile.FontSize.row, detail: Tokens.Mobile.FontSize.small)
+            }
+            .padding(.horizontal, Tokens.Mobile.Size.margin)
+            .frame(minHeight: Tokens.Mobile.Size.row)
+        }
+    }
+
+    private func content(title: CGFloat, detail: CGFloat) -> some View {
         HStack(spacing: Tokens.Space.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(suggestion.name)
-                    .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium))
+                    .font(.golem(title, card ? Tokens.FontWeight.medium : Tokens.FontWeight.book))
                     .foregroundStyle(Tokens.Mobile.Colors.text)
                     .lineLimit(2)
-                Text(detail)
-                    .font(.golem(Tokens.Mobile.FontSize.caption, Tokens.FontWeight.book))
+                Text(self.detail)
+                    .font(.golem(detail, Tokens.FontWeight.book))
                     .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
                     .lineLimit(1)
             }
@@ -154,8 +176,6 @@ struct SuggestionCard: View {
                 .buttonStyle(.golem(.primary, .small))
         }
         .disabled(busy)
-        .padding(Tokens.Space.lg)
-        .raisedCard(ring: Tokens.Colors.ringControl)
     }
 
     /// "Routine · Mon 3 Nov, 08:00", or the schedule without a first run.

@@ -151,6 +151,8 @@ struct WorkLog: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            // The 44 pt touch target reaches over the lines around it, so the summary sits as close as a line.
+            .padding(.vertical, -(Tokens.Size.listRow - 20) / 2)
             .disabled(work.steps.isEmpty)
             if open, !work.steps.isEmpty {
                 ViewThatFits(in: .vertical) {
@@ -162,6 +164,7 @@ struct WorkLog: View {
                 .overlay(alignment: .leading) { Rectangle().fill(Tokens.Colors.border).frame(width: 1) }
             }
         }
+        .animation(.snappy, value: working)
         .onChange(of: working) { chosen = nil }
     }
 

@@ -136,7 +136,7 @@ enum Tokens {
 			static let separator = Color(light: "#f1f1f1", dark: "#171717")
 			static let fill = Color(light: "#f1f1f1", dark: "#292929")
 			static let danger = Color(light: "#ea5756", dark: "#ea5756")
-			static let tabSelected = Color(light: "#e9e9e9", dark: "#333333")
+			static let tabSelected = Color(light: "#e9e9e9", dark: "#454545")
 			static let menuSelected = Color(light: "#f0f0f0", dark: "#333333")
 		}
 
