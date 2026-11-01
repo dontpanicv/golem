@@ -173,10 +173,10 @@ Used by the workspace switcher and action menus.
   buttons wrap under the name.
 - Places: a compact row per place with its name and its radius and Shared or Private, then the Private switch and the
   change and remove icon buttons (iOS: the switch and a menu). Add place opens a dialog: the Name field, a map
-  `size.map` high with `radius.md` and a 0.5 px `border`, and a Radius select. A click or a tap puts the pin, a 16 px
-  `accent` circle with a 2 px `onAccent` ring; the web pin drags. The place's circle is `accent`, 1.5 px, filled at
-  12 %. The web shows OpenStreetMap through Golem, with only "© OpenStreetMap"; iOS shows MapKit with the location
-  button.
+  `size.map` high with `radius.md` and a 0.5 px `border`, and a Radius select. The pin stays in the middle of the map,
+  which moves under it, so a place always has one: a 16 px `accent` circle with a 2 px `onAccent` ring. The place's
+  circle is `accent`, 1.5 px, filled at 12 %. The web shows OpenStreetMap through Golem, with only "© OpenStreetMap";
+  iOS shows MapKit with the location button.
 - A text field for long text, such as the workspace's facts, fills the card with 16 px padding, min 160 high, a 1.5
   line height, and its Save button at the bottom right.
 - Text in a section, such as a channel summary: `fontSize.md` `textSecondary` on a 22 px line, with its line breaks.

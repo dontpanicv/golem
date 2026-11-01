@@ -76,7 +76,7 @@ struct PlacesSection: View {
     }
 }
 
-/// Adds a place or changes one: its name, a pin that a tap on the map puts, and the radius of its circle.
+/// Adds a place or changes one: its name, the pin in the middle of the map, and the radius of its circle.
 private struct PlaceForm: View {
     let workspaceID: String
     let place: Place?
@@ -107,27 +107,24 @@ private struct PlaceForm: View {
 
     var body: some View {
         Dialog(title: place?.name ?? "Add a place") {
-            GolemTextField("Name", text: $name, autofocus: place == nil)
-            MapReader { map in
-                Map(position: $camera) {
-                    if let pin {
-                        MapCircle(center: pin, radius: CLLocationDistance(radius))
-                            .foregroundStyle(Tokens.Colors.accent.opacity(0.12))
-                            .stroke(Tokens.Colors.accent, lineWidth: 1.5)
-                        Annotation(name, coordinate: pin) {
-                            Circle()
-                                .fill(Tokens.Colors.accent)
-                                .stroke(.white, lineWidth: 2)
-                                .frame(width: 16, height: 16)
-                        }
-                        .annotationTitles(.hidden)
-                    }
-                    UserAnnotation()
+            GolemTextField("Name", text: $name)
+            // The pin stays in the middle and the map moves under it, so a place always has a pin.
+            Map(position: $camera) {
+                if let pin {
+                    MapCircle(center: pin, radius: CLLocationDistance(radius))
+                        .foregroundStyle(Tokens.Colors.accent.opacity(0.12))
+                        .stroke(Tokens.Colors.accent, lineWidth: 1.5)
                 }
-                .mapControls { MapUserLocationButton() }
-                .onTapGesture { point in
-                    if let coordinate = map.convert(point, from: .local) { pin = coordinate }
-                }
+                UserAnnotation()
+            }
+            .mapControls { MapUserLocationButton() }
+            .onMapCameraChange(frequency: .continuous) { pin = $0.region.center }
+            .overlay {
+                Circle()
+                    .fill(Tokens.Colors.accent)
+                    .stroke(.white, lineWidth: 2)
+                    .frame(width: 16, height: 16)
+                    .allowsHitTesting(false)
             }
             .frame(height: Tokens.Size.map)
             .clipShape(.rect(cornerRadius: Tokens.Radius.md))
@@ -141,7 +138,7 @@ private struct PlaceForm: View {
             Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
             Button(place == nil ? "Add place" : "Save", action: save)
                 .buttonStyle(.golem(.primary, .large))
-                .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty || pin == nil)
+                .disabled(busy)
         }
         .onAppear {
             if location.authorizationStatus == .notDetermined { location.requestWhenInUseAuthorization() }
@@ -149,6 +146,10 @@ private struct PlaceForm: View {
     }
 
     private func save() {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+            session.show("Give the place a name", .error)
+            return
+        }
         guard let pin else { return }
         busy = true
         Task {
