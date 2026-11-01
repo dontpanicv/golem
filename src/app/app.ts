@@ -10,6 +10,7 @@ import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
 import { apnsPush } from "../notifications/apns.ts";
 import { Notifications } from "../notifications/notifications.ts";
+import { Phone } from "../phone/phone.ts";
 import { Places } from "../places/places.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
@@ -43,6 +44,7 @@ export interface App {
   readonly places: Places;
   readonly reminders: Reminders;
   readonly agenda: Agenda;
+  readonly phone: Phone;
 }
 
 const HANDS_BINARIES = resolve(import.meta.dir, "../../hands/dist");
@@ -152,6 +154,7 @@ export async function createApp(
       tools: async (workspaceId) => [
         ...(await routines.tools(workspaceId)),
         ...reminders.tools(workspaceId),
+        ...phone.tools(workspaceId),
       ],
       automations: (workspaceId, personId) =>
         agenda.automations(workspaceId, personId),
@@ -186,6 +189,7 @@ export async function createApp(
     reminders,
     places
   );
+  const phone = new Phone(threads);
   return {
     config,
     database,
@@ -205,6 +209,7 @@ export async function createApp(
     places,
     reminders,
     agenda,
+    phone,
   };
 }
 

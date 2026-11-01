@@ -48,6 +48,10 @@ targets:
         # A thread's push is a message from Golem (GolemNotification), which Siri reads aloud and replies to.
         com.apple.developer.usernotifications.communication: true
         com.apple.developer.siri: true
+        # Phone tools (Golem/Phone): Apple Health and Apple Home.
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        com.apple.developer.homekit: true
     info:
       path: Golem/Info.plist
       properties:
@@ -66,6 +70,18 @@ targets:
         NSLocationWhenInUseUsageDescription: Golem shows where you are on the map of a place.
         NSLocationAlwaysAndWhenInUseUsageDescription: Golem reminds you when you arrive at or leave a place. Only the arrival or the departure goes to Golem.
         NSSiriUsageDescription: Siri reads Golem's messages aloud and sends your spoken replies.
+        # Phone tools (Golem/Phone): what Golem does on the phone when you ask it.
+        NSAlarmKitUsageDescription: Golem sets alarms and timers when you ask it.
+        NSRemindersFullAccessUsageDescription: Golem reads and changes your reminders when you ask it.
+        NSCalendarsFullAccessUsageDescription: Golem reads and changes your calendar when you ask it.
+        NSContactsUsageDescription: Golem finds and changes contacts when you ask it.
+        NSAppleMusicUsageDescription: Golem plays music when you ask it.
+        NSPhotoLibraryUsageDescription: Golem finds and shows your photos when you ask it.
+        NSPhotoLibraryAddUsageDescription: Golem saves pictures to Photos when you ask it.
+        NSCameraUsageDescription: Golem takes a photo or scans a document when you ask it.
+        NSHealthShareUsageDescription: Golem reads your Health data when you ask it.
+        NSHealthUpdateUsageDescription: Golem logs water, caffeine, weight, body fat, and mindful minutes when you ask it.
+        NSHomeKitUsageDescription: Golem runs scenes and turns accessories on and off when you ask it.
         # Siri's spoken reply to a message from Golem (SiriReply).
         NSUserActivityTypes: [INSendMessageIntent]
         INIntentsSupported: [INSendMessageIntent]
@@ -167,6 +183,7 @@ targets:
       - path: GolemActivity
       # The activity's attributes, the tokens, and the font come from the app.
       - path: Golem/API/ThreadActivity.swift
+      - path: Golem/Phone/GolemAlarm.swift
       - path: Golem/Design/Tokens.swift
       - path: Golem/Design/DesignSystem.swift
       - path: Golem/Design/Pixels.swift

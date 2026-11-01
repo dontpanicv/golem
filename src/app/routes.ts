@@ -6,6 +6,7 @@ import { handsApiRoutes } from "../hands/api.ts";
 import { integrationApiRoutes } from "../integrations/api.ts";
 import { llmApiRoutes } from "../llm/api.ts";
 import { notificationApiRoutes } from "../notifications/api.ts";
+import { phoneApiRoutes } from "../phone/api.ts";
 import { placeApiRoutes } from "../places/api.ts";
 import { HttpError } from "../platform/errors.ts";
 import { routineApiRoutes } from "../routines/api.ts";
@@ -46,6 +47,7 @@ export const allRoutes: readonly Route[] = [
   ...searchApiRoutes,
   ...routineApiRoutes,
   ...agendaApiRoutes,
+  ...phoneApiRoutes,
   [
     "POST",
     "/api/v1/server/restart",

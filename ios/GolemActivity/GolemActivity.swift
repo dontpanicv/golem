@@ -4,7 +4,10 @@ import WidgetKit
 
 @main
 struct GolemActivityBundle: WidgetBundle {
-    var body: some Widget { ThreadActivity() }
+    var body: some Widget {
+        ThreadActivity()
+        AlarmActivity()
+    }
 }
 
 /// The work for the person's message on the Lock Screen and in the Dynamic Island: what works now, how it goes, and

@@ -376,3 +376,35 @@ extension APIClient {
         try decode(try await send("PUT", "/api/v1/workspaces/\(workspaceID)/facts", ["text": text]).data)
     }
 }
+
+/// The calls of agents' phone tools (`PhoneLink`).
+extension APIClient {
+    /// Reads the calls for the person's phone until the stream ends, the task is cancelled, or an error occurs.
+    /// `Call` is `PhoneCall`, which only the app has, not the Share extension.
+    func phoneCalls<Call: Decodable>(onCall: (Call) -> Void) async throws {
+        try await events("/api/v1/phone/calls", named: "call", onEvent: onCall)
+    }
+
+    /// Answers a call with text and JPEG pictures.
+    func answerPhoneCall(_ id: String, text: String, images: [Data]) async throws {
+        let path = "/api/v1/phone/calls/\(id)"
+        guard !images.isEmpty else {
+            _ = try await send("POST", path, ["text": text])
+            return
+        }
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let files = try images.enumerated().map { index, image in
+            let file = folder.appending(path: "\(index + 1).jpg")
+            try image.write(to: file)
+            return file
+        }
+        _ = try await sendForm(path, ["text": text], files)
+    }
+
+    /// Answers a call with the error that its tool fails with.
+    func answerPhoneCall(_ id: String, error: String) async throws {
+        _ = try await send("POST", "/api/v1/phone/calls/\(id)", ["error": error])
+    }
+}

@@ -544,6 +544,17 @@ schedule or time cannot run.
 A person adds places in Settings, from a pin in the middle of a map, which an address moves to. Like a machine, a new place is private to its owner's turns until
 they share it.
 
+### Phone (`src/phone/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/phone/calls` | | Server-sent events: `event: call`, `data: { id, workspaceId, name, arguments }`, a call of an agent's `phone_<name>` tool for the person's phone |
+| `POST /api/v1/phone/calls/:callId` | `{ text }` or `{ error }`; as `multipart/form-data`, also `files`: JPEG pictures | `204`; the tool returns the text and the pictures, or fails with the error. `404` unless the call went to the person and still waits |
+
+Only the iOS app opens the stream, while it is open: a turn's phone tools act on the phone of the turn's person,
+and fail when no stream of that person is open. A call goes to the stream that the person opened last, and waits 3
+minutes for its answer; it fails when that stream closes first.
+
 ### Machines (`src/hands/`)
 
 | Request | Body | Response |

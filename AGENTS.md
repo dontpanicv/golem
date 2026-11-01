@@ -39,6 +39,9 @@ addresses, or code and data from employers or clients.
 - Agents make and change reminders with tools; a person sees their pending ones in Upcoming and cancels one there.
 - The iPhone only reports what it sees at the places that Golem gives it (`src/agenda/`); Golem decides which reminders
   and routines are due. Golem keeps only each person's last state at a place, never where they are.
+- The `phone_*` tools (`src/phone/`, `ios/Golem/Phone/`) act on the iPhone of the turn's person only while the Golem app
+  is open on it: the app holds the call stream and answers each call; Golem never connects to the phone. A new tool
+  needs its entry in `src/phone/tools.ts` and in `PhoneLink.tools`.
 - Golem stays quiet by default: background work notifies a person only when they must act or asked for it, and a
   routine or reminder answers `QUIET` when nothing needs anyone.
 - Consent first: Golem makes no routine, reminder, or message that no person asked for. It suggests one
@@ -71,7 +74,7 @@ addresses, or code and data from employers or clients.
 ## Modules
 
 - `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `places`, `artifacts`,
-  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`) holds one domain: its service, routes, and tests. `src/platform/`
+  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`, `phone`) holds one domain: its service, routes, and tests. `src/platform/`
   is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
 - A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` from
   routes. A module reads only the tables it owns. `test/architecture.test.ts` enforces these rules;
