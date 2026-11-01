@@ -60,7 +60,13 @@ test("a notification goes to the inbox and to the person's devices as a push", a
   expect(pushes).toEqual([
     {
       device: expect.objectContaining({ token: TOKEN, environment: "sandbox" }),
-      message: { notification, body: notification.text, badge: 1 },
+      message: {
+        notification,
+        body: notification.text,
+        badge: 1,
+        approvalId: null,
+        timeSensitive: false,
+      },
     },
   ]);
   expect(notifications.inbox("home", alice)).toEqual({
@@ -69,6 +75,18 @@ test("a notification goes to the inbox and to the person's devices as a push", a
     badge: 1,
   });
   expect(() => notifications.inbox("home", eve)).toThrow("Not found");
+  const approval = notifications.notify({
+    ...answer,
+    text: "Allow? git push",
+    approvalId: "a1",
+    timeSensitive: true,
+  });
+  await Bun.sleep(0);
+  expect(pushes[1]!.message).toMatchObject({
+    notification: approval,
+    approvalId: "a1",
+    timeSensitive: true,
+  });
 });
 
 test("a person who has the thread open gets no push, and opening a thread reads its notifications", async () => {
@@ -201,18 +219,41 @@ test("APNs gets a provider token signed with the key, and a push that opens the 
     createdAt: 0,
     readAt: null,
   };
-  expect(apnsPayload({ notification, body: "Found", badge: 2 })).toEqual({
+  const push = { notification, body: "Found", badge: 2 };
+  expect(
+    apnsPayload({ ...push, approvalId: null, timeSensitive: false })
+  ).toEqual({
     aps: {
       alert: { title: "Flights", body: "Found" },
       badge: 2,
       sound: "default",
       "thread-id": "flights",
+      category: "message",
+      "mutable-content": 1,
     },
     notificationId: "n1",
     workspaceId: "home",
     channelId: "general",
     threadId: "flights",
   });
+  expect(
+    apnsPayload({ ...push, approvalId: "a1", timeSensitive: true })
+  ).toMatchObject({
+    aps: { category: "approval", "interruption-level": "time-sensitive" },
+    approvalId: "a1",
+  });
+  expect(
+    apnsPayload({ ...push, approvalId: "a1", timeSensitive: true }).aps
+  ).not.toHaveProperty("mutable-content");
+  // A push that opens a channel has no thread to reply to, so it has no buttons.
+  expect(
+    apnsPayload({
+      ...push,
+      notification: { ...notification, threadId: null },
+      approvalId: null,
+      timeSensitive: false,
+    }).aps
+  ).not.toHaveProperty("category");
 });
 
 test("an APNs answer whose body is not JSON is an error and not a crash", () => {

@@ -19,7 +19,13 @@ export interface Notification {
 export type NotificationInput = Pick<
   Notification,
   "workspaceId" | "channelId" | "threadId" | "title" | "text"
-> & { readonly userId: string };
+> & {
+  readonly userId: string;
+  /** The approval that the push lets the person allow or deny. */
+  readonly approvalId?: string;
+  /** A push that comes through a Focus: a reminder or an approval. */
+  readonly timeSensitive?: boolean;
+};
 
 export interface Inbox {
   readonly notifications: readonly Notification[];
@@ -42,6 +48,8 @@ export interface PushMessage {
   /** The notification's text, short enough for a push. */
   readonly body: string;
   readonly badge: number;
+  readonly approvalId: string | null;
+  readonly timeSensitive: boolean;
 }
 
 /** Sends one push; `gone` when the device takes no more pushes, such as after the app was removed. */
@@ -153,7 +161,7 @@ export class Notifications {
         notification.readAt
       );
     if (!seen) {
-      this.send(input.userId, notification).catch((error: unknown) =>
+      this.send(input, notification).catch((error: unknown) =>
         console.error("push failed", error)
       );
     }
@@ -397,7 +405,7 @@ export class Notifications {
       );
   }
 
-  private async send(userId: string, notification: Notification) {
+  private async send(input: NotificationInput, notification: Notification) {
     if (!this.push) {
       return;
     }
@@ -405,14 +413,16 @@ export class Notifications {
       .query(
         "SELECT id, token, environment FROM push_device WHERE user_id = ? AND deleted_at IS NULL"
       )
-      .all(userId) as (PushDevice & { id: string })[];
+      .all(input.userId) as (PushDevice & { id: string })[];
     if (devices.length === 0) {
       return;
     }
     const message: PushMessage = {
       notification,
       body: truncate(notification.text, MAX_PUSH_BODY),
-      badge: this.badge({ id: userId, name: "", email: "" }),
+      badge: this.badge({ id: input.userId, name: "", email: "" }),
+      approvalId: input.approvalId ?? null,
+      timeSensitive: input.timeSensitive ?? false,
     };
     await Promise.all(
       devices.map(async (device) => {

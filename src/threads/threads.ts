@@ -53,7 +53,10 @@ import type {
   WorkspaceTool,
 } from "../integrations/integrations.ts";
 import type { ConversationUsage, Llm, UsageSource } from "../llm/llm.ts";
-import type { Notifications } from "../notifications/notifications.ts";
+import type {
+  NotificationInput,
+  Notifications,
+} from "../notifications/notifications.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
 import type {
@@ -693,7 +696,9 @@ export class Threads {
         ? this.membersSeeing(thread).map((member) => member.userId)
         : notify;
     for (const userId of userIds) {
-      this.notifyAbout(thread, userId, answer.text);
+      this.notifyAbout(thread, userId, answer.text, {
+        timeSensitive: source === "reminder",
+      });
     }
     return answer.text;
   }
@@ -1300,7 +1305,8 @@ export class Threads {
   private notifyAbout(
     thread: ThreadSummary & ThreadRef,
     userId: string,
-    text: string
+    text: string,
+    push: Pick<NotificationInput, "approvalId" | "timeSensitive"> = {}
   ): void {
     this.notifications.notify({
       workspaceId: thread.workspaceId,
@@ -1309,6 +1315,7 @@ export class Threads {
       threadId: thread.id,
       title: thread.title,
       text,
+      ...push,
     });
   }
 
@@ -2517,7 +2524,10 @@ export class Threads {
       });
       this.approvalsChanged(thread);
       for (const userId of approverId ? [approverId] : members) {
-        this.notifyAbout(thread, userId, `Allow? ${text}`);
+        this.notifyAbout(thread, userId, `Allow? ${text}`, {
+          approvalId: approval.id,
+          timeSensitive: true,
+        });
       }
       if (signal?.aborted) {
         stopped();

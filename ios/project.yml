@@ -32,6 +32,7 @@ targets:
       - package: FluidAudio
       - target: Share
       - target: GolemActivity
+      - target: GolemNotification
     entitlements:
       path: Golem/Golem.entitlements
       properties:
@@ -42,6 +43,11 @@ targets:
         com.apple.developer.associated-domains: ['webcredentials:$(GOLEM_ASSOCIATED_DOMAIN)']
         # The Share extension reads the session from the Keychain (Keychain.swift).
         keychain-access-groups: ['$(AppIdentifierPrefix)$(GOLEM_BUNDLE_ID)']
+        # Reminders and approvals come through a Focus.
+        com.apple.developer.usernotifications.time-sensitive: true
+        # A thread's push is a message from Golem (GolemNotification), which Siri reads aloud and replies to.
+        com.apple.developer.usernotifications.communication: true
+        com.apple.developer.siri: true
     info:
       path: Golem/Info.plist
       properties:
@@ -56,6 +62,10 @@ targets:
         # The work for a message shows on the Lock Screen and in the Dynamic Island (GolemActivity).
         NSSupportsLiveActivities: true
         NSMicrophoneUsageDescription: Golem listens while you dictate or talk to it.
+        NSSiriUsageDescription: Siri reads Golem's messages aloud and sends your spoken replies.
+        # Siri's spoken reply to a message from Golem (SiriReply).
+        NSUserActivityTypes: [INSendMessageIntent]
+        INIntentsSupported: [INSendMessageIntent]
         # A conversation goes on with the screen locked.
         UIBackgroundModes: [audio]
         GolemServerURL: $(GOLEM_SERVER_URL)
@@ -170,6 +180,25 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(GOLEM_BUNDLE_ID).GolemActivity
+  GolemNotification:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: GolemNotification
+    info:
+      path: GolemNotification/Info.plist
+      properties:
+        CFBundleDisplayName: Golem
+        CFBundleShortVersionString: '0.1.0'
+        CFBundleVersion: '1'
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+          NSExtensionAttributes:
+            IntentsSupported: [INSendMessageIntent]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(GOLEM_BUNDLE_ID).GolemNotification
   GolemTests:
     type: bundle.unit-test
     platform: iOS

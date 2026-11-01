@@ -345,6 +345,14 @@ thread's notifications before its first event, so load the inbox again then. Oth
 APNs, with the `Inbox.badge` and `workspaceId`, `channelId`, and `threadId` to open. Close the events stream when the
 screen goes to the background. Pushes need `[apns]` in `config/golem.toml` and the key in `config/apns.p8`.
 
+A push has buttons, on the iPhone and the Apple Watch, which work without opening the app and then read the notification
+(`notificationId`). A push of a thread has the category `message`: Reply sends the text that the person types or
+dictates, and Snooze sends the message "Remind me about this again in 15 minutes."; Done only reads it. It has
+`mutable-content`, so the app shows it as a message from Golem in a conversation named after the thread, which Siri
+reads aloud on AirPods and in CarPlay and answers with a spoken reply to the thread. A push of an approval has the
+category `approval` and an `approvalId`: Deny and Allow answer it once. A reminder's answer and an approval are
+`time-sensitive`, so they come through a Focus. A push that opens a channel has no buttons.
+
 ### Artifacts (`src/artifacts/`)
 
 | Request | Body | Response |
