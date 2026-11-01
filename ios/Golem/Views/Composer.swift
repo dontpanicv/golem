@@ -140,6 +140,8 @@ struct Composer: View {
         .sensoryFeedback(.impact, trigger: gesture)
         .onChange(of: active) { _, active in
             if !active, gesture == .locked { gesture = nil }
+            // The screen stays on while dictating: a locked phone stops the dictation.
+            UIApplication.shared.isIdleTimerDisabled = active
         }
         .onChange(of: Dictation.shared.thread, initial: true) { _, thread in
             guard thread == owner else { return }
@@ -150,6 +152,7 @@ struct Composer: View {
         .onDisappear {
             // A conversation keeps the listener when a composer goes away.
             if listener.owner == owner, !VoiceSession.shared.talk.isOn { listener.shutDown() }
+            if active { UIApplication.shared.isIdleTimerDisabled = false }
         }
     }
 
