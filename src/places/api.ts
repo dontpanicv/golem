@@ -1,10 +1,14 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
-import { HttpError } from "../platform/errors.ts";
+import { HttpError, required } from "../platform/errors.ts";
 
 /** The OpenStreetMap tiles, which the web app's map shows through Golem, because its page loads pictures only from Golem. */
 const TILES = "https://tile.openstreetmap.org";
 const MAX_ZOOM = 19;
+/** OpenStreetMap's search, which finds the address that a person types in the web app's place dialog. */
+const SEARCH = "https://nominatim.openstreetmap.org/search";
+/** OpenStreetMap's tile and search policies ask for a User-Agent that names the app. */
+const USER_AGENT = "Golem (self-hosted family assistant)";
 
 /** The places that a person sees in the workspace, their own and the shared ones, which they add, change, or remove. */
 export const placeApiRoutes: readonly Route[] = [
@@ -39,6 +43,39 @@ export const placeApiRoutes: readonly Route[] = [
   ],
   [
     "GET",
+    "/api/v1/map/search",
+    api(async ({ request }) => {
+      const url = new URL(request.url);
+      const query = required(url.searchParams.get("q"), "Address");
+      const found = await fetch(
+        `${SEARCH}?${new URLSearchParams({ q: query, format: "jsonv2", limit: "1" })}`,
+        {
+          headers: {
+            "user-agent": USER_AGENT,
+            "accept-language": request.headers.get("accept-language") ?? "en",
+          },
+        }
+      );
+      if (!found.ok) {
+        throw new HttpError(502, "The address search is not available");
+      }
+      const [first] = (await found.json()) as {
+        lat: string;
+        lon: string;
+        display_name: string;
+      }[];
+      if (!first) {
+        throw new HttpError(404, "Golem did not find this address");
+      }
+      return json({
+        latitude: Number(first.lat),
+        longitude: Number(first.lon),
+        label: first.display_name,
+      });
+    }),
+  ],
+  [
+    "GET",
     "/api/v1/map/:zoom/:x/:y",
     api(async ({ params }) => {
       const [zoom, x, y] = [params.zoom, params.x, params.y].map(Number);
@@ -54,9 +91,8 @@ export const placeApiRoutes: readonly Route[] = [
       ) {
         throw new HttpError(404, "Not found");
       }
-      // OpenStreetMap's tile policy asks for a User-Agent that names the app.
       const tile = await fetch(`${TILES}/${zoom}/${x}/${y}.png`, {
-        headers: { "user-agent": "Golem (self-hosted family assistant)" },
+        headers: { "user-agent": USER_AGENT },
       });
       if (!tile.ok) {
         throw new HttpError(502, "The map is not available");

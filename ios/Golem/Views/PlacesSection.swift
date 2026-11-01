@@ -76,7 +76,8 @@ struct PlacesSection: View {
     }
 }
 
-/// Adds a place or changes one: its name, the pin in the middle of the map, and the radius of its circle.
+/// Adds a place or changes one: its name, the pin in the middle of the map, which an address moves to, and the
+/// radius of its circle.
 struct PlaceForm: View {
     let workspaceID: String
     let place: Place?
@@ -89,6 +90,7 @@ struct PlaceForm: View {
     @State private var camera: MapCameraPosition
     /// The meters of one point of the map at its zoom, which sizes the place's circle.
     @State private var metersPerPoint: Double?
+    @State private var address = ""
     @State private var busy = false
     @State private var location = CLLocationManager()
 
@@ -110,6 +112,11 @@ struct PlaceForm: View {
     var body: some View {
         Dialog(title: place?.name ?? "Add a place") {
             GolemTextField("Name", text: $name)
+            // Return finds the address with Apple Maps and moves the map there; the person then moves the pin.
+            GolemTextField("Address", placeholder: "Street, town", text: $address)
+                .textContentType(.fullStreetAddress)
+                .submitLabel(.search)
+                .onSubmit(find)
             // The pin stays in the middle and the map moves under it, so a place always has a pin. Its circle is drawn
             // over the map, not in it: map content that follows the camera made the map report a change again, without
             // end, and the app froze.
@@ -153,6 +160,28 @@ struct PlaceForm: View {
         }
         .onAppear {
             if location.authorizationStatus == .notDetermined { location.requestWhenInUseAuthorization() }
+        }
+    }
+
+    private func find() {
+        let query = address.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return }
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        if let pin {
+            // Near what the map shows first, so "Main Street" is the one in this town.
+            request.region = MKCoordinateRegion(center: pin, latitudinalMeters: 50_000, longitudinalMeters: 50_000)
+        }
+        Task {
+            guard let found = try? await MKLocalSearch(request: request).start().mapItems.first else {
+                session.show("Golem did not find this address", .error)
+                return
+            }
+            withAnimation {
+                camera = .region(MKCoordinateRegion(
+                    center: found.location.coordinate, latitudinalMeters: 1500, longitudinalMeters: 1500
+                ))
+            }
         }
     }
 

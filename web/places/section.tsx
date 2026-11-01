@@ -132,7 +132,10 @@ export function PlacesSection({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-/** Adds a place or changes one: its name, its pin on the map, and the radius of its circle. */
+/**
+ * Adds a place or changes one: its name, its pin in the middle of the map, which an address moves to, and the radius of
+ * its circle.
+ */
 function PlaceDialog({
   place,
   busy,
@@ -147,6 +150,13 @@ function PlaceDialog({
   const existing = place === "new" ? null : place;
   const [pin, setPin] = useState<Pin | null>(existing);
   const [radius, setRadius] = useState(existing?.radius ?? DEFAULT_RADIUS);
+  const [found, setFound] = useState<Pin | null>(null);
+  const search = useMutation({
+    mutationFn: (address: string) =>
+      request<Pin>(`/map/search?${new URLSearchParams({ q: address })}`),
+    onSuccess: setFound,
+    onError: showError,
+  });
   return (
     <Dialog
       busy={busy}
@@ -175,8 +185,24 @@ function PlaceDialog({
         name="name"
         required
       />
+      <TextField
+        autoComplete="street-address"
+        disabled={search.isPending}
+        label="Address"
+        // Enter finds the address and moves the map there; it does not save the place.
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            const address = event.currentTarget.value.trim();
+            if (address) {
+              search.mutate(address);
+            }
+          }
+        }}
+        placeholder="Street, town"
+      />
       <Suspense fallback={<div className="place-map" />}>
-        <PlaceMap onPin={setPin} pin={pin} radius={radius} />
+        <PlaceMap found={found} onPin={setPin} pin={pin} radius={radius} />
       </Suspense>
       <div className="field">
         Radius

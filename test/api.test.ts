@@ -526,6 +526,9 @@ test("a place is its owner's until they share it, and only members see the map",
     404
   );
   expect((await golem.call("/api/v1/map/2/1/1")).status).toBe(401);
+  expect(
+    await failure(await golem.call("/api/v1/map/search?q=", { token: alice }))
+  ).toEqual({ status: 400, error: "Address is required" });
 });
 
 test("a JSON body over 1 MB gets 413 before the route reads it", async () => {

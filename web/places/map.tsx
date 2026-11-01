@@ -17,13 +17,17 @@ const STREETS = 15;
 export default function PlaceMap({
   pin,
   radius,
+  found,
   onPin,
 }: {
   pin: Pin | null;
   radius: number;
+  /** An address that the person found; the map goes there. */
+  found: Pin | null;
   onPin: (pin: Pin) => void;
 }) {
   const element = useRef<HTMLDivElement>(null);
+  const map = useRef<L.Map | null>(null);
   const circle = useRef<L.Circle | null>(null);
   const latestOnPin = useRef(onPin);
   latestOnPin.current = onPin;
@@ -53,6 +57,7 @@ export default function PlaceMap({
     };
     opened.on("move", moved);
     moved();
+    map.current = opened;
     if (!start.current) {
       navigator.geolocation?.getCurrentPosition(({ coords }) =>
         opened.setView([coords.latitude, coords.longitude], STREETS)
@@ -60,9 +65,16 @@ export default function PlaceMap({
     }
     return () => {
       opened.remove();
+      map.current = null;
       circle.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (found) {
+      map.current?.setView([found.latitude, found.longitude], STREETS);
+    }
+  }, [found]);
 
   useEffect(() => {
     circle.current?.setRadius(radius);

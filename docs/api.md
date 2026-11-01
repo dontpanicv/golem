@@ -514,9 +514,10 @@ schedule or time cannot run.
 | `POST /api/v1/workspaces/:workspaceId/places` | `{ name, latitude, longitude, radius, shared }` | `201` `Place`; `400` without a pin, a name, or a radius of 100 to 5000 m; `409` when the person has a place with that name |
 | `PUT /api/v1/workspaces/:workspaceId/places/:placeId` | `{ name, latitude, longitude, radius, shared }` | `Place`; `404` unless the person added it |
 | `DELETE /api/v1/workspaces/:workspaceId/places/:placeId` | | `204`; `404` unless the person added it. Its pending reminders keep it |
+| `GET /api/v1/map/search?q=<address>` | | `{ latitude, longitude, label }`: the first place that OpenStreetMap's search finds, which the web app's map moves to; `404` when it finds none. The iOS app searches with Apple Maps |
 | `GET /api/v1/map/:zoom/:x/:y` | | An OpenStreetMap tile as PNG, which the web app's map shows; Golem gets it, because the page loads pictures only from Golem |
 
-A person adds places in Settings, from a pin on a map. Like a machine, a new place is private to its owner's turns until
+A person adds places in Settings, from a pin in the middle of a map, which an address moves to. Like a machine, a new place is private to its owner's turns until
 they share it.
 
 ### Machines (`src/hands/`)
