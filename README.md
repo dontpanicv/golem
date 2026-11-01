@@ -237,6 +237,28 @@ app shows them in the same way.
   links that do not exist in 10 minutes gets `429`. [docs/artifacts-sharing.md](docs/artifacts-sharing.md) has the
   setup.
 
+### Reminders at a place
+
+"Remind me to buy milk when I leave work." "Remind Anna to take the umbrella when she gets to school." A reminder
+can wait for a place instead of a time, and the iPhone tells Golem when it happens.
+
+- **Places.** Each person marks their places on a map in their own Settings: a name, a pin, and a circle of 100 to
+  5000 meters (iOS does not see a smaller circle reliably). The web app shows OpenStreetMap through Golem, so the
+  browser never asks OpenStreetMap itself, and finds an address with OpenStreetMap's search; the iPhone uses Apple
+  Maps. A place is private to its person's turns until they share it with every member.
+- **The reminder.** The agent makes it with `reminders_create`: the text, the person to remind, a place by name, and
+  `arrive` or `leave`. It uses the places of the person who asked, their own first and then the shared ones. The
+  reminder waits in its thread and shows in the person's Upcoming, where they can cancel it.
+- **The iPhone watches.** The app watches the places of its person's pending reminders with Core Location
+  (`CLMonitor`), so iOS wakes the app in the background when they cross the circle, also when the app does not run.
+  The first such reminder asks for location access: iOS asks "While Using" first, and "Always" when the first
+  event comes. Only the event goes to Golem, never where the person is.
+  A new reminder starts as "outside", so a person who is already at the place gets an arrival reminder at once.
+- **Golem reminds.** When the event comes, the reminder is due at once: its thread wakes, the agent writes the
+  reminder, and it comes as a time-sensitive push. A second report of the same event changes nothing, and a cancelled
+  reminder stays quiet. Without a connection, as in the mountains, the iPhone shows the reminder itself and tells
+  Golem when it is online again.
+
 ### More
 
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
@@ -245,7 +267,7 @@ app shows them in the same way.
   server, the home network, and private addresses.
 - **Routines and reminders.** Ask in plain words: "check the school system every morning", "remind me when I leave
   work". A routine is a schedule, instructions, and an optional script that collects what is new; when the script
-  finds nothing, the run ends without the model. A reminder is at a time or at a place.
+  finds nothing, the run ends without the model. A reminder is at a time or [at a place](#reminders-at-a-place).
 - **Upcoming and suggestions.** Upcoming shows your routines, reminders, approvals, and the suggestions that wait for
   you. Accept a suggestion and it becomes a routine or a reminder.
 - **The model.** Golem uses ChatGPT, signed in once with the device login of OpenAI's Codex. The server's owner
@@ -263,7 +285,7 @@ in [docs/api.md](docs/api.md).
     Siri reads a message aloud and sends your spoken reply.
   - A **Live Activity** shows the work for your message on the Lock Screen and in the Dynamic Island.
   - The **Share** extension sends a link, text, pictures, or files to Golem.
-  - **Places** on a map start reminders when you arrive or leave.
+  - **Places** on a map start [reminders when you arrive or leave](#reminders-at-a-place).
   - **Voice, on the device.** Hold the mic to dictate in Czech or English with
     [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra). The wave button starts a hands-free
     conversation, and Golem speaks its answer with [Supertonic-3](https://huggingface.co/Supertone/supertonic-3).
