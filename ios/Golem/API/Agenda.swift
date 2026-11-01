@@ -34,17 +34,40 @@ struct WaitingApproval: Codable, Hashable {
     let approval: Approval
 }
 
-/// A one-time reminder that an agent made; its agent reminds in `threadId` at `dueAt`.
+/// A one-time reminder that an agent made; its agent reminds in `threadId` at `dueAt`, or when its recipient arrives at
+/// or leaves its `place`.
 struct Reminder: Codable, Hashable, Identifiable {
     let id: String
     let threadId: String
     let recipientId: String
     let createdBy: String?
     let text: String
+    /// For a reminder at a place: when it was made, until the iPhone reports the event.
     let dueAt: Double
     let timeZone: String
+    let place: ReminderPlace?
+    /// When the iPhone reported the event of a reminder at a place.
+    let triggeredAt: Double?
     let deliveredAt: Double?
     let cancelledAt: Double?
+
+    /// A reminder at a place that waits for the iPhone to report its event.
+    var waitsForPlace: Bool { place != nil && triggeredAt == nil }
+}
+
+/// The place that a reminder waits for, and whether for an arrival or a departure.
+struct ReminderPlace: Codable, Hashable {
+    enum Event: String, Codable { case arrive, leave }
+
+    let id: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let radius: Int
+    let event: Event
+
+    /// "Arrive at Cottage", "Leave Office"
+    var summary: String { event == .arrive ? "Arrive at \(name)" : "Leave \(name)" }
 }
 
 /// A routine or a reminder that Golem suggests from a thread; nothing happens until the person accepts it.

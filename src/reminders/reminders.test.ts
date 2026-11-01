@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { authDatabase } from "../../test/database.ts";
+import { Places } from "../places/places.ts";
 import type { User } from "../platform/auth.ts";
 import { migrate } from "../platform/database.ts";
 import type { Threads } from "../threads/threads.ts";
@@ -92,11 +93,13 @@ function setup(
     requester: async () => asking.requester,
     realm: async () => null,
   } as unknown as Pick<Threads, "instruct" | "realm" | "requester">;
+  const places = new Places(database, workspaces);
   return {
     database,
     workspaces,
     threads,
-    reminders: new Reminders(database, workspaces, threads),
+    places,
+    reminders: new Reminders(database, workspaces, threads, places),
     calls,
     requesters,
     asking,
@@ -104,7 +107,7 @@ function setup(
 }
 
 test("one-time reminders run once, also when the machine starts after their due time", async () => {
-  const { database, workspaces, threads, reminders, calls } = setup();
+  const { database, workspaces, threads, places, reminders, calls } = setup();
   const reminder = reminders.create("home", alice, "thread", alice.id, {
     id: "first",
     createdBy: alice.id,
@@ -113,7 +116,7 @@ test("one-time reminders run once, also when the machine starts after their due 
   });
   expect(reminder.dueAt).toBe(Date.UTC(2090, 10, 1, 8));
   expect(reminders.tick(reminder.dueAt - 1)).toEqual([]);
-  const restarted = new Reminders(database, workspaces, threads);
+  const restarted = new Reminders(database, workspaces, threads, places);
   await Promise.all(restarted.tick(reminder.dueAt + 60_000));
   expect(calls).toEqual(["reminder:first:0"]);
   expect(reminders.get("home", alice, null, "first").deliveredAt).toBeNumber();
@@ -294,5 +297,73 @@ test("a reminder runs as the person who asked for it or last changed it, not as 
     .run(older.id);
   await Promise.all(reminders.tick(older.dueAt));
   expect(requesters).toEqual([alice.id, bob.id, null]);
+  database.close();
+});
+
+test("a reminder at a place waits until its person's iPhone reports the event, once", async () => {
+  const { database, places, reminders, calls } = setup();
+  const cottage = places.create("home", alice, {
+    name: "Cottage",
+    latitude: 49.1,
+    longitude: 16.2,
+    radius: 300,
+    shared: false,
+  });
+  const tool = reminders
+    .tools("home")
+    .find((candidate) => candidate.name === "reminders_create")!;
+  await expect(
+    tool.execute(
+      { text: "Pack the tent", place: "Office", timeZone: "Europe/Prague" },
+      { conversationId: 1, taskId: 7 } as never,
+      {} as never
+    )
+  ).rejects.toThrow("Name one of these places: Cottage.");
+  // Alice's private place is not Bob's, so she cannot remind him there.
+  await expect(
+    tool.execute(
+      {
+        text: "Pack the tent",
+        place: "cottage",
+        recipient: "Bob",
+        timeZone: "Europe/Prague",
+      },
+      { conversationId: 1, taskId: 8 } as never,
+      {} as never
+    )
+  ).rejects.toThrow("There is no place for this reminder");
+  const result = await tool.execute(
+    { text: "Pack the tent", place: "cottage", timeZone: "Europe/Prague" },
+    { conversationId: 1, taskId: 9 } as never,
+    {} as never
+  );
+  expect(result.output?.[0]).toMatchObject({
+    text: expect.stringContaining("When: the recipient arrives at Cottage"),
+  });
+  const [reminder] = reminders.list("home", alice, null);
+  expect(reminder!.place).toEqual({
+    id: cottage.id,
+    name: "Cottage",
+    latitude: 49.1,
+    longitude: 16.2,
+    radius: 300,
+    event: "arrive",
+  });
+  expect(reminders.tick(Date.now() + 60_000)).toEqual([]);
+  expect(() => reminders.trigger("home", bob, reminder!.id)).toThrow(
+    "Not found"
+  );
+  // A removed place keeps its reminder.
+  places.remove("home", alice, cottage.id);
+  const triggered = reminders.trigger("home", alice, reminder!.id);
+  expect(triggered.triggeredAt).toBeNumber();
+  expect(triggered.place?.name).toBe("Cottage");
+  await Bun.sleep(0);
+  expect(reminders.trigger("home", alice, reminder!.id)).toMatchObject({
+    dueAt: triggered.dueAt,
+    deliveredAt: expect.any(Number),
+  });
+  await Bun.sleep(0);
+  expect(calls).toEqual([`reminder:${reminder!.id}:0`]);
   database.close();
 });

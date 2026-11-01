@@ -95,6 +95,7 @@ final class Session {
     }
 
     func signOut() async {
+        await PlaceWatcher.shared.stop()
         if let token = Push.shared.token { try? await api.removeDevice(token: token) }
         try? await api.signOut()
         clear()
@@ -104,6 +105,12 @@ final class Session {
     func registerDevice() async {
         guard signedIn, let token = Push.shared.token else { return }
         try? await api.addDevice(token: token, environment: Push.environment)
+    }
+
+    /// Watches the places of the person's pending reminders at a place in the open workspace (`PlaceWatcher`).
+    func watchPlaces() async {
+        guard let workspace, let user, let upcoming = try? await api.upcoming(workspaceID: workspace.id) else { return }
+        await PlaceWatcher.shared.watch(upcoming.reminders, userID: user.id, workspaceID: workspace.id)
     }
 
     /// Loads the user and the workspaces, then opens the last workspace.

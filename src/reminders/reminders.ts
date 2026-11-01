@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
+import type { Place, Places } from "../places/places.ts";
 import type { User } from "../platform/auth.ts";
-import { notFound, required } from "../platform/errors.ts";
+import { HttpError, notFound, required } from "../platform/errors.ts";
 import type { Threads } from "../threads/threads.ts";
 import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { reminderTools } from "./tools.ts";
@@ -13,8 +14,13 @@ export interface Reminder {
   /** The person who asked for the reminder or last changed it; its turn runs as them. */
   readonly createdBy: string | null;
   readonly text: string;
+  /** When it is due; for a reminder at a place, when it was made, until the iPhone reports the event. */
   readonly dueAt: number;
   readonly timeZone: string;
+  /** The place and the event that a reminder at a place waits for; null for a reminder at a time. */
+  readonly place: ReminderPlace | null;
+  /** When the person's iPhone reported the event of a reminder at a place. */
+  readonly triggeredAt: number | null;
   readonly attempts: number;
   readonly nextAttemptAt: number;
   readonly lastError: string | null;
@@ -22,10 +28,20 @@ export interface Reminder {
   readonly cancelledAt: number | null;
 }
 
+/** A person arrives at a place, or leaves it. */
+export type PlaceEvent = "arrive" | "leave";
+
+export interface ReminderPlace
+  extends Pick<Place, "id" | "name" | "latitude" | "longitude" | "radius"> {
+  readonly event: PlaceEvent;
+}
+
 export interface ReminderInput {
   readonly text: string;
-  /** A local ISO date and time with its UTC offset, such as 2026-11-01T09:00:00+01:00. */
-  readonly at: string;
+  /** A local ISO date and time with its UTC offset, such as 2026-11-01T09:00:00+01:00; or give `place`. */
+  readonly at?: string;
+  /** The place, which the recipient and the asker use, and the event that the reminder waits for. */
+  readonly place?: { readonly id: string; readonly event: PlaceEvent };
   readonly timeZone: string;
   /** The person who asks, or null for the agent alone. */
   readonly createdBy: string | null;
@@ -41,10 +57,19 @@ type ReminderWorkspaces = Pick<
   | "threadsIn"
 >;
 type ReminderThreads = Pick<Threads, "instruct" | "realm" | "requester">;
+type ReminderPlaces = Pick<Places, "find" | "usable">;
+
+interface ReminderRow extends Omit<Reminder, "place"> {
+  readonly placeId: string | null;
+  readonly placeEvent: PlaceEvent | null;
+}
 
 const TICK = 30_000;
 
-/** One-time reminders of a workspace. The agent writes the reminder, and the due runner wakes its thread. */
+/**
+ * One-time reminders of a workspace, at a time or at a place. The agent writes the reminder, and the due runner wakes
+ * its thread; a reminder at a place is due when its person's iPhone reports that they arrived or left.
+ */
 export class Reminders {
   private readonly running = new Set<string>();
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -52,7 +77,8 @@ export class Reminders {
   constructor(
     private readonly database: Database,
     private readonly workspaces: ReminderWorkspaces,
-    private readonly threads: ReminderThreads
+    private readonly threads: ReminderThreads,
+    private readonly places: ReminderPlaces
   ) {}
 
   start(): void {
@@ -67,7 +93,13 @@ export class Reminders {
   }
 
   tools(workspaceId: string) {
-    return reminderTools(this, this.workspaces, this.threads, workspaceId);
+    return reminderTools(
+      this,
+      this.workspaces,
+      this.threads,
+      this.places,
+      workspaceId
+    );
   }
 
   create(
@@ -87,10 +119,10 @@ export class Reminders {
     }
     this.requireRecipient(workspaceId, actor, recipientId);
     const now = Date.now();
-    const dueAt = dueTime(input.at, input.timeZone, now);
+    const when = this.when(workspaceId, recipientId, input, now);
     this.database
       .query(
-        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, place_id, place_event, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         input.id,
@@ -99,9 +131,11 @@ export class Reminders {
         recipientId,
         input.createdBy,
         required(input.text, "Reminder"),
-        dueAt,
+        when.dueAt,
         input.timeZone,
-        dueAt,
+        when.dueAt,
+        when.placeId,
+        when.placeEvent,
         now,
         now
       );
@@ -119,8 +153,10 @@ export class Reminders {
         .query(
           `SELECT ${COLUMNS} FROM reminder WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY due_at`
         )
-        .all(workspaceId) as Reminder[]
-    ).filter((reminder) => threads.has(reminder.threadId));
+        .all(workspaceId) as ReminderRow[]
+    )
+      .filter((reminder) => threads.has(reminder.threadId))
+      .map((row) => this.reminderOf(row));
   }
 
   get(workspaceId: string, actor: User, realm: Realm, id: string): Reminder {
@@ -129,7 +165,7 @@ export class Reminders {
       .query(
         `SELECT ${COLUMNS} FROM reminder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
-      .get(id, workspaceId) as Reminder | null;
+      .get(id, workspaceId) as ReminderRow | null;
     if (!reminder) {
       throw notFound();
     }
@@ -140,7 +176,7 @@ export class Reminders {
     ) {
       throw notFound();
     }
-    return reminder;
+    return this.reminderOf(reminder);
   }
 
   update(
@@ -157,18 +193,23 @@ export class Reminders {
     if (reminder.deliveredAt !== null || reminder.cancelledAt !== null) {
       throw new Error("This reminder is no longer pending.");
     }
+    if (reminder.triggeredAt !== null) {
+      throw new Error("This reminder is due now.");
+    }
     const now = Date.now();
-    const dueAt = dueTime(input.at, input.timeZone, now);
+    const when = this.when(workspaceId, reminder.recipientId, input, now);
     this.database
       .query(
-        "UPDATE reminder SET text = ?, created_by = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
+        "UPDATE reminder SET text = ?, created_by = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, place_id = ?, place_event = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
       )
       .run(
         required(input.text, "Reminder"),
         input.createdBy,
-        dueAt,
+        when.dueAt,
         input.timeZone,
-        dueAt,
+        when.dueAt,
+        when.placeId,
+        when.placeEvent,
         now,
         id,
         workspaceId
@@ -192,13 +233,40 @@ export class Reminders {
     return this.get(workspaceId, actor, realm, id);
   }
 
+  /**
+   * Makes the person's reminder at a place due now, when their iPhone reports the event that it waits for; a second
+   * report changes nothing.
+   */
+  trigger(workspaceId: string, user: User, id: string): Reminder {
+    const reminder = this.get(workspaceId, user, user.id, id);
+    if (reminder.recipientId !== user.id || reminder.place === null) {
+      throw notFound();
+    }
+    if (reminder.cancelledAt !== null) {
+      throw new HttpError(409, "This reminder was cancelled.");
+    }
+    if (reminder.triggeredAt !== null) {
+      return reminder;
+    }
+    const now = Date.now();
+    this.database
+      .query(
+        "UPDATE reminder SET triggered_at = ?, due_at = ?, next_attempt_at = ?, updated_at = ? WHERE id = ? AND triggered_at IS NULL"
+      )
+      .run(now, now, now, now, id);
+    this.tick(now);
+    return this.get(workspaceId, user, user.id, id);
+  }
+
   /** Runs due reminders, also after the machine was off at their due time. */
   tick(now = Date.now()): Promise<void>[] {
-    const due = this.database
-      .query(
-        `SELECT ${COLUMNS} FROM reminder WHERE due_at <= ? AND next_attempt_at <= ? AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL ORDER BY due_at`
-      )
-      .all(now, now) as Reminder[];
+    const due = (
+      this.database
+        .query(
+          `SELECT ${COLUMNS} FROM reminder WHERE due_at <= ? AND next_attempt_at <= ? AND (place_id IS NULL OR triggered_at IS NOT NULL) AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL ORDER BY due_at`
+        )
+        .all(now, now) as ReminderRow[]
+    ).map((row) => this.reminderOf(row));
     return due
       .filter((reminder) => {
         if (this.running.has(reminder.id)) {
@@ -236,9 +304,13 @@ export class Reminders {
       if (!member) {
         throw new Error("The reminder recipient is no longer a member.");
       }
+      const { place } = reminder;
+      const when = place
+        ? `Place reminder ${reminder.id}: ${member.name} ${place.event === "arrive" ? "arrived at" : "left"} ${place.name} at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}).`
+        : `One-time reminder ${reminder.id} was due at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}).`;
       const answer = await this.threads.instruct(
         thread,
-        `One-time reminder ${reminder.id} was due at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}). It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. Answer in this thread.`,
+        `${when} It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. Answer in this thread.`,
         `reminder:${reminder.id}:${reminder.attempts}`,
         [reminder.recipientId],
         // The turn is the asker's, with their own integrations: the text is theirs, not the recipient's.
@@ -271,6 +343,64 @@ export class Reminders {
     }
   }
 
+  /** The due time of a reminder at a time, or the place of a reminder at a place, which its people must use. */
+  private when(
+    workspaceId: string,
+    recipientId: string,
+    input: ReminderInput,
+    now: number
+  ): {
+    dueAt: number;
+    placeId: string | null;
+    placeEvent: PlaceEvent | null;
+  } {
+    if ((input.at === undefined) === (input.place === undefined)) {
+      throw new HttpError(400, "Give a reminder a time or a place.");
+    }
+    if (input.at !== undefined) {
+      return {
+        dueAt: dueTime(input.at, input.timeZone, now),
+        placeId: null,
+        placeEvent: null,
+      };
+    }
+    const { id, event } = input.place!;
+    const people = [recipientId, input.createdBy ?? recipientId];
+    if (
+      !(
+        (event === "arrive" || event === "leave") &&
+        people.every((personId) =>
+          this.places
+            .usable(workspaceId, personId)
+            .some((place) => place.id === id)
+        )
+      )
+    ) {
+      throw new HttpError(
+        400,
+        "Give a place that the recipient and the asker use, and arrive or leave."
+      );
+    }
+    return { dueAt: now, placeId: id, placeEvent: event };
+  }
+
+  private reminderOf({ placeId, placeEvent, ...row }: ReminderRow): Reminder {
+    const place = placeId ? this.places.find(row.workspaceId, placeId) : null;
+    return {
+      ...row,
+      place: place
+        ? {
+            id: place.id,
+            name: place.name,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            radius: place.radius,
+            event: placeEvent!,
+          }
+        : null,
+    };
+  }
+
   private requireRecipient(
     workspaceId: string,
     actor: User,
@@ -287,7 +417,7 @@ export class Reminders {
 }
 
 const COLUMNS =
-  "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
+  "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, place_id AS placeId, place_event AS placeEvent, triggered_at AS triggeredAt, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
 
 /** The UTC time of `at`, a local time with its offset in `timeZone`; throws when it is wrong or not in the future. */
 export function dueTime(at: string, timeZone: string, now: number): number {

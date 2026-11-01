@@ -4,6 +4,7 @@ import type * as Server from "../src/artifacts/artifacts.ts";
 import type { MachineSummary, Pairing } from "../src/hands/hands.ts";
 import type { Integration } from "../src/integrations/integrations.ts";
 import type { LlmStatus, UsageReport } from "../src/llm/llm.ts";
+import type { Place } from "../src/places/places.ts";
 import type { User } from "../src/platform/auth.ts";
 import type { Routine, RoutineRun } from "../src/routines/routines.ts";
 import type { RecentSearch, SearchResponse } from "../src/search/search.ts";
@@ -47,6 +48,7 @@ const checks: true[] = [
   true satisfies Fits<Server.ArtifactRecord, Web.ArtifactRecord>,
   true satisfies Fits<MachineSummary, Web.Machine>,
   true satisfies Fits<Pairing, Web.Pairing>,
+  true satisfies Fits<Place, Web.Place>,
   true satisfies Fits<LlmStatus, Web.LlmStatus>,
   true satisfies Fits<
     Omit<UsageReport, "threads" | "people"> & {

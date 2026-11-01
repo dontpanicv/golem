@@ -19,7 +19,7 @@ function routine(id: string, fields: Partial<Routine>): Routine {
   };
 }
 
-test("the agenda shows what needs the person, the suggestions, then what runs by day, soonest first, and the paused routines", () => {
+test("the agenda shows what needs the person, the suggestions, then what runs by day, soonest first, the reminders at a place, and the paused routines", () => {
   const upcoming: Upcoming = {
     routines: [
       routine("later", { nextRunAt: NOW + 10 * 24 * HOUR }),
@@ -46,6 +46,8 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
         createdBy: "alice",
         text: "Call the dentist",
         dueAt: NOW + 3 * 24 * HOUR,
+        place: null,
+        triggeredAt: null,
       },
       {
         id: "tomorrow",
@@ -54,6 +56,8 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
         createdBy: "alice",
         text: "Take out the bins",
         dueAt: NOW + 20 * HOUR,
+        place: null,
+        triggeredAt: null,
       },
       {
         id: "soon",
@@ -62,6 +66,25 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
         createdBy: "alice",
         text: "Water the plants",
         dueAt: NOW + HOUR,
+        place: null,
+        triggeredAt: null,
+      },
+      {
+        id: "cottage",
+        threadId: "thread",
+        recipientId: "alice",
+        createdBy: "alice",
+        text: "Pack the tent",
+        dueAt: NOW - HOUR,
+        place: {
+          id: "place",
+          name: "Cottage",
+          latitude: 49.1,
+          longitude: 16.2,
+          radius: 300,
+          event: "arrive",
+        },
+        triggeredAt: null,
       },
     ],
     suggestions: [
@@ -102,6 +125,7 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
     ["Tomorrow", ["tomorrow"]],
     ["This week", ["week"]],
     ["Later", ["later"]],
+    ["At a place", ["cottage"]],
     ["Paused", ["paused"]],
   ]);
 });

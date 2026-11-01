@@ -2242,6 +2242,45 @@ img.avatar {
   user-select: all;
 }
 
+/* Place map: the pin of a place and its circle on OpenStreetMap, in Settings. */
+
+.place-map {
+  height: var(--size-map);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.place-map .leaflet-bar {
+  border: 0.5px solid var(--color-border);
+  box-shadow: var(--shadow-low);
+}
+.place-map .leaflet-bar a {
+  border-color: var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+.place-map .leaflet-control-attribution {
+  background: var(--color-surface-raised);
+  color: var(--color-text-tertiary);
+}
+.place-map .leaflet-control-attribution a {
+  color: inherit;
+}
+.place-pin {
+  border: 2px solid var(--color-on-accent);
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  box-shadow: var(--shadow-low);
+  cursor: grab;
+}
+.place-circle {
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  fill: var(--color-accent);
+  fill-opacity: 0.12;
+}
+
 /* Search */
 
 .search {

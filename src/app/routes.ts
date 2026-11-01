@@ -6,6 +6,7 @@ import { handsApiRoutes } from "../hands/api.ts";
 import { integrationApiRoutes } from "../integrations/api.ts";
 import { llmApiRoutes } from "../llm/api.ts";
 import { notificationApiRoutes } from "../notifications/api.ts";
+import { placeApiRoutes } from "../places/api.ts";
 import { HttpError } from "../platform/errors.ts";
 import { routineApiRoutes } from "../routines/api.ts";
 import { searchApiRoutes } from "../search/api.ts";
@@ -37,6 +38,7 @@ export const allRoutes: readonly Route[] = [
   ...llmApiRoutes,
   ...handsApiRoutes,
   ...integrationApiRoutes,
+  ...placeApiRoutes,
   ...artifactApiRoutes,
   ...artifactWebRoutes,
   ...notificationApiRoutes,

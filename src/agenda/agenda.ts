@@ -154,7 +154,7 @@ export class Agenda {
       );
     const reminders = this.pendingReminders(workspaceId, user).map(
       (reminder) =>
-        `- Reminder for ${new Date(reminder.dueAt).toISOString()}: ${reminder.text}`
+        `- Reminder ${reminder.place ? `when they ${reminder.place.event === "arrive" ? "arrive at" : "leave"} ${reminder.place.name}` : `for ${new Date(reminder.dueAt).toISOString()}`}: ${reminder.text}`
     );
     const suggested = (
       this.database

@@ -101,6 +101,7 @@ enum Tokens {
 		static let artifacts: CGFloat = 400
 		static let page: CGFloat = 640
 		static let dialog: CGFloat = 560
+		static let map: CGFloat = 320
 		static let toast: CGFloat = 384
 		static let header: CGFloat = 44
 		static let navRow: CGFloat = 28

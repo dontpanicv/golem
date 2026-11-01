@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// What Golem runs for the person and what waits for them, soonest first: what needs them, what Golem suggests, the
-/// routines and reminders by day, and the paused routines. Routines pause and resume here; reminders cancel here.
+/// routines and reminders by day, the reminders that wait for a place, and the paused routines. Routines pause and
+/// resume here; reminders cancel here.
 struct UpcomingView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
@@ -61,7 +62,10 @@ struct UpcomingView: View {
             }
         case let .reminder(reminder):
             actionRow { open(.thread(reminder.threadId)) } label: {
-                ListRow(reminder.text, systemImage: "bell", subtitle: when(reminder.dueAt, kind))
+                ListRow(
+                    reminder.text, systemImage: reminder.place == nil ? "bell" : "mappin.and.ellipse",
+                    subtitle: reminder.waitsForPlace ? reminder.place?.summary : when(reminder.dueAt, kind)
+                )
             } actions: {
                 MenuItem("Cancel reminder", systemImage: "xmark", role: .destructive) { cancel(reminder) }
             }
@@ -212,6 +216,7 @@ struct UpcomingGroup: Identifiable, Hashable {
         case tomorrow = "Tomorrow"
         case thisWeek = "This week"
         case later = "Later"
+        case atPlace = "At a place"
         case paused = "Paused"
     }
 
@@ -238,12 +243,13 @@ enum UpcomingItem: Hashable, Identifiable {
 
 extension Upcoming {
     /// The groups that have items: approvals and failed routines need the person; routines by their next run and
-    /// reminders by their time go under the day, soonest first ("This week" is the 5 days after tomorrow); paused
-    /// routines go last.
+    /// reminders by their time go under the day, soonest first ("This week" is the 5 days after tomorrow); then the
+    /// reminders that wait for a place, and the paused routines last.
     func groups(now: Date = .now, calendar: Calendar = .current) -> [UpcomingGroup] {
         var needsYou = approvals.map { UpcomingItem.approval(threadID: $0.threadId, $0.approval) }
         var paused: [UpcomingItem] = []
-        var timed: [(time: Double, item: UpcomingItem)] = reminders.map { ($0.dueAt, .reminder($0)) }
+        var timed: [(time: Double, item: UpcomingItem)] = reminders.filter { !$0.waitsForPlace }
+            .map { ($0.dueAt, .reminder($0)) }
         for routine in routines {
             if !routine.enabled {
                 paused.append(.routine(routine))
@@ -254,7 +260,8 @@ extension Upcoming {
             }
         }
         var items: [UpcomingGroup.Kind: [UpcomingItem]] = [
-            .needsYou: needsYou, .suggested: suggestions.map { .suggestion($0) }, .paused: paused
+            .needsYou: needsYou, .suggested: suggestions.map { .suggestion($0) },
+            .atPlace: reminders.filter(\.waitsForPlace).map { .reminder($0) }, .paused: paused
         ]
         let today = calendar.startOfDay(for: now)
         for (time, item) in timed.sorted(by: { $0.time < $1.time }) {

@@ -2,7 +2,10 @@ import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 import { HttpError } from "../platform/errors.ts";
 
-/** Each person's agenda: what Golem runs for them, what waits for them, and the automations Golem suggests. */
+/**
+ * Each person's agenda: what Golem runs for them, what waits for them, and the automations Golem suggests; and the
+ * reports of their iPhone that they arrived at or left the place of a reminder.
+ */
 export const agendaApiRoutes: readonly Route[] = [
   [
     "GET",
@@ -26,6 +29,13 @@ export const agendaApiRoutes: readonly Route[] = [
       );
       return new Response(null, { status: 204 });
     }),
+  ],
+  [
+    "POST",
+    "/api/v1/workspaces/:workspace/reminders/:reminder/trigger",
+    api(async ({ app, user, params }) =>
+      json(app.reminders.trigger(params.workspace!, user, params.reminder!))
+    ),
   ],
   [
     "DELETE",

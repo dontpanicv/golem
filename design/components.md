@@ -171,6 +171,12 @@ Used by the workspace switcher and action menus.
   small buttons: Client (for the server's owner, when it has one), then the way to connect (Connect, Link number, or
   Add credential), then the info button of its guide. Each credential is a compact row under it. On a narrow page the
   buttons wrap under the name.
+- Places: a compact row per place with its name and its radius and Shared or Private, then the Private switch and the
+  change and remove icon buttons (iOS: the switch and a menu). Add place opens a dialog: the Name field, a map
+  `size.map` high with `radius.md` and a 0.5 px `border`, and a Radius select. A click or a tap puts the pin, a 16 px
+  `accent` circle with a 2 px `onAccent` ring; the web pin drags. The place's circle is `accent`, 1.5 px, filled at
+  12 %. The web shows OpenStreetMap through Golem, with only "© OpenStreetMap"; iOS shows MapKit with the location
+  button.
 - A text field for long text, such as the workspace's facts, fills the card with 16 px padding, min 160 high, a 1.5
   line height, and its Save button at the bottom right.
 - Text in a section, such as a channel summary: `fontSize.md` `textSecondary` on a 22 px line, with its line breaks.
@@ -201,10 +207,11 @@ Used by the workspace switcher and action menus.
 ## Upcoming
 
 - The sidebar's Upcoming item, after Inbox, has the `clock` icon. The page is the Settings column; its groups, each
-  only with items, are Needs you, Suggested, Today, Tomorrow, This week (the next 7 days), Later, and Paused, each a
-  section title over a card of compact rows. A routine row has the `play` icon, its name, its schedule in words and its
+  only with items, are Needs you, Suggested, Today, Tomorrow, This week (the next 7 days), Later, At a place, and Paused,
+  each a section title over a card of compact rows. A routine row has the `play` icon, its name, its schedule in words and its
   channel, a failed badge after a failed run, and its switch; a reminder row has the `clock` icon, its text, its time,
-  and a secondary Cancel button. iOS has the same screen from a row at the top of Home and in the sidebar.
+  and a secondary Cancel button; a reminder at a place has the `place` icon and "Arrive at Cottage" or "Leave Office"
+  in place of the time. iOS has the same screen from a row at the top of Home and in the sidebar.
 - Suggestion: a compact row with its kind's icon, the name, when it runs, and secondary Decline and primary Accept
   buttons. In the person's orchestrator the waiting suggestions sit in one card over the composer, as wide as it.
 

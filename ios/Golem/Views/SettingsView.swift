@@ -18,6 +18,7 @@ struct SettingsView: View {
         SettingsList {
             if let workspace = session.workspace {
                 IntegrationsSection(workspaceID: workspace.id)
+                PlacesSection(workspaceID: workspace.id)
                 LearnedSection(workspaceID: workspace.id)
                 MachinesSection(workspaceID: workspace.id)
                 UsageSection(workspaceID: workspace.id, open: open)

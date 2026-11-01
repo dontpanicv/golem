@@ -145,7 +145,11 @@ function AgendaRow({
       return (
         <ReminderRow
           reminder={item.reminder}
-          when={when(item.reminder.dueAt)}
+          when={
+            item.reminder.place && item.reminder.triggeredAt === null
+              ? `${item.reminder.place.event === "arrive" ? "Arrive at" : "Leave"} ${item.reminder.place.name}`
+              : when(item.reminder.dueAt)
+          }
           workspaceId={workspaceId}
         />
       );
@@ -222,7 +226,7 @@ function ReminderRow({
       compact
       description={when}
       label={reminder.text}
-      lead={<Icon name="clock" />}
+      lead={<Icon name={reminder.place ? "place" : "clock"} />}
     >
       <Button
         disabled={cancel.isPending}

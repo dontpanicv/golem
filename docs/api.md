@@ -156,6 +156,16 @@ type ArtifactRecord = {
 	value: unknown; // JSON
 	updatedAt: number;
 };
+type Place = {
+	id: string;
+	name: string; // unique among its owner's places
+	latitude: number;
+	longitude: number;
+	radius: number; // meters, 100 to 5000
+	ownerId: string; // the member who added it, who alone changes or removes it
+	ownerName: string;
+	shared: boolean; // false: only its owner's turns use it
+};
 type Machine = {
 	id: string;
 	name: string; // what agents and people call it; unique in the workspace, so a new machine with a taken name gets a number
@@ -220,8 +230,10 @@ type Reminder = {
 	recipientId: string;
 	createdBy: string | null; // the person who asked for it
 	text: string;
-	dueAt: number;
+	dueAt: number; // for a reminder at a place: when it was made, until the iPhone reports the event
 	timeZone: string;
+	place: { id: string; name: string; latitude: number; longitude: number; radius: number; event: "arrive" | "leave" } | null; // what a reminder at a place waits for; null: a reminder at a time
+	triggeredAt: number | null; // when the iPhone reported the event of a reminder at a place
 	deliveredAt: number | null;
 	cancelledAt: number | null;
 };
@@ -477,17 +489,35 @@ its saved UTC time is due, or when Golem starts again after that time. Its turn 
 last changed it, not for its recipient; a reminder from before this rule uses only the shared credentials.
 Agents make and change reminders; a person sees their pending ones in Upcoming and cancels one there.
 
+A reminder at a place has a place and `arrive` or `leave` in place of a time. The place must be one that its recipient
+and the person who asks both use. The recipient's iPhone watches the places of their pending reminders and reports the
+event; then the reminder is due at once. The iPhone gets a new reminder when the app opens or goes to the background.
+
 ### Agenda (`src/agenda/`)
 
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/upcoming` | | `Upcoming`: what Golem runs for the person and what waits for them |
 | `POST /api/v1/workspaces/:workspaceId/suggestions/:suggestionId` | `{ accept: boolean }` | `204`; `accept` makes the routine in its channel, or the reminder in the person's orchestrator, both as theirs; else Golem does not suggest it again. `404` for another person's suggestion; `409` when its channel is gone or its time has passed |
+| `POST /api/v1/workspaces/:workspaceId/reminders/:reminderId/trigger` | | `Reminder`; the recipient's iPhone reports that they arrived at or left its place, and the reminder is due now. A second report changes nothing. `404` unless the person is its recipient and it is at a place; `409` after it was cancelled |
 | `DELETE /api/v1/workspaces/:workspaceId/reminders/:reminderId` | | `204`; cancels a pending reminder for the person or from them; `404` for another one; `409` while it runs or after it was delivered |
 
 Golem suggests and never makes an automation itself: a suggestion waits, with no push, until its person accepts or
 declines it. A person has at most 3 waiting; Golem drops one with the same name as one they already had, and one whose
 schedule or time cannot run.
+
+### Places (`src/places/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/places` | | `{ places: Place[] }`: the person's own places, then the ones other members shared, by name |
+| `POST /api/v1/workspaces/:workspaceId/places` | `{ name, latitude, longitude, radius, shared }` | `201` `Place`; `400` without a pin, a name, or a radius of 100 to 5000 m; `409` when the person has a place with that name |
+| `PUT /api/v1/workspaces/:workspaceId/places/:placeId` | `{ name, latitude, longitude, radius, shared }` | `Place`; `404` unless the person added it |
+| `DELETE /api/v1/workspaces/:workspaceId/places/:placeId` | | `204`; `404` unless the person added it. Its pending reminders keep it |
+| `GET /api/v1/map/:zoom/:x/:y` | | An OpenStreetMap tile as PNG, which the web app's map shows; Golem gets it, because the page loads pictures only from Golem |
+
+A person adds places in Settings, from a pin on a map. Like a machine, a new place is private to its owner's turns until
+they share it.
 
 ### Machines (`src/hands/`)
 

@@ -1,21 +1,36 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { randomUUIDv5 } from "bun";
+import type { Places } from "../places/places.ts";
 import type { Threads } from "../threads/threads.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
-import type { Reminder, Reminders } from "./reminders.ts";
+import type { Reminder, ReminderInput, Reminders } from "./reminders.ts";
 
-/** Agent tools for the one-time reminders of a workspace. */
+/** Agent tools for the one-time reminders of a workspace, at a time or at a place. */
 export function reminderTools(
   reminders: Reminders,
   workspaces: Pick<Workspaces, "agentMember" | "members" | "threadOf">,
   threads: Pick<Threads, "realm" | "requester">,
+  places: Pick<Places, "usable">,
   workspaceId: string
 ) {
-  const at = Type.String({
-    description:
-      "The local date and time with its UTC offset, such as 2026-11-01T09:00:00+01:00",
-  });
+  const at = Type.Optional(
+    Type.String({
+      description:
+        "The local date and time with its UTC offset, such as 2026-11-01T09:00:00+01:00; leave it out for a place",
+    })
+  );
+  const place = Type.Optional(
+    Type.String({
+      description:
+        "The name of a place from the person's Settings, in place of a time",
+    })
+  );
+  const event = Type.Optional(
+    Type.Union([Type.Literal("arrive"), Type.Literal("leave")], {
+      description: "For a place: remind when the person arrives or leaves",
+    })
+  );
   const timeZone = Type.String({
     description: "IANA time zone of the recipient, such as Europe/Prague",
   });
@@ -31,15 +46,44 @@ export function reminderTools(
       realm: await threads.realm(workspaceId, conversationId),
     };
   };
+  /** The time or the place of a reminder; a place is one that the recipient and the asker both use. */
+  const whenOf = (
+    args: { at?: string; place?: string; event?: "arrive" | "leave" },
+    recipientId: string,
+    askerId: string | null
+  ): Pick<ReminderInput, "at" | "place"> => {
+    if (args.place === undefined) {
+      return { at: args.at };
+    }
+    const asker = new Set(
+      places.usable(workspaceId, askerId ?? recipientId).map(({ id }) => id)
+    );
+    const known = places
+      .usable(workspaceId, recipientId)
+      .filter(({ id }) => asker.has(id));
+    const found = known.find(
+      ({ name }) => name.toLowerCase() === args.place!.toLowerCase()
+    );
+    if (!found) {
+      throw new Error(
+        known.length
+          ? `Name one of these places: ${known.map(({ name }) => name).join(", ")}.`
+          : "There is no place for this reminder. A person adds places in Settings and shares one, so other members use it."
+      );
+    }
+    return { place: { id: found.id, event: args.event ?? "arrive" } };
+  };
 
   return [
     defineTool({
       name: "reminders_create",
       description:
-        "Schedule one reminder for one exact future date and time. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time in your answer.",
+        "Schedule one reminder for one exact future date and time, or for when the recipient arrives at or leaves a place; their iPhone tells Golem. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time or place in your answer.",
       parameters: Type.Object({
         text,
         at,
+        place,
+        event,
         timeZone,
         recipient: Type.Optional(
           Type.String({ description: "Name of a member of this workspace" })
@@ -64,13 +108,16 @@ export function reminderTools(
             "Name exactly one member of this workspace as the recipient."
           );
         }
+        const recipientId = matches[0]!.userId;
         const created = reminders.create(
           workspaceId,
           actor,
           source.id,
-          matches[0]!.userId,
+          recipientId,
           {
-            ...args,
+            text: args.text,
+            timeZone: args.timeZone,
+            ...whenOf(args, recipientId, asker?.id ?? null),
             createdBy: asker?.id ?? null,
             id: randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url"),
           }
@@ -99,18 +146,22 @@ export function reminderTools(
     }),
     defineTool({
       name: "reminders_update",
-      description: "Change a pending one-time reminder.",
-      parameters: Type.Object({ reminder, text, at, timeZone }),
+      description:
+        "Change a pending one-time reminder: its text, and its time or place.",
+      parameters: Type.Object({ reminder, text, at, place, event, timeZone }),
       replay: "safe",
       execute: async ({ reminder: id, ...input }, api) => {
         const { actor, asker, realm } = await actorFor(api.conversationId);
+        const { recipientId } = reminders.get(workspaceId, actor, realm, id);
         return {
           output: [
             {
               type: "text",
               text: describe(
                 reminders.update(workspaceId, actor, realm, id, {
-                  ...input,
+                  text: input.text,
+                  timeZone: input.timeZone,
+                  ...whenOf(input, recipientId, asker?.id ?? null),
                   createdBy: asker?.id ?? null,
                 })
               ),
@@ -148,19 +199,22 @@ function describe(reminder: Reminder): string {
   } else if (reminder.lastError) {
     status = `retrying: ${reminder.lastError}`;
   }
+  const { place } = reminder;
   return [
     `${reminder.text} (reminder ${reminder.id})`,
-    `Due: ${new Intl.DateTimeFormat("en-GB", {
-      timeZone: reminder.timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).format(
-      reminder.dueAt
-    )} ${reminder.timeZone} (${new Date(reminder.dueAt).toISOString()})`,
+    place
+      ? `When: the recipient ${place.event === "arrive" ? "arrives at" : "leaves"} ${place.name}`
+      : `Due: ${new Intl.DateTimeFormat("en-GB", {
+          timeZone: reminder.timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        }).format(
+          reminder.dueAt
+        )} ${reminder.timeZone} (${new Date(reminder.dueAt).toISOString()})`,
     `Recipient: ${reminder.recipientId}`,
     `Thread: ${reminder.threadId}`,
     `Status: ${status}`,

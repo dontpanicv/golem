@@ -4,7 +4,7 @@ import Testing
 @testable import Golem
 
 /// Upcoming puts what needs the person first, then the suggestions, then routines and reminders by day, soonest
-/// first, then the paused routines.
+/// first, then the reminders that wait for a place, then the paused routines.
 @Suite("Upcoming groups")
 struct UpcomingTests {
     private let calendar: Calendar = {
@@ -31,10 +31,10 @@ struct UpcomingTests {
         )
     }
 
-    private func reminder(_ id: String, at due: Double) -> Reminder {
+    private func reminder(_ id: String, at due: Double, place: ReminderPlace? = nil) -> Reminder {
         Reminder(
             id: id, threadId: "thread", recipientId: "me", createdBy: "me", text: id, dueAt: due, timeZone: "UTC",
-            deliveredAt: nil, cancelledAt: nil
+            place: place, triggeredAt: nil, deliveredAt: nil, cancelledAt: nil
         )
     }
 
@@ -57,14 +57,22 @@ struct UpcomingTests {
                 routine("stopped", at: nil, enabled: false),
                 routine("morning", at: hours(22), outcome: .posted),
             ],
-            reminders: [reminder("soon", at: hours(1)), reminder("friday", at: hours(24 * 5)), reminder("now", at: hours(-1))],
+            reminders: [
+                reminder("soon", at: hours(1)), reminder("friday", at: hours(24 * 5)), reminder("now", at: hours(-1)),
+                reminder(
+                    "tent", at: hours(-2),
+                    place: ReminderPlace(
+                        id: "cottage", name: "Cottage", latitude: 49.1, longitude: 16.2, radius: 300, event: .arrive
+                    )
+                ),
+            ],
             suggestions: [suggestion],
             approvals: [WaitingApproval(threadId: "thread", approval: approval)]
         )
 
         let groups = upcoming.groups(now: now, calendar: calendar)
 
-        #expect(groups.map(\.kind) == [.needsYou, .suggested, .today, .tomorrow, .thisWeek, .later, .paused])
+        #expect(groups.map(\.kind) == [.needsYou, .suggested, .today, .tomorrow, .thisWeek, .later, .atPlace, .paused])
         #expect(names(groups) == [
             "Needs you": ["approval:allow", "routine:broken"],
             "Suggested": ["suggestion:idea"],
@@ -72,6 +80,7 @@ struct UpcomingTests {
             "Tomorrow": ["routine:morning"],
             "This week": ["reminder:friday"],
             "Later": ["routine:weekly"],
+            "At a place": ["reminder:tent"],
             "Paused": ["routine:stopped"],
         ])
     }

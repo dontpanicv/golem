@@ -486,6 +486,48 @@ test("machines pair only over HTTPS, and only members see them", async () => {
   ).toBe(413);
 });
 
+test("a place is its owner's until they share it, and only members see the map", async () => {
+  const base = `/api/v1/workspaces/${workspaceId}/places`;
+  const created = await golem.call(base, {
+    token: alice,
+    body: {
+      name: "Cottage",
+      latitude: 49.1,
+      longitude: 16.2,
+      radius: 300,
+      shared: false,
+    },
+  });
+  expect(created.status).toBe(201);
+  const cottage = await body(created);
+  const eve = await golem.signIn("Eve", "eve@example.com");
+  expect((await golem.call(base, { token: eve })).status).toBe(404);
+  const { places } = await body(await golem.call(base, { token: alice }));
+  expect(places).toContainEqual(cottage);
+  expect(
+    (
+      await golem.call(`${base}/${cottage.id}`, {
+        token: alice,
+        method: "PUT",
+        body: { name: "Cottage", latitude: 91, longitude: 0, radius: 300 },
+      })
+    ).status
+  ).toBe(400);
+  expect(
+    (
+      await golem.call(`${base}/${cottage.id}`, {
+        token: alice,
+        method: "DELETE",
+      })
+    ).status
+  ).toBe(204);
+  // A tile outside the map, and a person who is not signed in, get no tile.
+  expect((await golem.call("/api/v1/map/2/4/0", { token: alice })).status).toBe(
+    404
+  );
+  expect((await golem.call("/api/v1/map/2/1/1")).status).toBe(401);
+});
+
 test("a JSON body over 1 MB gets 413 before the route reads it", async () => {
   const large = await golem.call(`/api/v1/workspaces/${workspaceId}/channels`, {
     token: alice,

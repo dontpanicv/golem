@@ -10,6 +10,7 @@ import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
 import { apnsPush } from "../notifications/apns.ts";
 import { Notifications } from "../notifications/notifications.ts";
+import { Places } from "../places/places.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
@@ -39,6 +40,7 @@ export interface App {
   readonly indexer: Indexer;
   readonly recentSearches: RecentSearches;
   readonly routines: Routines;
+  readonly places: Places;
   readonly reminders: Reminders;
   readonly agenda: Agenda;
 }
@@ -169,7 +171,8 @@ export async function createApp(
     threads,
     indexer
   );
-  const reminders = new Reminders(database, workspaces, threads);
+  const places = new Places(database, workspaces);
+  const reminders = new Reminders(database, workspaces, threads, places);
   const agenda = new Agenda(database, workspaces, threads, routines, reminders);
   return {
     config,
@@ -187,6 +190,7 @@ export async function createApp(
     indexer,
     recentSearches: new RecentSearches(database),
     routines,
+    places,
     reminders,
     agenda,
   };

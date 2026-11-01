@@ -95,8 +95,8 @@ export function itemId(item: AgendaItem): string {
 
 /**
  * The agenda in groups, each only when it has items: what needs the person, the suggestions, then what runs today,
- * tomorrow, in the next 7 days, and later, soonest first, and the paused routines. A failed routine shows only in
- * Needs you.
+ * tomorrow, in the next 7 days, and later, soonest first, the reminders that wait for a place, and the paused
+ * routines. A failed routine shows only in Needs you.
  */
 export function agendaGroups(upcoming: Upcoming, now: number): AgendaGroup[] {
   const failed = upcoming.routines.filter(
@@ -116,10 +116,12 @@ export function agendaGroups(upcoming: Upcoming, now: number): AgendaGroup[] {
           ]
         : []
     ),
-    ...upcoming.reminders.map((reminder) => ({
-      at: reminder.dueAt,
-      item: { kind: "reminder", reminder } as const,
-    })),
+    ...upcoming.reminders
+      .filter((reminder) => !waitsForPlace(reminder))
+      .map((reminder) => ({
+        at: reminder.dueAt,
+        item: { kind: "reminder", reminder } as const,
+      })),
   ].sort((first, second) => first.at - second.at);
   const midnight = new Date(now).setHours(0, 0, 0, 0);
   // Local midnights: half a day more, then back to midnight, as a day with a summer time change has 23 or 25 hours.
@@ -154,6 +156,12 @@ export function agendaGroups(upcoming: Upcoming, now: number): AgendaGroup[] {
     {
       title: "Later",
       items: between(nextWeek, Number.POSITIVE_INFINITY),
+    },
+    {
+      title: "At a place",
+      items: upcoming.reminders
+        .filter(waitsForPlace)
+        .map((reminder) => ({ kind: "reminder", reminder }) as const),
     },
     {
       title: "Paused",
@@ -238,4 +246,9 @@ function weekdayList(field: string): number[] | null {
     }
   }
   return [...days].sort((first, second) => first - second);
+}
+
+/** A reminder at a place that the person's iPhone has not reported yet. */
+function waitsForPlace(reminder: Reminder): boolean {
+  return reminder.place !== null && reminder.triggeredAt === null;
 }

@@ -142,7 +142,7 @@ final class Push {
     }
 }
 
-/// Gets the device token, and shows and opens pushes.
+/// Gets the device token, shows and opens pushes, and watches places from launch.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
@@ -150,6 +150,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().setNotificationCategories(Push.categories)
+        // iOS may have started the app for an arrival at or a departure from a place.
+        PlaceWatcher.shared.resume()
         return true
     }
 

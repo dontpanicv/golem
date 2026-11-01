@@ -9,7 +9,7 @@ import { dirname } from "node:path";
  * Each table has one owner module, and only that module queries it: `accounts` owns `profile_picture`, `workspaces` owns `channel`, `thread`, and `workspace_facts` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential`, `llm_usage`, `llm_usage_seen`, and its keys in `setting`,
- * `hands` owns `machine`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
+ * `hands` owns `machine`, `places` owns `place`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
  * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, `agenda` owns `suggestion`, and `notifications` owns `notification`,
  * `push_device`, and `live_activity`. Start a new migration with a comment that names its owner.
  */
@@ -407,6 +407,26 @@ const migrations = [
 		deleted_at INTEGER
 	);
 	CREATE INDEX profile_picture_user ON profile_picture (user_id, deleted_at);`,
+  // places: the places that a person marks on a map in Settings, private to their turns or shared with every member's.
+  // A removed place gets `~<id>` in its name, so the name is free again.
+  `CREATE TABLE place (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		owner_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		latitude REAL NOT NULL,
+		longitude REAL NOT NULL,
+		radius INTEGER NOT NULL,
+		shared INTEGER NOT NULL,
+		created_at INTEGER NOT NULL,
+		deleted_at INTEGER
+	);
+	CREATE UNIQUE INDEX place_name ON place (workspace_id, owner_id, name COLLATE NOCASE);`,
+  // reminders: a reminder at a place waits until its person's iPhone reports that they arrived or left
+  // (`place_event`); then `triggered_at` and its due time are set. Null for a reminder at a time.
+  `ALTER TABLE reminder ADD COLUMN place_id TEXT;
+	ALTER TABLE reminder ADD COLUMN place_event TEXT;
+	ALTER TABLE reminder ADD COLUMN triggered_at INTEGER;`,
 ];
 
 export function openDatabase(path: string): Database {
