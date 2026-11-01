@@ -339,10 +339,10 @@ answer. A message waits for a run at work for another person, so that run keeps 
 A notification goes to a person's inbox when the agent answers their message, when a channel thread reports back to
 a thread they write in, for each answer of a routine (to every member) or a reminder (to its recipient) that is not
 `QUIET`, and when an agent calls its `notify` tool. While a screen of the person follows the thread's events stream,
-its notifications are read at once and send no push; opening the stream reads the thread's notifications. Others go
-to the person's devices through APNs, with the `Inbox.badge` and `workspaceId`, `channelId`, and `threadId` to open.
-Close the events stream when the screen goes to the background. Pushes need `[apns]` in `config/golem.toml` and the
-key in `config/apns.p8`.
+its notifications are read at once and send no push; opening the stream reads the thread's notifications before its
+first event, so load the inbox again then. Others go to the person's devices through APNs, with the `Inbox.badge` and
+`workspaceId`, `channelId`, and `threadId` to open. Close the events stream when the screen goes to the background.
+Pushes need `[apns]` in `config/golem.toml` and the key in `config/apns.p8`.
 
 ### Artifacts (`src/artifacts/`)
 

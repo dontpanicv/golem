@@ -14,7 +14,7 @@ import type {
   ThreadState,
   ThreadSummary,
 } from "../app/types.ts";
-import { meQuery, threadsOf } from "../workspaces/data.ts";
+import { meQuery, refreshInbox, threadsOf } from "../workspaces/data.ts";
 
 /** The last state each open thread's event stream sent, and who waits for the next one. */
 const streamed = new Map<string, ThreadState>();
@@ -138,6 +138,7 @@ export function answerApproval(
  * files and artifacts come with messages. Gives whether the agent works, and what it waits for a person to allow.
  */
 export function useThreadStream(
+  workspaceId: string,
   threadId: string,
   onChange: () => void
 ): { running: boolean; approvals: readonly Approval[] } {
@@ -156,8 +157,17 @@ export function useThreadStream(
     };
     const open = () => {
       const stream = new EventSource(`/api/v1/threads/${threadId}/events`);
+      let opened = false;
+      stream.addEventListener("open", () => {
+        opened = false;
+      });
       stream.addEventListener("thread", (event) => {
         const state = JSON.parse(event.data) as ThreadState;
+        // The stream reads the thread's notifications before its first event.
+        if (!opened) {
+          opened = true;
+          refreshInbox(workspaceId);
+        }
         streamed.set(threadId, state);
         write(threadId, state);
         setRunning(state.running);
@@ -175,7 +185,7 @@ export function useThreadStream(
       document.removeEventListener("visibilitychange", follow);
       source?.close();
     };
-  }, [threadId, onChange]);
+  }, [workspaceId, threadId, onChange]);
   return { running, approvals };
 }
 

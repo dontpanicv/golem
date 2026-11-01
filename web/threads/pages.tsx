@@ -133,7 +133,11 @@ function Thread({
         .where(({ message }) => eq(message.threadId, threadId))
         .orderBy(({ message }) => message.time),
   });
-  const { running, approvals } = useThreadStream(threadId, placeChanged);
+  const { running, approvals } = useThreadStream(
+    workspaceId,
+    threadId,
+    placeChanged
+  );
   const me = useQuery(meQuery).data?.user.id;
   const mine = approvals.filter(
     ({ approverId }) => approverId === null || approverId === me

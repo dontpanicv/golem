@@ -199,9 +199,15 @@ struct ConversationView: View {
             do {
                 state = try await session.api.thread(threadID)
                 failure = nil
+                var opened = false
                 try await session.api.threadEvents(threadID) { next in
                     state = next
                     delay = .seconds(1)
+                    // The stream reads the thread's notifications before its first event.
+                    if !opened {
+                        opened = true
+                        Task { try? await session.loadInbox() }
+                    }
                 }
             } catch {
                 failure = error.localizedDescription
