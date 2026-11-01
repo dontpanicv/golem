@@ -12,7 +12,9 @@ struct LearnedSection: View {
 
     var body: some View {
         SettingsCard(title: "What Golem learned") {
-            if learned.isEmpty { SettingsRow("Nothing yet", labelColor: Tokens.Mobile.Colors.textTertiary) { EmptyView() } }
+            if learned.isEmpty {
+                SettingsRow("Nothing yet", labelColor: Tokens.Mobile.Colors.textTertiary) { EmptyView() }
+            }
             ForEach(groups, id: \.title) { group in
                 ListSubheading(group.title)
                 ForEach(group.entries) { row($0) }

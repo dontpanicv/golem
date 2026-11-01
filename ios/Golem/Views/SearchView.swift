@@ -91,7 +91,8 @@ struct SearchView: View {
         }
     }
 
-    /// Saves a search the person acted on or that found something; the list of recent searches is only a help, so a failure stays quiet.
+    /// Saves a search the person acted on or that found something; the list of recent searches is only a help, so a
+    /// failure stays quiet.
     private func save() {
         let text = query.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty, let workspace = session.workspace else { return }

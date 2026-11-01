@@ -18,14 +18,8 @@
       "label": "Family member",
       "sublabel": "signed in · web · iPhone",
       "icon": "person",
-      "pos": [
-        40,
-        60
-      ],
-      "size": [
-        150,
-        64
-      ]
+      "pos": [40, 60],
+      "size": [150, 64]
     },
     {
       "id": "visitor",
@@ -33,28 +27,16 @@
       "label": "Anyone with a link",
       "sublabel": "public artifacts only",
       "icon": "person",
-      "pos": [
-        40,
-        320
-      ],
-      "size": [
-        150,
-        64
-      ]
+      "pos": [40, 320],
+      "size": [150, 64]
     },
     {
       "id": "app-host",
       "type": "cloud",
       "label": "golem.example.com",
       "sublabel": "the whole app",
-      "pos": [
-        300,
-        60
-      ],
-      "size": [
-        150,
-        64
-      ],
+      "pos": [300, 60],
+      "size": [150, 64],
       "sources": [
         {
           "path": "README.md",
@@ -68,14 +50,8 @@
       "type": "security",
       "label": "a.example.com",
       "sublabel": "/name, /content, /rpc · else 404",
-      "pos": [
-        300,
-        320
-      ],
-      "size": [
-        190,
-        64
-      ],
+      "pos": [300, 320],
+      "size": [190, 64],
       "sources": [
         {
           "path": "docs/artifacts-sharing.md",
@@ -90,14 +66,8 @@
       "type": "cloud",
       "label": "cloudflared",
       "sublabel": "outbound tunnel",
-      "pos": [
-        580,
-        190
-      ],
-      "size": [
-        140,
-        64
-      ],
+      "pos": [580, 190],
+      "size": [140, 64],
       "sources": [
         {
           "path": "scripts/install-share-tunnel.sh",
@@ -112,14 +82,8 @@
       "type": "backend",
       "label": "Golem",
       "sublabel": "127.0.0.1:3000",
-      "pos": [
-        810,
-        190
-      ],
-      "size": [
-        140,
-        64
-      ],
+      "pos": [810, 190],
+      "size": [140, 64],
       "sources": [
         {
           "path": "src/platform/config.ts",
@@ -139,14 +103,8 @@
       "type": "security",
       "label": "Who may open it",
       "sublabel": "members: signed in, sees channel",
-      "pos": [
-        1030,
-        190
-      ],
-      "size": [
-        200,
-        64
-      ],
+      "pos": [1030, 190],
+      "size": [200, 64],
       "tag": "public host: public only",
       "sources": [
         {
@@ -167,14 +125,8 @@
       "type": "frontend",
       "label": "Artifact page",
       "sublabel": "sandbox, no same origin",
-      "pos": [
-        1050,
-        400
-      ],
-      "size": [
-        160,
-        64
-      ],
+      "pos": [1050, 400],
+      "size": [160, 64],
       "tag": "CSP: no fetch",
       "sources": [
         {
@@ -195,14 +147,8 @@
       "type": "backend",
       "label": "golem runtime",
       "sublabel": "mine · shared · everyone",
-      "pos": [
-        820,
-        400
-      ],
-      "size": [
-        150,
-        64
-      ],
+      "pos": [820, 400],
+      "size": [150, 64],
       "sources": [
         {
           "path": "src/artifacts/artifacts.ts",
@@ -216,14 +162,8 @@
       "type": "database",
       "label": "golem.sqlite",
       "sublabel": "artifact · artifact_record",
-      "pos": [
-        590,
-        400
-      ],
-      "size": [
-        150,
-        64
-      ],
+      "pos": [590, 400],
+      "size": [150, 64],
       "sources": [
         {
           "path": "src/artifacts/artifacts.ts",
@@ -242,14 +182,8 @@
       "type": "backend",
       "label": "Thread agent",
       "sublabel": "artifacts_create · _update",
-      "pos": [
-        590,
-        580
-      ],
-      "size": [
-        150,
-        64
-      ],
+      "pos": [590, 580],
+      "size": [150, 64],
       "sources": [
         {
           "path": "src/artifacts/tools.ts",
@@ -263,23 +197,12 @@
     {
       "kind": "region",
       "label": "Cloudflare",
-      "wraps": [
-        "app-host",
-        "share-host"
-      ]
+      "wraps": ["app-host", "share-host"]
     },
     {
       "kind": "region",
       "label": "Mac mini at home: no open port",
-      "wraps": [
-        "tunnel",
-        "golem",
-        "check",
-        "page",
-        "runtime",
-        "store",
-        "agent"
-      ]
+      "wraps": ["tunnel", "golem", "check", "page", "runtime", "store", "agent"]
     }
   ],
   "connections": [
