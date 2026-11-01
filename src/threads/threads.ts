@@ -50,6 +50,7 @@ import type { Hands, Machine } from "../hands/hands.ts";
 import type {
   FileOf,
   Integrations,
+  SaveFile,
   WorkspaceTool,
 } from "../integrations/integrations.ts";
 import type { ConversationUsage, Llm, UsageSource } from "../llm/llm.ts";
@@ -2520,6 +2521,14 @@ export class Threads {
                 false,
                 signal
               );
+            },
+            async (conversationId, write) => {
+              const saved = await this.keep(
+                this.placeOf(this.threadOf(workspaceId, conversationId)),
+                write
+              );
+              this.hooks.changed(workspaceId);
+              return saved;
             }
           )
         ),
@@ -4133,7 +4142,11 @@ function connectorTool(
     text: string,
     approverId: string | null,
     signal: AbortSignal | undefined
-  ) => Promise<void>
+  ) => Promise<void>,
+  save: (
+    conversationId: ConversationId,
+    write: Parameters<SaveFile>[0]
+  ) => ReturnType<SaveFile>
 ) {
   return defineTool({
     name: tool.name,
@@ -4151,6 +4164,7 @@ function connectorTool(
         file: (fileId) => fileOf(api.conversationId, fileId),
         approve: (action, approverId) =>
           approve(api.conversationId, action, approverId, context.abortSignal),
+        save: (write) => save(api.conversationId, write),
       });
       const text =
         typeof result === "string"

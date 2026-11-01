@@ -52,7 +52,8 @@ not WhatsApp's own API, and WhatsApp can ban a number that uses it.
 
 Your phone sends Golem the newest messages of each chat, often only some days, and Golem keeps a copy of every new
 message while it runs. The copy and the device's keys are in `data/integrations/<credential-id>/`. Agents read chats and
-messages, search them, and find contacts. For older messages, ask an agent to load them: it asks your phone, which must
+messages, search them, find contacts, and save the picture, video, audio, or document of a message to the thread's
+channel; when WhatsApp no longer keeps it, your phone sends it again if it is online. For older messages, ask an agent to load them: it asks your phone, which must
 be online, for up to 5000 older messages of a chat at a time. They send a text message or a file of the workspace after you allow it, or make a
 `wa.me` link that opens WhatsApp with the text, which you send. Deleting the credential removes the device from your number.
 

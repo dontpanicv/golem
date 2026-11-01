@@ -77,7 +77,8 @@ export interface ConnectorTool<Parameters extends TSchema = TSchema> {
     secret: string,
     signal: AbortSignal | undefined,
     file?: FileOf,
-    allowed?: string
+    allowed?: string,
+    save?: SaveFile
   ): Promise<unknown>;
   /**
    * What a person allows before each call, such as `Send on Slack to #family: Dinner at 7`; `execute` then gets it as
@@ -96,6 +97,14 @@ export interface ConnectorTool<Parameters extends TSchema = TSchema> {
 export type FileOf = (
   fileId: string
 ) => Promise<{ readonly path: string; readonly name: string }>;
+
+/**
+ * Saves a file to the channel of the turn's thread: `write` writes it to the path it gets and returns its name. Gives
+ * the file's id and name.
+ */
+export type SaveFile = (
+  write: (path: string) => Promise<string>
+) => Promise<{ readonly id: string; readonly name: string }>;
 
 /**
  * An outside system that agents use: through the tools of its connector, with a secret from Settings, with a device
@@ -196,6 +205,8 @@ export interface Turn {
   readonly signal?: AbortSignal;
   /** The files that its tools can take, such as attachments; a routine has none. */
   readonly file?: FileOf;
+  /** Saves a file that a tool brings, such as a picture of a message; a routine has none. */
+  readonly save?: SaveFile;
   /**
    * Resolves when the person allows the action of `text`, and throws when they do not; `approverId` null lets any
    * member answer. Only an agent in a thread can ask, so a routine's script cannot act as a person.
@@ -743,13 +754,14 @@ export class Integrations {
                       ),
                   }
                 : {}),
-              call: async (args, credential, signal, file, allowed) =>
+              call: async (args, credential, signal, file, allowed, save) =>
                 tool.execute(
                   args as never,
                   await this.secretOf(connector, credential),
                   signal,
                   file,
-                  allowed
+                  allowed,
+                  save
                 ),
             }));
         if (own.length === 0) {
@@ -915,7 +927,14 @@ export class Integrations {
           account
         );
         if (!tool.approval) {
-          return tool.call(rest, credential, turn.signal, turn.file);
+          return tool.call(
+            rest,
+            credential,
+            turn.signal,
+            turn.file,
+            undefined,
+            turn.save
+          );
         }
         if (!turn.approve) {
           throw new Error(
@@ -932,7 +951,14 @@ export class Integrations {
           allowed,
           this.approverOf(workspaceId, credential, turn.userId)
         );
-        return tool.call(rest, credential, turn.signal, turn.file, allowed);
+        return tool.call(
+          rest,
+          credential,
+          turn.signal,
+          turn.file,
+          allowed,
+          turn.save
+        );
       },
     };
   }
@@ -1271,7 +1297,8 @@ interface AccountTool {
     credential: Credential,
     signal: AbortSignal | undefined,
     file?: FileOf,
-    allowed?: string
+    allowed?: string,
+    save?: SaveFile
   ) => Promise<unknown>;
 }
 

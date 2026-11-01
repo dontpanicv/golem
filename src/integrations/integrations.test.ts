@@ -897,6 +897,11 @@ case "$*" in
     echo sync >> "$store/syncs"
     exec sleep 60 ;;
   "auth logout") touch "$store/logged-out" ;;
+  "--json media download"*)
+    command="$*"
+    while [ "$1" != "--output" ]; do shift; done
+    echo "$command" > "$2photo.jpg"
+    printf '{"success":true,"data":{"path":"%sphoto.jpg"},"error":null}' "$2" ;;
   *) printf '{"success":true,"data":{"store":"%s","command":"%s"},"error":null}' "$store" "$*" ;;
 esac
 `
@@ -936,6 +941,7 @@ esac
     "whatsapp_draft",
     "whatsapp_send",
     "whatsapp_send_file",
+    "whatsapp_save_media",
     "whatsapp_accounts",
   ]);
   const turn = { userId: alice.id };
@@ -1009,6 +1015,22 @@ esac
     `${alice.id}: Send on WhatsApp to family@g.us: -Home soon`,
     `${alice.id}: Send on WhatsApp to family@g.us: menu.pdf\n\nTonight`,
   ]);
+  const saved = join(directory, "saved");
+  expect(
+    await tools[8]!.execute(
+      { chat: "family@g.us", message: "M1" },
+      {
+        ...turn,
+        save: async (write) => ({ id: "f2", name: await write(saved) }),
+      }
+    )
+  ).toEqual({ id: "f2", name: "photo.jpg" });
+  expect(await Bun.file(saved).text()).toStartWith(
+    "--json media download --chat family@g.us --id M1 --output "
+  );
+  await expect(
+    tools[8]!.execute({ chat: "family@g.us", message: "M1" }, turn)
+  ).rejects.toThrow("Only an agent in a thread can save files.");
 
   whatsApp.deleteCredential(workspaceId, alice, credential.id);
   const unlinked = join(directory, "deleted", credential.id, "logged-out");
@@ -1016,7 +1038,7 @@ esac
     await Bun.sleep(20);
   }
   expect(await exists(unlinked)).toBe(true);
-  expect(await whatsApp.tools(workspaceId)).toHaveLength(9);
+  expect(await whatsApp.tools(workspaceId)).toHaveLength(10);
   await expect(tools[0]!.execute({}, turn)).rejects.toThrow(
     "WhatsApp is not connected"
   );

@@ -2538,6 +2538,56 @@ test("a script saves a tool's long answer as a file and gives a file to a tool, 
   }
 });
 
+test("a connector tool saves a file it brings to the channel of the thread", async () => {
+  const home = await golem.app.workspaces.create(alice, "Bringing");
+  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "golem-bringing-"));
+  const threads = savingThreads(
+    dataDirectory,
+    () => Promise.reject(new Error("unused")),
+    async () => null,
+    {},
+    {},
+    {
+      namespaces: () => [
+        { name: "chat", prefix: "chat_", description: "Chats." },
+      ],
+      tools: async () => [
+        {
+          name: "chat_photo",
+          description: "Saves the photo of a message",
+          parameters: Type.Object({}),
+          execute: async (_args, turn) =>
+            turn.save!(async (path) => {
+              await Bun.write(path, "photo");
+              return "photo.jpg";
+            }),
+        },
+      ],
+    }
+  );
+  try {
+    const summary = await threads.create(
+      home.id,
+      alice,
+      general.id,
+      "Run code: text(JSON.stringify(await tools.chat_photo({})));"
+    );
+    await answeredIn(threads, home.id, summary.id);
+    const [file] = await threads.files({
+      workspaceId: home.id,
+      channelId: general.id,
+    });
+    expect(file).toMatchObject({ name: "photo.jpg" });
+    const { path } = await threads.file(home.id, alice, file!.id);
+    expect(await Bun.file(path).text()).toBe("photo");
+    expect(toolResults.at(-1)).toContain(file!.id);
+  } finally {
+    await threads.closeAll();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test("a connector tool that acts as a person asks before every call, and never for the rest of the turn", async () => {
   const home = await golem.app.workspaces.create(alice, "Sending");
   const general = golem.app.workspaces.channels(home.id, alice)[0]!;

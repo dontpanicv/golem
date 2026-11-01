@@ -1,4 +1,7 @@
 import { mkdirSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { type Static, type TSchema, Type } from "@earendil-works/pi-ai";
 import type { Connector, ConnectorTool, Device } from "./integrations.ts";
 
@@ -6,8 +9,8 @@ import type { Connector, ConnectorTool, Device } from "./integrations.ts";
 const READ_MS = 30 * 1000;
 /** How long a send may take; wacli waits a while after it for the receipts. */
 const SEND_MS = 60 * 1000;
-/** How long a send of a file may take, with its upload. */
-const SEND_FILE_MS = 5 * 60 * 1000;
+/** How long a send or a download of a file may take. */
+const FILE_MS = 5 * 60 * 1000;
 const RECIPIENT = Type.String({
   description:
     "A chat's JID, or a number with its country code, such as +420 777 123 456.",
@@ -35,7 +38,7 @@ export function whatsAppConnector(binary: string): Connector {
     id: "whatsapp",
     name: "WhatsApp",
     description:
-      "The person's own WhatsApp chats, from when they linked it: chats, messages, search, and contacts. Draft a message as a wa.me link, or send it after the person allows it.",
+      "The person's own WhatsApp chats, from when they linked it: chats, messages, search, contacts, and the files of messages. Draft a message as a wa.me link, or send it after the person allows it.",
     secretLabel: null,
     guide: [
       "Click **Link number**, type your number with its country code, and click **Get code**.",
@@ -200,8 +203,25 @@ export function whatsAppConnector(binary: string): Connector {
               `--filename=${name}`,
               ...(caption ? [`--caption=${caption}`] : []),
             ],
-            SEND_FILE_MS,
+            FILE_MS,
             signal
+          );
+        },
+      },
+      {
+        name: "whatsapp_save_media",
+        description:
+          "Saves the picture, video, audio, or document of a message, which has a `MediaType`, to this thread's channel. Returns its file id. When WhatsApp no longer keeps it, the phone sends it again if it is online.",
+        parameters: Type.Object({
+          chat: Type.String({ description: "The chat's JID." }),
+          message: Type.String({ description: "The message's `MsgID`." }),
+        }),
+        execute: ({ chat, message }, store, signal, _file, _allowed, save) => {
+          if (!save) {
+            throw new Error("Only an agent in a thread can save files.");
+          }
+          return save((path) =>
+            whatsApp.download(store, chat, message, path, signal)
           );
         },
       },
@@ -327,6 +347,40 @@ export class WhatsApp implements Device {
     signal: AbortSignal | undefined
   ): Promise<unknown> {
     return this.run(store, ["send", ...command], timeout, signal);
+  }
+
+  /** Writes the media of a message to `path`, and returns its name; the running sync downloads it. */
+  async download(
+    store: string,
+    chat: string,
+    message: string,
+    path: string,
+    signal: AbortSignal | undefined
+  ): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), "golem-whatsapp-"));
+    try {
+      const media = (await this.run(
+        store,
+        [
+          "media",
+          "download",
+          "--chat",
+          chat,
+          "--id",
+          message,
+          // A directory, so wacli names the file.
+          "--output",
+          `${directory}/`,
+          "--retry-on-phone",
+        ],
+        FILE_MS,
+        signal
+      )) as { path: string };
+      await Bun.write(path, Bun.file(media.path));
+      return basename(media.path);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 
   /**
