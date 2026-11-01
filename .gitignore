@@ -52,3 +52,6 @@ config
 
 # the voice models the app bundles (ios/scripts/fetch-parakeet.sh, ios/scripts/fetch-supertonic.sh)
 ios/Models
+
+# temporary UI tests that take simulator screenshots of the iOS app
+ios/GolemUITests

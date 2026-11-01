@@ -1,0 +1,772 @@
+/* Golem in its own look. Every value is from Golem's public/tokens.css and
+   public/styles.css: the canvas sidebar, the inset panel with a hairline and
+   the low shadow, Inter at weight 450, the clay accent, the gold of the
+   icon's eyes. The dark theme (film.mjs --dark) is one block below. */
+
+@font-face {
+  font-family: "Inter Variable";
+  src: url("./InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+.gd .ss-stage {
+  --gutter: 40px;
+  --ss-well: #e4e4e6;
+  --ss-canvas: #efeff0;
+  --ss-chrome: #efeff0;
+  --ss-surface: #f9f9fa;
+  --ss-raised: #ffffff;
+  --ss-line: #e2e2e2;
+  --ss-text-strong: #1b1b1b;
+  --ss-text: #5c5c5e;
+  --ss-text-faint: #a0a0a2;
+  --ss-icon: #5c5c5e;
+  --ss-accent: #a35d2f;
+  --ss-accent-soft: #a35d2f14;
+  --ss-font: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --gd-text-secondary: #2f2f31;
+  --gd-text-quaternary: #a0a0a2;
+  --gd-fill-active: #e1e1e2;
+  --gd-ring: #00000017;
+  --gd-gold: #b07a10;
+  --gd-composer: #ffffff;
+  --gd-shadow-low: 0 3px 6px -2px #00000005, 0 1px 1px 0 #0000000a;
+
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--ss-well);
+  font-family: var(--ss-font);
+  font-weight: 450;
+  -webkit-font-smoothing: antialiased;
+}
+
+.gd .ss-stage[data-theme="dark"] {
+  --ss-well: #050506;
+  --ss-canvas: #09090a;
+  --ss-chrome: #09090a;
+  --ss-surface: #121213;
+  --ss-raised: #1a1a1b;
+  --ss-line: #212224;
+  --ss-text-strong: #ffffff;
+  --ss-text: #959597;
+  --ss-text-faint: #5c5d5f;
+  --ss-icon: #959597;
+  --ss-accent: #a8622f;
+  --ss-accent-soft: #b8703f29;
+
+  --gd-text-secondary: #e3e4e6;
+  --gd-text-quaternary: #5c5d5f;
+  --gd-fill-active: #232325;
+  --gd-ring: #ffffff23;
+  --gd-gold: #ffd27a;
+  --gd-composer: #161617;
+  --gd-shadow-low: 0 0.5px 1px 1px #0000004d;
+}
+
+.gd-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- The window: pinned a gutter in on three sides, off the bottom ---- */
+
+.gd-window {
+  position: absolute;
+  top: var(--gutter);
+  left: var(--gutter);
+  width: 880px;
+  height: 564px;
+  box-shadow: var(--ss-shadow-hero);
+}
+
+.gd-window .ss-window__side {
+  border-right: 0;
+}
+
+/* Golem's page sits in one inset panel on the canvas (.panel) */
+.gd-window[data-kind="sidebar"] .ss-window__main {
+  margin: 8px 8px 0 0;
+  overflow: hidden;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 0 0 0.5px var(--ss-line), var(--gd-shadow-low);
+}
+
+.gd-window .ss-window__main > .ss-window__bar,
+.gd-window:not([data-kind="sidebar"]) > .ss-window__bar {
+  padding-left: 18px;
+  background: var(--ss-surface);
+  border-bottom: 0.5px solid var(--ss-line);
+}
+
+.gd-window:not([data-kind="sidebar"]) > .ss-window__bar {
+  padding-left: 14px;
+  gap: 14px;
+}
+
+.gd-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gd-text-secondary);
+  white-space: nowrap;
+}
+
+.gd-crumb {
+  color: var(--ss-text);
+}
+
+.gd-window .ss-window__main > .ss-window__bar {
+  padding-right: 18px;
+}
+
+.gd-tool {
+  display: grid;
+  color: var(--ss-text);
+}
+
+/* ---- Sidebar (.nav, .nav-item, .nav-section) ---- */
+
+.gd-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 12px 0;
+}
+
+.gd-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gd-section {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 2px 0 9px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ss-text);
+}
+
+.gd-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ss-text);
+}
+
+.gd-nav-item[data-current] {
+  background: var(--gd-fill-active);
+  color: var(--ss-text-strong);
+}
+
+.gd-nav-label {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.gd-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 16px;
+}
+
+/* ---- The thread (.transcript, .message) ---- */
+
+.gd-panel {
+  background: var(--ss-surface);
+}
+
+.gd-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+}
+
+/* Anchored at the bottom over the composer, as a thread scrolled to its end;
+   the earlier turns fade as they go up out of the pane, never sliced */
+.gd-transcript {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
+  padding: 0 24px 20px;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+}
+
+.gd-transcript > * {
+  flex: none;
+  will-change: transform;
+}
+
+/* The exchange the loop added fades out whole before its room closes */
+/* On the Collapse's inner box, which has no transition of its own: the
+   message inside keeps the kit's drop transition */
+.gd-new > .ss-collapse__inner {
+  transition: opacity 0.28s ease;
+}
+
+.gd-new[data-leaving] > .ss-collapse__inner {
+  opacity: 0;
+}
+
+/* The gap between messages rides inside each one, so a closed message takes
+   no room */
+.gd-transcript .gd-message {
+  padding-top: 24px;
+}
+
+.gd-message {
+  display: flex;
+  gap: 12px;
+}
+
+.gd-message-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gd-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+}
+
+.gd-author {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ss-text-strong);
+}
+
+.gd-time {
+  font-size: 12px;
+  color: var(--gd-text-quaternary);
+}
+
+.gd-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  letter-spacing: -0.1px;
+  color: var(--gd-text-secondary);
+  text-wrap: pretty;
+}
+
+.gd-text .ss-stream__w[data-mark] {
+  background: none;
+  font-weight: 600;
+  color: var(--ss-text-strong);
+}
+
+.gd-past-lines {
+  display: grid;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.gd-avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #eb5757;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+}
+
+/* Golem's face (Mark with a mood): the eyes blink while it works */
+.gd-face {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.gd-face-mood {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.gd-face-mood[data-on] {
+  opacity: 1;
+}
+
+.gd-face-eyes {
+  animation: gd-face-blink 3.2s steps(1) infinite;
+}
+
+@keyframes gd-face-blink {
+  92% {
+    opacity: 0;
+  }
+}
+
+/* ---- The work (.work-summary, .working-spinner, .shimmer, .step-strip) ---- */
+
+.gd-work {
+  height: 24px;
+}
+
+.gd-work-summary {
+  display: inline-flex;
+  align-items: center;
+  /* Both labels share one slot: one box height, so the crossfade never moves the line */
+  height: 24px;
+  vertical-align: top;
+  font-size: 13px;
+  line-height: 24px;
+  color: var(--ss-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gd-spinner {
+  display: inline-grid;
+  flex: none;
+  grid-template-columns: 4px 4px;
+  gap: 1px;
+  margin-right: 6px;
+}
+
+.gd-spinner i {
+  width: 4px;
+  height: 4px;
+  background: var(--ss-accent);
+  opacity: 0.2;
+  animation: gd-pixel 1s linear infinite;
+}
+
+.gd-spinner i:nth-child(2) { animation-delay: 0.25s; }
+.gd-spinner i:nth-child(4) { animation-delay: 0.5s; }
+.gd-spinner i:nth-child(3) { animation-delay: 0.75s; }
+
+@keyframes gd-pixel {
+  0% { opacity: 1; }
+  30% { opacity: 0.2; }
+}
+
+.gd-shimmer {
+  display: inline-flex;
+  gap: 0.25em;
+  background:
+    linear-gradient(90deg, var(--ss-text) 0%, var(--ss-text-strong) 50%, var(--ss-text) 100%)
+    0 0 / 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: gd-shimmer 2.2s linear infinite;
+}
+
+/* Golem writes "12s", with no space before the unit */
+.gd-shimmer {
+  --ss-count-unit-gap: 0px;
+}
+
+/* The rolling count paints its own digits, which the clipped light can't reach */
+.gd-shimmer .ss-count {
+  color: var(--ss-text);
+}
+
+@keyframes gd-shimmer {
+  to { background-position: -200% 0; }
+}
+
+.gd-work-now {
+  display: inline-flex;
+  color: var(--gd-text-quaternary);
+}
+
+.gd-work-now::before {
+  content: "·";
+  margin: 0 6px;
+}
+
+.gd-disclosure {
+  display: inline-grid;
+  margin-left: 8px;
+  color: var(--ss-text);
+}
+
+.gd-disclosure .gd-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.gd-strip {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+}
+
+.gd-strip i {
+  width: 7px;
+  height: 7px;
+  background: var(--gd-gold);
+  opacity: 0;
+  scale: 0.4;
+  transition: opacity 0.2s ease, scale 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.gd-strip[data-on] i {
+  opacity: 1;
+  scale: 1;
+}
+
+.gd-strip[data-on] i:nth-child(2) { transition-delay: 0.07s; }
+.gd-strip[data-on] i:nth-child(3) { transition-delay: 0.14s; }
+
+/* ---- The answer (.prose, .cards, .card) ---- */
+
+.gd-prose {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The prose's 8px gap rides on each part's content, inside its Collapse, so
+   a closed part takes no room at all and opens from zero */
+.gd-prose > .ss-collapse > .ss-collapse__inner > * {
+  padding-top: 8px;
+}
+
+.gd-prose > .ss-collapse:first-child > .ss-collapse__inner > * {
+  padding-top: 2px;
+}
+
+.gd-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.gd-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--ss-raised);
+  box-shadow: 0 0 0 0.5px var(--gd-ring), var(--gd-shadow-low);
+  opacity: 0;
+  translate: 0 -6px;
+  transition: opacity 0.3s ease, translate 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+}
+
+.gd-cards[data-on] .gd-card {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.gd-cards[data-on] .gd-card:nth-child(2) { transition-delay: 0.07s; }
+.gd-cards[data-on] .gd-card:nth-child(3) { transition-delay: 0.14s; }
+
+.gd-card-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #09090a;
+  fill: #ffd27a;
+}
+
+.gd-card-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.gd-card-title {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  line-height: 15px;
+  text-transform: uppercase;
+  color: var(--ss-text);
+}
+
+.gd-card-value {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--ss-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.gd-card-detail {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ss-text);
+}
+
+/* ---- The composer (.composer) ---- */
+
+.gd-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* The panel runs off the stage under it: the composer ends 28px above the
+     stage's edge */
+  margin: 0 24px 68px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--gd-composer);
+  box-shadow: var(--gd-shadow-low), 0 0 0 0.5px var(--gd-ring);
+}
+
+.gd-grow {
+  overflow: hidden;
+  transition: height 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.gd-input {
+  padding: 2px 6px;
+  font-size: 15px;
+  line-height: 24px;
+  letter-spacing: -0.1px;
+  color: var(--gd-text-secondary);
+}
+
+.gd-input {
+  position: relative;
+  min-height: 28px;
+}
+
+.gd-placeholder {
+  position: absolute;
+  left: 6px;
+  color: var(--gd-text-quaternary);
+  transition: opacity 0.2s ease;
+}
+
+.gd-placeholder[data-hidden] {
+  opacity: 0;
+  transition: none;
+}
+
+.gd-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 18px;
+  margin-left: 1px;
+  vertical-align: -3px;
+  background: var(--ss-text-strong);
+  animation: gd-caret 1.06s steps(1) 0.5s infinite;
+}
+
+@keyframes gd-caret {
+  50% { opacity: 0; }
+}
+
+.gd-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gd-attach {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--ss-text);
+}
+
+.gd-send {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ss-accent);
+  box-shadow: var(--gd-shadow-low);
+  color: #fff;
+  transition: background-color 0.15s ease;
+}
+
+.gd-send[data-pressed] {
+  background: #8f5128;
+}
+
+/* ---- Compact: Golem's iOS app in a phone, pinned a gutter from the bottom,
+   off the top below the status bar. Sizes in points from the mobile tokens
+   (design/tokens.json) and ios/Golem/Views/MessageRow.swift, Composer.swift ---- */
+
+.gd-phone {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+}
+
+.gd .ss-stage {
+  --gd-ios-background: #ffffff;
+  --gd-ios-title: #000000;
+  --gd-ios-text: #303030;
+  --gd-ios-secondary: #5c5d5c;
+  --gd-ios-quaternary: #9c9d9c;
+  --gd-ios-placeholder: #b0b0b0;
+  --gd-ios-glass: rgb(255 255 255 / 0.9);
+  --gd-ios-glass-edge: rgb(0 0 0 / 0.1);
+}
+
+.gd .ss-stage[data-theme="dark"] {
+  --gd-ios-background: #0d0d0d;
+  --gd-ios-title: #ffffff;
+  --gd-ios-text: #e3e3e3;
+  --gd-ios-secondary: #979897;
+  --gd-ios-quaternary: #5a5b5a;
+  --gd-ios-placeholder: #707170;
+  --gd-ios-glass: rgb(40 40 40 / 0.9);
+  --gd-ios-glass-edge: rgb(255 255 255 / 0.12);
+}
+
+.gd-body[data-ios] {
+  --gd-text-secondary: var(--gd-ios-text);
+  --gd-text-quaternary: var(--gd-ios-quaternary);
+  position: absolute;
+  inset: 0;
+  background: var(--gd-ios-background);
+}
+
+.gd-body[data-ios] .gd-transcript .gd-message {
+  padding-top: 16px;
+}
+
+.gd-body[data-ios] .gd-transcript {
+  padding: 0 20px 16px;
+  mask-image: none;
+}
+
+.gd-body[data-ios] .gd-avatar,
+.gd-body[data-ios] .gd-face {
+  width: 36px;
+  height: 36px;
+}
+
+.gd-body[data-ios] .gd-avatar {
+  font-size: 15px;
+}
+
+.gd-body[data-ios] .gd-face {
+  border-radius: 9px;
+}
+
+.gd-body[data-ios] .gd-meta {
+  height: 20px;
+}
+
+.gd-body[data-ios] .gd-author {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--gd-ios-title);
+}
+
+.gd-body[data-ios] .gd-text {
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--gd-ios-text);
+}
+
+.gd-body[data-ios] .gd-cards {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Cards (MarkdownText.Card): the value at the menu size; the small labels a
+   step up from the device's, so they read at the phone's drawn scale */
+.gd-body[data-ios] .gd-card-title {
+  font-size: 13px;
+  letter-spacing: 0.3px;
+}
+
+.gd-body[data-ios] .gd-card-title {
+  line-height: 18px;
+}
+
+.gd-body[data-ios] .gd-card-value {
+  font-size: 17px;
+  line-height: 22px;
+}
+
+.gd-body[data-ios] .gd-card-detail {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.gd-body[data-ios] .gd-work-summary,
+.gd-body[data-ios] .gd-time {
+  font-size: 13px;
+}
+
+/* A glass field as Linear's comment field: the add button at the start, the
+   send button at the end */
+.gd-body[data-ios] .gd-composer {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 0 16px 42px;
+  /* The send button keeps 10pt from the right, as from the top and bottom */
+  padding: 0 10px 0 6px;
+  border-radius: 24px;
+  background: var(--gd-ios-glass);
+  box-shadow: 0 0 0 0.5px var(--gd-ios-glass-edge), 0 4px 16px rgb(0 0 0 / 0.08);
+}
+
+.gd-body[data-ios] .gd-grow {
+  flex: 1;
+}
+
+.gd-body[data-ios] .gd-input {
+  /* Composer.swift: 14pt above and below the text */
+  min-height: 50px;
+  padding: 14px 0;
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--gd-ios-text);
+}
+
+.gd-body[data-ios] .gd-placeholder {
+  left: 0;
+  color: var(--gd-ios-placeholder);
+}
+
+.gd-body[data-ios] .gd-add,
+.gd-body[data-ios] .gd-actions {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 50px;
+  color: var(--gd-ios-secondary);
+}
+
+.gd-body[data-ios] .gd-add .gd-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.gd-body[data-ios] .gd-actions {
+  width: 30px;
+}
+
+.gd-body[data-ios] .gd-send {
+  width: 30px;
+  height: 30px;
+}
