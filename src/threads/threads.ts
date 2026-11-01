@@ -1997,6 +1997,7 @@ export class Threads {
           .map((personId) => this.hooks.automations(workspaceId, personId))
           .filter(Boolean)
           .join("\n"),
+        facts: this.registry.factsOf(workspaceId),
         messages,
       },
       (systemPrompt, text, signal) =>

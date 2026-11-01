@@ -28,6 +28,7 @@ function input(changes: Partial<ReviewInput> = {}): ReviewInput {
     realm: null,
     people: [ALICE, BOB],
     automations: "",
+    facts: "",
     messages: [
       { messageId: 4, author: "Alice", text: "No meat for me", time: 1 },
     ],
@@ -128,6 +129,19 @@ test("a review never writes for someone outside the thread, and sees what people
   );
   expect(second.prompts[0]).toContain(
     "<removed>\n[1] About Alice: Eats no meat\n</removed>"
+  );
+});
+
+test("a review sees the facts the family wrote, so it does not learn them again", async () => {
+  const learned = await open();
+  const reviewer = model("{}");
+  await learned.review(
+    input({ facts: "Alice eats no meat." }),
+    reviewer.summarize,
+    signal
+  );
+  expect(reviewer.prompts[0]).toContain(
+    "<facts>\nAlice eats no meat.\n</facts>"
   );
 });
 

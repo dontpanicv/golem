@@ -51,9 +51,10 @@ SQLite and Markdown.
 - **The channel brief.** When a thread is quiet for 10 minutes, or settled, a background model writes the channel's
   brief again: its purpose, what is happening now, the decisions, the open questions, and what each person wants.
   Every thread of the channel starts from it.
-- **Learned facts.** The learning loop reads the new messages and keeps facts about each person and how-tos for each
-  channel. It can also suggest a routine or a reminder. You see, change, and remove what it learned in Settings, and it
-  does not learn a removed fact again.
+- **Learned facts.** The learning loop reads the new messages and keeps only lasting facts about each person, such
+  as their work, the people in their life, and what they do not eat, and how-tos for each channel; it skips the
+  details of one task. It can also suggest a routine or a reminder. You see, change, and remove what it learned in
+  Settings, and it does not learn a removed fact again.
 - **Workspace facts.** The family writes facts about itself in Workspace settings: names, birthdays, addresses, work.
 - **Recall.** Every message, file, note, and artifact goes into the search index. Agents look things up there with the
   `recall` tool before they say that they do not know.
