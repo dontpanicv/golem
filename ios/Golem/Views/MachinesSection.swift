@@ -15,6 +15,7 @@ struct MachinesSection: View {
                     let visibility = machine.shared ? "Shared" : "Private"
                     SettingsRow(machine.name, description: "\(machine.summary) · \(visibility)") {
                         Toggle("Private", isOn: Binding(get: { !machine.shared }, set: { share($machine, !$0) }))
+                            .toggleStyle(.golemSwitch)
                             .labelsHidden()
                         GolemMenu {
                             MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }

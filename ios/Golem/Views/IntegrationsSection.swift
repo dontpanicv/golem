@@ -53,6 +53,7 @@ struct IntegrationsSection: View {
                                 "Private",
                                 isOn: Binding(get: { !credential.shared }, set: { share($credential, !$0) })
                             )
+                            .toggleStyle(.golemSwitch)
                             .labelsHidden()
                             GolemMenu {
                                 MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
