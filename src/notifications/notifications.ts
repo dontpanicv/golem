@@ -371,16 +371,27 @@ export class Notifications {
   endActivity(activity: LiveActivity): void {
     const ended = this.database
       .query(
-        "UPDATE live_activity SET ended_at = ? WHERE token = ? AND ended_at IS NULL"
+        "UPDATE live_activity SET ended_at = ? WHERE token = ? AND ended_at IS NULL RETURNING state"
       )
-      .run(Date.now(), activity.token).changes;
-    if (ended === 0) {
+      .get(Date.now(), activity.token) as { state: string | null } | null;
+    if (!ended) {
       return;
     }
+    // iOS ignores an end that has no content state it can decode.
+    const state: ActivityState = ended.state
+      ? JSON.parse(ended.state)
+      : { status: "working", title: "", threads: 0 };
     const now = Math.floor(Date.now() / 1000);
     this.sendActivity(
       activity,
-      { aps: { timestamp: now, event: "end", "dismissal-date": now } },
+      {
+        aps: {
+          timestamp: now,
+          event: "end",
+          "content-state": state,
+          "dismissal-date": now,
+        },
+      },
       10
     );
   }

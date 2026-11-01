@@ -315,7 +315,10 @@ test("a Live Activity gets each new state once, alerts only for a wait, and ends
   notifications.startActivity(alice, "home", "thread", newer, "sandbox");
   await Bun.sleep(0);
   expect(sent.at(-1)!.token).toBe(TOKEN);
-  expect(sent.at(-1)!.payload.aps).toMatchObject({ event: "end" });
+  expect(sent.at(-1)!.payload.aps).toMatchObject({
+    event: "end",
+    "content-state": { ...working, status: "waiting" },
+  });
   const { timestamp, "dismissal-date": dismissal } = sent.at(-1)!.payload
     .aps as Record<string, number>;
   expect(dismissal).toBe(timestamp!);
