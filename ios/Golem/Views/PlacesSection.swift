@@ -77,7 +77,7 @@ struct PlacesSection: View {
 }
 
 /// Adds a place or changes one: its name, the pin in the middle of the map, and the radius of its circle.
-private struct PlaceForm: View {
+struct PlaceForm: View {
     let workspaceID: String
     let place: Place?
     let saved: (Place) -> Void
@@ -87,6 +87,8 @@ private struct PlaceForm: View {
     @State private var pin: CLLocationCoordinate2D?
     @State private var radius: Int
     @State private var camera: MapCameraPosition
+    /// The meters of one point of the map at its zoom, which sizes the place's circle.
+    @State private var metersPerPoint: Double?
     @State private var busy = false
     @State private var location = CLLocationManager()
 
@@ -108,23 +110,32 @@ private struct PlaceForm: View {
     var body: some View {
         Dialog(title: place?.name ?? "Add a place") {
             GolemTextField("Name", text: $name)
-            // The pin stays in the middle and the map moves under it, so a place always has a pin.
+            // The pin stays in the middle and the map moves under it, so a place always has a pin. Its circle is drawn
+            // over the map, not in it: map content that follows the camera made the map report a change again, without
+            // end, and the app froze.
             Map(position: $camera) {
-                if let pin {
-                    MapCircle(center: pin, radius: CLLocationDistance(radius))
-                        .foregroundStyle(Tokens.Colors.accent.opacity(0.12))
-                        .stroke(Tokens.Colors.accent, lineWidth: 1.5)
-                }
                 UserAnnotation()
             }
             .mapControls { MapUserLocationButton() }
-            .onMapCameraChange(frequency: .continuous) { pin = $0.region.center }
+            .onMapCameraChange(frequency: .continuous) { context in
+                pin = context.region.center
+                metersPerPoint = context.region.span.latitudeDelta * 111_320 / Tokens.Size.map
+            }
             .overlay {
-                Circle()
-                    .fill(Tokens.Colors.accent)
-                    .stroke(.white, lineWidth: 2)
-                    .frame(width: 16, height: 16)
-                    .allowsHitTesting(false)
+                ZStack {
+                    if let metersPerPoint {
+                        let diameter = 2 * Double(radius) / metersPerPoint
+                        Circle()
+                            .fill(Tokens.Colors.accent.opacity(0.12))
+                            .stroke(Tokens.Colors.accent, lineWidth: 1.5)
+                            .frame(width: diameter, height: diameter)
+                    }
+                    Circle()
+                        .fill(Tokens.Colors.accent)
+                        .stroke(.white, lineWidth: 2)
+                        .frame(width: 16, height: 16)
+                }
+                .allowsHitTesting(false)
             }
             .frame(height: Tokens.Size.map)
             .clipShape(.rect(cornerRadius: Tokens.Radius.md))
