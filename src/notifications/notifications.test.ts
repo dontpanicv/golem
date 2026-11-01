@@ -223,7 +223,7 @@ test("an APNs answer whose body is not JSON is an error and not a crash", () => 
   ).toBe("APNs answered 429: TooManyRequests");
 });
 
-test("a Live Activity gets each new state once, alerts only for a wait, and ends with its last state", async () => {
+test("a Live Activity gets each new state once, alerts only for a wait, and ends at once", async () => {
   const database = authDatabase();
   migrate(database);
   const sent: {
@@ -272,6 +272,9 @@ test("a Live Activity gets each new state once, alerts only for a wait, and ends
   await Bun.sleep(0);
   expect(sent.at(-1)!.token).toBe(TOKEN);
   expect(sent.at(-1)!.payload.aps).toMatchObject({ event: "end" });
+  const { timestamp, "dismissal-date": dismissal } = sent.at(-1)!.payload
+    .aps as Record<string, number>;
+  expect(dismissal).toBe(timestamp!);
   expect(notifications.activities("home").map((item) => item.token)).toEqual([
     newer,
   ]);
@@ -281,6 +284,6 @@ test("a Live Activity gets each new state once, alerts only for a wait, and ends
   notifications.updateActivity(current!, working);
   await Bun.sleep(0);
   expect(notifications.activities("home")).toEqual([]);
-  notifications.endActivity(current!, { ...working, status: "done" });
+  notifications.endActivity(current!);
   expect(sent.at(-1)!.payload.aps).toMatchObject({ event: "update" });
 });

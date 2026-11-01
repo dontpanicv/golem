@@ -221,6 +221,12 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   const call = (name: string, args: Record<string, string>) =>
     fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: "toolUse" });
   const relay = /\]\(thread:([\w-]+)\): (.*)$/s.exec(text);
+  if (text.endsWith("Delegate and answer")) {
+    return call("start_thread", {
+      channel: "general",
+      message: "Take your time",
+    });
+  }
   if (text.endsWith("Ask #food what's for dinner")) {
     return call("start_thread", {
       channel: "food",
@@ -377,14 +383,53 @@ test("an agent starts a thread in another channel, gets the answer back, and can
       /^\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem from \[Ask #food what's for dinner\]\(thread:[\w-]+\): What's for dinner\?$/
     )
   );
-  // Alice hears back in her thread; the thread that worked for it asked her nothing.
+  // Alice hears back once in her thread, with the answer to the report: the first answer waited while #food worked.
+  const report = (await idle(family.id, asked.id)).messages.at(-1)!;
+  await until(
+    async () => golem.app.notifications.inbox(family.id, alice),
+    (inbox) =>
+      inbox.notifications.some(
+        (notification) => notification.createdAt >= report.time
+      )
+  );
+  await Bun.sleep(100);
+  expect(golem.app.notifications.inbox(family.id, alice).notifications).toEqual(
+    [expect.objectContaining({ threadId: asked.id, text: "Done." })]
+  );
+});
+
+test("an answer waits while the thread it asked works, and notifies when that thread stops without a report", async () => {
+  const family = await golem.app.workspaces.create(alice, "Waiting");
+  const [general] = golem.app.workspaces.channels(family.id, alice);
+  const asking = await golem.app.threads.create(
+    family.id,
+    alice,
+    general!.id,
+    "Delegate and answer"
+  );
+  const working = await until(
+    async () => golem.app.workspaces.channels(family.id, alice)[0]!.threads,
+    (threads) => threads.some((thread) => thread.title === "Take your time")
+  );
+  const asked = working.find((thread) => thread.title === "Take your time")!;
+  await until(
+    () =>
+      golem.app.threads.messages(golem.app.workspaces.thread(asking.id, alice)),
+    (state) => !state.running && state.messages.length === 2
+  );
+  await Bun.sleep(100);
+  expect(golem.app.notifications.inbox(family.id, alice).notifications).toEqual(
+    []
+  );
+
+  await golem.app.threads.stop(asked.id, alice);
   const { notifications } = await until(
     async () => golem.app.notifications.inbox(family.id, alice),
     (inbox) => inbox.notifications.length > 0
   );
-  expect(
-    notifications.every((notification) => notification.threadId === asked.id)
-  ).toBe(true);
+  expect(notifications).toEqual([
+    expect.objectContaining({ threadId: asking.id, text: "Ok." }),
+  ]);
 });
 
 test("an answer notifies the person who asked unless a screen of theirs shows the thread, and agents and background work notify too", async () => {
@@ -1183,10 +1228,7 @@ test("a Live Activity follows a message's work into the threads it asked, and en
     await Bun.sleep(100);
     ended = stateOf();
   }
-  expect(JSON.parse(ended.state!)).toMatchObject({
-    status: "done",
-    threads: 0,
-  });
+  expect(ended.endedAt).not.toBeNull();
 }, 20_000);
 
 test("each member has an own orchestrator thread, which stays open, out of the channel lists, and private", async () => {

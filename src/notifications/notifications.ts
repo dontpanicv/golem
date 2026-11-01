@@ -52,8 +52,8 @@ export type Push = (
 
 /** What a Live Activity shows: how the work for a person's message goes, and in which thread it is now. */
 export interface ActivityState {
-  readonly status: "working" | "waiting" | "done" | "failed";
-  /** The thread that works now, or the thread of the message when the work ended. */
+  readonly status: "working" | "waiting";
+  /** The thread that works now. */
   readonly title: string;
   /** How many threads work on it now. */
   readonly threads: number;
@@ -94,8 +94,6 @@ const ACTIVITY_TOKEN = /^[0-9a-f]{64,512}$/i;
 const MAX_DEVICES = 10;
 /** iOS ends a Live Activity after 8 hours; Golem stops following it then. */
 const ACTIVITY_LIFETIME = 8 * 60 * 60_000;
-/** How long a finished activity stays on the Lock Screen. */
-const ACTIVITY_DISMISSAL = 2 * 60_000;
 /** An activity that gets no update this long shows as out of date. */
 const ACTIVITY_STALE = 15 * 60_000;
 const ENVIRONMENTS: readonly string[] = [
@@ -306,7 +304,7 @@ export class Notifications {
         activity.threadId === threadId &&
         activity.token !== token
     )) {
-      this.endActivity(older, null);
+      this.endActivity(older);
     }
     this.database
       .query(
@@ -361,29 +359,20 @@ export class Notifications {
     );
   }
 
-  /** Ends a Live Activity with its last state, which stays on the Lock Screen a short time; null ends it at once. */
-  endActivity(activity: LiveActivity, state: ActivityState | null): void {
+  /** Ends a Live Activity and takes it off the Lock Screen at once: the answer's notification tells how it went. */
+  endActivity(activity: LiveActivity): void {
     const ended = this.database
       .query(
-        "UPDATE live_activity SET ended_at = ?, state = coalesce(?, state) WHERE token = ? AND ended_at IS NULL"
+        "UPDATE live_activity SET ended_at = ? WHERE token = ? AND ended_at IS NULL"
       )
-      .run(Date.now(), state && JSON.stringify(state), activity.token).changes;
+      .run(Date.now(), activity.token).changes;
     if (ended === 0) {
       return;
     }
-    const now = Date.now();
+    const now = Math.floor(Date.now() / 1000);
     this.sendActivity(
       activity,
-      {
-        aps: {
-          timestamp: Math.floor(now / 1000),
-          event: "end",
-          ...(state ? { "content-state": state } : {}),
-          "dismissal-date": Math.floor(
-            (state ? now + ACTIVITY_DISMISSAL : now) / 1000
-          ),
-        },
-      },
+      { aps: { timestamp: now, event: "end", "dismissal-date": now } },
       10
     );
   }

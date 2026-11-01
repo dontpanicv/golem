@@ -434,6 +434,11 @@ export class Threads {
   private readonly endingActivities = new Map<string, Timer>();
   /** The updates of the Live Activities of each workspace, one after another. */
   private readonly updatingActivities = new Map<string, Promise<void>>();
+  /**
+   * The threads whose answer waits to notify until the threads they asked stop working. A restart forgets them; then
+   * only the answer to a report notifies.
+   */
+  private readonly heldNotices = new Set<string>();
   /** The thread streams that show approvals, by thread. */
   private readonly approvalWatchers = new Map<string, Set<() => void>>();
 
@@ -1039,7 +1044,7 @@ export class Threads {
     for (const activity of activities) {
       const root = threads.find((thread) => thread.id === activity.threadId);
       if (!root) {
-        this.notifications.endActivity(activity, null);
+        this.notifications.endActivity(activity);
         continue;
       }
       const working = tree(root.id);
@@ -1071,7 +1076,7 @@ export class Threads {
     }
   }
 
-  /** Ends the Live Activities of a thread whose work did not start again, with how its last answer went. */
+  /** Ends the Live Activities of a thread whose work did not start again. */
   private async endActivity(
     workspaceId: string,
     root: ThreadSummary & ThreadRef
@@ -1079,15 +1084,10 @@ export class Threads {
     if ((await this.workTrees(workspaceId))(root.id).length > 0) {
       return;
     }
-    const last = (await this.messages(root)).messages.at(-1);
     for (const activity of this.notifications
       .activities(workspaceId)
       .filter((candidate) => candidate.threadId === root.id)) {
-      this.notifications.endActivity(activity, {
-        status: last?.failed ? "failed" : "done",
-        title: root.title,
-        threads: 0,
-      });
+      this.notifications.endActivity(activity);
     }
   }
 
@@ -1192,28 +1192,65 @@ export class Threads {
   /**
    * Notifies the person whose message an agent answered, when its run ends. Work that no person typed notifies
    * through `instruct`. Work that another thread's agent gave notifies only a person who also writes in this thread,
-   * such as in the orchestrator when a channel thread reports back to it.
+   * such as in the orchestrator when a channel thread reports back to it. While threads that this one asked still
+   * work for it, its answer waits: their report starts the answer that notifies, and without one this answer
+   * notifies when they stop.
    */
   private async notifyFinished(
     workspaceId: string,
     threadId: string
   ): Promise<void> {
-    const thread = this.registry
-      .allThreadsIn(workspaceId)
-      .find((candidate) => candidate.id === threadId);
+    const threads = this.registry.allThreadsIn(workspaceId);
+    const thread = threads.find((candidate) => candidate.id === threadId);
     if (!thread) {
       return;
     }
     const input = await this.latestInput(await this.conversation(thread));
+    const asker =
+      input?.kind === RELAYED
+        ? (input.data as unknown as Relay).fromThreadId
+        : undefined;
+    const tree = await this.workTrees(workspaceId);
+    // The asker that works on this thread's report does no work for it.
+    if (tree(thread.id).some((id) => id !== thread.id && id !== asker)) {
+      this.heldNotices.add(thread.id);
+    } else {
+      this.heldNotices.delete(thread.id);
+      await this.notifyAnswer(thread, input);
+    }
+    const asking = threads.find((candidate) => candidate.id === asker);
+    if (
+      asking &&
+      this.heldNotices.has(asking.id) &&
+      tree(asking.id).length === 0
+    ) {
+      this.heldNotices.delete(asking.id);
+      await this.notifyAnswer(
+        asking,
+        await this.latestInput(await this.conversation(asking))
+      );
+    }
+  }
+
+  /** Notifies the person of a thread's latest input about the answer to it, if the agent answered them. */
+  private async notifyAnswer(
+    thread: ThreadSummary & ThreadRef,
+    input: EntryRecord | undefined
+  ): Promise<void> {
     const userId = input && requesterIdOf(input);
     if (!(input && userId)) {
       return;
     }
     const { messages } = await this.messages(thread);
     const answer = messages.at(-1);
+    // The answer follows the person's message, or is the turn that another thread's message starts, with its id.
+    const asked = messages.findIndex(
+      (message) => message.id === String(input.id)
+    );
     if (
       answer?.agent &&
-      answer.id !== String(input.id) &&
+      asked !== -1 &&
+      asked >= messages.length - 2 &&
       !answer.streaming &&
       !answer.work?.stopped &&
       messages.some((message) => message.authorId === userId)

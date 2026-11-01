@@ -231,7 +231,7 @@ type Upcoming = {
 	suggestions: Suggestion[]; // oldest first; at most 3
 	approvals: { threadId: string; approval: Approval }[]; // what waits for the person to allow it
 };
-type ActivityState = { status: "working" | "waiting" | "done" | "failed"; title: string; threads: number }; // a Live Activity's content state: waiting: for the person to allow an action; title: the thread that works now, or the message's thread at the end; threads: how many work on it now
+type ActivityState = { status: "working" | "waiting"; title: string; threads: number }; // a Live Activity's content state: waiting: for the person to allow an action; title: the thread that works now; threads: how many work on it now
 ```
 
 ## Endpoints
@@ -270,7 +270,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `GET /api/v1/threads/:threadId/events` | | Server-sent events: `event: thread`, `data: ThreadState` after every change |
 | `POST /api/v1/threads/:threadId/messages` | `{ text, voice?, requestId? }` | `204`; a retry with the same `requestId` sends nothing again |
 | `POST /api/v1/threads/:threadId/approvals/:approvalId` | `{ allow: boolean, scope: "once" \| "turn" }` | `204`; `allow` runs the command once, or with `"turn"` also the rest of the turn's flagged commands on that machine. `403` for a person who is not the approver; `404` when the approval ended or the person is not a member |
-| `POST /api/v1/threads/:threadId/live-activity` | `{ token, environment }` | `204`; a Live Activity of the iPhone, with this push token in hex and `"sandbox"` or `"production"`, follows the work for the person's newest message in the thread. Golem pushes an `ActivityState` when it changes, an alert while it waits for the person, and the end 5 seconds after the last thread of the work stops, with the last state, which iOS dismisses 2 minutes later. A newer activity of the person for the thread ends the older one. |
+| `POST /api/v1/threads/:threadId/live-activity` | `{ token, environment }` | `204`; a Live Activity of the iPhone, with this push token in hex and `"sandbox"` or `"production"`, follows the work for the person's newest message in the thread. Golem pushes an `ActivityState` when it changes, an alert while it waits for the person, and the end 5 seconds after the last thread of the work stops, which takes it away at once: the answer's notification tells how it went. A newer activity of the person for the thread ends the older one. |
 | `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
 | `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/brief` | | `{ brief: Brief \| null }`: what the channel is for, where it is now, its decisions, its open questions, and what each person wants; `null` before the first |
@@ -336,13 +336,14 @@ answer. A message waits for a run at work for another person, so that run keeps 
 | `POST /api/v1/devices` | `{ token, environment: "sandbox" \| "production" }` | `204`; the device gets the person's pushes, and no more of another person's. A person keeps their 10 newest devices |
 | `DELETE /api/v1/devices/:token` | | `204`; the device gets no more of the person's pushes |
 
-A notification goes to a person's inbox when the agent answers their message, when a channel thread reports back to
-a thread they write in, for each answer of a routine (to every member) or a reminder (to its recipient) that is not
-`QUIET`, and when an agent calls its `notify` tool. While a screen of the person follows the thread's events stream,
-its notifications are read at once and send no push; opening the stream reads the thread's notifications before its
-first event, so load the inbox again then. Others go to the person's devices through APNs, with the `Inbox.badge` and
-`workspaceId`, `channelId`, and `threadId` to open. Close the events stream when the screen goes to the background.
-Pushes need `[apns]` in `config/golem.toml` and the key in `config/apns.p8`.
+A notification goes to a person's inbox when the agent answers their message, when a channel thread reports back to a
+thread they write in, for each answer of a routine (to every member) or a reminder (to its recipient) that is not
+`QUIET`, and when an agent calls its `notify` tool. An answer waits while threads that its agent asked still work for
+it: the answer to their report notifies, or without one, this answer when they stop. While a screen of the person
+follows the thread's events stream, its notifications are read at once and send no push; opening the stream reads the
+thread's notifications before its first event, so load the inbox again then. Others go to the person's devices through
+APNs, with the `Inbox.badge` and `workspaceId`, `channelId`, and `threadId` to open. Close the events stream when the
+screen goes to the background. Pushes need `[apns]` in `config/golem.toml` and the key in `config/apns.p8`.
 
 ### Artifacts (`src/artifacts/`)
 

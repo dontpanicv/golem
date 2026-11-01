@@ -78,15 +78,11 @@ private struct StatusSymbol: View {
                 .foregroundStyle(Tokens.Colors.accent)
         case .waiting:
             Image(systemName: "hand.raised.fill").foregroundStyle(Tokens.Colors.warning)
-        case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Tokens.Colors.success)
-        case .failed:
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Tokens.Colors.danger)
         }
     }
 }
 
-/// "Working", "Waiting for you", "Done", or "Failed", and how many threads work when there are more than one.
+/// "Working" or "Waiting for you", and how many threads work when there are more than one.
 private struct StatusText: View {
     let state: ThreadActivityAttributes.ContentState
 
@@ -94,23 +90,19 @@ private struct StatusText: View {
         let words = switch state.status {
         case .working: "Working"
         case .waiting: "Waiting for you"
-        case .done: "Done"
-        case .failed: "Failed"
         }
         Text(state.threads > 1 ? "\(words) · \(state.threads) threads" : words)
     }
 }
 
-/// The time since the message while the work goes on; nothing after it ends.
+/// The time since the message.
 private struct Elapsed: View {
     let context: ActivityViewContext<ThreadActivityAttributes>
 
     var body: some View {
-        if context.state.status == .working || context.state.status == .waiting {
-            Text(timerInterval: context.attributes.startedAt...Date.distantFuture, countsDown: false)
-                .monospacedDigit()
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 52)
-        }
+        Text(timerInterval: context.attributes.startedAt...Date.distantFuture, countsDown: false)
+            .monospacedDigit()
+            .multilineTextAlignment(.trailing)
+            .frame(maxWidth: 52)
     }
 }
