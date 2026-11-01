@@ -237,20 +237,7 @@ export class Workspaces {
     createdBy: string,
     ownerId: Realm
   ): Channel {
-    const slug = required(name, "Name")
-      .toLowerCase()
-      .replace(/^#/, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-    if (!slug) {
-      throw new HttpError(400, "Use letters or numbers in the channel name");
-    }
-    const exists = this.database
-      .query("SELECT 1 FROM channel WHERE workspace_id = ? AND name = ?")
-      .get(workspaceId, slug);
-    if (exists) {
-      throw new HttpError(409, `#${slug} already exists`);
-    }
+    const slug = this.freeChannelName(workspaceId, name);
     const channel = {
       id: randomUUID(),
       name: slug,
@@ -265,6 +252,50 @@ export class Workspaces {
       )
       .run(channel.id, workspaceId, slug, ownerId, createdBy, Date.now());
     return channel;
+  }
+
+  /** Gives a channel that the person sees a new name; names stay unique in the workspace. */
+  renameChannel(
+    workspaceId: string,
+    user: User,
+    channelId: string,
+    name: string
+  ): Channel {
+    const channel = this.channel(workspaceId, channelId, user);
+    const slug = this.freeChannelName(workspaceId, name, channelId);
+    this.database
+      .query("UPDATE channel SET name = ? WHERE id = ?")
+      .run(slug, channelId);
+    return { ...channel, name: slug };
+  }
+
+  /**
+   * A channel name as Golem keeps it: lowercase letters, also with diacritics, and numbers, with `-` between words.
+   * `409` when another channel of the workspace has it.
+   */
+  private freeChannelName(
+    workspaceId: string,
+    name: string,
+    channelId = ""
+  ): string {
+    const slug = required(name, "Name")
+      .normalize("NFC")
+      .toLowerCase()
+      .replace(/^#/, "")
+      .replace(/[^\p{L}\p{M}\p{N}]+/gu, "-")
+      .replace(/^-|-$/g, "");
+    if (!slug) {
+      throw new HttpError(400, "Use letters or numbers in the channel name");
+    }
+    const exists = this.database
+      .query(
+        "SELECT 1 FROM channel WHERE workspace_id = ? AND name = ? AND id != ?"
+      )
+      .get(workspaceId, slug, channelId);
+    if (exists) {
+      throw new HttpError(409, `#${slug} already exists`);
+    }
+    return slug;
   }
 
   /** Deletes a channel that the person sees; see `removeChannel`. */

@@ -77,6 +77,11 @@ final class APIClient {
         try await post("/api/v1/workspaces/\(workspaceID)/channels", ["name": name, "private": isPrivate])
     }
 
+    func renameChannel(workspaceID: String, channelID: String, name: String) async throws -> Channel {
+        let path = "/api/v1/workspaces/\(workspaceID)/channels/\(channelID)"
+        return try decode(try await send("PUT", path, ["name": name]).data)
+    }
+
     func deleteChannel(workspaceID: String, channelID: String) async throws {
         _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/channels/\(channelID)")
     }

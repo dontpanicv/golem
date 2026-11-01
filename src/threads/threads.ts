@@ -3906,7 +3906,7 @@ function connectorTool(
 
 /** A channel's name as the tools take it, with or without `#`. */
 function channelName(channel: string): string {
-  return channel.trim().replace(/^#/, "").toLowerCase();
+  return channel.trim().normalize("NFC").replace(/^#/, "").toLowerCase();
 }
 
 /** A channel as the channel tools give it: its name and summary, then its five newest threads. */

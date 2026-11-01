@@ -81,6 +81,20 @@ export const workspaceApiRoutes: readonly Route[] = [
     ),
   ],
   [
+    "PUT",
+    "/api/v1/workspaces/:workspace/channels/:channel",
+    api(async ({ app, user, params, body }) =>
+      json(
+        app.workspaces.renameChannel(
+          params.workspace!,
+          user,
+          params.channel!,
+          body.name as string
+        )
+      )
+    ),
+  ],
+  [
     "DELETE",
     "/api/v1/workspaces/:workspace/channels/:channel",
     api(async ({ app, user, params }) => {

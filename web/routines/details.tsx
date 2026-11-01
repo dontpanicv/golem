@@ -81,7 +81,7 @@ const routinesOf = keyed((key: string) =>
 const route = getRouteApi("/signed-in/w/$workspaceId/c/$channelId");
 
 /**
- * A channel's summary, its routines, their newest runs, and its brief, which can be long, under its threads. People
+ * A channel's name, its summary, its routines, their newest runs, and its brief, which can be long, under its threads. People
  * create routines by asking an agent; the model writes the summary and the brief from the channel's threads.
  */
 export function ChannelDetails() {
@@ -118,6 +118,41 @@ export function ChannelDetails() {
   };
   return (
     <>
+      {channel ? (
+        <PageSection title="Channel">
+          <SettingsCard>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const name = String(
+                  new FormData(event.currentTarget).get("name")
+                ).trim();
+                if (name === channel.name) {
+                  return;
+                }
+                channelsOf(workspaceId)
+                  .update(channelId, (draft) => {
+                    draft.name = name;
+                  })
+                  .isPersisted.promise.then(() => showToast("success", "Saved"))
+                  .catch(showError);
+              }}
+            >
+              <SettingsRow label="Name">
+                <input
+                  aria-label="Name"
+                  className="input"
+                  defaultValue={channel.name}
+                  key={channel.name}
+                  name="name"
+                  required
+                />
+                <Button label="Save" type="submit" />
+              </SettingsRow>
+            </form>
+          </SettingsCard>
+        </PageSection>
+      ) : null}
       {channel?.summary ? (
         <PageSection title="Summary">
           <p className="page-text">{channel.summary}</p>

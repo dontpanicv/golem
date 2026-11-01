@@ -46,7 +46,7 @@ export function refreshWorkspace(workspaceId: string): Promise<void> {
   });
 }
 
-/** The channels of a workspace, in the server's order. Deleting one shows at once. */
+/** The channels of a workspace, in the server's order. Renaming or deleting one shows at once. */
 export const channelsOf = keyed((workspaceId: string) =>
   createCollection(
     queryCollectionOptions({
@@ -58,6 +58,15 @@ export const channelsOf = keyed((workspaceId: string) =>
           ({ threads, ...channel }, order) => ({ ...channel, order })
         ),
       getKey: (channel) => channel.id,
+      // The collection loads again after it, with the name as the server keeps it.
+      onUpdate: async ({ transaction }) => {
+        for (const mutation of transaction.mutations) {
+          await request(`/workspaces/${workspaceId}/channels/${mutation.key}`, {
+            method: "PUT",
+            body: { name: mutation.modified.name },
+          });
+        }
+      },
       onDelete: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           await request(`/workspaces/${workspaceId}/channels/${mutation.key}`, {

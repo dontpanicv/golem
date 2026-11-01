@@ -136,6 +136,40 @@ test("names and messages are checked before anything is stored", async () => {
   ).toEqual([]);
 });
 
+test("a channel name keeps Czech letters, and only a member renames a channel", async () => {
+  const base = `/api/v1/workspaces/${workspaceId}/channels`;
+  const trips = await body(
+    await golem.call(base, { token: alice, body: { name: "Výlety do hor" } })
+  );
+  expect(trips.name).toBe("výlety-do-hor");
+  await golem.call(base, { token: alice, body: { name: "Účty" } });
+  const rename = (name: string) =>
+    golem.call(`${base}/${trips.id}`, {
+      token: alice,
+      method: "PUT",
+      body: { name },
+    });
+  expect(await body(await rename("#Žluťoučký kůň!"))).toMatchObject({
+    id: trips.id,
+    name: "žluťoučký-kůň",
+  });
+  expect(await failure(await rename("účty"))).toEqual({
+    status: 409,
+    error: "#účty already exists",
+  });
+  // Its own name again is no conflict.
+  expect((await rename("Žluťoučký kůň")).status).toBe(200);
+  expect(
+    (
+      await golem.call(`${base}/${trips.id}`, {
+        token: bob,
+        method: "PUT",
+        body: { name: "mine" },
+      })
+    ).status
+  ).toBe(404);
+});
+
 test("a long first line makes a short thread title", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Noted.")]);
   const thread = await body(

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A channel's summary and brief, its routines, and their newest runs. People create routines by asking an agent; the
-/// model writes the summary and the brief from the channel's threads.
+/// A channel's name, its summary and brief, its routines, and their newest runs. People create routines by asking an
+/// agent; the model writes the summary and the brief from the channel's threads.
 struct ChannelDetailsView: View {
     let channelID: String
     let open: (Destination) -> Void
@@ -10,15 +10,32 @@ struct ChannelDetailsView: View {
     @State private var runs: [RoutineRun] = []
     @State private var brief: Brief?
     @State private var loaded = false
+    @State private var name = ""
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
     private var workspaceID: String { session.workspace?.id ?? "" }
+    private var renamed: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && name != channel?.name
+    }
 
     var body: some View {
         SettingsList {
             DetailTitle(title: channel.map { "# \($0.name)" } ?? "", caption: "Channel details")
                 .padding(.horizontal, Tokens.Mobile.Size.margin)
                 .padding(.vertical, Tokens.Space.md)
+            SettingsCard(title: "Channel") {
+                HStack(spacing: Tokens.Space.md) {
+                    GolemTextField(nil, placeholder: "Name", text: $name)
+                        .textInputAutocapitalization(.never)
+                        .onSubmit(rename)
+                        .accessibilityLabel("Name")
+                    Button("Save", action: rename)
+                        .buttonStyle(.secondary)
+                        .disabled(!renamed)
+                }
+                .padding(.horizontal, Tokens.Mobile.Size.margin)
+                .padding(.bottom, Tokens.Space.lg)
+            }
             if let summary = channel?.summary {
                 SettingsCard(title: "Summary") {
                     Text(summary)
@@ -69,6 +86,7 @@ struct ChannelDetailsView: View {
         .phoneTabBar()
         .pushedScreen(channel.map { "#\($0.name)" } ?? "")
         .task { await load() }
+        .onAppear { name = channel?.name ?? "" }
         .refreshable { await load() }
         // Thread links in the brief open the thread here instead of leaving the app.
         .environment(\.openURL, OpenURLAction { url in
@@ -125,6 +143,18 @@ struct ChannelDetailsView: View {
             (routines, runs) = (found.routines, found.runs)
             brief = try await session.api.brief(workspaceID: workspaceID, channelID: channelID)
             loaded = true
+        }
+    }
+
+    private func rename() {
+        let name = name
+        guard renamed else { return }
+        Task {
+            await session.run {
+                try await session.renameChannel(channelID: channelID, name: name)
+                self.name = channel?.name ?? name
+                session.show("Saved", .success)
+            }
         }
     }
 

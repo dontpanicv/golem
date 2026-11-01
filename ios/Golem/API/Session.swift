@@ -226,6 +226,12 @@ final class Session {
         return channel
     }
 
+    func renameChannel(channelID: String, name: String) async throws {
+        guard let workspace else { return }
+        _ = try await api.renameChannel(workspaceID: workspace.id, channelID: channelID, name: name)
+        try await reloadWorkspace()
+    }
+
     /// Deletes a channel with its threads and routines; the server keeps them, hidden.
     func deleteChannel(channelID: String) async throws {
         guard let workspace else { return }
