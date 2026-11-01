@@ -1340,9 +1340,9 @@ export class Threads {
   /**
    * Notifies the person whose message an agent answered, when its run ends. Work that no person typed notifies
    * through `instruct`. Work that another thread's agent gave notifies only a person who also writes in this thread,
-   * such as in the orchestrator when a channel thread reports back to it. While threads that this one asked still
-   * work for it, its answer waits: their report starts the answer that notifies, and without one this answer
-   * notifies when they stop.
+   * such as in the orchestrator when a channel thread reports back to it, and never when this thread reported back:
+   * then the asker's answer to the report notifies. While threads that this one asked still work for it, its answer
+   * waits: their report starts the answer that notifies, and without one this answer notifies when they stop.
    */
   private async notifyFinished(
     workspaceId: string,
@@ -1354,19 +1354,31 @@ export class Threads {
       return;
     }
     const input = await this.latestInput(await this.conversation(thread));
-    const asker =
-      input?.kind === RELAYED
-        ? (input.data as unknown as Relay).fromThreadId
-        : undefined;
+    const relay =
+      input?.kind === RELAYED ? (input.data as unknown as Relay) : undefined;
+    const asker = relay?.fromThreadId;
+    const asking = threads.find((candidate) => candidate.id === asker);
     const tree = await this.workTrees(workspaceId);
     // The asker that works on this thread's report does no work for it.
     if (tree(thread.id).some((id) => id !== thread.id && id !== asker)) {
       this.heldNotices.add(thread.id);
     } else {
       this.heldNotices.delete(thread.id);
-      await this.notifyAnswer(thread, input);
+      // A thread that reported back leaves the notice to the asker's answer to the report.
+      const answered =
+        asking && (await this.latestInput(await this.conversation(asking)));
+      const report =
+        answered?.kind === RELAYED
+          ? (answered.data as unknown as Relay)
+          : undefined;
+      const reported =
+        relay &&
+        report?.fromThreadId === thread.id &&
+        report.hops === relay.hops + 1;
+      if (!reported) {
+        await this.notifyAnswer(thread, input);
+      }
     }
-    const asking = threads.find((candidate) => candidate.id === asker);
     if (
       asking &&
       this.heldNotices.has(asking.id) &&
@@ -1519,11 +1531,14 @@ export class Threads {
     return threadIds;
   }
 
-  /** The threads of a workspace with a live task that is not background work. */
+  /**
+   * The threads of a workspace with a live task that is not background work. A compaction after a turn is no work of
+   * the agent: its end would notify about the same answer again.
+   */
   private workingIn(workspaceId: string, graph: TaskGraph): string[] {
     const busy = new Set(
       Object.values(graph.tasks)
-        .filter((task) => !task.background)
+        .filter((task) => !task.background && task.kind !== "pi.compaction")
         .map((task) => String(task.conversationId))
     );
     return this.registry

@@ -286,6 +286,13 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (move) {
     return call("move_thread", { channel: move[1]! });
   }
+  const dinner = /Ask thread ([\w-]+) for dinner$/.exec(text);
+  if (dinner) {
+    return call("send_to_thread", {
+      thread: dinner[1]!,
+      message: "What's for dinner?",
+    });
+  }
   const other = /Tell thread ([\w-]+) hi$/.exec(text);
   if (other) {
     return call("send_to_thread", { thread: other[1]!, message: "Hi" });
@@ -401,6 +408,43 @@ test("an agent starts a thread in another channel, gets the answer back, and can
   expect(golem.app.notifications.inbox(family.id, alice).notifications).toEqual(
     [expect.objectContaining({ threadId: asked.id, text: "Done." })]
   );
+});
+
+test("a thread that reports back leaves the notice to the asker, also for a person who writes in both", async () => {
+  const family = await golem.app.workspaces.create(alice, "Reporting");
+  const food = golem.app.workspaces.createChannel(family.id, alice, "food");
+  const [general] = golem.app.workspaces.channels(family.id, alice);
+  const list = await golem.app.threads.create(
+    family.id,
+    alice,
+    food.id,
+    "Hello"
+  );
+  const listed = () =>
+    golem.app.threads.messages(golem.app.workspaces.thread(list.id, alice));
+  await until(listed, (state) => !state.running && state.messages.length === 2);
+  const before = golem.app.notifications.inbox(family.id, alice).notifications;
+  const asking = await golem.app.threads.create(
+    family.id,
+    alice,
+    general!.id,
+    `Ask thread ${list.id} for dinner`
+  );
+  await until(listed, (state) => !state.running && state.messages.length === 3);
+  // The answer to Alice, then the answer to the report.
+  await until(
+    () => idle(family.id, asking.id),
+    (state) => state.messages.length === 3
+  );
+  await until(
+    async () => golem.app.notifications.inbox(family.id, alice),
+    (inbox) => inbox.notifications.length > before.length
+  );
+  await Bun.sleep(100);
+  const { notifications } = golem.app.notifications.inbox(family.id, alice);
+  expect(notifications.slice(0, -before.length || undefined)).toEqual([
+    expect.objectContaining({ threadId: asking.id, text: "Done." }),
+  ]);
 });
 
 test("an answer waits while the thread it asked works, and notifies when that thread stops without a report", async () => {
@@ -1571,6 +1615,38 @@ test("the orchestrator compacts into a view of its memory, and its agent zooms i
     )
   );
 });
+
+test("the orchestrator compacts after its turn without notifying about the same answer again", async () => {
+  golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
+  const home = await golem.app.workspaces.create(alice, "Compacting");
+  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  const views = memoryViews.length;
+  for (const [index, text] of [
+    "Buy milk",
+    "Buy bread",
+    "Buy eggs",
+    // Long enough for the compaction after the turn, too short for one during it.
+    `Here is the list: ${"word ".repeat(42_000)}`,
+  ].entries()) {
+    await golem.app.threads.send(orchestrator.id, alice, text);
+    await until(
+      () => golem.app.threads.messages(orchestrator),
+      (state) => !state.running && state.messages.length === (index + 1) * 2
+    );
+  }
+  // The compaction waits for the memory to catch up, then runs; the next request reads its view.
+  await Bun.sleep(3000);
+  await golem.app.threads.send(orchestrator.id, alice, "Buy butter");
+  await until(
+    () => golem.app.threads.messages(orchestrator),
+    (state) => !state.running && state.messages.length === 10
+  );
+  expect(memoryViews.length).toBeGreaterThan(views);
+  await Bun.sleep(100);
+  expect(
+    golem.app.notifications.inbox(home.id, alice).notifications
+  ).toHaveLength(5);
+}, 15_000);
 
 test("a quiet thread teaches Golem about its people and its channel, and Golem suggests an automation that waits for its person", async () => {
   golem.faux.appendResponses(Array.from({ length: 20 }, () => agent));
