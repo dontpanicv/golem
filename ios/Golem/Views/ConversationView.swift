@@ -17,6 +17,8 @@ struct ConversationView: View {
     @State private var files: [URL] = []
     @State private var sending = false
     @State private var preview: URL?
+    /// The artifact of the last `artifact:` link the person tapped.
+    @State private var linkedArtifact: String?
     /// The routines and reminders Golem suggests to the person, in their orchestrator only.
     @State private var suggestions: [Suggestion] = []
     @Environment(\.phoneTabBar) private var tabBar
@@ -82,9 +84,10 @@ struct ConversationView: View {
                 if isOrchestrator || state != nil {
                     ArtifactsPanel(
                         channelID: isOrchestrator ? nil : state?.thread.channelId,
-                        changes: state?.messages.count ?? 0, artifactID: artifactID, openFile: openFile,
-                        close: tabBar == nil ? nil : { showArtifacts = false }
+                        changes: state?.messages.count ?? 0, artifactID: linkedArtifact ?? artifactID,
+                        openFile: openFile, close: tabBar == nil ? nil : { showArtifacts = false }
                     )
+                    .id(linkedArtifact)
                 } else {
                     ProgressView()
                 }
@@ -143,10 +146,20 @@ struct ConversationView: View {
                 suggestions = upcoming.suggestions
             }
         }
-        // Thread links in messages open the thread here instead of leaving the app.
+        // Golem's links in messages open here instead of leaving the app.
         .environment(\.openURL, OpenURLAction { url in
-            guard url.scheme == "thread" else { return .systemAction }
-            open(.thread(String(url.absoluteString.dropFirst("thread:".count))))
+            guard let scheme = url.scheme, ["thread", "file", "artifact"].contains(scheme) else {
+                return .systemAction
+            }
+            let id = String(url.absoluteString.dropFirst(scheme.count + 1))
+            switch scheme {
+            case "thread": open(.thread(id))
+            // The server names the file when it sends it.
+            case "file": openFile(FileRef(id: id, name: ""))
+            default:
+                linkedArtifact = id
+                showArtifacts = true
+            }
             return .handled
         })
     }

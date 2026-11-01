@@ -180,7 +180,7 @@ final class APIClient {
         let folder = FileManager.default.temporaryDirectory.appending(path: file.id)
         try? FileManager.default.removeItem(at: folder)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appending(path: file.name)
+        let url = folder.appending(path: file.name.isEmpty ? response.suggestedFilename ?? file.id : file.name)
         try FileManager.default.moveItem(at: location, to: url)
         return url
     }
