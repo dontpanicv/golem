@@ -34,7 +34,9 @@ struct ConversationView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            // Not lazy: a lazy stack guesses the height of rows it has not measured, and a tall new row, such as an
+            // open work log, made it move the list several screens past the messages.
+            VStack(alignment: .leading, spacing: 0) {
                 let messages = state?.messages ?? []
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                     let continued = index > 0 && MessageRow.continues(message, after: messages[index - 1])
@@ -42,6 +44,7 @@ struct ConversationView: View {
                         message: message, continued: continued,
                         waiting: message.id == working?.id && !approvals.isEmpty, openFile: openFile
                     )
+                        .equatable()
                         .padding(.top, continued ? Tokens.Space.xs : Tokens.Space.lg)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }

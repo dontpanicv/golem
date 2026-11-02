@@ -41,7 +41,11 @@ struct MessageRow: View {
                 }
                 if let work = message.work { WorkLog(work: work) }
                 if !message.text.isEmpty {
-                    MarkdownText(text: message.text, size: Tokens.Mobile.FontSize.body, working: session.working)
+                    // Only a message with a thread link redraws when a thread starts or stops working.
+                    MarkdownText(
+                        text: message.text, size: Tokens.Mobile.FontSize.body,
+                        working: message.text.contains("thread:") ? session.working : []
+                    )
                         .foregroundStyle(message.failed ? Tokens.Mobile.Colors.danger : Tokens.Mobile.Colors.text)
                         .copyable(message.text)
                 }
@@ -161,5 +165,13 @@ private struct FilePicture: View {
                 failed = !Task.isCancelled
             }
         }
+    }
+}
+
+/// A row draws again only when its message or place changes: every row of a thread is alive, and a thread changes with
+/// each word of an answer. `openFile` is the same action each time.
+extension MessageRow: Equatable {
+    static func == (left: MessageRow, right: MessageRow) -> Bool {
+        left.message == right.message && left.continued == right.continued && left.waiting == right.waiting
     }
 }
