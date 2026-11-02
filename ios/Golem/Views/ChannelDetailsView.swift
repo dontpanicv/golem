@@ -11,6 +11,7 @@ struct ChannelDetailsView: View {
     @State private var brief: Brief?
     @State private var loaded = false
     @State private var name = ""
+    @State private var opening: FileRef?
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
     private var workspaceID: String { session.workspace?.id ?? "" }
@@ -51,7 +52,7 @@ struct ChannelDetailsView: View {
                     MarkdownText(text: brief.text, size: Tokens.Mobile.FontSize.row)
                         .foregroundStyle(Tokens.Mobile.Colors.text)
                         .lineSpacing(4)
-                        .textSelection(.enabled)
+                        .copyable(brief.text)
                         .padding(.horizontal, Tokens.Mobile.Size.margin)
                         .padding(.vertical, Tokens.Space.sm)
                 }
@@ -88,10 +89,18 @@ struct ChannelDetailsView: View {
         .task { await load() }
         .onAppear { name = channel?.name ?? "" }
         .refreshable { await load() }
-        // Thread links in the brief open the thread here instead of leaving the app.
+        .filePreview($opening)
+        // The brief's links open here instead of leaving the app, as a thread's do.
         .environment(\.openURL, OpenURLAction { url in
-            guard url.scheme == "thread" else { return .systemAction }
-            open(.thread(String(url.absoluteString.dropFirst("thread:".count))))
+            guard let scheme = url.scheme, ["thread", "file", "artifact"].contains(scheme) else {
+                return .systemAction
+            }
+            let id = String(url.absoluteString.dropFirst(scheme.count + 1))
+            switch scheme {
+            case "thread": open(.thread(id))
+            case "file": opening = FileRef(id: id, name: "")
+            default: open(.artifact(channel: channelID, artifact: id))
+            }
             return .handled
         })
     }

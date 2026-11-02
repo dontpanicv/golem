@@ -39,10 +39,7 @@ struct PhoneShell: View {
                     if destination == .workspaceSettings {
                         WorkspaceSettingsView().id(session.workspace?.id)
                     } else {
-                        SettingsView { destination in
-                            sheet = nil
-                            open(destination)
-                        }
+                        SettingsView(open: open)
                     }
                 }
             }
@@ -143,8 +140,9 @@ struct PhoneShell: View {
     }
 
     /// Opens a screen: Golem, Activity, and Search in their tabs, the settings in a sheet, anything else on the open
-    /// tab's stack.
+    /// tab's stack. Another screen closes the settings, which would hide it, as when a notification opens a thread.
     private func open(_ destination: Destination) {
+        if destination != .settings, destination != .workspaceSettings { sheet = nil }
         switch destination {
         case .thread(session.orchestrator?.id ?? ""):
             paths[.golem] = []

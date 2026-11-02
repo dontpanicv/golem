@@ -218,7 +218,7 @@ private struct CredentialForm: View {
     }
 }
 
-/// The steps that set up an integration, numbered; links open, and the text can be copied.
+/// The steps that set up an integration, numbered; links open, and a long press copies a step.
 private struct Guide: View {
     let integration: Integration
     @Environment(\.dismiss) private var dismiss
@@ -234,7 +234,7 @@ private struct Guide: View {
                                 .monospacedDigit()
                             Text(LocalizedStringKey(step))
                                 .foregroundStyle(Tokens.Mobile.Colors.text)
-                                .textSelection(.enabled)
+                                .copyable(step)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.book))

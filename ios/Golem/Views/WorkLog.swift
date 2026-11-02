@@ -232,7 +232,7 @@ struct WorkStep: View {
         default:
             MarkdownText(text: step.text, size: Tokens.FontSize.md, working: session.working)
                 .foregroundStyle(Tokens.Colors.textSecondary)
-                .textSelection(.enabled)
+                .copyable(step.text)
         }
     }
 

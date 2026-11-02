@@ -275,3 +275,13 @@ private struct CardView: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+extension View {
+    /// A long press shows Copy, which copies `text`. Text with links is never selectable: selectable text takes the
+    /// taps on its links at other places than it draws them, so most taps miss.
+    func copyable(_ text: String) -> some View {
+        contextMenu {
+            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+        }
+    }
+}
