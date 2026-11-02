@@ -316,6 +316,10 @@ run at a place instead of on a schedule; the iPhone tells Golem when it happens.
   time or [at a place](#reminders-and-routines-at-a-place).
 - **Upcoming and suggestions.** Upcoming shows your routines, reminders, approvals, and the suggestions that wait for
   you. Accept a suggestion and it becomes a routine or a reminder.
+- **Feedback from the agents.** When a tool fails or answers wrong, when no tool can do the work, or when an agent sees
+  an easier way, it reports this with `feedback_report` and continues. The server's owner reads the reports under
+  **Private** › **Feedback** and dismisses each one when it is done. A report describes Golem, not the person, and
+  links its thread only when the owner can see it.
 - **The model.** Golem uses ChatGPT, signed in once with the device login of OpenAI's Codex. The server's owner
   chooses the model and the effort for everybody.
 
