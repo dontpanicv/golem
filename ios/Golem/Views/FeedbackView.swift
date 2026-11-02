@@ -18,6 +18,7 @@ struct FeedbackView: View {
             .padding(.bottom, Tokens.Space.xxxl)
             .animation(.snappy, value: reports)
         }
+        .returnsToEnd()
         .overlay {
             if reports?.isEmpty == true { EmptyState(title: "No feedback", systemImage: "info.circle") }
         }

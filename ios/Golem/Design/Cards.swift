@@ -21,6 +21,7 @@ struct SettingsList<Content: View>: View {
             .padding(.bottom, Tokens.Space.xxxl)
             .frame(maxWidth: .infinity)
         }
+        .returnsToEnd()
         .mobileBackground()
     }
 }

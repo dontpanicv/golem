@@ -25,6 +25,7 @@ struct UpcomingView: View {
             .padding(.bottom, Tokens.Space.xxxl)
             .animation(.snappy, value: groups)
         }
+        .returnsToEnd()
         .overlay {
             if upcoming != nil, groups.isEmpty { EmptyState(title: "Nothing upcoming", systemImage: "calendar") }
         }

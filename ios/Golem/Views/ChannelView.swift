@@ -42,6 +42,7 @@ struct ChannelView: View {
             .padding(.vertical, Tokens.Space.md)
             .animation(.snappy, value: channel?.threads)
         }
+        .returnsToEnd()
         .defaultScrollAnchor(.bottom)
         .scrollDismissesKeyboard(.interactively)
         .overlay {

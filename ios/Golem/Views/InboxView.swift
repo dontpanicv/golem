@@ -25,6 +25,7 @@ struct InboxView: View {
             .padding(.bottom, Tokens.Space.xxxl)
             .animation(.snappy, value: notifications)
         }
+        .returnsToEnd()
         .overlay {
             if notifications.isEmpty, session.inbox != nil {
                 EmptyState(title: shown == .all ? "No notifications" : "All read", systemImage: "bell")

@@ -55,6 +55,7 @@ struct HomeView: View {
             .padding(.bottom, Tokens.Mobile.Size.voice + Tokens.Space.xl)
             .animation(.snappy, value: openThreads)
         }
+        .returnsToEnd()
         .overlay(alignment: .bottomTrailing) { newMenu }
         .refreshable { await session.run { try await session.reloadWorkspace() } }
         .phoneTabBar()

@@ -73,6 +73,7 @@ struct ConversationView: View {
         .defaultScrollAnchor(.bottom)
         // New words and messages keep the newest in view.
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .returnsToEnd()
         .safeAreaBar(edge: .bottom) {
             bottomBar
         }
@@ -213,7 +214,11 @@ struct ConversationView: View {
         var delay = Duration.seconds(1)
         while !Task.isCancelled {
             do {
-                state = try await session.api.thread(threadID)
+                let loaded = try await session.api.thread(threadID)
+                // The first messages show at once, so the list does not measure its rows while they slide in.
+                var transaction = Transaction()
+                transaction.disablesAnimations = state == nil
+                withTransaction(transaction) { state = loaded }
                 failure = nil
                 var opened = false
                 try await session.api.threadEvents(threadID) { next in

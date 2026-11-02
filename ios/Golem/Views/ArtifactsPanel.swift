@@ -112,6 +112,7 @@ struct ArtifactsPanel: View {
                     }
                 }
             }
+            .returnsToEnd()
         }
     }
 
@@ -141,6 +142,7 @@ struct ArtifactsPanel: View {
                         }
                     }
                 }
+                .returnsToEnd()
                 .padding(.horizontal, -Tokens.Space.lg)
             }
         }

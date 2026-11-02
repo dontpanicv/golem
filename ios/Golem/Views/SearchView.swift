@@ -51,6 +51,7 @@ struct SearchView: View {
                 }
             }
         }
+        .returnsToEnd()
         .overlay {
             if response?.results.isEmpty == true, !query.trimmingCharacters(in: .whitespaces).isEmpty {
                 EmptyState(title: "Nothing found", systemImage: "magnifyingglass")
