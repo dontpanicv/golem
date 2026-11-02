@@ -1583,6 +1583,33 @@ test("the orchestrator gets its own instructions, also after they change, and a 
   );
 });
 
+test("the soul comes first in an agent's instructions, and the instructions hold only the work", async () => {
+  const home = await golem.app.workspaces.create(alice, "Souled");
+  const [channel] = golem.app.workspaces.channels(home.id, alice);
+  const before = systemPrompts.length;
+  const created = await golem.app.threads.create(
+    home.id,
+    alice,
+    channel!.id,
+    "Hi"
+  );
+  const thread = golem.app.workspaces
+    .allThreadsIn(home.id)
+    .find((candidate) => candidate.id === created.id)!;
+  await until(
+    () => golem.app.threads.messages(thread),
+    (state) => !state.running && state.messages.length === 2
+  );
+  const prompt = systemPrompts.slice(before).join("\n");
+  const soul = prompt.indexOf("<soul>\n# Golem");
+  expect(soul).toBeGreaterThan(-1);
+  expect(soul).toBeLessThan(prompt.indexOf("This thread is in #"));
+  expect(soul).toBeLessThan(
+    prompt.indexOf("You are Golem, a family assistant.")
+  );
+  expect(prompt).not.toContain("Answer concisely");
+});
+
 test("the orchestrator compacts into a view of its memory, and its agent zooms into a message", async () => {
   golem.faux.appendResponses(Array.from({ length: 40 }, () => agent));
   const home = await golem.app.workspaces.create(alice, "Remembering");

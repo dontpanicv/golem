@@ -97,6 +97,8 @@ addresses, or code and data from employers or clients.
   `src/threads/threads.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.
 - A prompt section of the agents renders the same text until its content changes: no times and no order by time. Pi
   Durable adds each changed section to the conversation again, so a section that changes often repeats itself.
+- How Golem talks (voice, length, humor) is only in `SOUL` in `src/threads/threads.ts`, the first section of every
+  agent's prompt; `INSTRUCTIONS` and the task texts say how it works and never set a tone.
 - In `src/threads/threads.ts`, a tool that runs a shell command on a machine is in `RUNS_COMMAND`, so `approved` asks a
   person before a command that dcg (destructive_command_guard) flags; besides connector tools with an `approval`,
   nothing else waits for one. All web traffic of agents
