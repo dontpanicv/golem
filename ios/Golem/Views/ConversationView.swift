@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 
 /// One thread, as a Slack thread: messages with their author's avatar, the approvals after them, and
@@ -16,7 +15,7 @@ struct ConversationView: View {
     @State private var draft = ""
     @State private var files: [URL] = []
     @State private var sending = false
-    @State private var preview: URL?
+    @State private var opening: FileRef?
     /// The artifact of the last `artifact:` link the person tapped.
     @State private var linkedArtifact: String?
     /// The routines and reminders Golem suggests to the person, in their orchestrator only.
@@ -85,7 +84,7 @@ struct ConversationView: View {
                     ArtifactsPanel(
                         channelID: isOrchestrator ? nil : state?.thread.channelId,
                         changes: state?.messages.count ?? 0, artifactID: linkedArtifact ?? artifactID,
-                        openFile: openFile, close: tabBar == nil ? nil : { showArtifacts = false }
+                        close: tabBar == nil ? nil : { showArtifacts = false }
                     )
                     .id(linkedArtifact)
                 } else {
@@ -144,7 +143,7 @@ struct ConversationView: View {
                     .disabled(talk.isOn && talk.thread == threadID)
             }
         }
-        .quickLookPreview($preview)
+        .filePreview($opening)
         .onAppear { if artifactID != nil { showArtifacts = true } }
         // In the background the stream closes, so Golem sends this thread's notifications as pushes.
         .task(id: scenePhase == .background) {
@@ -265,10 +264,7 @@ struct ConversationView: View {
         }
     }
 
-    private func openFile(_ file: FileRef) {
-        guard let workspaceID = session.workspace?.id else { return }
-        Task { await session.run { preview = try await session.api.download(workspaceID: workspaceID, file: file) } }
-    }
+    private func openFile(_ file: FileRef) { opening = file }
 }
 
 /// An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows

@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 
 /// One channel, as a Slack channel: its threads as messages, the newest at the bottom over the composer, and the
@@ -13,7 +12,6 @@ struct ChannelView: View {
     @Binding var showArtifacts: Bool
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
-    @State private var preview: URL?
     @State private var draft = ""
     @State private var files: [URL] = []
     @State private var sending = false
@@ -61,7 +59,7 @@ struct ChannelView: View {
         .mobileBackground()
         .inspector(isPresented: $showArtifacts) {
             ArtifactsPanel(
-                channelID: channelID, changes: 0, artifactID: artifactID, openFile: openFile,
+                channelID: channelID, changes: 0, artifactID: artifactID,
                 close: tabBar == nil ? nil : { showArtifacts = false }
             )
                 .inspectorColumnWidth(Tokens.Size.artifacts)
@@ -81,7 +79,6 @@ struct ChannelView: View {
                 .accessibilityHint("Shows the channel's menu")
             }
         }
-        .quickLookPreview($preview)
         .onAppear { if artifactID != nil { showArtifacts = true } }
         .sheet(isPresented: $confirmDelete) {
             DeleteDialog(
@@ -151,11 +148,6 @@ struct ChannelView: View {
             }
         }
         .transition(.opacity.combined(with: .move(edge: .bottom)))
-    }
-
-    private func openFile(_ file: FileRef) {
-        guard let workspaceID = session.workspace?.id else { return }
-        Task { await session.run { preview = try await session.api.download(workspaceID: workspaceID, file: file) } }
     }
 
     private func send() {

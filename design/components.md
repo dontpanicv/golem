@@ -314,7 +314,7 @@ Used by the workspace switcher and action menus.
 
 ## Artifact preview
 
-- The panel has two tabs, Artifacts and then Files, and opens on Artifacts.
+- The panel has two tabs, Files and then Artifacts, and opens on Files.
 - The Artifacts tab lists the thread's artifacts as list rows: artifact icon, title, and the number of people who
   opened it as meta. A row opens the artifact in the panel, with a close button that returns to the Artifacts list.
 - The artifact has a bar (padding 4 16, 0.5 px `border` below): the title in `medium`, cut with an ellipsis, a
@@ -373,7 +373,7 @@ iPad keeps the sidebar with the same screens.
 - Search: as Slack's. The field sits at the top under the title. Before a query the screen lists the person's recent
   searches, then one row for Golem, with Golem's face glyph, that opens Golem; no channels. The web's search page is
   the same. Scrolling closes the keyboard.
-- Artifacts: a sheet on iPhone with Artifacts and Files pills and a glass close button; an open artifact has a glass
+- Artifacts: a sheet on iPhone with Files and Artifacts pills and a glass close button; an open artifact has a glass
   back button. Each screen keeps its own panel.
 - Motion: springs (`snappy`) for the tab selection, folding, the panel, and new rows; native menus and pushes keep the
   system's own.

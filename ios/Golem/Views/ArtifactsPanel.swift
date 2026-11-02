@@ -4,12 +4,12 @@ import SwiftUI
 /// beside the orchestrator.
 struct ArtifactsPanel: View {
     enum Tab: String, CaseIterable {
-        case artifacts = "Artifacts", files = "Files"
+        case files = "Files", artifacts = "Artifacts"
 
         var empty: (title: String, systemImage: String) {
             switch self {
-            case .artifacts: ("No artifacts yet", "shippingbox")
             case .files: ("No files yet", "doc")
+            case .artifacts: ("No artifacts yet", "shippingbox")
             }
         }
     }
@@ -18,24 +18,22 @@ struct ArtifactsPanel: View {
     let channelID: String?
     /// Changes when the thread does, so the files and artifacts load again: they come with messages.
     let changes: Int
-    let openFile: (FileRef) -> Void
     /// Closes the panel where it is a sheet, on iPhone.
     var close: (() -> Void)?
     @Environment(Session.self) private var session
-    @State private var tab = Tab.artifacts
+    @State private var tab = Tab.files
     @State private var files: [SavedFile] = []
     @State private var uploading = false
     @State private var artifacts: [Artifact] = []
     @State private var openArtifact: String?
+    @State private var opening: FileRef?
 
     /// `artifactID` opens an artifact at once, as a search result does.
     init(
-        channelID: String?, changes: Int, artifactID: String? = nil, openFile: @escaping (FileRef) -> Void,
-        close: (() -> Void)? = nil
+        channelID: String?, changes: Int, artifactID: String? = nil, close: (() -> Void)? = nil
     ) {
         self.channelID = channelID
         self.changes = changes
-        self.openFile = openFile
         self.close = close
         _openArtifact = State(initialValue: artifactID)
     }
@@ -72,6 +70,8 @@ struct ArtifactsPanel: View {
             }
         }
         .mobileBackground()
+        // On iPhone the panel is a sheet, which held back the Quick Look of the screen under it until it closed.
+        .filePreview($opening)
         .task(id: changes) {
             await session.run {
                 files = try await session.api.files(workspaceID: workspaceID, channelID: channelID)
@@ -133,7 +133,7 @@ struct ArtifactsPanel: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(files.reversed()) { file in
-                            Button { openFile(file.ref) } label: { ListRow(file.name, systemImage: "doc") }
+                            Button { opening = file.ref } label: { ListRow(file.name, systemImage: "doc") }
                                 .buttonStyle(.plain)
                                 .contextMenu {
                                     Button("Delete file", systemImage: "trash", role: .destructive) { delete(file) }

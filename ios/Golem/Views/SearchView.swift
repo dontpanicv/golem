@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 
 /// Searches the open workspace, never another, from a field at the top as Slack's search; results update as you
@@ -9,7 +8,7 @@ struct SearchView: View {
     @State private var query = ""
     @State private var response: SearchResponse?
     @State private var recent: [RecentSearch] = []
-    @State private var preview: URL?
+    @State private var opening: FileRef?
 
     var body: some View {
         ScrollView {
@@ -67,7 +66,7 @@ struct SearchView: View {
         .autocorrectionDisabled()
         .phoneTabBar()
         .mobileBackground()
-        .quickLookPreview($preview)
+        .filePreview($opening)
         .screenTitle("Search")
         .task(id: session.workspace?.id) {
             guard let workspace = session.workspace,
@@ -108,10 +107,8 @@ struct SearchView: View {
         save()
         if result.kind == "artifact" {
             open(.artifact(channel: result.channelId, artifact: String(result.uri.dropFirst("artifact:".count))))
-        } else if let file = savedFile(result), let workspace = session.workspace {
-            Task {
-                await session.run { preview = try await session.api.download(workspaceID: workspace.id, file: file) }
-            }
+        } else if let file = savedFile(result) {
+            opening = file
         } else if let thread = result.threadId, result.kind == "thread" {
             open(.thread(thread))
         }
