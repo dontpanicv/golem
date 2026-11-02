@@ -239,7 +239,7 @@ struct Integration: Codable, Hashable, Identifiable {
     let secretLabel: String?
     /// Whether the person names a credential; else Golem names it from the secret.
     let labeled: Bool
-    /// Whether the secret also needs the address of the person's own server.
+    /// Whether the secret, or the sign-in, also needs the address of the person's own server.
     let address: Bool
     /// The name of the account that the secret also needs, such as "Email", which names the credential.
     let username: String?

@@ -167,7 +167,7 @@ export interface Integration {
   readonly secretLabel: string | null;
   /** Whether the person names a credential; else Golem names it from the secret. */
   readonly labeled: boolean;
-  /** Whether the secret also needs the address of the person's own server. */
+  /** Whether the secret, or the sign-in, also needs the address of the person's own server. */
   readonly address: boolean;
   /** The name of the account that the secret also needs, such as `Email`, which names the credential. */
   readonly username: string | null;

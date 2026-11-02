@@ -120,7 +120,7 @@ export interface Connector {
   readonly secretLabel: string | null;
   /**
    * Its secret also needs the address of the person's own server. The tools then get the secret as JSON
-   * `{ address, secret }`.
+   * `{ address, secret }`. With `mcp`, the person signs in to the MCP servers at their paths on that address.
    */
   readonly address?: boolean;
   /**
@@ -154,6 +154,8 @@ export interface Connector {
   readonly authorizationParameters?: Readonly<Record<string, string>>;
   /** The tools of its MCP servers that agents never get, such as ones that end its sign-in. */
   readonly hiddenTools?: readonly string[];
+  /** The only tools of its MCP servers that agents get, when the others serve only the server's own agents. */
+  readonly shownTools?: readonly string[];
   /**
    * Makes the secret that Golem keeps, and its label, from what the person pastes, such as a cURL command of Slack's
    * web app; it throws when that does not work. Without it, Golem keeps the pasted secret, and the person names it.
@@ -245,8 +247,12 @@ export interface IntegrationsOptions {
   readonly transport?: (url: URL, provider: OAuthClientProvider) => Transport;
 }
 
-/** What a credential of a sign-in keeps, encrypted: its OAuth client, and its tokens once someone signed in. */
+/**
+ * What a credential of a sign-in keeps, encrypted: the address of the person's own server for a connector with
+ * `address`, its OAuth client, and its tokens once someone signed in.
+ */
 interface McpGrant {
+  address?: string;
   client?: OAuthClientInformationMixed;
   tokens?: OAuthTokens;
 }
@@ -464,15 +470,16 @@ export class Integrations {
   }
 
   /**
-   * Starts a sign-in. For a sign-in: registers Golem with the sign-in server unless Golem has its own client, and
-   * returns the page where the person signs in, which ends at an address that the person gives to `finishConnect`. For
-   * a device: returns the code that the person enters on the phone of `phone`.
+   * Starts a sign-in. For a sign-in: registers Golem with the sign-in server, at `address` for a connector with
+   * `address`, unless Golem has its own client, and returns the page where the person signs in, which ends at an
+   * address that the person gives to `finishConnect`. For a device: returns the code that the person enters on the
+   * phone of `phone`.
    */
   async connect(
     workspaceId: string,
     user: User,
     integrationId: string,
-    phone?: string
+    input: { phone?: string; address?: string } = {}
   ): Promise<{ url: string } | { code: string }> {
     this.workspaces.requireMember(workspaceId, user);
     const connector = this.connector(integrationId);
@@ -487,7 +494,7 @@ export class Integrations {
     }
     if (connector.device) {
       const credentialId = randomUUID();
-      const number = required(phone, "Phone number");
+      const number = required(input.phone, "Phone number");
       const { code, linked } = await connector.device.link(
         this.store(credentialId),
         number
@@ -515,14 +522,17 @@ export class Integrations {
       );
     }
     const provider = new GrantProvider(
-      client
-        ? {
-            client: {
-              client_id: client.clientId,
-              client_secret: client.clientSecret,
-            },
-          }
-        : {},
+      {
+        ...(connector.address ? { address: serverAddress(input.address) } : {}),
+        ...(client
+          ? {
+              client: {
+                client_id: client.clientId,
+                client_secret: client.clientSecret,
+              },
+            }
+          : {}),
+      },
       connector,
       state
     );
@@ -576,7 +586,10 @@ export class Integrations {
       workspaceId,
       user,
       connector.id,
-      emailOf(provider.grant.tokens?.id_token) ?? connector.name,
+      emailOf(provider.grant.tokens?.id_token) ??
+        (provider.grant.address
+          ? new URL(provider.grant.address).host
+          : connector.name),
       JSON.stringify(provider.grant)
     );
     if (connector.keeper) {
@@ -1022,7 +1035,11 @@ export class Integrations {
             cursor = page.nextCursor;
           } while (cursor);
           return listed
-            .filter((tool) => !connector.hiddenTools?.includes(tool.name))
+            .filter((tool) =>
+              connector.shownTools
+                ? connector.shownTools.includes(tool.name)
+                : !connector.hiddenTools?.includes(tool.name)
+            )
             .map(
               (tool): AccountTool => ({
                 // Slack's tools already start with `slack_`.
@@ -1102,13 +1119,12 @@ export class Integrations {
     let client = this.clients.get(key);
     if (!client) {
       // The SDK refreshes the tokens; each new grant replaces the stored one.
-      const provider = new GrantProvider(
-        JSON.parse(credential.secret),
-        connector,
-        undefined,
-        (grant) => this.saveGrant(credential.id, grant)
+      const grant = JSON.parse(credential.secret) as McpGrant;
+      const provider = new GrantProvider(grant, connector, undefined, (saved) =>
+        this.saveGrant(credential.id, saved)
       );
-      const url = new URL(server);
+      // A connector with `address` has the server's path on the person's own server.
+      const url = new URL(server, grant.address);
       const transport =
         this.options.transport?.(url, provider) ??
         new StreamableHTTPClientTransport(url, { authProvider: provider });
@@ -1333,7 +1349,8 @@ async function signIn(
   try {
     await auth(provider, {
       // Without the metadata of a protected resource, the SDK takes this as the sign-in server.
-      serverUrl: connector.oauth ?? connector.mcp![0]!,
+      serverUrl:
+        connector.oauth ?? new URL(connector.mcp![0]!, provider.grant.address),
       ...(connector.scope ? { scope: connector.scope } : {}),
       ...(authorizationCode ? { authorizationCode } : {}),
     });

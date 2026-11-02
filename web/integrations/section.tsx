@@ -34,9 +34,10 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
   const [adding, setAdding] = useState<Integration | null>(null);
   const [settingClient, setSettingClient] = useState<Integration | null>(null);
   const [guiding, setGuiding] = useState<Integration | null>(null);
+  // `url` is null until the person gives the address of their own server, for an integration with `address`.
   const [signingIn, setSigningIn] = useState<{
     integration: Integration;
-    url: string;
+    url: string | null;
   } | null>(null);
   // A phone number links with a code that the person enters on their phone.
   const [linking, setLinking] = useState<{
@@ -62,12 +63,12 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
   });
   // People sign in on the integration's own page, which ends at a localhost address that they paste here.
   const connect = useMutation({
-    mutationFn: (integration: Integration) =>
+    mutationFn: (input: { integration: Integration; address?: string }) =>
       request<{ url: string }>(
-        `${base}/integrations/${integration.id}/connect`,
-        { method: "POST", body: {} }
+        `${base}/integrations/${input.integration.id}/connect`,
+        { method: "POST", body: { address: input.address } }
       ),
-    onSuccess: ({ url }, integration) => setSigningIn({ integration, url }),
+    onSuccess: ({ url }, { integration }) => setSigningIn({ integration, url }),
   });
   const getCode = useMutation({
     mutationFn: (input: { integration: Integration; form: FormData }) =>
@@ -164,7 +165,11 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
                 }
                 icon="link"
                 label="Connect"
-                onClick={() => connect.mutate(integration)}
+                onClick={() =>
+                  integration.address
+                    ? setSigningIn({ integration, url: null })
+                    : connect.mutate({ integration })
+                }
                 size="small"
               />
             )}
@@ -333,31 +338,56 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
         />
       </Dialog>
       <Dialog
-        busy={signIn.isPending}
+        busy={signIn.isPending || connect.isPending}
         onClose={() => setSigningIn(null)}
-        onSubmit={(form) =>
-          signingIn &&
-          signIn.mutate({ integration: signingIn.integration, form })
-        }
+        onSubmit={(form) => {
+          if (!signingIn) {
+            return;
+          }
+          if (signingIn.url === null) {
+            connect.mutate({
+              integration: signingIn.integration,
+              address: String(form.get("server")),
+            });
+          } else {
+            signIn.mutate({ integration: signingIn.integration, form });
+          }
+        }}
         open={signingIn !== null}
-        submit="Connect"
+        submit={signingIn?.url === null ? "Continue" : "Connect"}
         title={`Connect ${signingIn?.integration.name ?? ""}`}
       >
-        <a
-          className="button primary"
-          href={signingIn?.url}
-          rel="noopener"
-          target="_blank"
-        >
-          Sign in to {signingIn?.integration.name}
-        </a>
-        <TextField
-          autoComplete="off"
-          label="Address after sign-in"
-          name="address"
-          placeholder="http://localhost/golem-sign-in?code=…"
-          required
-        />
+        {signingIn?.url === null ? (
+          <TextField
+            autoComplete="off"
+            autoFocus
+            key="server"
+            label="Address"
+            name="server"
+            placeholder="http://my-mac:3774"
+            required
+            type="url"
+          />
+        ) : (
+          <>
+            <a
+              className="button primary"
+              href={signingIn?.url}
+              rel="noopener"
+              target="_blank"
+            >
+              Sign in to {signingIn?.integration.name}
+            </a>
+            <TextField
+              autoComplete="off"
+              key="address"
+              label="Address after sign-in"
+              name="address"
+              placeholder="http://localhost/golem-sign-in?code=…"
+              required
+            />
+          </>
+        )}
       </Dialog>
       <Dialog
         busy={getCode.isPending || link.isPending}

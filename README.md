@@ -190,6 +190,7 @@ setup of each one.
 | Tesla | Car state, charging history, open the car after approval | Tesla Fleet API sign-in, [vehicle-command](https://github.com/teslamotors/vehicle-command) |
 | Rohlík | Groceries | Rohlík's MCP server |
 | Plaud | Recordings and their notes | Plaud's MCP server |
+| T3 Code | Start and follow coding threads in a project on the person's machine | The MCP server of their own T3 Code |
 | Slack | Read and send after approval | A request of the Slack web app, pasted as cURL, through [slackcli](https://github.com/shaharia-lab/slackcli) |
 | WhatsApp | Read and send after approval | A linked device, through [wacli](https://github.com/openclaw/wacli) |
 | X | Read | Session cookies, through [Rettiwt-API](https://github.com/Rishikant181/Rettiwt-API) |

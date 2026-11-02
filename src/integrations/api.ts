@@ -66,7 +66,10 @@ export const integrationApiRoutes: readonly Route[] = [
           params.workspace!,
           user,
           params.integration!,
-          body.phone as string | undefined
+          {
+            phone: body.phone as string | undefined,
+            address: body.address as string | undefined,
+          }
         )
       )
     ),

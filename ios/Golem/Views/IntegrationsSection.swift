@@ -7,7 +7,7 @@ struct IntegrationsSection: View {
     @Environment(Session.self) private var session
     @State private var integrations: [Integration] = []
     @State private var addingTo: Integration?
-    @State private var signingIn: SignIn?
+    @State private var signingIn: IntegrationSignIn?
     @State private var linking: Integration?
     @State private var settingClient: Integration?
     @State private var guiding: Integration?
@@ -27,7 +27,13 @@ struct IntegrationsSection: View {
                     }
                     switch integration.connect {
                     case .signIn:
-                        Button("Connect") { connect(integration) }
+                        Button("Connect") {
+                            if integration.address {
+                                signingIn = IntegrationSignIn(integration: integration, page: nil)
+                            } else {
+                                connect(integration)
+                            }
+                        }
                             .buttonStyle(.secondary)
                             .fixedSize()
                             .disabled(integration.client.map { $0.clientId == nil } ?? false)
@@ -120,7 +126,7 @@ struct IntegrationsSection: View {
                 let page = try await session.api.connectIntegration(
                     workspaceID: workspaceID, integrationID: integration.id
                 )
-                signingIn = SignIn(integration: integration, page: page.url)
+                signingIn = IntegrationSignIn(integration: integration, page: page.url)
             }
         }
     }
@@ -283,54 +289,6 @@ private struct ClientForm: View {
                 )
                 session.show("\(integration.name) client saved", .success)
                 saved()
-                dismiss()
-            }
-            busy = false
-        }
-    }
-}
-
-/// A sign-in that someone started on an integration's own page.
-private struct SignIn: Identifiable {
-    let integration: Integration
-    let page: URL
-    var id: String { integration.id }
-}
-
-/// Signs in to an integration on its own page, which ends at a localhost address that the person pastes here.
-private struct SignInForm: View {
-    let workspaceID: String
-    let signIn: SignIn
-    let added: (Credential) -> Void
-    @Environment(Session.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    @State private var address = ""
-    @State private var busy = false
-
-    var body: some View {
-        Dialog(title: "Connect \(signIn.integration.name)") {
-            Link("Sign in to \(signIn.integration.name)", destination: signIn.page)
-                .buttonStyle(.golem(.secondary, .large))
-            GolemTextField("Address after sign-in", text: $address)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-        } actions: {
-            Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
-            Button("Connect", action: save)
-                .buttonStyle(.golem(.primary, .large))
-                .disabled(busy || address.isEmpty)
-        }
-    }
-
-    private func save() {
-        busy = true
-        Task {
-            await session.run {
-                added(try await session.api.finishSignIn(
-                    workspaceID: workspaceID, integrationID: signIn.integration.id, address: address
-                ))
-                session.show("\(signIn.integration.name) connected", .success)
                 dismiss()
             }
             busy = false

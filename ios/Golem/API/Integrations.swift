@@ -7,8 +7,12 @@ extension APIClient {
     }
 
     /// The page where the person signs in to an integration; it ends at a localhost address that they paste.
-    func connectIntegration(workspaceID: String, integrationID: String) async throws -> ConnectPage {
-        try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/connect", [:])
+    /// `server` is the address of the person's own server, for an integration with `address`.
+    func connectIntegration(
+        workspaceID: String, integrationID: String, server: String? = nil
+    ) async throws -> ConnectPage {
+        let body: [String: Any] = server.map { ["address": $0] } ?? [:]
+        return try await post("/api/v1/workspaces/\(workspaceID)/integrations/\(integrationID)/connect", body)
     }
 
     func finishSignIn(workspaceID: String, integrationID: String, address: String) async throws -> Credential {

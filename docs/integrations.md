@@ -17,7 +17,7 @@ the Golem service; install them, for example with `brew install gogcli`, `brew i
 `brew install openclaw/tap/wacli`, and for Tesla see below. Then click **Reload** on Configuration in Settings. Golem
 does not show these integrations without them.
 
-The sign-in pages of Google, Netatmo, Tesla, Rohlík, and Plaud end at `https://localhost/golem-sign-in?code=…`. Nothing answers
+The sign-in pages of Google, Netatmo, Tesla, Rohlík, Plaud, and T3 Code end at `https://localhost/golem-sign-in?code=…`. Nothing answers
 at that address, so the browser shows an error page. Copy the address from the address bar and paste it into Golem.
 
 ## Google: Gmail, Calendar, and Drive
@@ -86,6 +86,18 @@ user. The user must be an administrator, because Home Assistant renders template
 
 Agents read the states and history of entities, render templates, for example to find the entities of an area, and
 call services, such as turning on a light or setting a thermostat. They do not call `notify` services.
+
+## T3 Code
+
+Agents use the MCP server of the person's own T3 Code: they list its projects, start a thread in a project, or in a new
+worktree of it, with a task, and read, answer, wait for, or stop its threads. Golem gets only these tools; the others
+serve an agent inside a T3 Code thread.
+
+In Settings, **Connect** asks for the address of the T3 Code server, such as `http://my-mac:3774`. Golem and the
+browser of the sign-in must both reach that address, because T3 Code gives tokens only for the address that the
+sign-in used. On T3 Code's page, the person chooses the access of Golem's threads, from read-only to full access, and
+approves with their T3 Code session or with a pairing code from `t3 pair`. A thread that Golem starts runs with at
+most that access. T3 Code gives no refresh token: after 30 days, connect it again.
 
 ## Netatmo
 

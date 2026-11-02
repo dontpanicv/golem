@@ -657,6 +657,63 @@ test("only the server's owner sets Golem's own client, and its MCP server hides 
   await withOwner.close();
 });
 
+test("people sign in to the MCP server at the address of their own machine, and agents get only its shown tools", async () => {
+  const coding: Connector = {
+    id: "coding",
+    name: "Coding",
+    description: "Coding agents.",
+    secretLabel: null,
+    address: true,
+    tools: [],
+    mcp: ["/mcp"],
+    shownTools: ["cart"],
+  };
+  const connectedTo: string[] = [];
+  const own = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      directory: join(golem.app.config.dataDirectory, "integrations"),
+      catalog: [coding],
+      transport: (server) => {
+        connectedTo.push(server.href);
+        const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+        shopServer().connect(serverSide);
+        return clientSide;
+      },
+    }
+  );
+  await expect(
+    own.connect(workspaceId, alice, "coding", { address: "my-mac:3774" })
+  ).rejects.toThrow("Address must start with http:// or https://");
+  const machine = new URL(signInServer.url);
+  const { url } = (await own.connect(workspaceId, alice, "coding", {
+    address: `${machine.origin}/`,
+  })) as { url: string };
+  const page = new URL(url);
+  expect(page.origin).toBe(machine.origin);
+  expect(page.searchParams.get("resource")).toBe(`${machine.origin}/mcp`);
+  const credential = await own.finishConnect(
+    workspaceId,
+    alice,
+    "coding",
+    `https://localhost/golem-sign-in?code=code-5&state=${page.searchParams.get("state")}`
+  );
+  expect(credential.label).toBe(machine.host);
+  const tools = await own.tools(workspaceId);
+  expect(tools.map((tool) => tool.name)).toEqual([
+    "coding_cart",
+    "coding_accounts",
+  ]);
+  expect(await tools[0]!.execute({}, { userId: alice.id })).toBe(
+    "The cart is empty."
+  );
+  expect(connectedTo).toEqual([`${machine.origin}/mcp`]);
+  own.deleteCredential(workspaceId, alice, credential.id);
+  await own.close();
+});
+
 test("the own tools of a sign-in get a fresh access token, which the refresh token renews", async () => {
   const google: Connector = {
     id: "google",
@@ -920,7 +977,9 @@ esac
     whatsApp.finishConnect(workspaceId, alice, "whatsapp")
   ).rejects.toThrow("Start linking again");
   expect(
-    await whatsApp.connect(workspaceId, alice, "whatsapp", "+420 123 456 789")
+    await whatsApp.connect(workspaceId, alice, "whatsapp", {
+      phone: "+420 123 456 789",
+    })
   ).toEqual({
     code: "ABCD-1234",
   });
