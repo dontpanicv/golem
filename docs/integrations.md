@@ -26,7 +26,7 @@ Golem calls Google's APIs through [gog](https://github.com/openclaw/gogcli), wit
 which Golem renews with its refresh token. One client serves all accounts: personal and Google Workspace ones, of every
 person. Google shows that it has not verified the app; an app that is not verified can have up to 100 users.
 
-Agents search and read mail, make drafts, and send mail or one of your drafts after you allow it, with files of the
+Agents search and read mail, save its attachments to the thread's channel, make drafts, and send mail or one of your drafts after you allow it, with files of the
 workspace attached; gog blocks sending in every other tool. For a draft, the approval shows the draft as it is in
 Gmail, and Golem sends nothing when the draft changed after you allowed it. Agents use only these tools for mail, never a mail app on a machine. They read calendars, find free time, and create, change, and delete events; guests get no email about it, so send updates from Google Calendar.
 They search Drive, read Docs and Sheets, create Docs, and change only the Docs that they created. They upload files of

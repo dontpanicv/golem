@@ -14,6 +14,7 @@ await Bun.write(
 for argument; do
   case "$argument" in
     --file=*) content=$(cat "\${argument#--file=}") ;;
+    --out=*) echo "$*" > "\${argument#--out=}" ;;
     --attach=*) content="$content$(basename "\${argument#--attach=}")=$(cat "\${argument#--attach=}");" ;;
     fail) echo "Note: Using direct access token" >&2; echo "Google API error (404): not found" >&2; exit 5 ;;
   esac
@@ -152,6 +153,31 @@ test("a draft attaches workspace files under their own names", async () => {
   await expect(
     call("google_mail_draft", { subject: "S", body: "B", attachments: ["f1"] })
   ).rejects.toThrow("Only an agent in a thread can attach files.");
+});
+
+test("an attachment goes to the thread's channel under its own name", async () => {
+  const saveAttachment = tools.get("google_mail_save_attachment")!;
+  const saved = join(directory, "saved");
+  expect(
+    await saveAttachment.execute(
+      { message: "m1", attachment: "a1", name: "invoice.pdf" } as never,
+      "token-1",
+      undefined,
+      undefined,
+      undefined,
+      async (write) => ({ id: "f2", name: await write(saved) })
+    )
+  ).toEqual({ id: "f2", name: "invoice.pdf" });
+  expect(await Bun.file(saved).text()).toEndWith(
+    `gmail attachment --out=${saved} -- m1 a1\n`
+  );
+  await expect(
+    saveAttachment.execute(
+      { message: "m1", attachment: "a1", name: "invoice.pdf" } as never,
+      "token-1",
+      undefined
+    )
+  ).rejects.toThrow("Only an agent in a thread can save files.");
 });
 
 test("a workspace file goes to Drive under its own name, and a share sends no invitation", async () => {

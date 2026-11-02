@@ -23,6 +23,7 @@ const RUN_MS = 60 * 1000;
 const COMMANDS = [
   "gmail.search",
   "gmail.thread.get",
+  "gmail.attachment",
   "gmail.drafts.list",
   "gmail.drafts.create",
   "gmail.drafts.update",
@@ -96,7 +97,7 @@ export function googleConnector(binary: string): Connector {
     id: "google",
     name: "Google",
     description:
-      "Gmail, Google Calendar, and Google Drive of each connected Google account. Search and read mail, draft mail, and send mail after the person allows it; read calendars, find free time, and create, change, and delete events; find and read files, upload files, create Google Docs, and share them.",
+      "Gmail, Google Calendar, and Google Drive of each connected Google account. Search and read mail, save its attachments, draft mail, and send mail after the person allows it; read calendars, find free time, and create, change, and delete events; find and read files, upload files, create Google Docs, and share them.",
     secretLabel: null,
     oauth: "https://accounts.google.com",
     registered: true,
@@ -147,6 +148,45 @@ export function googleConnector(binary: string): Connector {
           thread,
         ],
       }),
+      {
+        name: "google_mail_save_attachment",
+        description:
+          "Saves an attachment of a message to this thread's channel, and returns its file id. In google_mail_thread, a part with a `filename` has its `body.attachmentId`.",
+        parameters: Type.Object({
+          message: Type.String({ description: "The message's ID." }),
+          attachment: Type.String({
+            description: "The part's `body.attachmentId`.",
+          }),
+          name: Type.String({ description: "The part's `filename`." }),
+        }),
+        execute: async (
+          { message, attachment, name },
+          token,
+          signal,
+          _file,
+          _allowed,
+          save
+        ) => {
+          if (!save) {
+            throw new Error("Only an agent in a thread can save files.");
+          }
+          return save(async (path) => {
+            await gog.run(
+              token,
+              [
+                "gmail",
+                "attachment",
+                `--out=${path}`,
+                "--",
+                message,
+                attachment,
+              ],
+              signal
+            );
+            return name;
+          });
+        },
+      },
       gogTool(gog, {
         name: "google_mail_drafts",
         description: "The person's drafts, newest first.",
