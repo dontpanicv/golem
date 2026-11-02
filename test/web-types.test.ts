@@ -5,6 +5,7 @@ import type {
   WatchedPlace,
 } from "../src/agenda/agenda.ts";
 import type * as Server from "../src/artifacts/artifacts.ts";
+import type { Feedback } from "../src/feedback/feedback.ts";
 import type { MachineSummary, Pairing } from "../src/hands/hands.ts";
 import type { Integration } from "../src/integrations/integrations.ts";
 import type { LlmStatus, UsageReport } from "../src/llm/llm.ts";
@@ -55,6 +56,7 @@ const checks: true[] = [
   true satisfies Fits<Place, Web.Place>,
   true satisfies Fits<WatchedPlace, Web.WatchedPlace>,
   true satisfies Fits<LlmStatus, Web.LlmStatus>,
+  true satisfies Fits<Feedback, Web.Feedback>,
   true satisfies Fits<
     Omit<UsageReport, "threads" | "people"> & {
       threads: (UsageReport["threads"][number] & { title: string })[];

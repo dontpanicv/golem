@@ -135,6 +135,8 @@ struct PhoneShell: View {
             WithArtifacts { ConversationView(threadID: id, showArtifacts: $0, open: open) }.id(id)
         case .upcoming:
             UpcomingView(open: open).id(session.workspace?.id)
+        case .feedback:
+            FeedbackView(open: open).id(session.workspace?.id)
         case .search, .inbox, .workspaceSettings, .settings:
             EmptyView()
         }

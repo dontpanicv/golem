@@ -19,6 +19,8 @@ final class Session {
     private(set) var signedIn: Bool
     private(set) var user: User?
     private(set) var workspaces: [Workspace] = []
+    /// Whether the person is the server's owner, who reads the agents' feedback.
+    private(set) var owner = false
     private(set) var workspace: Workspace?
     private(set) var channels: [Channel] = []
     /// The path of each member's profile picture in the open workspace, by person.
@@ -120,6 +122,7 @@ final class Session {
             let profile = try await api.me()
             user = profile.user
             workspaces = profile.workspaces
+            owner = profile.owner
             loadError = nil
             let last = UserDefaults.standard.string(forKey: Keys.workspaceID)
             if let workspace = profile.workspaces.first(where: { $0.id == last }) ?? profile.workspaces.first {

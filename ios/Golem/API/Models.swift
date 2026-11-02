@@ -386,6 +386,8 @@ struct RecentSearches: Codable {
 struct Profile: Codable {
     let user: User
     let workspaces: [Workspace]
+    /// Whether the person is the server's owner, who reads the agents' feedback.
+    let owner: Bool
 }
 
 struct WorkspaceDetail: Codable {

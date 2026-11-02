@@ -41,10 +41,14 @@ struct HomeView: View {
                         .buttonStyle(.row)
                 }
                 let privateChannels = session.channels.filter { $0.ownerId != nil }
-                if !privateChannels.isEmpty {
+                if session.owner || !privateChannels.isEmpty {
                     ListSeparator()
                     FoldingSection(title: "Private", folded: $privateFolded) {
                         ForEach(privateChannels) { channelRow($0) }
+                        if session.owner {
+                            Button { open(.feedback) } label: { ListRow("Feedback", systemImage: "info.circle") }
+                                .buttonStyle(.row)
+                        }
                     }
                 }
             }

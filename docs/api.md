@@ -167,6 +167,15 @@ type Place = {
 	ownerName: string;
 	shared: boolean; // false: only its owner's turns use it
 };
+type Feedback = {
+	id: string;
+	kind: "error" | "missing" | "better"; // a tool failed or answered wrong; no tool can do it; an easier or faster way
+	tool: string | null; // the tool it is about
+	summary: string; // one line
+	detail: string;
+	threadId: string | null; // the thread of the turn; null when the owner does not see it, such as another person's private channel
+	createdAt: number;
+};
 type Machine = {
 	id: string;
 	name: string; // what agents and people call it; unique in the workspace, so a new machine with a taken name gets a number
@@ -267,7 +276,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 
 | Request | Body | Response |
 | --- | --- | --- |
-| `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[] }`; the first person to sign in starts Golem's one workspace, with a `general` channel, and is its owner |
+| `GET /api/v1/me` | | `{ user: User, workspaces: Workspace[], owner: boolean }`; the first person to sign in starts Golem's one workspace, with a `general` channel, and is its owner. `owner`: the person is the server's owner, the first of `allowed_emails` |
 | `POST /api/v1/me/picture` | `multipart/form-data` with one JPEG, PNG, or WebP file | `{ picture }`: the new address; the apps send a 256 px square. `400` for another kind, `413` over 1 MB |
 | `DELETE /api/v1/me/picture` | | `204`; the person shows their initial, also in place of their Google picture |
 | `GET /api/v1/pictures/:pictureId` | | The picture, for its person and the members of their workspace, else `404`. A new picture gets a new address, so the browser keeps this one |
@@ -555,6 +564,18 @@ they share it.
 Only the iOS app opens the stream, while it is open: a turn's phone tools act on the phone of the turn's person,
 and fail when no stream of that person is open. A call goes to the stream that the person opened last, and waits 3
 minutes for its answer; it fails when that stream closes first.
+
+### Feedback (`src/feedback/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/feedback` | | `{ feedback: Feedback[] }`: the reports that nobody dismissed, newest first. `403` for a person who is not the server's owner |
+| `DELETE /api/v1/workspaces/:workspaceId/feedback/:feedbackId` | | `204`; dismisses the report. `403` for a person who is not the server's owner; `404` for a dismissed one |
+
+Agents in every thread have `feedback_report`: when a tool fails or answers wrong, when no tool can do what the work
+needs, or when they see an easier way, they report it once and continue. A report keeps its thread and the person of
+its turn. The server's owner reads every report, also those from another person's private turns, without the link to
+a thread they do not see; the agent describes Golem, not the person.
 
 ### Machines (`src/hands/`)
 

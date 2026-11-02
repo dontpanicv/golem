@@ -2,6 +2,7 @@ import { accountApiRoutes } from "../accounts/api.ts";
 import { agendaApiRoutes } from "../agenda/api.ts";
 import { artifactApiRoutes } from "../artifacts/api.ts";
 import { artifactWebRoutes } from "../artifacts/web.ts";
+import { feedbackApiRoutes } from "../feedback/api.ts";
 import { handsApiRoutes } from "../hands/api.ts";
 import { integrationApiRoutes } from "../integrations/api.ts";
 import { llmApiRoutes } from "../llm/api.ts";
@@ -48,6 +49,7 @@ export const allRoutes: readonly Route[] = [
   ...routineApiRoutes,
   ...agendaApiRoutes,
   ...phoneApiRoutes,
+  ...feedbackApiRoutes,
   [
     "POST",
     "/api/v1/server/restart",

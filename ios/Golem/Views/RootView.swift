@@ -76,6 +76,7 @@ enum Destination: Hashable, Identifiable {
     case thread(String)
     case inbox
     case upcoming
+    case feedback
     case workspaceSettings
     case settings
 
@@ -145,6 +146,8 @@ private struct SplitView: View {
                     InboxView(open: open).id(session.workspace?.id)
                 case .upcoming:
                     UpcomingView(open: open).id(session.workspace?.id)
+                case .feedback:
+                    FeedbackView(open: open).id(session.workspace?.id)
                 case .workspaceSettings:
                     WorkspaceSettingsView().id(session.workspace?.id)
                 case .settings:
@@ -235,9 +238,12 @@ private struct Sidebar: View {
                 }
                 .buttonStyle(.plain)
                 let privateChannels = session.channels.filter { $0.ownerId != nil }
-                if !privateChannels.isEmpty {
+                if session.owner || !privateChannels.isEmpty {
                     SectionHeader(title: "Private")
                     ForEach(privateChannels) { channelRow($0) }
+                    if session.owner {
+                        row("Feedback", systemImage: "info.circle", destination: .feedback)
+                    }
                 }
                 SectionHeader(title: "Golem")
                 row("Workspace settings", systemImage: "person.2", destination: .workspaceSettings)

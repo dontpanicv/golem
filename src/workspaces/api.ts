@@ -15,6 +15,7 @@ export const workspaceApiRoutes: readonly Route[] = [
       return json({
         user: { ...user, picture: app.workspaces.pictureOf(user) },
         workspaces: app.workspaces.list(user),
+        owner: user.email.toLowerCase() === app.config.allowedEmails[0],
       });
     }),
   ],

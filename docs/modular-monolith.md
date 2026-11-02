@@ -40,6 +40,7 @@ src/
 ├── reminders/               One-time workspace reminders and their agent tools
 ├── agenda/                  Each person's Upcoming, and the automations Golem suggests to them
 ├── phone/                   The calls of agents' phone tools to each person's open Golem app on their iPhone
+├── feedback/                What agents report about Golem itself, for the server's owner
 ```
 
 Each module has the same files, when it needs them:
@@ -66,7 +67,7 @@ module uses only `app/`, `ui/`, and the modules before it, and never the server'
 ## Rules
 
 1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
-   `places`, `artifacts`, `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`, `phone`. A module uses only the modules before it. `platform/` uses no module.
+   `places`, `artifacts`, `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`, `phone`, `feedback`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.

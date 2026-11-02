@@ -10,8 +10,8 @@ import { dirname } from "node:path";
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential`, `llm_usage`, `llm_usage_seen`, and its keys in `setting`,
  * `hands` owns `machine`, `places` owns `place` and `place_presence`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
- * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, `agenda` owns `suggestion`, and `notifications` owns `notification`,
- * `push_device`, and `live_activity`. Start a new migration with a comment that names its owner.
+ * `routines` owns `routine` and `routine_run`, `reminders` owns `reminder`, `agenda` owns `suggestion`, `feedback` owns `feedback`, and `notifications` owns
+ * `notification`, `push_device`, and `live_activity`. Start a new migration with a comment that names its owner.
  */
 const migrations = [
   `CREATE TABLE channel (
@@ -441,6 +441,21 @@ const migrations = [
 		at INTEGER NOT NULL,
 		PRIMARY KEY (place_id, person_id)
 	);`,
+  // feedback: what agents report about Golem itself, for the server's owner; `person_id` is the person of the turn,
+  // null for background work.
+  `CREATE TABLE feedback (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		thread_id TEXT,
+		person_id TEXT,
+		kind TEXT NOT NULL,
+		tool TEXT,
+		summary TEXT NOT NULL,
+		detail TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		deleted_at INTEGER
+	);
+	CREATE INDEX feedback_workspace ON feedback (workspace_id, deleted_at, created_at);`,
 ];
 
 export function openDatabase(path: string): Database {

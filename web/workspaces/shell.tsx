@@ -232,6 +232,7 @@ function WorkspaceNav({
   workspaceId: string;
   onNewChannel: () => void;
 }) {
+  const { owner } = useMe();
   const orchestrator = useQuery(orchestratorQuery(workspaceId)).data;
   const unread = useQuery(inboxQuery(workspaceId)).data?.unread;
   const { pathname } = useLocation();
@@ -342,12 +343,21 @@ function WorkspaceNav({
             .filter((channel) => channel.ownerId === null)
             .map(channelItem)}
         </nav>
-        {channels.some((channel) => channel.ownerId !== null) ? (
+        {owner || channels.some((channel) => channel.ownerId !== null) ? (
           <nav aria-label="Private channels" className="nav">
             <div className="nav-section">Private</div>
             {channels
               .filter((channel) => channel.ownerId !== null)
               .map(channelItem)}
+            {owner ? (
+              <Link
+                className="nav-item"
+                params={{ workspaceId }}
+                to="/w/$workspaceId/feedback"
+              >
+                <NavContent icon="info" label="Feedback" />
+              </Link>
+            ) : null}
           </nav>
         ) : null}
       </div>

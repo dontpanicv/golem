@@ -277,6 +277,18 @@ export type Effort =
   | "xhigh"
   | "max";
 
+/** What an agent reported about Golem itself; only the server's owner reads it. */
+export interface Feedback {
+  readonly id: string;
+  readonly kind: "error" | "missing" | "better";
+  readonly tool: string | null;
+  readonly summary: string;
+  readonly detail: string;
+  /** The thread of the turn; null when the owner does not see it. */
+  readonly threadId: string | null;
+  readonly createdAt: number;
+}
+
 export interface LlmStatus {
   readonly connected: boolean;
   /** Whether the person is the server's owner, who alone changes the login, the model, and the effort. */

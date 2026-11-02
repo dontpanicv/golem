@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { LoginPage } from "../accounts/login.tsx";
 import { SuggestionCards, UpcomingPage } from "../agenda/page.tsx";
+import { FeedbackPage } from "../feedback/page.tsx";
 import { InboxPage } from "../notifications/page.tsx";
 import { ChannelDetails } from "../routines/details.tsx";
 import { SearchPage } from "../search/page.tsx";
@@ -115,6 +116,12 @@ const upcoming = createRoute({
   component: UpcomingPage,
 });
 
+const feedback = createRoute({
+  getParentRoute: () => workspace,
+  path: "/feedback",
+  component: FeedbackPage,
+});
+
 const searchRoute = createRoute({
   getParentRoute: () => workspace,
   path: "/search",
@@ -141,6 +148,7 @@ export const router = createRouter({
         thread,
         inbox,
         upcoming,
+        feedback,
         searchRoute,
         workspaceSettings,
       ]),

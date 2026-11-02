@@ -17,7 +17,9 @@ import type {
 export const meQuery = queryOptions({
   queryKey: ["me"],
   queryFn: ({ signal }) =>
-    request<{ user: User; workspaces: Workspace[] }>("/me", { signal }),
+    request<{ user: User; workspaces: Workspace[]; owner: boolean }>("/me", {
+      signal,
+    }),
 });
 
 /** The person and their workspaces; the signed-in routes render only once they are known. */

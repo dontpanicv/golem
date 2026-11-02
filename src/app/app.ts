@@ -5,6 +5,7 @@ import { AppSignIns, ProfilePictures } from "../accounts/accounts.ts";
 import { Agenda } from "../agenda/agenda.ts";
 import { Artifacts } from "../artifacts/artifacts.ts";
 import { Browser, browserRequirements } from "../browser/browser.ts";
+import { FeedbackReports } from "../feedback/feedback.ts";
 import { Hands, handsRequirements } from "../hands/hands.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
@@ -45,6 +46,7 @@ export interface App {
   readonly reminders: Reminders;
   readonly agenda: Agenda;
   readonly phone: Phone;
+  readonly feedback: FeedbackReports;
 }
 
 const HANDS_BINARIES = resolve(import.meta.dir, "../../hands/dist");
@@ -155,6 +157,7 @@ export async function createApp(
         ...(await routines.tools(workspaceId)),
         ...reminders.tools(workspaceId),
         ...phone.tools(workspaceId),
+        ...feedback.tools(workspaceId),
       ],
       automations: (workspaceId, personId) =>
         agenda.automations(workspaceId, personId),
@@ -190,6 +193,12 @@ export async function createApp(
     places
   );
   const phone = new Phone(threads);
+  const feedback = new FeedbackReports(
+    database,
+    workspaces,
+    threads,
+    config.allowedEmails[0] ?? null
+  );
   return {
     config,
     database,
@@ -210,6 +219,7 @@ export async function createApp(
     reminders,
     agenda,
     phone,
+    feedback,
   };
 }
 
