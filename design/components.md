@@ -360,7 +360,8 @@ iPad keeps the sidebar with the same screens.
   starts a thread.
 - Conversation: as a Slack thread. Each message has the author's 36 pt avatar at the side, the name in `fontSize.row`
   `semibold` and the time in `caption` over the text; a message of the same author within five minutes, or a turn of
-  Golem that another thread's answer started, shows only its text. Text is `fontSize.body` with inline Markdown; links take the accent. New messages slide up and fade in, and
+  Golem that another thread's answer started, shows only its text. Text is `fontSize.body` with inline Markdown; links take the accent. A long press on the text shows Copy, which copies its Markdown; the
+  text is not selectable, so its links answer every tap. New messages slide up and fade in, and
   the newest stays in view. The round voice button is in the bar at the trailing edge.
 - Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it
   shows. The composer is a glass field, radius 24, with the `composer` shadow, as T3's: add (+), the text, the mic,

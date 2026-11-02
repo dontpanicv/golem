@@ -43,7 +43,10 @@ struct MessageRow: View {
                 if !message.text.isEmpty {
                     MarkdownText(text: message.text, size: Tokens.Mobile.FontSize.body, working: session.working)
                         .foregroundStyle(message.failed ? Tokens.Mobile.Colors.danger : Tokens.Mobile.Colors.text)
-                        .textSelection(.enabled)
+                        // Selectable text tapped its links at other places than it drew them, so most taps missed.
+                        .contextMenu {
+                            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.text }
+                        }
                 }
                 ForEach(message.files.filter(\.isPicture)) { file in
                     FilePicture(file: file) { openFile(file) }
