@@ -1353,6 +1353,7 @@ async function signIn(
         connector.oauth ?? new URL(connector.mcp![0]!, provider.grant.address),
       ...(connector.scope ? { scope: connector.scope } : {}),
       ...(authorizationCode ? { authorizationCode } : {}),
+      fetchFn: standardTokens(connector.oauthEndpoints?.token),
     });
   } catch (error) {
     // biome-ignore lint/style/useErrorCause: HttpError takes the cause as its third argument.
@@ -1362,6 +1363,25 @@ async function signIn(
       { cause: error }
     );
   }
+}
+
+/**
+ * A fetch that makes the token answer of a sign-in server that does not publish its endpoints standard: Netatmo's has
+ * its `scope` as a list and no `token_type`, which the SDK refuses.
+ */
+function standardTokens(tokenUrl: string | undefined) {
+  return async (url: string | URL, init?: RequestInit): Promise<Response> => {
+    const response = await fetch(url, init);
+    if (!(response.ok && String(url) === tokenUrl)) {
+      return response;
+    }
+    const tokens = (await response.json()) as { scope?: unknown };
+    return Response.json({
+      token_type: "Bearer",
+      ...tokens,
+      ...(Array.isArray(tokens.scope) ? { scope: tokens.scope.join(" ") } : {}),
+    });
+  };
 }
 
 /** The OAuth state of one grant, as the MCP SDK reads and writes it: the client, the tokens, and PKCE. */

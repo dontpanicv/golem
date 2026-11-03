@@ -101,6 +101,17 @@ async function signIn(request: Request): Promise<Response> {
       { status: 201 }
     );
   }
+  if (pathname === "/oauth2/token") {
+    tokenRequests.push(new URLSearchParams(await request.text()));
+    // Netatmo's answer: `scope` is a list, and there is no `token_type`.
+    return Response.json({
+      access_token: "access-station",
+      refresh_token: "refresh-station",
+      scope: ["read_station"],
+      expires_in: 10_800,
+      expire_in: 10_800,
+    });
+  }
   if (pathname === "/token") {
     const parameters = new URLSearchParams(await request.text());
     tokenRequests.push(parameters);
@@ -557,7 +568,7 @@ test("a sign-in server that does not publish its endpoints signs in at the conne
     oauth: `${origin}/station`,
     oauthEndpoints: {
       authorization: `${origin}/oauth2/authorize`,
-      token: `${origin}/token`,
+      token: `${origin}/oauth2/token`,
     },
     registered: true,
     tools: [],
@@ -587,7 +598,7 @@ test("a sign-in server that does not publish its endpoints signs in at the conne
     "station",
     `https://localhost/golem-sign-in?code=code-4&state=${page.searchParams.get("state")}`
   );
-  expect(credential.label).toBe("anna@work.example");
+  expect(credential.label).toBe("Station");
   expect(tokenRequests.at(-1)?.get("client_secret")).toBe("shh");
   withOwner.deleteCredential(workspaceId, alice, credential.id);
   await withOwner.close();
