@@ -28,11 +28,13 @@ import { Icon, type IconName } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
 import {
   channelsOf,
+  foldedChannels,
   inboxQuery,
   meQuery,
   orchestratorQuery,
   refreshInbox,
   refreshWorkspace,
+  rememberFolded,
   setSettled,
   threadsOf,
   useMe,
@@ -224,7 +226,7 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
   );
 }
 
-/** The workspace's orchestrator, inbox, upcoming, and search, its channels with their active threads, and the settled threads. */
+/** The workspace's orchestrator, inbox, upcoming, and search, its channels with their active threads, which fold, and the settled threads. */
 function WorkspaceNav({
   workspaceId,
   onNewChannel,
@@ -261,34 +263,60 @@ function WorkspaceNav({
         .where(({ thread }) => not(isNull(thread.settledAt)))
         .orderBy(({ thread }) => thread.settledAt, "desc"),
   });
-  const channelItem = (channel: Omit<Channel, "threads">) => (
-    <div key={channel.id}>
-      <Link
-        activeOptions={{ exact: true, includeSearch: false }}
-        className="nav-item"
-        params={{ workspaceId, channelId: channel.id }}
-        to="/w/$workspaceId/c/$channelId"
-      >
-        <NavContent
-          emoji={channel.icon}
-          icon="hash"
-          label={channel.name}
-          locked={channel.ownerId !== null}
-        />
-      </Link>
-      <div className="nav-threads">
-        {active
-          .filter((thread) => thread.channelId === channel.id)
-          .map((thread) => (
-            <ThreadNav
-              key={thread.id}
-              thread={thread}
-              workspaceId={workspaceId}
+  const [folded, setFolded] = useState(foldedChannels);
+  const toggleFolded = (channelId: string) => {
+    const next = folded.includes(channelId)
+      ? folded.filter((id) => id !== channelId)
+      : [...folded, channelId];
+    setFolded(next);
+    rememberFolded(next);
+  };
+  const channelItem = (channel: Omit<Channel, "threads">) => {
+    const threads = active.filter((thread) => thread.channelId === channel.id);
+    const open = !folded.includes(channel.id);
+    return (
+      <div key={channel.id}>
+        <div className="sidebar-channel">
+          <Link
+            activeOptions={{ exact: true, includeSearch: false }}
+            className="nav-item"
+            params={{ workspaceId, channelId: channel.id }}
+            to="/w/$workspaceId/c/$channelId"
+          >
+            <NavContent
+              emoji={channel.icon}
+              icon="hash"
+              label={channel.name}
+              locked={channel.ownerId !== null}
             />
-          ))}
+          </Link>
+          {threads.length > 0 ? (
+            <span className="fold-action">
+              <Button
+                aria-expanded={open}
+                icon="disclosure"
+                label={open ? "Fold threads" : "Unfold threads"}
+                onClick={() => toggleFolded(channel.id)}
+                size="tiny"
+                variant="ghost"
+              />
+            </span>
+          ) : null}
+        </div>
+        {open ? (
+          <div className="nav-threads">
+            {threads.map((thread) => (
+              <ThreadNav
+                key={thread.id}
+                thread={thread}
+                workspaceId={workspaceId}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
-    </div>
-  );
+    );
+  };
   return (
     <>
       <div className="sidebar-channels">

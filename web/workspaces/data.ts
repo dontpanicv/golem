@@ -181,6 +181,21 @@ export function setSettled(
 }
 
 const OPENED = "golem-opened";
+const FOLDED = "golem-folded-channels";
+
+/** The ids of the channels whose threads this browser hides in the sidebar. */
+export function foldedChannels(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(FOLDED) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+/** Remembers the folded channels, so the sidebar opens with them folded next time. */
+export function rememberFolded(channelIds: string[]): void {
+  localStorage.setItem(FOLDED, JSON.stringify(channelIds));
+}
 
 /** Remembers the channel or thread page, so the workspace opens on it next time. */
 export function rememberOpened(path: string): void {

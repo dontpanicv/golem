@@ -251,6 +251,8 @@ private struct Sidebar: View {
     @Environment(Session.self) private var session
     @State private var newChannel = false
     @State private var showSettled = false
+    /// The ids of the channels whose threads this device hides, joined by commas.
+    @AppStorage("foldedChannels") private var folded = ""
 
     private var settledThreads: [ThreadSummary] {
         session.channels.flatMap(\.threads).filter { $0.settledAt != nil }
@@ -337,16 +339,40 @@ private struct Sidebar: View {
     }
 
     private func channelRow(_ channel: Channel) -> some View {
-        VStack(spacing: 1) {
-            row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon,
-                locked: channel.ownerId != nil)
-            VStack(spacing: 1) {
-                ForEach(channel.threads.filter { $0.settledAt == nil }) { thread in
-                    threadRow(thread)
+        let threads = channel.threads.filter { $0.settledAt == nil }
+        let open = !folded.split(separator: ",").contains { $0 == channel.id }
+        return VStack(spacing: 1) {
+            HStack(spacing: Tokens.Space.xs) {
+                row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon,
+                    locked: channel.ownerId != nil)
+                    .frame(maxWidth: .infinity)
+                if !threads.isEmpty {
+                    Button(open ? "Fold threads" : "Unfold threads", systemImage: "chevron.right") {
+                        withAnimation(.snappy) { toggleFolded(channel.id) }
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .font(.system(size: Tokens.Size.icon * 0.6, weight: .semibold))
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                    .foregroundStyle(Tokens.Colors.textTertiary)
+                    .frame(minWidth: 44, minHeight: 44)
                 }
             }
-            .padding(.leading, Tokens.Space.xl)
+            if open {
+                VStack(spacing: 1) {
+                    ForEach(threads) { thread in
+                        threadRow(thread)
+                    }
+                }
+                .padding(.leading, Tokens.Space.xl)
+            }
         }
+    }
+
+    private func toggleFolded(_ channelID: String) {
+        var ids = folded.split(separator: ",").map(String.init)
+        if let index = ids.firstIndex(of: channelID) { ids.remove(at: index) } else { ids.append(channelID) }
+        folded = ids.joined(separator: ",")
     }
 
     private func threadRow(_ thread: ThreadSummary) -> some View {

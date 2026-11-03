@@ -140,7 +140,9 @@ Used by the workspace switcher and action menus.
 - Groups are 16 px apart. Section header: 28 high, the label 9 px in, `fontSize.sm` `medium` `textTertiary`; its action
   button shows on hover or focus (always on touch screens).
 - Threads sit under their channel, indented 19 px with 6 px inner padding; each shows its settle button on hover or
-  focus (always on touch screens). Settled threads leave the active lists and appear in a collapsed Settled shelf at
+  focus (always on touch screens). A channel with active threads has a disclosure arrow at its right, which shows on
+  hover or focus (always on touch screens, and while folded) and turns 90° in 150 ms when open; it folds the channel's
+  threads away, and the device remembers it. Settled threads leave the active lists and appear in a collapsed Settled shelf at
   the bottom, newest settlement first; its disclosure arrow turns 90° in 150 ms. A settled thread remains readable
   and can receive messages.
 

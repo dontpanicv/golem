@@ -986,6 +986,31 @@ img.avatar {
 .nav-threads:empty {
   display: none;
 }
+.sidebar-channel {
+  position: relative;
+}
+.sidebar-channel .nav-item {
+  padding-right: 30px;
+}
+.sidebar-channel .fold-action {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  opacity: 0;
+}
+.sidebar-channel:hover .fold-action,
+.sidebar-channel:focus-within .fold-action,
+.fold-action:has([aria-expanded="false"]) {
+  opacity: 1;
+}
+.fold-action [aria-expanded] {
+  transition:
+    var(--transition-control),
+    rotate var(--duration-fast);
+}
+.fold-action [aria-expanded="true"] {
+  rotate: 90deg;
+}
 .sidebar-thread {
   position: relative;
   margin-left: 19px;
@@ -1053,6 +1078,7 @@ img.avatar {
 
 @media (hover: none) {
   .nav-section .button,
+  .sidebar-channel .fold-action,
   .sidebar-thread .settle-action {
     opacity: 1;
   }
