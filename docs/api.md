@@ -509,8 +509,8 @@ minutes late. A new routine waits for the next crossing. A removed place keeps i
 
 ### One-time reminders (`src/reminders/`)
 
-Agents in every thread of a workspace, including its orchestrator, have `reminders_create`, `reminders_list`,
-`reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source thread. It runs once when
+Agents in every thread of a workspace, including its orchestrator, have `reminders_create`, `reminders_places`,
+`reminders_list`, `reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source thread. It runs once when
 its saved UTC time is due, or when Golem starts again after that time. Its turn is for the person who asked for it or
 last changed it, not for its recipient; a reminder from before this rule uses only the shared credentials.
 Agents make and change reminders; a person sees their pending ones in Upcoming and cancels one there.

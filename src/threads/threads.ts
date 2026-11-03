@@ -234,7 +234,7 @@ const NAMESPACES: CodemodeNamespace[] = [
   {
     name: "reminders",
     prefix: "reminders_",
-    description: "One-time reminders for people at a time they name.",
+    description: "One-time reminders for people at a time or at a place.",
   },
   {
     name: "phone",

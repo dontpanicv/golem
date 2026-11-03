@@ -23,7 +23,7 @@ export function reminderTools(
   const place = Type.Optional(
     Type.String({
       description:
-        "The name of a place from the person's Settings, in place of a time",
+        "The name of a place from reminders_places, in place of a time",
     })
   );
   const event = Type.Optional(
@@ -36,6 +36,9 @@ export function reminderTools(
   });
   const text = Type.String({ description: "What to remind the person about" });
   const reminder = Type.String({ description: "The reminder id" });
+  const recipient = Type.Optional(
+    Type.String({ description: "Name of a member of this workspace" })
+  );
   const actorFor = async (
     conversationId: Parameters<Threads["requester"]>[1]
   ) => {
@@ -46,7 +49,35 @@ export function reminderTools(
       realm: await threads.realm(workspaceId, conversationId),
     };
   };
-  /** The time or the place of a reminder; a place is one that the recipient and the asker both use. */
+  /** The member named `recipient`, else the person who asks. */
+  const recipientOf = (
+    actor: Awaited<ReturnType<typeof actorFor>>["actor"],
+    askerId: string | null,
+    name: string | undefined
+  ): string => {
+    const members = workspaces.members(workspaceId, actor);
+    const matches = name
+      ? members.filter(
+          (member) => member.name.toLowerCase() === name.toLowerCase()
+        )
+      : members.filter((member) => member.userId === askerId);
+    if (matches.length !== 1) {
+      throw new Error(
+        "Name exactly one member of this workspace as the recipient."
+      );
+    }
+    return matches[0]!.userId;
+  };
+  /** The places of a reminder: those that the recipient and the asker both use. */
+  const placesFor = (recipientId: string, askerId: string | null) => {
+    const asker = new Set(
+      places.usable(workspaceId, askerId ?? recipientId).map(({ id }) => id)
+    );
+    return places
+      .usable(workspaceId, recipientId)
+      .filter(({ id }) => asker.has(id));
+  };
+  /** The time or the place of a reminder. */
   const whenOf = (
     args: { at?: string; place?: string; event?: "arrive" | "leave" },
     recipientId: string,
@@ -55,12 +86,7 @@ export function reminderTools(
     if (args.place === undefined) {
       return { at: args.at };
     }
-    const asker = new Set(
-      places.usable(workspaceId, askerId ?? recipientId).map(({ id }) => id)
-    );
-    const known = places
-      .usable(workspaceId, recipientId)
-      .filter(({ id }) => asker.has(id));
+    const known = placesFor(recipientId, askerId);
     const found = known.find(
       ({ name }) => name.toLowerCase() === args.place!.toLowerCase()
     );
@@ -85,9 +111,7 @@ export function reminderTools(
         place,
         event,
         timeZone,
-        recipient: Type.Optional(
-          Type.String({ description: "Name of a member of this workspace" })
-        ),
+        recipient,
       }),
       replay: "safe",
       execute: async (args, api) => {
@@ -96,19 +120,11 @@ export function reminderTools(
         if (!source) {
           throw new Error("This tool works only in a thread.");
         }
-        const members = workspaces.members(workspaceId, actor);
-        const matches = args.recipient
-          ? members.filter(
-              (member) =>
-                member.name.toLowerCase() === args.recipient!.toLowerCase()
-            )
-          : members.filter((member) => member.userId === asker?.id);
-        if (matches.length !== 1) {
-          throw new Error(
-            "Name exactly one member of this workspace as the recipient."
-          );
-        }
-        const recipientId = matches[0]!.userId;
+        const recipientId = recipientOf(
+          actor,
+          asker?.id ?? null,
+          args.recipient
+        );
         const created = reminders.create(
           workspaceId,
           actor,
@@ -123,6 +139,34 @@ export function reminderTools(
           }
         );
         return { output: [{ type: "text", text: describe(created) }] };
+      },
+    }),
+    defineTool({
+      name: "reminders_places",
+      description:
+        "The names of the places that a reminder for the recipient can name, from the Settings of the people.",
+      parameters: Type.Object({ recipient }),
+      replay: "safe",
+      execute: async (args, api) => {
+        const { actor, asker } = await actorFor(api.conversationId);
+        const recipientId = recipientOf(
+          actor,
+          asker?.id ?? null,
+          args.recipient
+        );
+        const names = placesFor(recipientId, asker?.id ?? null).map(
+          ({ name }) => name
+        );
+        return {
+          output: [
+            {
+              type: "text",
+              text:
+                names.join("\n") ||
+                "No places. A person adds places in Settings and shares one, so other members use it.",
+            },
+          ],
+        };
       },
     }),
     defineTool({

@@ -160,6 +160,7 @@ test("reminders stay in their workspace and reject a wrong time-zone offset", ()
   const { database, reminders } = setup();
   expect(reminders.tools("home").map((tool) => tool.name)).toEqual([
     "reminders_create",
+    "reminders_places",
     "reminders_list",
     "reminders_update",
     "reminders_cancel",
@@ -319,6 +320,27 @@ test("a reminder at a place waits until its person arrives or leaves, once", asy
       {} as never
     )
   ).rejects.toThrow("Name one of these places: Cottage.");
+  const listed = reminders
+    .tools("home")
+    .find((candidate) => candidate.name === "reminders_places")!;
+  expect(
+    (
+      await listed.execute(
+        {},
+        { conversationId: 1, taskId: 8 } as never,
+        {} as never
+      )
+    ).output
+  ).toEqual([{ type: "text", text: "Cottage" }]);
+  expect(
+    (
+      await listed.execute(
+        { recipient: "Bob" },
+        { conversationId: 1, taskId: 9 } as never,
+        {} as never
+      )
+    ).output?.[0]
+  ).toMatchObject({ text: expect.stringContaining("No places.") });
   // Alice's private place is not Bob's, so she cannot remind him there.
   await expect(
     tool.execute(
