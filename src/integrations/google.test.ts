@@ -107,8 +107,57 @@ test("each tool runs one allowed gog command, with the token outside its argumen
       })
     ).arguments
   ).toEndWith(
-    "calendar create --summary=Dentist --from=2026-10-28T09:00:00+01:00 --to=2026-10-28T10:00:00+01:00 --attendees=anna@example.com --with-meet -- primary"
+    "calendar create --summary=Dentist --from=2026-10-28T09:00:00+01:00 --to=2026-10-28T10:00:00+01:00 --attendees=anna@example.com --with-meet --send-updates=none -- primary"
   );
+});
+
+test("a calendar change emails the guests only with notify, after the person allows it", async () => {
+  const create = tools.get("google_calendar_create_event")!;
+  const event = {
+    calendar: "primary",
+    summary: "Trip",
+    from: "2026-11-10",
+    to: "2026-11-11",
+    all_day: true,
+    guests: ["anna@example.com"],
+  };
+  expect(await create.approval!(event as never, "token-1", undefined)).toBe(
+    null
+  );
+  expect(
+    await create.approval!(
+      { ...event, notify: true } as never,
+      "token-1",
+      undefined
+    )
+  ).toBe("Invite anna@example.com by email to: Trip, 2026-11-10 to 2026-11-11");
+  expect(
+    (await call("google_calendar_create_event", { ...event, notify: true }))
+      .arguments
+  ).toEndWith(
+    "--all-day --attendees=anna@example.com --send-updates=all -- primary"
+  );
+  expect(
+    await tools.get("google_calendar_update_event")!.approval!(
+      {
+        calendar: "primary",
+        event: "e1",
+        summary: "Trip",
+        notify: true,
+      } as never,
+      "token-1",
+      undefined
+    )
+  ).toBe('Email the guests of event e1 about this change: {"summary":"Trip"}');
+  expect(
+    (
+      await call("google_calendar_delete_event", {
+        calendar: "primary",
+        event: "e1",
+        notify: true,
+      })
+    ).arguments
+  ).toEndWith("calendar delete --force --send-updates=all -- primary e1");
 });
 
 test("a Doc comes from a Markdown file that gog reads, and gog's errors reach the agent without its notes", async () => {
@@ -221,7 +270,7 @@ test("a draft goes only as the person allowed it", async () => {
     "token-1",
     undefined,
     undefined,
-    allowed
+    allowed!
   )) as { arguments: string };
   expect(sent.arguments).not.toContain("--gmail-no-send");
   expect(sent.arguments).toEndWith("gmail drafts send -- d1");

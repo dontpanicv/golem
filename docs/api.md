@@ -651,7 +651,7 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
   the machine when the turn is another person's, and from the turn's person otherwise; a command that dcg cannot judge
   waits too. Other commands, file reads, and file writes run at once.
 - A connector tool that acts as a person, such as `google_mail_send`, `google_mail_send_draft`, `slack_send`,
-  `whatsapp_send`, or `whatsapp_send_file`, waits for an approval before every call, which shows what it sends: from the person who added the credential that it uses while
+  `whatsapp_send`, `whatsapp_send_file`, or a `google_calendar_*_event` call with `notify`, waits for an approval before every call, which shows what it sends: from the person who added the credential that it uses while
   they are a member, else from the turn's person. `"turn"` allows only that call. A routine's script cannot call it.
 - Agents reach public addresses only: the browser and `save_file` go through Golem's egress proxy, which refuses
   loopback, private, link-local, and other non-public addresses after each DNS answer and redirect. Each person of a

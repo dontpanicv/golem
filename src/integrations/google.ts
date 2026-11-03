@@ -84,12 +84,18 @@ const ORIGINAL_START = Type.Optional(
     description: "The start of the occurrence, for scope single or future.",
   })
 );
+const NOTIFY = Type.Optional(
+  Type.Boolean({
+    description:
+      "Email the guests about it from the person's calendar, after the person allows it. Without it, guests get no email.",
+  })
+);
 
 /**
  * Gmail, Google Calendar, and Google Drive through gog (https://github.com/openclaw/gogcli), which calls Google's APIs
  * with the access token of the person's sign-in. Agents read and draft mail, and send it when the person allows each
- * one; they manage events without sending invitations, read files, and upload files, create Docs, and share them
- * without sending invitations.
+ * one; they manage events, and email the guests about them when the person allows it; they read files, and upload
+ * files, create Docs, and share them without sending invitations.
  */
 export function googleConnector(binary: string): Connector {
   const gog = new Gog(binary);
@@ -393,7 +399,7 @@ export function googleConnector(binary: string): Connector {
       gogTool(gog, {
         name: "google_calendar_create_event",
         description:
-          "Creates an event. Guests get no invitation email; the person sends updates from Google Calendar.",
+          "Creates an event. Guests get an invitation email only with `notify`, after the person allows it.",
         parameters: Type.Object({
           calendar: CALENDAR,
           summary: Type.String({ description: "The title." }),
@@ -413,12 +419,18 @@ export function googleConnector(binary: string): Connector {
           meet: Type.Optional(
             Type.Boolean({ description: "Add a Google Meet link." })
           ),
+          notify: NOTIFY,
         }),
+        approval: (event) =>
+          event.notify
+            ? `Invite ${event.guests?.join(", ") || "nobody"} by email to: ${event.summary}, ${event.from} to ${event.to}`
+            : null,
         command: (event) => [
           "calendar",
           "create",
           `--summary=${event.summary}`,
           ...eventOptions(event),
+          sendUpdates(event.notify),
           "--",
           event.calendar,
         ],
@@ -426,7 +438,7 @@ export function googleConnector(binary: string): Connector {
       gogTool(gog, {
         name: "google_calendar_update_event",
         description:
-          "Changes an event: only what is given. `guests` replaces all guests. Guests get no email about the change.",
+          "Changes an event: only what is given. `guests` replaces all guests. Guests get an email about the change only with `notify`, after the person allows it.",
         parameters: Type.Object({
           calendar: CALENDAR,
           event: EVENT,
@@ -445,7 +457,12 @@ export function googleConnector(binary: string): Connector {
           ),
           scope: SCOPE,
           original_start: ORIGINAL_START,
+          notify: NOTIFY,
         }),
+        approval: (event) =>
+          event.notify
+            ? `Email the guests of event ${event.event} about this change: ${JSON.stringify(eventChange(event))}`
+            : null,
         command: (event) => [
           "calendar",
           "update",
@@ -453,6 +470,7 @@ export function googleConnector(binary: string): Connector {
           ...eventOptions(event),
           ...option("scope", event.scope),
           ...option("original-start", event.original_start),
+          sendUpdates(event.notify),
           "--",
           event.calendar,
           event.event,
@@ -460,19 +478,26 @@ export function googleConnector(binary: string): Connector {
       }),
       gogTool(gog, {
         name: "google_calendar_delete_event",
-        description: "Deletes an event. Guests get no email about it.",
+        description:
+          "Deletes an event. Guests get an email about it only with `notify`, after the person allows it.",
         parameters: Type.Object({
           calendar: CALENDAR,
           event: EVENT,
           scope: SCOPE,
           original_start: ORIGINAL_START,
+          notify: NOTIFY,
         }),
-        command: ({ calendar, event, scope, original_start }) => [
+        approval: ({ event, notify }) =>
+          notify
+            ? `Email the guests of event ${event} that it is cancelled`
+            : null,
+        command: ({ calendar, event, scope, original_start, notify }) => [
           "calendar",
           "delete",
           "--force",
           ...option("scope", scope),
           ...option("original-start", original_start),
+          sendUpdates(notify),
           "--",
           calendar,
           event,
@@ -806,6 +831,7 @@ function gogTool<Parameters extends TSchema>(
     name: string;
     description: string;
     parameters: Parameters;
+    approval?: (args: Static<Parameters>) => string | null;
     command: (args: Static<Parameters>) => string[];
   }
 ): ConnectorTool<Parameters> {
@@ -813,9 +839,29 @@ function gogTool<Parameters extends TSchema>(
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
+    ...(tool.approval ? { approval: tool.approval } : {}),
     execute: (args, token, signal) =>
       gog.run(token, tool.command(args), signal),
   };
+}
+
+/** gog's option that emails the guests, or not. */
+function sendUpdates(notify: boolean | undefined): string {
+  return `--send-updates=${notify ? "all" : "none"}`;
+}
+
+/** What an update changes, without the fields that only say which event it is. */
+function eventChange({
+  calendar: _calendar,
+  event: _event,
+  notify: _notify,
+  ...change
+}: {
+  calendar: string;
+  event: string;
+  notify?: boolean;
+}): object {
+  return change;
 }
 
 /** The options of an event that create and update share. */

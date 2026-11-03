@@ -82,7 +82,8 @@ export interface ConnectorTool<Parameters extends TSchema = TSchema> {
   ): Promise<unknown>;
   /**
    * What a person allows before each call, such as `Send on Slack to #family: Dinner at 7`; `execute` then gets it as
-   * `allowed`. A tool with it acts as the person, such as one that sends; it asks every time.
+   * `allowed`. A tool with it acts as the person, such as one that sends; it asks every time. `null` when this call
+   * does not act as the person, such as an event that emails nobody.
    */
   // biome-ignore lint/style/useConsistentMethodSignatures: a method keeps a tool with typed arguments a ConnectorTool.
   approval?(
@@ -90,7 +91,7 @@ export interface ConnectorTool<Parameters extends TSchema = TSchema> {
     secret: string,
     signal: AbortSignal | undefined,
     file?: FileOf
-  ): string | Promise<string>;
+  ): string | null | Promise<string | null>;
 }
 
 /** Finds a file of the workspace by its id, such as one to attach; it throws when there is none. */
@@ -942,7 +943,10 @@ export class Integrations {
           turn.userId,
           account
         );
-        if (!tool.approval) {
+        const allowed = tool.approval
+          ? await tool.approval(rest, credential, turn.signal, turn.file)
+          : null;
+        if (allowed === null) {
           return tool.call(
             rest,
             credential,
@@ -957,12 +961,6 @@ export class Integrations {
             `Only an agent in a thread can use ${tool.name}, after a person allows it.`
           );
         }
-        const allowed = await tool.approval(
-          rest,
-          credential,
-          turn.signal,
-          turn.file
-        );
         await turn.approve(
           allowed,
           this.approverOf(workspaceId, credential, turn.userId)
@@ -1310,7 +1308,7 @@ interface AccountTool {
     credential: Credential,
     signal: AbortSignal | undefined,
     file?: FileOf
-  ) => Promise<string>;
+  ) => Promise<string | null>;
   readonly call: (
     args: unknown,
     credential: Credential,
