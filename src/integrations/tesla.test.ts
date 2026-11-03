@@ -180,9 +180,11 @@ test("the client registers Golem's domain in each region, and Golem serves its p
       ? Response.json({ access_token: "partner" })
       : Response.json({ response: {} });
   });
-  await connector.registerClient!({ clientId: "app", clientSecret: "shh" });
+  const secret = "ta-secret.a+b&c=d%e#f g$!*";
+  await connector.registerClient!({ clientId: "app", clientSecret: secret });
   const token = new URLSearchParams(bodies[0]);
   expect(token.get("grant_type")).toBe("client_credentials");
+  expect(token.get("client_secret")).toBe(secret);
   expect(token.get("audience")).toBe(EU);
   expect(bodies[1]).toBe(JSON.stringify({ domain: "golem.example.com" }));
   expect(bodies).toHaveLength(4);
@@ -196,11 +198,19 @@ test("the client registers Golem's domain in each region, and Golem serves its p
   expect(tesla(() => Response.json({})).connector.publicKey!()).not.toBe(key);
 
   const refused = tesla(() =>
-    Response.json({ error: "invalid_client" }, { status: 401 })
+    Response.json(
+      {
+        error: "unauthorized_client",
+        error_description: "Client is not allowed this grant.",
+      },
+      { status: 401 }
+    )
   );
   await expect(
     refused.connector.registerClient!({ clientId: "app", clientSecret: "no" })
-  ).rejects.toThrow("Tesla refused the client ID and secret (401)");
+  ).rejects.toThrow(
+    "Tesla refused the client ID and secret (401, unauthorized_client): Client is not allowed this grant."
+  );
 });
 
 /** A look at a car that charges from a household socket: 230 V, 10 A, one phase, 2 kW as the car rounds it. */

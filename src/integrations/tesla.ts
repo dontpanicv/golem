@@ -320,12 +320,18 @@ export function teslaConnector(options: TeslaOptions): Connector {
           }),
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
-        const { access_token: token } = (await answer
-          .json()
-          .catch(() => ({}))) as { access_token?: string };
+        const {
+          access_token: token,
+          error,
+          error_description: description,
+        } = (await answer.json().catch(() => ({}))) as {
+          access_token?: string;
+          error?: string;
+          error_description?: string;
+        };
         if (!(answer.ok && token)) {
           throw new Error(
-            `Tesla refused the client ID and secret (${answer.status})`
+            `Tesla refused the client ID and secret (${answer.status}${error ? `, ${error}` : ""})${description ? `: ${description}` : ""}`
           );
         }
         const registered = await request(`${region}/api/1/partner_accounts`, {
