@@ -6,6 +6,8 @@ import SwiftUI
 struct PhoneShell: View {
     enum Tab: CaseIterable { case home, golem, activity, search }
 
+    /// The screen to open first, as when the phone turns back from the split view.
+    var resume: Destination?
     @Environment(Session.self) private var session
     @State private var bar = PhoneTabBar()
     @State private var paths: [Tab: [Destination]] = [:]
@@ -55,6 +57,7 @@ struct PhoneShell: View {
             withAnimation(.smooth(duration: Tokens.Duration.normal)) { bar.keyboard = false }
         }
         .onAppear {
+            if let resume { open(resume) }
             openTapped()
             openDictation()
         }

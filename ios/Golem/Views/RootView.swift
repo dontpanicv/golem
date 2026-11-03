@@ -90,18 +90,56 @@ enum Destination: Hashable, Identifiable {
         default: nil
         }
     }
+
+    /// The channel or thread of a ``key``.
+    init?(key: String) {
+        let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        switch parts[0] {
+        case "channel": self = .channel(parts[1])
+        case "thread": self = .thread(parts[1])
+        default: return nil
+        }
+    }
 }
 
 /// The iPhone shell (``PhoneShell``) or, where there is room, the split view with the sidebar.
 private struct MainView: View {
     @Environment(Session.self) private var session
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @AppStorage("openedDestination") private var opened = ""
+    /// The shell in use. It changes after the size class, once the split view's sheets end: at a compact width, UIKit
+    /// makes the split view's open inspector a sheet, which stays on screen, empty, when the shell replaces the split
+    /// view.
+    @State private var compact: Bool?
+    /// What the split view had open, for the iPhone shell after the phone turns back to portrait.
+    @State private var resume: Destination?
 
     var body: some View {
         Group {
-            if sizeClass == .compact { PhoneShell() } else { SplitView() }
+            if compact ?? (sizeClass == .compact) { PhoneShell(resume: resume) } else { SplitView() }
+        }
+        .onChange(of: sizeClass) {
+            Task {
+                if sizeClass == .compact { await endSheets() }
+                resume = Destination(key: opened)
+                compact = sizeClass == .compact
+            }
         }
         .task(id: session.workspace?.id) { await session.followWorking() }
+    }
+
+    /// Waits until the sheet on screen has come in, then closes it.
+    private func endSheets() async {
+        let root = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?
+            .rootViewController
+        guard let sheet = root?.presentedViewController else { return }
+        if let transition = sheet.transitionCoordinator {
+            await withCheckedContinuation { done in
+                transition.animate(alongsideTransition: nil) { _ in done.resume() }
+            }
+        }
+        await withCheckedContinuation { done in sheet.dismiss(animated: false) { done.resume() } }
     }
 }
 
