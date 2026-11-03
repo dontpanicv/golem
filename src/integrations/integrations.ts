@@ -143,6 +143,8 @@ export interface Connector {
     readonly authorization: string;
     readonly token: string;
   };
+  /** Where its sign-in page sends people, when not `SIGN_IN_ADDRESS`, such as Tesla's, which refuses localhost. */
+  readonly redirectUrl?: string;
   /**
    * It signs in with Golem's own OAuth client, which the server's owner sets in Settings, because its sign-in server
    * does not register clients. Only the owner sees it until then.
@@ -1387,7 +1389,6 @@ function standardTokens(tokenUrl: string | undefined) {
 
 /** The OAuth state of one grant, as the MCP SDK reads and writes it: the client, the tokens, and PKCE. */
 class GrantProvider implements OAuthClientProvider {
-  readonly redirectUrl = SIGN_IN_ADDRESS;
   /** The sign-in page, once the SDK wants the person to sign in. */
   authorizationUrl: URL | undefined;
   private verifier = "";
@@ -1398,6 +1399,10 @@ class GrantProvider implements OAuthClientProvider {
     private readonly signInState?: string,
     private readonly saved: (grant: McpGrant) => void = () => undefined
   ) {}
+
+  get redirectUrl() {
+    return this.connector.redirectUrl ?? SIGN_IN_ADDRESS;
+  }
 
   get clientMetadata() {
     return {

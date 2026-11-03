@@ -17,8 +17,9 @@ the Golem service; install them, for example with `brew install gogcli`, `brew i
 `brew install openclaw/tap/wacli`, and for Tesla see below. Then click **Reload** on Configuration in Settings. Golem
 does not show these integrations without them.
 
-The sign-in pages of Google, Netatmo, Tesla, Rohlík, Plaud, and T3 Code end at `https://localhost/golem-sign-in?code=…`. Nothing answers
-at that address, so the browser shows an error page. Copy the address from the address bar and paste it into Golem.
+The sign-in pages of Google, Netatmo, Rohlík, Plaud, and T3 Code end at `https://localhost/golem-sign-in?code=…`, and Tesla's,
+which refuses localhost, at `/golem-sign-in?code=…` on Golem's own address. Nothing answers at that address, so the browser shows an
+error page. Copy the address from the address bar and paste it into Golem.
 
 ## Google: Gmail, Calendar, and Drive
 

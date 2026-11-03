@@ -558,7 +558,7 @@ test("a secret of a connector with an account keeps the account, which names the
   });
 });
 
-test("a sign-in server that does not publish its endpoints signs in at the connector's own", async () => {
+test("a sign-in server that does not publish its endpoints signs in at the connector's own, and returns to its own address", async () => {
   const { origin } = new URL(signInServer.url);
   const station: Connector = {
     id: "station",
@@ -571,6 +571,7 @@ test("a sign-in server that does not publish its endpoints signs in at the conne
       token: `${origin}/oauth2/token`,
     },
     registered: true,
+    redirectUrl: "https://golem.example.com/golem-sign-in",
     tools: [],
   };
   const withOwner = new Integrations(
@@ -592,14 +593,20 @@ test("a sign-in server that does not publish its endpoints signs in at the conne
   };
   const page = new URL(url);
   expect(page.pathname).toBe("/oauth2/authorize");
+  expect(page.searchParams.get("redirect_uri")).toBe(
+    "https://golem.example.com/golem-sign-in"
+  );
   const credential = await withOwner.finishConnect(
     workspaceId,
     alice,
     "station",
-    `https://localhost/golem-sign-in?code=code-4&state=${page.searchParams.get("state")}`
+    `https://golem.example.com/golem-sign-in?code=code-4&state=${page.searchParams.get("state")}`
   );
   expect(credential.label).toBe("Station");
   expect(tokenRequests.at(-1)?.get("client_secret")).toBe("shh");
+  expect(tokenRequests.at(-1)?.get("redirect_uri")).toBe(
+    "https://golem.example.com/golem-sign-in"
+  );
   withOwner.deleteCredential(workspaceId, alice, credential.id);
   await withOwner.close();
 });

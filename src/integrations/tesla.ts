@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import type { Connector, Keeper } from "./integrations.ts";
-import { PASTE_ADDRESS, SIGN_IN_ADDRESS } from "./sign-in.ts";
+import { pasteAddress } from "./sign-in.ts";
 
 const AUTH = "https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3";
 /** The regions of the Fleet API where Golem registers its domain; China has its own sign-in, which Golem does not use. */
@@ -278,6 +278,7 @@ export function teslaConnector(options: TeslaOptions): Connector {
   }
 
   const log = chargeLog(fleet);
+  const redirectUrl = `https://${options.domain}/golem-sign-in`;
   return {
     id: "tesla",
     name: "Tesla",
@@ -290,15 +291,16 @@ export function teslaConnector(options: TeslaOptions): Connector {
       token: `${AUTH}/token`,
     },
     registered: true,
+    redirectUrl,
     scope: SCOPES.join(" "),
     // Tesla asks again for scopes that the person did not allow before.
     authorizationParameters: { prompt_missing_scopes: "true" },
     guide: [
       "At [developer.tesla.com](https://developer.tesla.com), sign in with the Tesla account, and create an app. Select **Authorization Code and Machine-to-Machine**, and the scopes **Vehicle Information**, **Vehicle Location**, **Vehicle Commands**, and **Vehicle Charging Management**.",
-      `In **Allowed Origin(s)**, type \`https://${options.domain}\`, and in **Allowed Redirect URI(s)**, \`${SIGN_IN_ADDRESS}\`. Copy the client ID and the client secret.`,
+      `In **Allowed Origin(s)**, type \`https://${options.domain}\`, and in **Allowed Redirect URI(s)**, \`${redirectUrl}\`. Copy the client ID and the client secret.`,
       `Click **Client** here, and paste them. Golem registers \`${options.domain}\` with Tesla, which reads Golem's key at \`https://${options.domain}${PUBLIC_KEY_PATH}\`.`,
       "Click **Connect**, sign in to Tesla, and allow all the scopes.",
-      PASTE_ADDRESS,
+      pasteAddress(redirectUrl),
       `For commands, open [tesla.com/_ak/${options.domain}](https://tesla.com/_ak/${options.domain}) on the phone with the Tesla app, and add the key to each car.`,
     ],
     publicKey: () =>
