@@ -2586,7 +2586,7 @@ export class Threads {
         section("soul", () => SOUL),
         this.factsSection(workspaceId),
         this.learnedSection(workspaceId),
-        this.hands.section(workspaceId, requesterOf),
+        this.hands.section(workspaceId),
         this.channelSection(workspaceId),
       ],
     });

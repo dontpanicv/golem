@@ -461,9 +461,9 @@ export class Hands {
     return handsTools(this, workspaceId, requesterOf);
   }
 
-  /** The prompt section that names the machines of a turn. */
-  section(workspaceId: string, requesterOf: RequesterOf) {
-    return handsSection(this, workspaceId, requesterOf);
+  /** The prompt section that names the shared machines of a workspace. */
+  section(workspaceId: string) {
+    return handsSection(this, workspaceId);
   }
 
   async close(): Promise<void> {

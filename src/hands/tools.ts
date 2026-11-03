@@ -19,37 +19,31 @@ const FILE_PART = 8 * 1024 * 1024;
 const machineParameter = Type.String({ description: "Machine name" });
 
 /**
- * The machines of a turn, the shared ones and its person's own, named in the system prompt before each request, so
- * agents need not look them up.
+ * The shared machines of a workspace, and how to use machines, named in the system prompt before each request. It names
+ * no person's own machines, so it renders the same text for every person's turn and keeps the prompt cache;
+ * hands_machines lists the machines of a turn.
  */
-export function handsSection(
-  hands: Hands,
-  workspaceId: string,
-  requesterOf: RequesterOf
-): PromptSection {
+export function handsSection(hands: Hands, workspaceId: string): PromptSection {
   return {
     key: "machines",
-    render: async ({ conversationId }) => {
-      // A conversation that is not a thread, or whose person left, sees the shared machines only.
-      const machines = hands.machinesIn(
-        workspaceId,
-        await requesterOf(conversationId).catch(() => null)
-      );
-      if (machines.length === 0) {
-        return "No machines are shared in this workspace or paired by the person of this turn. If someone needs a shell or files on a computer, tell them to add a machine in Settings.";
-      }
-      const lines = machines.map(
-        (machine) =>
-          `- ${machine.name}: ${displayOs(machine.os)} ${machine.arch}; reachable as ${hosts(machine).join(", ")}${machine.shared ? "" : "; private to the person of this turn"}`
-      );
+    render: () => {
+      const lines = hands
+        .machinesIn(workspaceId, null)
+        .map(
+          (machine) =>
+            `- ${machine.name}: ${displayOs(machine.os)} ${machine.arch}; reachable as ${hosts(machine).join(", ")}`
+        );
       return [
-        "Machines of this turn: the shared ones, and the person's own. Every hands_* tool takes `machine`: one of these names.",
+        lines.length
+          ? "Shared machines of this workspace. Every hands_* tool takes `machine`: one of these names, or one of the person's own machines."
+          : "No machines are shared in this workspace. Every hands_* tool takes `machine`: one of the person's own machines.",
         ...lines,
+        "- The person of a turn can also have their own machines, private to their turns: hands_machines lists all machines of this turn. If someone needs a shell or files on a computer and this turn has no machine, tell them to add a machine in Settings.",
         '- People may say "the Mac" or "the server": pick the machine that matches; ask only if two match.',
         "- You can use several machines in one script: `await Promise.all([...])` runs calls on different machines at the same time.",
         "- For something that must keep running while you do other things (a server, a watcher, a build), use hands_job_start, and stop it with hands_job_cancel when you are done. A script stops after 15 minutes, so use hands_job_start for longer work.",
         "- A person must allow a command or a file change on a machine when this turn read a web page, search results, or a connected service, when no person asked for the turn, or when another person paired the machine. The call waits up to 10 minutes and fails when they do not allow it; then tell the people in the thread.",
-        "- When one machine has to reach another, use the other machine's address from this list, not localhost.",
+        "- When one machine has to reach another, use the other machine's address from this list or from hands_machines, not localhost.",
         "- On a Mac, script an app with osascript when it has a scripting dictionary (Music, Finder, Mail). Start an app that is not running with `open -ga <App>` first.",
       ].join("\n");
     },
@@ -83,7 +77,7 @@ export function handsTools(
     defineTool({
       name: "hands_machines",
       description:
-        "List the paired machines and whether each one is reachable right now.",
+        "List the machines of this turn, the shared ones and the person's own, with their addresses and whether each one is reachable right now.",
       parameters: Type.Object({}),
       replay: "safe",
       execute: async (_args, api) => {
@@ -93,7 +87,7 @@ export function handsTools(
         }
         const lines = await Promise.all(
           machines.map(async (machine) => {
-            const head = `${machine.name}: ${displayOs(machine.os)} ${machine.arch}`;
+            const head = `${machine.name}: ${displayOs(machine.os)} ${machine.arch}, ${machine.shared ? "shared" : "private to the person of this turn"}, reachable as ${hosts(machine).join(", ")}`;
             try {
               // What the machine says now: hands may have been updated since pairing.
               const { info } = await hands.connection(machine);

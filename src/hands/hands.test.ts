@@ -470,12 +470,30 @@ describe("the hands tools", () => {
     }
   });
 
-  test("the system prompt names the machines", async () => {
-    expect(
+  test("the system prompt names only the shared machines, the same for every person's turn; hands_machines adds the person's own", async () => {
+    const render = async (conversationId: number) =>
       await hands
-        .section(toolsWorkspace, async () => alice.id)
-        .render({ conversationId: 1 } as never, BACKGROUND_CONTEXT)
-    ).toContain("- bender: macOS aarch64; reachable as 127.0.0.1");
+        .section(toolsWorkspace)
+        .render({ conversationId } as never, BACKGROUND_CONTEXT);
+    // bender is Alice's own machine: her turn gets it from hands_machines, never from the prompt.
+    expect(await render(1)).toStartWith(
+      "No machines are shared in this workspace."
+    );
+    expect(await render(1)).not.toContain("bender");
+    expect(await run("hands_machines", {})).toStartWith(
+      "bender: macOS aarch64, private to the person of this turn, reachable as 127.0.0.1, hands "
+    );
+
+    const [machine] = hands.machinesIn(toolsWorkspace, alice.id);
+    hands.setShared(toolsWorkspace, alice, machine!.id, true);
+    try {
+      expect(await render(1)).toContain(
+        "- bender: macOS aarch64; reachable as 127.0.0.1"
+      );
+      expect(await render(2)).toBe(await render(1));
+    } finally {
+      hands.setShared(toolsWorkspace, alice, machine!.id, false);
+    }
   });
 
   test("Golem refuses a machine whose certificate is not the pinned one", async () => {
