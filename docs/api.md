@@ -457,7 +457,7 @@ to put that host on the internet while the rest of Golem stays private.
 | `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`, private; `400` when the address is not of the person's own sign-in in this workspace, the sign-in did not finish, or the number did not link within a minute |
 | `PUT …/credentials/:credentialId` | `{ shared }` | `Credential`; `404` unless it is the person's own |
 | `DELETE …/credentials/:credentialId` | | `204`; `404` unless it is the person's own |
-| `PUT /api/v1/integrations/:integrationId/client` | `{ clientId, clientSecret }` | `204`; the next sign-in uses it, at once. `403` unless the person is the server's owner, `404` unless the integration has `client`, `502` with the reason when the integration's API refuses the client, such as Tesla's when it cannot register Golem's domain |
+| `PUT /api/v1/integrations/:integrationId/client` | `{ clientId, clientSecret }` | `204`; the next sign-in uses it, at once. `403` unless the person is the server's owner, `404` unless the integration has `client`, `400` with the reason when the integration's API refuses the client, such as Tesla's when it cannot register Golem's domain |
 | `GET /.well-known/appspecific/com.tesla.3p.public-key.pem` | | The public key that Tesla's Fleet API checks Golem's signed commands with, with no sign-in; `404` without the Tesla integration |
 
 A person connects integrations in Settings. A new credential is private: only the turns of its owner use it. Its owner

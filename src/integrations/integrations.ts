@@ -405,8 +405,9 @@ export class Integrations {
         clientSecret: required(client.clientSecret, "Client secret").trim(),
       });
     } catch (error) {
+      // Not 502: Cloudflare puts its own page in place of a 502, and the person then does not see the reason.
       // biome-ignore lint/style/useErrorCause: HttpError takes the cause as its third argument.
-      throw new HttpError(502, (error as Error).message, { cause: error });
+      throw new HttpError(400, (error as Error).message, { cause: error });
     }
     this.database
       .query(
