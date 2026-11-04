@@ -456,6 +456,8 @@ const migrations = [
 		deleted_at INTEGER
 	);
 	CREATE INDEX feedback_workspace ON feedback (workspace_id, deleted_at, created_at);`,
+  // routines: keep the definition and script store a run started with; older servers leave this nullable column unset.
+  "ALTER TABLE routine_run ADD COLUMN input TEXT;",
 ];
 
 export function openDatabase(path: string): Database {

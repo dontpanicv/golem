@@ -134,7 +134,7 @@ export class Llm {
     this.models = createModels({
       credentials: new SqliteCredentialStore(database, secrets),
     });
-    this.models.setProvider(llmProvider.provider);
+    this.models.setProvider(withInputBudget(llmProvider.provider));
   }
 
   get providerId(): string {
@@ -448,6 +448,36 @@ export class Llm {
     setSetting(this.database, "llm.deviceId", id);
     return id;
   }
+}
+
+/** Enforces a host-written input budget before a request reaches its provider. */
+export function withInputBudget(provider: Provider): Provider {
+  return {
+    ...provider,
+    streamSimple: (model, context, options) => {
+      let budget: number | undefined;
+      for (const message of context.messages) {
+        if (
+          message.role !== "system" ||
+          !Object.hasOwn(message.sections ?? {}, "input_budget")
+        ) {
+          continue;
+        }
+        const section = message.sections!.input_budget;
+        budget = section
+          ? Number(
+              /^<input_budget>\n(\d+)\n<\/input_budget>$/.exec(section)?.[1]
+            )
+          : undefined;
+      }
+      if (budget && Buffer.byteLength(JSON.stringify(context)) > budget) {
+        throw new Error(
+          `Input budget exceeded (${budget} bytes). Read smaller parts of source records and retry the run.`
+        );
+      }
+      return provider.streamSimple(model, context, options);
+    },
+  };
 }
 
 /** `now` less `before`, or null when nothing changed. */

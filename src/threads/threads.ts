@@ -26,9 +26,13 @@ import {
   type EntryId,
   type EntryRecord,
   type Extension,
+  GenerationTask,
   Harness,
+  hook,
+  type InputSubmissionDraft,
   type JsonObject,
   type Registry,
+  type Submission,
   section,
   type TaskGraph,
   type ToolRegistration,
@@ -482,6 +486,8 @@ export class Threads {
   private images: Promise<ImageProcessor> | undefined;
   /** The extensions of each open workspace, which reloadTools changes. */
   private readonly registries = new Map<string, Registry>();
+  /** Serializes input admission, including a routine's context boundary, within each conversation. */
+  private readonly admitting = new Map<string, Promise<void>>();
   /** Runs the agents' codemode scripts, each in its own worker. */
   private readonly sandbox = new CodemodeSandbox({
     memoryLimitBytes: 256 * 1024 * 1024,
@@ -842,7 +848,6 @@ export class Threads {
     source: "routine" | "reminder"
   ): Promise<string | null> {
     const conversation = await this.conversation(thread);
-    await this.useCurrentAgent(thread.workspaceId, conversation);
     // The turn is the member's, so it uses their own integrations; one who left gets the workspace's only.
     const requester = this.members(thread.workspaceId).find(
       (member) => member.userId === requesterId
@@ -852,42 +857,57 @@ export class Threads {
       requesterName: requester?.name ?? null,
       source,
     };
-    const submission = await conversation.submit(
+    const submission = await this.submitInput(
+      thread.workspaceId,
+      conversation,
       {
         type: "input",
         content: text,
         entry: { kind: TASK, data: task },
         requestId,
-      },
-      BACKGROUND_CONTEXT
+      }
     );
     const settled = await submission.wait(BACKGROUND_CONTEXT);
-    const { messages } = await this.messages(thread);
     if (settled.status !== "done") {
       // A model that fails leaves its error as the newest message.
+      const { messages } = await this.messages(thread);
       const failed = messages.at(-1)?.failed ? messages.at(-1)!.text : null;
       throw new Error(failed ?? `The agent did not answer: ${settled.reason}`);
     }
-    const answer = messages.find(
-      (message) => message.id === String(settled.answer)
+    const answerId = settled.answer;
+    if (answerId === undefined) {
+      return null;
+    }
+    const entry = await conversation.commit(
+      (tx) => tx.entry(answerId),
+      BACKGROUND_CONTEXT
+    );
+    const answer = entry?.model?.find(
+      (message) => message.role === "assistant"
     );
     if (!answer) {
       return null;
     }
     this.registry.touchThread(thread.id);
-    if (answer.failed) {
-      throw new Error(answer.text);
+    if (answer.stopReason === "error" || answer.stopReason === "aborted") {
+      throw new Error(answer.errorMessage ?? "The agent did not answer");
+    }
+    const answerText = answer.content
+      .flatMap((block) => (block.type === "text" ? [block.text] : []))
+      .join("");
+    if (!answerText || answerText.trim() === "QUIET") {
+      return null;
     }
     const userIds =
       notify === "everyone"
         ? this.membersSeeing(thread).map((member) => member.userId)
         : notify;
     for (const userId of userIds) {
-      this.notifyAbout(thread, userId, answer.text, {
+      this.notifyAbout(thread, userId, answerText, {
         timeSensitive: source === "reminder",
       });
     }
-    return answer.text;
+    return answerText;
   }
 
   /**
@@ -1768,8 +1788,54 @@ export class Threads {
       readonly whenBusy?: "steer";
     }
   ): Promise<void> {
-    await this.useCurrentAgent(workspaceId, conversation);
-    await conversation.submit({ type: "input", ...input }, BACKGROUND_CONTEXT);
+    await this.submitInput(workspaceId, conversation, {
+      type: "input",
+      ...input,
+    });
+  }
+
+  private async submitInput(
+    workspaceId: string,
+    conversation: Conversation,
+    input: InputSubmissionDraft
+  ): Promise<Submission> {
+    const key = `${workspaceId}:${conversation.id}`;
+    const previous = this.admitting.get(key);
+    const admitted = Promise.withResolvers<void>();
+    this.admitting.set(key, admitted.promise);
+    try {
+      await previous;
+      const task =
+        input.entry?.kind === TASK
+          ? (input.entry.data as unknown as Task)
+          : undefined;
+      if (task?.source === "routine" && input.requestId) {
+        const existing = await conversation.commit(
+          (tx) => tx.submissionByRequest(conversation.id, input.requestId!),
+          BACKGROUND_CONTEXT
+        );
+        // A recovered input already owns its context and tasks, including inputs admitted by an older server.
+        if (!existing) {
+          await conversation.waitForIdle(BACKGROUND_CONTEXT);
+          const boundary = await conversation.submit(
+            {
+              type: "write",
+              requestId: `${input.requestId}:context`,
+              entry: { kind: "golem.routine-context", head: "self" },
+            },
+            BACKGROUND_CONTEXT
+          );
+          await boundary.wait(BACKGROUND_CONTEXT);
+        }
+      }
+      await this.useCurrentAgent(workspaceId, conversation);
+      return await conversation.submit(input, BACKGROUND_CONTEXT);
+    } finally {
+      admitted.resolve();
+      if (this.admitting.get(key) === admitted.promise) {
+        this.admitting.delete(key);
+      }
+    }
   }
 
   /**
@@ -2373,6 +2439,36 @@ export class Threads {
     }
   }
 
+  private async compactRoutine(
+    workspaceId: string,
+    conversationId: ConversationId
+  ): Promise<void> {
+    const conversation = await this.conversation(
+      this.threadOf(workspaceId, conversationId)
+    );
+    const input = await this.latestInput(conversation);
+    if (
+      input?.kind !== TASK ||
+      (input.data as unknown as Task).source !== "routine"
+    ) {
+      return;
+    }
+    const context = await conversation.context(BACKGROUND_CONTEXT);
+    if (
+      Buffer.byteLength(JSON.stringify({ messages: context.messages })) <
+      160 * 1024
+    ) {
+      return;
+    }
+    const task = await conversation.compact(
+      "Keep the current run's instructions, source IDs, completed work, file IDs, unresolved errors, and the next action. Do not resume work from earlier runs.",
+      BACKGROUND_CONTEXT
+    );
+    const harness = await this.session(workspaceId);
+    // Placement waits for this tool round to end; waiting for it here would block the generation.
+    await harness.waitForTask(task, BACKGROUND_CONTEXT);
+  }
+
   /** Restores the bounded context from the conversation's memory without discarding new input. */
   private async restoreMemory(
     orchestrator: ThreadRef,
@@ -2599,6 +2695,21 @@ export class Threads {
         this.learnedSection(workspaceId),
         this.hands.section(workspaceId),
         this.channelSection(workspaceId),
+        section("input_budget", async ({ conversationId }) => {
+          const input = await this.latestInput(
+            await this.conversation(this.threadOf(workspaceId, conversationId))
+          );
+          return input?.kind === TASK &&
+            (input.data as unknown as Task).source === "routine"
+            ? String(256 * 1024)
+            : undefined;
+        }),
+      ],
+      hooks: [
+        hook(GenerationTask, {
+          afterTools: (_assistant, _results, api) =>
+            this.compactRoutine(workspaceId, api.conversationId),
+        }),
       ],
     });
   }

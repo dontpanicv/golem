@@ -593,7 +593,7 @@ test("a script run that a stop cut off goes on with what the script found, and o
     expect(await outcomeOf(withResult)).toEqual({
       outcome: "posted",
       error: null,
-      result: null,
+      result: JSON.stringify(found),
     });
     expect(await outcomeOf(ofDeleted)).toEqual({
       outcome: "failed",
@@ -645,6 +645,144 @@ function outcomeOf(runId: string) {
     (run) => run.outcome !== "running"
   );
 }
+
+test("the agent reads this run's pending records before its scan state commits, and failed runs keep the old state", async () => {
+  const routine = routines.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Current records",
+    schedule: "0 7 * * *",
+    instructions: "Inspect current records.",
+    script:
+      'store("pending", {current: "video-url"}); return {inspectCurrent: true};',
+    createdBy: alice.id,
+  });
+  let failing = true;
+  let read = false;
+  golem.faux.setResponses(
+    Array.from({ length: 100 }, () => (context: Context) => {
+      const last = context.messages.at(-1)!;
+      const text = textOf(last);
+      if (last.role === "user" && text.includes("inspectCurrent")) {
+        return fauxAssistantMessage(
+          [
+            scriptCall("routines_test_script", {
+              routine: routine.id,
+              script: 'return load("pending");',
+            }),
+          ],
+          { stopReason: "toolUse" }
+        );
+      }
+      if (last.role === "toolResult" && text.includes("video-url")) {
+        read = true;
+        expect(
+          golem.app.database
+            .query("SELECT store FROM routine WHERE id = ?")
+            .get(routine.id)
+        ).toEqual({ store: "{}" });
+        return failing
+          ? fauxAssistantMessage("", {
+              stopReason: "error",
+              errorMessage: "The model is down",
+            })
+          : fauxAssistantMessage("Video record read.");
+      }
+      return agent(context);
+    })
+  );
+  try {
+    expect((await routines.tick(routine.nextRunAt!)[0]!).outcome).toBe(
+      "failed"
+    );
+    expect(read).toBe(true);
+    expect(
+      golem.app.database
+        .query("SELECT store FROM routine WHERE id = ?")
+        .get(routine.id)
+    ).toEqual({ store: "{}" });
+    failing = false;
+    const run = await routines.tick(
+      routines.get(routine.id, alice).nextRunAt!
+    )[0]!;
+    expect(run.outcome).toBe("posted");
+    expect(
+      golem.app.database
+        .query("SELECT store FROM routine WHERE id = ?")
+        .get(routine.id)
+    ).toEqual({ store: JSON.stringify({ pending: { current: "video-url" } }) });
+    expect(
+      JSON.parse(
+        (
+          golem.app.database
+            .query("SELECT result FROM routine_run WHERE id = ?")
+            .get(run.id) as { result: string }
+        ).result
+      ).store.pending.current
+    ).toBe("video-url");
+  } finally {
+    routines.delete(routine.id, alice);
+    golem.faux.setResponses(Array.from({ length: 200 }, () => agent));
+  }
+});
+
+test("a restart before input admission uses the saved instructions, script result, and scan state", async () => {
+  const { threads } = golem.app;
+  const beforeStop = new Routines(
+    golem.app.database,
+    golem.app.workspaces,
+    integrations,
+    {
+      messages: (thread) => threads.messages(thread),
+      requester: (workspace, conversation) =>
+        threads.requester(workspace, conversation),
+      realm: (workspace, conversation) =>
+        threads.realm(workspace, conversation),
+      startAgentThread: (workspace, channel, title) =>
+        threads.startAgentThread(workspace, channel, title),
+      instruct: () => {
+        beforeStop.close();
+        return Promise.reject(new Error("Server stopped before admission"));
+      },
+    },
+    golem.app.indexer,
+    golem.app.places
+  );
+  const routine = beforeStop.create(workspaceId, channelId, {
+    id: crypto.randomUUID(),
+    name: "Saved input",
+    schedule: "0 7 * * *",
+    instructions: "Tell us about exams.",
+    script: 'store("since", 7); return "Anna has an exam on Monday.";',
+    createdBy: alice.id,
+  });
+  const interrupted = await beforeStop.tick(routine.nextRunAt!)[0]!;
+  routines.update(
+    workspaceId,
+    null,
+    routine.id,
+    {
+      instructions: "Different instructions",
+      script: 'throw new Error("Must not fetch again");',
+    },
+    alice.id
+  );
+  const started = restart();
+  try {
+    expect((await outcomeOf(interrupted.id)).outcome).toBe("posted");
+    const thread = threadOf(routines.get(routine.id, alice).threadId);
+    expect((await threads.messages(thread)).messages.at(-1)?.text).toBe(
+      "Anna has an exam on Monday."
+    );
+    expect(
+      golem.app.database
+        .query("SELECT store FROM routine WHERE id = ?")
+        .get(routine.id)
+    ).toEqual({ store: JSON.stringify({ since: 7 }) });
+  } finally {
+    started.close();
+    routines.delete(routine.id, alice);
+  }
+});
 
 test("agents create routines and test scripts", async () => {
   const thread = await golem.app.threads.create(

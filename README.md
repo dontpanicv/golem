@@ -78,6 +78,12 @@ a restart stopped continues when Golem starts again, and messages that came whil
 tool that is safe to repeat, such as `send_to_thread`, runs again after a crash and finds the message it sent before.
 The endless Golem thread compacts itself when its context gets long.
 
+Each routine keeps one durable conversation and its full transcript. A new run starts a new active context with its
+saved instructions and script result; a restart resumes that same run, boundary, and tool tasks. Progress stays in
+the routine's script store. A long run compacts between tool rounds at 160 KiB of serialized input, and a provider
+guard refuses routine input above 256 KiB. These are byte limits, not exact token counts. Older runs remain available
+in the thread and through search.
+
 ### Code mode
 
 The model calls only a small set of core tools directly: channels, threads, files, `recall`, and web search. Every

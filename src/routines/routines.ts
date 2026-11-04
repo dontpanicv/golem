@@ -162,12 +162,13 @@ export class Routines {
   start(): void {
     const cutOff = this.database
       .query(
-        "SELECT id, routine_id AS routineId, started_at AS startedAt, result FROM routine_run WHERE outcome = 'running'"
+        "SELECT id, routine_id AS routineId, started_at AS startedAt, input, result FROM routine_run WHERE outcome = 'running'"
       )
       .all() as {
       id: string;
       routineId: string;
       startedAt: number;
+      input: string | null;
       result: string | null;
     }[];
     for (const run of cutOff) {
@@ -180,7 +181,14 @@ export class Routines {
       );
       if (routine) {
         this.finish(
-          routine,
+          run.input === null
+            ? routine
+            : {
+                ...routine,
+                ...JSON.parse(run.input),
+                channelId: routine.channelId,
+                threadId: routine.threadId,
+              },
           run.id,
           run.startedAt,
           run.result === null ? null : JSON.parse(run.result)
@@ -437,7 +445,22 @@ export class Routines {
         "Only the person who last wrote this routine can test with its stored values. Test without the routine."
       );
     }
-    const store = routine ? JSON.parse(routine.store) : {};
+    const running =
+      routine &&
+      (this.database
+        .query(
+          "SELECT result FROM routine_run WHERE routine_id = ? AND outcome = 'running' AND result IS NOT NULL AND (input IS NULL OR json_extract(input, '$.createdBy') = ?) ORDER BY started_at DESC LIMIT 1"
+        )
+        .get(routine.id, userId ?? "golem") as
+        | { result: string }
+        | null
+        | undefined);
+    const result = running
+      ? (JSON.parse(running.result) as ScriptResult)
+      : undefined;
+    const store = result?.ok
+      ? result.store
+      : JSON.parse(routine?.store ?? "{}");
     return this.execute(workspaceId, script, store, userId, realm);
   }
 
@@ -465,9 +488,9 @@ export class Routines {
     const startedAt = Date.now();
     this.database
       .query(
-        "INSERT INTO routine_run (id, routine_id, started_at, outcome) VALUES (?, ?, ?, 'running')"
+        "INSERT INTO routine_run (id, routine_id, started_at, outcome, input) VALUES (?, ?, ?, 'running', ?)"
       )
-      .run(id, routine.id, startedAt);
+      .run(id, routine.id, startedAt, JSON.stringify(routine));
     this.database
       .query("UPDATE routine SET next_run_at = ? WHERE id = ?")
       .run(nextRunOf(routine.schedule, now + MIN_ROUTINE_GAP), routine.id);
@@ -485,7 +508,7 @@ export class Routines {
     let outcome: RoutineOutcome;
     let error: string | null = null;
     try {
-      outcome = await this.perform(routine, id, found);
+      outcome = await this.perform(routine, id, startedAt, found);
     } catch (failure) {
       if (this.closed) {
         return {
@@ -506,7 +529,7 @@ export class Routines {
     const finishedAt = Date.now();
     this.database
       .query(
-        "UPDATE routine_run SET outcome = ?, error = ?, finished_at = ?, result = NULL WHERE id = ?"
+        "UPDATE routine_run SET outcome = ?, error = ?, finished_at = ? WHERE id = ?"
       )
       .run(outcome, error, finishedAt, id);
     return {
@@ -523,6 +546,7 @@ export class Routines {
   private async perform(
     routine: RoutineRow,
     runId: string,
+    startedAt: number,
     found: ScriptResult | null
   ): Promise<"quiet" | "posted"> {
     if (routine.createdBy !== "golem") {
@@ -543,7 +567,7 @@ export class Routines {
       const answer = await this.tell(
         routine,
         runId,
-        runTask(routine, this.placeLine(routine), null)
+        runTask(routine, this.placeLine(routine), null, startedAt)
       );
       return answer === null ? "quiet" : "posted";
     }
@@ -561,7 +585,7 @@ export class Routines {
       .query("UPDATE routine_run SET result = ? WHERE id = ?")
       .run(JSON.stringify(result), runId);
     if (!result.ok) {
-      await this.tell(routine, runId, repairTask(routine, result));
+      await this.tell(routine, runId, repairTask(routine, result, startedAt));
       throw new Error(result.error);
     }
     // Saved only once the agent has what the script found, so a failed answer finds it again next run.
@@ -571,7 +595,7 @@ export class Routines {
         : await this.tell(
             routine,
             runId,
-            runTask(routine, this.placeLine(routine), result.text)
+            runTask(routine, this.placeLine(routine), result.text, startedAt)
           );
     this.database
       .query("UPDATE routine SET store = ? WHERE id = ?")
@@ -959,10 +983,11 @@ function nextRunOf(schedule: string, now: number): number | null {
 function runTask(
   routine: RoutineRow,
   place: string | null,
-  found: string | null
+  found: string | null,
+  startedAt: number
 ): string {
   return [
-    `The routine "${routine.name}" (routine ${routine.id}) runs now, at ${localTime(Date.now())}.`,
+    `The routine "${routine.name}" (routine ${routine.id}) runs now, at ${localTime(startedAt)}.`,
     place ?? "",
     `Its instructions: ${routine.instructions}`,
     found === null ? "" : `What its script found:\n${found}`,
@@ -974,10 +999,11 @@ function runTask(
 
 function repairTask(
   routine: RoutineRow,
-  result: { readonly error: string; readonly text: string }
+  result: { readonly error: string; readonly text: string },
+  startedAt: number
 ): string {
   return [
-    `The script of the routine "${routine.name}" (routine ${routine.id}) failed at ${localTime(Date.now())}: ${result.error}`,
+    `The script of the routine "${routine.name}" (routine ${routine.id}) failed at ${localTime(startedAt)}: ${result.error}`,
     result.text ? `It printed:\n${cut(result.text)}` : "",
     `The script:\n${routine.script}`,
     "Find the cause. If the script is wrong, fix it: run the new script with routines_test_script, then save it with routines_update. If something outside the script fails, such as a connector or a website, tell the people in this channel in plain words what does not work. If you fixed the script, answer with only QUIET.",

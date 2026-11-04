@@ -505,6 +505,13 @@ person tests a script with the values the routine stored. When that person is no
 a member changes the routine. A run that a stop or a restart of Golem cuts off stays `running`, and ends when Golem
 starts again and its agent answers; the script does not run again.
 
+Every new run starts a new active context in the same Pi Durable conversation. Its full transcript stays visible.
+The run saves its definition and initial script store, then its script result, for recovery. During a run,
+`routines_test_script` reads that run's proposed store so the agent can read current source records; only a successful
+run commits it for the next scan. Completed run inputs and results stay stored. Long runs compact between tool rounds
+at 160 KiB of serialized input. A provider guard refuses routine input above 256 KiB; neither limit is an exact token
+count. A reminder keeps its existing conversation context.
+
 A routine at a place has a place, `arrive` or `leave`, and a person in place of a schedule. The place must be one that
 the person and the writer of the routine both use, and the person must see its channel. It runs each time the person
 crosses the circle for its event, at most every 15 minutes, and not for a crossing that Golem hears of more than 15
