@@ -1,6 +1,13 @@
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm, truncate } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rename,
+  rm,
+  truncate,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -30,6 +37,7 @@ import type { Machine } from "../hands/hands.ts";
 import type { User } from "../platform/auth.ts";
 import { Egress } from "../platform/egress.ts";
 import type { ThreadRef } from "../workspaces/workspaces.ts";
+import { Memory } from "./memory.ts";
 import {
   emojiOf,
   scriptWithDeadline,
@@ -209,10 +217,11 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   memoryViews.push(
     ...context.messages
       .map(textOf)
-      .filter((message) =>
-        message.startsWith(
-          "The conversation history before this point was compacted"
-        )
+      .filter(
+        (message) =>
+          message.startsWith(
+            "The conversation history before this point was compacted"
+          ) || message.startsWith("This is your memory:")
       )
   );
   if (last.role === "toolResult") {
@@ -233,6 +242,9 @@ function agent(context: Context, options?: SimpleStreamOptions) {
       channel: "food",
       message: "What's for dinner?",
     });
+  }
+  if (relay?.[2] === "Quiet worker result") {
+    return fauxAssistantMessage("QUIET");
   }
   if (relay?.[2] === "What's for dinner?") {
     return call("send_to_thread", { thread: relay[1]!, message: "Pasta" });
@@ -1328,13 +1340,14 @@ test("each member has an own orchestrator thread, which stays open, out of the c
   ).toBe(404);
 });
 
-test("a person's memory has their own thread and the channels' threads, and search shows nobody else's own thread", async () => {
+test("a person's memory has only their own conversation, and search shows nobody else's own thread", async () => {
   const home = await golem.app.workspaces.create(alice, "Private");
   await golem.app.workspaces.addMember(home.id, alice, bob.email);
   const [general] = golem.app.workspaces.channels(home.id, alice);
   const alices = await golem.app.threads.orchestrator(home.id, alice);
   const bobs = await golem.app.threads.orchestrator(home.id, bob);
   await golem.app.threads.send(alices.id, alice, "My diary code is 4711");
+  await golem.app.threads.send(bobs.id, bob, "My diary code is 8123");
   const shared = await golem.app.threads.create(
     home.id,
     alice,
@@ -1361,13 +1374,12 @@ test("a person's memory has their own thread and the channels' threads, and sear
       async () => memories.get(orchestrator.id),
       (memory) => (memory?.count() ?? 0) >= 2
     ).then((memory) => memory!.view(memory!.count()));
-  expect(await viewOf(bobs)).toContain("Dinner at seven");
+  expect(await viewOf(bobs)).not.toContain("Dinner at seven");
   expect(await viewOf(bobs)).not.toContain("4711");
-  await until(
-    async () => (await viewOf(alices)).includes("Dinner at seven"),
-    Boolean
-  );
+  expect(await viewOf(bobs)).toContain("My diary code is 8123");
   expect(await viewOf(alices)).toContain("My diary code is 4711");
+  expect(await viewOf(alices)).not.toContain("Dinner at seven");
+  expect(await viewOf(alices)).not.toContain("8123");
 
   await golem.app.indexer.scan(home.id);
   const found = (searcher: User) =>
@@ -1377,6 +1389,139 @@ test("a person's memory has their own thread and the channels' threads, and sear
   expect(await found(alice)).toContain(`thread:${alices.id}`);
   expect(await found(bob)).not.toContain(`thread:${alices.id}`);
 });
+
+test("memory keeps full worker results across rebuilds without copying worker work or old channel memory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "golem-conversation-memory-"));
+  const home = await golem.app.workspaces.create(alice, "Reports");
+  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const first = savingThreads(
+    directory,
+    async () => undefined,
+    async () => null
+  );
+  let reopened: Threads | undefined;
+  try {
+    const orchestrator = await first.orchestrator(home.id, alice);
+    const oldDirectory = join(directory, "workspaces", home.id, "memories");
+    await mkdir(oldDirectory, { recursive: true });
+    const oldPath = join(oldDirectory, `${orchestrator.id}.sqlite`);
+    const oldMemory = new Memory(
+      oldPath,
+      async () => undefined,
+      async () => "unused"
+    );
+    oldMemory.add([
+      { threadId: "worker", messageId: 1, text: "Unrelated channel history" },
+    ]);
+    oldMemory.close();
+
+    await first.send(orchestrator.id, alice, "Keep the result");
+    await until(
+      () => first.messages(orchestrator),
+      (state) => !state.running && state.messages.length === 2
+    );
+    const result = `Complete result: ${"verified detail ".repeat(80)} final reference https://example.com/result`;
+    const worker = await first.startAgentThread(
+      home.id,
+      general!.id,
+      "Worker report"
+    );
+    await first.send(
+      worker.id,
+      alice,
+      `Run code: await tools.send_to_thread(${JSON.stringify({ thread: orchestrator.id, message: result })})`
+    );
+
+    await answeredIn(first, home.id, worker.id);
+    await until(
+      () => first.messages(orchestrator),
+      (state) => !state.running && state.messages.length === 3
+    );
+    const opened = first as unknown as { memories: Map<string, Memory> };
+    const memory = await until(
+      async () => opened.memories.get(orchestrator.id),
+      (value) => value?.count() === 3
+    );
+    const original = await memory!.zoom(2, 1);
+    expect(original).toContain(result);
+    expect(original).toContain(`thread:${worker.id}`);
+    expect(original).toContain("Golem: Ok.");
+    expect(original).not.toContain("Run code:");
+    expect(memory!.view(3)).not.toContain("Unrelated channel history");
+    expect(await memory!.zoom(0, 1)).toContain("Alice: Keep the result");
+
+    await first.send(
+      worker.id,
+      alice,
+      `Run code: await tools.send_to_thread(${JSON.stringify({ thread: orchestrator.id, message: "Quiet worker result" })})`
+    );
+    await until(
+      () => first.messages(orchestrator, true),
+      (state) => !state.running && state.messages.length === 4
+    );
+    await until(
+      async () => memory!.count(),
+      (count) => count === 4
+    );
+    expect(await memory!.zoom(3, 1)).toContain("Quiet worker result");
+    expect((await first.messages(orchestrator)).messages).toHaveLength(3);
+
+    await first.closeAll();
+    const memoryPath = join(
+      directory,
+      "workspaces",
+      home.id,
+      "threads",
+      orchestrator.id,
+      "memory.sqlite"
+    );
+    await rename(memoryPath, `${memoryPath}.saved`);
+    reopened = savingThreads(
+      directory,
+      async () => undefined,
+      async () => null
+    );
+    const access = reopened as unknown as {
+      memories: Map<string, Memory>;
+      conversation: (thread: ThreadRef) => Promise<Conversation>;
+    };
+    const conversation = await access.conversation(orchestrator);
+    await conversation.reset(
+      "Unrelated channel summary in old context",
+      BACKGROUND_CONTEXT
+    );
+    const rebuilt = await until(
+      async () => access.memories.get(orchestrator.id),
+      (value) => value?.count() === 4
+    );
+    expect(await rebuilt!.zoom(2, 1)).toBe(original);
+    expect(await rebuilt!.zoom(0, 1)).toContain("Alice: Keep the result");
+    expect(await rebuilt!.zoom(3, 1)).toContain("Quiet worker result");
+    const context = await until(
+      async () =>
+        (await conversation.context(BACKGROUND_CONTEXT)).messages
+          .map(textOf)
+          .join("\n"),
+      (text) => text.startsWith("This is your memory:")
+    );
+    expect(context).not.toContain("Unrelated channel summary");
+    expect(context).not.toContain("Unrelated channel history");
+    expect(context).not.toContain("Run code:");
+    expect((await reopened.messages(orchestrator)).messages).toHaveLength(3);
+    const archived = new Database(oldPath, { readonly: true });
+    try {
+      expect(
+        archived.query("SELECT text FROM line WHERE level = 0").get()
+      ).toEqual({ text: "Unrelated channel history" });
+    } finally {
+      archived.close();
+    }
+  } finally {
+    await reopened?.closeAll();
+    await first.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 10_000);
 
 test("a thread moves with its artifacts, its own files, and a note; into a private channel only by its starter, and the others lose it at once", async () => {
   const token = await golem.signIn("Alice", "alice@example.com");
@@ -1456,32 +1601,6 @@ test("a thread moves with its artifacts, its own files, and a note; into a priva
   expect((await move(trip.id, "nowhere")).status).toBe(404);
   expect((await move(trip.id, general!.id, bobToken)).status).toBe(200);
 
-  // The lines of the trip's messages in Bob's memory, once it has them.
-  const bobRemembers = async () => {
-    const path = join(
-      golem.app.config.dataDirectory,
-      "workspaces",
-      home.id,
-      "memories",
-      `${bobs.id}.sqlite`
-    );
-    if (!(await Bun.file(path).exists())) {
-      return "";
-    }
-    const memory = new Database(path, { readonly: true });
-    try {
-      return (
-        memory
-          .query("SELECT text FROM line WHERE level = 0 AND thread_id = ?")
-          .all(trip.id) as { text: string }[]
-      )
-        .map((line) => line.text)
-        .join("\n");
-    } finally {
-      memory.close();
-    }
-  };
-  await until(bobRemembers, (lines) => lines.includes("Rome trip"));
   await golem.app.indexer.scan(home.id);
   const found = (searcher: User) =>
     golem.app.indexer
@@ -1490,13 +1609,12 @@ test("a thread moves with its artifacts, its own files, and a note; into a priva
   expect(await found(bob)).toContain(`thread:${trip.id}`);
 
   expect((await move(trip.id, mine.id)).status).toBe(200);
-  // Without a scan: search, the thread, and Bob's memory lose it at once.
+  // Without a scan, search and the thread leave out what Bob no longer sees.
   expect(await found(bob)).not.toContain(`thread:${trip.id}`);
   expect(await found(alice)).toContain(`thread:${trip.id}`);
   expect(
     (await golem.call(`/api/v1/threads/${trip.id}`, { token: bobToken })).status
   ).toBe(404);
-  expect(await bobRemembers()).not.toContain("Rome trip");
 
   const busy = await golem.app.threads.create(
     home.id,
@@ -1627,12 +1745,12 @@ test("the orchestrator compacts into a view of its memory, and its agent zooms i
   // About 62k tokens: the thread compacts after this turn, and the next request reads the memory.
   await said(`Here is the manual: ${"word ".repeat(50_000)}`, 8);
   const zoomed = await said("Zoom 0", 10);
-  const view = memoryViews;
-  expect(view[0]).toMatch(
+  const view = memoryViews.findLast((memory) => memory.includes("5+1|"));
+  expect(view).toMatch(
     /0\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: The wifi password is on the fridge\n1\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem: Ok.\n2\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: Bring the tent/
   );
-  expect(view[0]).toMatch(/5\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem: Ok\./);
-  expect(view[0]).not.toContain("Here is the manual");
+  expect(view).toMatch(/5\+1\|\d{4}-\d\d-\d\d \d\d:\d\d UTC Golem: Ok\./);
+  expect(view).not.toContain("Here is the manual");
   // The transcript keeps the messages that the compaction took out of the model's context.
   expect(zoomed.messages[0]!.text).toBe("The wifi password is on the fridge");
   expect(zoomed.messages.at(-1)!.text).toBe("Done.");

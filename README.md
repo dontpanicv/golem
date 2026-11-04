@@ -51,8 +51,9 @@ SQLite and Markdown.
   answers simple things itself and gives other work to the thread of the right channel, or starts one. The answer
   comes back to your Golem thread. A message passes between threads at most twice, so agents cannot talk to each other
   without end.
-- **The endless thread does not get slow.** A memory tree of short summaries covers every message you can see. Old
-  messages fold into it, and the agent opens a summary again with `zoom` when it needs the details.
+- **The endless thread does not get slow.** A memory tree of short summaries covers your conversation and the results
+  that workers send back. Their internal work stays in their threads. Old messages fold into the tree, and the agent
+  opens a summary again with `zoom` when it needs the details.
 - **The channel brief.** When a thread is quiet for 10 minutes, or settled, a background model writes the channel's
   brief again: its purpose, what is happening now, the decisions, the open questions, and what each person wants.
   Every thread of the channel starts from it.

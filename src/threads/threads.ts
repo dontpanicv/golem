@@ -282,10 +282,10 @@ Asked "Which movie tonight?":
 Not this: "Here are some great options you might enjoy! 1. … 2. … 3. …"
 This: "Pressure. You both put it on the list in May, and it is 98 minutes, so you will be in bed by eleven."`;
 const INSTRUCTIONS =
-  'You are Golem, a family assistant. The soul section at the start is who you are and how you talk; these instructions are how you work. Several family members can write in one thread; each message starts with its author\'s name. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, send a message to another thread, and move a thread to another channel when people ask; its artifacts and the files that only it mentions go with it. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. Your answers are the memory: the brief of the channel and the memory of the workspace keep only the messages of people and your answers, never what you gave to tools or what tools gave you. So say in your answer what will matter later, in plain sentences as part of the answer, never as a report: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as \'Rivalové: watched on 26 October\', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as \'Pressure (2026).md\', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, never save a second one; save its new version with replaces set to its id, and say the change in your answer. Delete copies and old versions with delete_file. A file goes to the channel of its topic: when it belongs to another channel, such as a work meeting that you find from a family channel, give list_files, save_file, and delete_file that channel, and say in your answer where you saved it. Never start a thread in another channel only to save files there; start one only when people should talk about it there. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread\'s channel, which the model writes again from its threads, and the channel\'s threads: use it first, then read_thread and recall for more. Your answers show as Markdown: a short answer is plain sentences; use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. For a few values that matter at a glance, such as a temperature, a battery level, a price, or a time, add a card: a fenced code block with the language card that holds a JSON object or a list of them, each with value and optionally title, detail, and icon (temperature, heat, rain, sun, battery, bolt, car, home, or lock), such as {"icon": "battery", "title": "Car", "value": "78 %", "detail": "412 km"}. People see each as a small card; still say in words what matters. Show a picture with ![what it shows](file:<id>) for a file of this channel. To show a picture from the web, a screenshot, or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file that is not text, use a machine: hands_copy_file puts a file there, and save_file brings the result back, with replaces. You call the tools of channels, threads, files, and web search yourself. You call all other tools from a codemode script as `await tools.<name>(args)`: machines, artifacts, the browser, routines, reminders, and connected services such as shops. A script can also call the tools that you call yourself, and what a tool gives a script stays out of your context: only what the script prints or returns comes to you. So move long content between tools in one script: save a long result, such as a transcript or a document, with save_file content, and give a file to another tool with the text that read_file gives. Print only what you need to decide, such as a title or a summary, and return the id of the saved file, never the long text. A tool that fails, also when a service refuses the call, throws an error that the script catches; an answer is never an error, so never search an answer for an error or a status code such as 429. Read, search, draft, and send mail only with the tools of the connected mail accounts, such as google_mail_draft and google_mail_send, never with a mail app or mail files on a machine; mail takes files of the workspace as attachments. Make a routine or a reminder only when a person asks for it: Golem suggests the others to people itself, and each waits until its person accepts it. Send mail or a message only when people ask you to send it; else draft it. Each send waits until the person allows it, and they see what you send. The codemode section lists them by namespace; describeNamespace() and searchTools() find the rest. When a tool fails or answers wrong, when no tool can do what the work needs, or when you see an easier way, report it once with feedback_report, then continue the work.';
+  'You are Golem, a family assistant. The soul section at the start is who you are and how you talk; these instructions are how you work. Several family members can write in one thread; each message starts with its author\'s name. Use the recall tool to look up anything said or stored earlier in this workspace before saying you do not know. The workspace has channels, and each channel has threads. You can list them, read a thread, start a thread in any channel, send a message to another thread, and move a thread to another channel when people ask; its artifacts and the files that only it mentions go with it. The agent of that thread answers there. When the agent of another thread gives you work, do it in this thread and answer here as you answer the family. When you finish, or when you need an answer from the family, send a short result to that thread with send_to_thread: what you did, what you found, and the links of files and artifacts. Files and artifacts belong to the channel: every thread of the channel sees them, also after a thread is settled. People attach files to their messages or upload them to the channel; list_files shows them and read_file reads them. The channel brief keeps the messages of people and your answers. An orchestrator keeps only its own conversation and the results that other threads send back. Neither keeps your internal work or other tool inputs and outputs. So say in your answer what will matter later, in plain sentences as part of the answer, never as a report: what you did, what you found, the decisions and who made them, names, dates, and numbers, and the link of each file or artifact you made. When something changes, say it plainly, such as \'Rivalové: watched on 26 October\', and the brief changes with it. Save content as a file when people will look it up later: what they ask you to save, store, or remember, the content of a web page, a recipe, a document, a how-to, or one thing of a list, such as a movie, a book, or a place. Save one Markdown file for each thing with save_file content and a name such as \'Pressure (2026).md\', never one file or artifact for a whole list: the files and your answer are the list. Start the file with `# <title>`, then the facts, then `Source: <address>`. Copy text from a source as it is, and write your own words in the language of the people. Before you save, look with list_files and recall: when a file for the thing exists, never save a second one; save its new version with replaces set to its id, and say the change in your answer. Delete copies and old versions with delete_file. A file goes to the channel of its topic: when it belongs to another channel, such as a work meeting that you find from a family channel, give list_files, save_file, and delete_file that channel, and say in your answer where you saved it. Never start a thread in another channel only to save files there; start one only when people should talk about it there. Do not save decisions, wishes, plans, or status as files; say them in your answer. Do not save small talk or the steps of your work. Make an artifact only when people ask for a page to share or print, or a small app, such as an invite, a poll, or a game; when one for it exists, change it instead. An artifact never holds facts that no file or message has. Whenever you mention a thread, write it as the link the tools give, exactly: [title](thread:<id>). People see it as a link that opens the thread. Never write a thread id on its own. The channel section of these instructions has the brief of this thread\'s channel, which the model writes again from its threads, and the channel\'s threads: use it first, then read_thread and recall for more. Your answers show as Markdown: a short answer is plain sentences; use headings, lists, tables, code blocks, and links when they make an answer clearer, and simple HTML such as <details>, <kbd>, or <mark>; scripts, styles, and forms are removed. For a few values that matter at a glance, such as a temperature, a battery level, a price, or a time, add a card: a fenced code block with the language card that holds a JSON object or a list of them, each with value and optionally title, detail, and icon (temperature, heat, rain, sun, battery, bolt, car, home, or lock), such as {"icon": "battery", "title": "Car", "value": "78 %", "detail": "412 km"}. People see each as a small card; still say in words what matters. Show a picture with ![what it shows](file:<id>) for a file of this channel. To show a picture from the web, a screenshot, or another picture of a machine or of your browser, save it with save_file first. Show an artifact in your answer with ![title](artifact:<id>), and link to it with [title](artifact:<id>). For a page that needs scripts, styles, or input, make an artifact and show it. When people want a PDF, such as an invite or a schedule to print, make an artifact and save it as a PDF with save_file. To make another kind of file or to change a file that is not text, use a machine: hands_copy_file puts a file there, and save_file brings the result back, with replaces. You call the tools of channels, threads, files, and web search yourself. You call all other tools from a codemode script as `await tools.<name>(args)`: machines, artifacts, the browser, routines, reminders, and connected services such as shops. A script can also call the tools that you call yourself, and what a tool gives a script stays out of your context: only what the script prints or returns comes to you. So move long content between tools in one script: save a long result, such as a transcript or a document, with save_file content, and give a file to another tool with the text that read_file gives. Print only what you need to decide, such as a title or a summary, and return the id of the saved file, never the long text. A tool that fails, also when a service refuses the call, throws an error that the script catches; an answer is never an error, so never search an answer for an error or a status code such as 429. Read, search, draft, and send mail only with the tools of the connected mail accounts, such as google_mail_draft and google_mail_send, never with a mail app or mail files on a machine; mail takes files of the workspace as attachments. Make a routine or a reminder only when a person asks for it: Golem suggests the others to people itself, and each waits until its person accepts it. Send mail or a message only when people ask you to send it; else draft it. Each send waits until the person allows it, and they see what you send. The codemode section lists them by namespace; describeNamespace() and searchTools() find the rest. When a tool fails or answers wrong, when no tool can do what the work needs, or when you see an easier way, report it once with feedback_report, then continue the work.';
 /** Added to `INSTRUCTIONS` for an orchestrator, the one thread of a person in a workspace that never ends. */
 const ORCHESTRATOR =
-  "This thread is an orchestrator: the own thread of one person of the family, which never ends, where they talk to you first. You are their personal assistant here. Only they read and write this thread, so it is private: the threads of the channels are for the whole family, so give a thread there only what its work needs, and never the person's private matters unless they ask. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the person in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the person what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: every message of this thread and of every thread of the workspace's channels, which zoom opens, and zoom() gives again with the newest messages. Use it before recall. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
+  "This thread is an orchestrator: the own thread of one person of the family, which never ends, where they talk to you first. You are their personal assistant here. Only they read and write this thread, so it is private: the threads of the channels are for the whole family, so give a thread there only what its work needs, and never the person's private matters unless they ask. Answer here only a simple question that you can answer at once from your memory, with recall, or with one quick search, and do only small changes, such as marking a movie as watched or setting a reminder. Give all other work to a thread in the channel it belongs to: work that needs the browser or a machine, more than one search, saving files, an artifact, a routine, or more than one step. When a thread is already about the work, send it there with send_to_thread; else start a thread with start_thread in the channel the work belongs to. When no channel fits, make one with create_channel. The agent of that thread sees only your message, so write all that it needs: the goal, the facts from this thread, and who asked. Then tell the person in one line which thread does the work, with its link, and end your turn; do not wait for the work. When an agent sends you its result, tell the person what came of it, short, with the links it gives. Your memory is the summary at the start of this thread: your conversation with this person and the full results that other threads sent back to it. It does not include their work or other channel conversations. zoom opens the memory, and zoom() gives it again with the newest messages. Use this memory before recall; use read_thread or recall to look up other threads when needed. To recommend or choose from what the family keeps, such as a movie for tonight, find it in your memory and with recall: the files have the details.";
 /** The largest file that save_file copies from a machine. */
 const MAX_MACHINE_FILE = 1024 ** 3;
 /** Above about this many tokens of context, an orchestrator compacts after its turn, so each turn reads little. */
@@ -656,7 +656,6 @@ export class Threads {
         waiting.delete(id);
       }
     }
-    this.forget(workspaceId);
     this.catchUp(workspaceId);
     this.hooks.changed(workspaceId);
     return thread;
@@ -1083,14 +1082,19 @@ export class Threads {
       : null;
   }
 
-  async messages(thread: ThreadRef): Promise<ThreadMessages> {
+  /** Memory also reads worker results whose answer is QUIET; the app keeps those answers hidden. */
+  async messages(
+    thread: ThreadRef,
+    includeQuietReports = false
+  ): Promise<ThreadMessages> {
     const conversation = await this.conversation(thread);
     const watch = await conversation.watch(BACKGROUND_CONTEXT);
     await watch.stop();
     return {
       ...threadMessages(
         watch.value,
-        await earlierEntries(conversation, watch.value)
+        await earlierEntries(conversation, watch.value),
+        includeQuietReports
       ),
       approvals: this.approvalsIn(thread.id),
     };
@@ -1848,8 +1852,7 @@ export class Threads {
   }
 
   /**
-   * Adds the finished messages of each thread that changed to the memories: those of a channel's thread to every
-   * person's, and those of an orchestrator to its own person's only. Once a thread stops running, it notes the
+   * Adds each orchestrator's finished conversation messages to its own memory. Once a thread stops running, it notes the
    * messages that its channel's brief has not read. After an orchestrator's turn, it compacts the orchestrator when
    * its context is long.
    */
@@ -1863,7 +1866,6 @@ export class Threads {
     for (const orchestrator of orchestrators) {
       this.memoryOf(orchestrator);
     }
-    const said: Said[] = [];
     const answered: (ThreadSummary & ThreadRef)[] = [];
     for (const thread of threads) {
       if (this.background.signal.aborted) {
@@ -1873,8 +1875,11 @@ export class Threads {
       if (this.caughtUp.get(thread.id) === version) {
         continue;
       }
-      const { messages, running } = await this.messages(thread);
-      said.push(...this.saidIn(thread, messages));
+      const { messages, running } = await this.messages(
+        thread,
+        thread.ownerId !== null
+      );
+      this.memories.get(thread.id)?.add(this.saidIn(thread, messages));
       if (running) {
         continue;
       }
@@ -1894,7 +1899,6 @@ export class Threads {
       }
       this.caughtUp.set(thread.id, version);
     }
-    this.remember(threads, said);
     for (const orchestrator of answered) {
       await this.compactWhenLong(
         orchestrator,
@@ -1912,44 +1916,20 @@ export class Threads {
     }
   }
 
-  /**
-   * Adds messages to the memory of each orchestrator: its own, those of the channels every member sees, and those of
-   * its person's private channels.
-   */
-  private remember(
-    threads: readonly (ThreadSummary & ThreadRef)[],
-    said: readonly Said[]
-  ): void {
-    const realms = new Map(threads.map((thread) => [thread.id, thread.realm]));
-    for (const orchestrator of threads) {
-      if (orchestrator.ownerId === null) {
-        continue;
-      }
-      this.memoryOf(orchestrator).add(
-        said.filter((message) => {
-          const realm = realms.get(message.threadId);
-          return realm === null || realm === orchestrator.ownerId;
-        })
-      );
-    }
-  }
-
-  /**
-   * The memory of an orchestrator, opened at its first use. The one person who had the workspace's orchestrator
-   * before each person had one keeps its memory, `memory.sqlite`; another's begins empty and takes in every thread of
-   * the channels.
-   */
+  /** The memory of an orchestrator's own transcript, opened at its first use. */
   private memoryOf(orchestrator: ThreadSummary & ThreadRef): Memory {
     let memory = this.memories.get(orchestrator.id);
     if (!memory) {
       const directory = join(
         this.dataDirectory,
         "workspaces",
-        orchestrator.workspaceId
+        orchestrator.workspaceId,
+        "threads",
+        orchestrator.id
       );
-      mkdirSync(join(directory, "memories"), { recursive: true });
+      mkdirSync(directory, { recursive: true });
       memory = new Memory(
-        join(directory, "memories", `${orchestrator.id}.sqlite`),
+        join(directory, "memory.sqlite"),
         (threadId, messageId) => this.said(orchestrator, threadId, messageId),
         (systemPrompt, text, signal) =>
           this.llm.complete(systemPrompt, text, signal, undefined, {
@@ -1958,22 +1938,11 @@ export class Threads {
             source: "background",
             threadId: null,
           }),
-        () => this.rememberOrchestrator(orchestrator),
-        {
-          path: join(directory, "memory.sqlite"),
-          orchestratorId: orchestrator.id,
-        }
+        () => this.rememberOrchestrator(orchestrator)
       );
       this.memories.set(orchestrator.id, memory);
-      const threads = this.registry.threadsIn(
-        orchestrator.workspaceId,
-        orchestrator.ownerId
-      );
-      memory.keep(new Set(threads.map((thread) => thread.id)));
-      // The new memory missed the messages caught up before it: they come again, and each memory adds only new ones.
-      for (const thread of threads) {
-        this.caughtUp.delete(thread.id);
-      }
+      // A memory rebuilt from the transcript must also catch up when the workspace already read this thread.
+      this.caughtUp.delete(orchestrator.id);
     }
     return memory;
   }
@@ -1982,28 +1951,24 @@ export class Threads {
   private async rememberOrchestrator(
     orchestrator: ThreadSummary & ThreadRef
   ): Promise<void> {
-    const { messages } = await this.messages(orchestrator);
+    const { messages } = await this.messages(orchestrator, true);
     this.memories
       .get(orchestrator.id)
       ?.add(this.saidIn(orchestrator, messages));
   }
 
   /**
-   * The messages of a thread as the memory reads them, up to an answer that the agent still writes; a message of a
-   * thread other than an orchestrator starts with the thread's link.
+   * The conversation as memory reads it, including each worker result with the answer it starts. An unfinished
+   * answer waits so its final text is not lost when memory deduplicates messages.
    */
-  private saidIn(
-    thread: ThreadSummary & ThreadRef,
-    messages: readonly Message[]
-  ): Said[] {
+  private saidIn(thread: ThreadRef, messages: readonly Message[]): Said[] {
     const writing = messages.findIndex((message) => message.streaming);
-    const where = thread.ownerId === null ? `${threadLink(thread)} ` : "";
     return messages
       .slice(0, writing === -1 ? undefined : writing)
       .map((message) => ({
         threadId: thread.id,
         messageId: Number(message.id),
-        text: `${where}${minute(message.time)} UTC ${saidText(message)}`,
+        text: `${minute(message.time)} UTC ${saidText(message)}`,
       }));
   }
 
@@ -2378,6 +2343,13 @@ export class Threads {
     memory: Memory
   ): Promise<void> {
     const count = memory.count();
+    if (count === 0) {
+      return;
+    }
+    if (!this.compacted.has(orchestrator.id)) {
+      await this.restoreMemory(orchestrator, conversation, memory);
+      return;
+    }
     if (
       count - (this.compacted.get(orchestrator.id) ?? 0) <
       COMPACTION_MESSAGES
@@ -2398,6 +2370,45 @@ export class Threads {
         BACKGROUND_CONTEXT
       );
       await placed?.wait(BACKGROUND_CONTEXT);
+    }
+  }
+
+  /** Restores the bounded context from the conversation's memory without discarding new input. */
+  private async restoreMemory(
+    orchestrator: ThreadRef,
+    conversation: Conversation,
+    memory: Memory
+  ): Promise<void> {
+    const watch = await conversation.watch(BACKGROUND_CONTEXT);
+    await watch.stop();
+    if (liveOf(watch.value).running) {
+      return;
+    }
+    const tail = watch.value.entries.at(-1)!;
+    await memory.catchUp();
+    await memory.ready();
+    const restored = memory.count();
+    // Keep input that arrives during restoration. The last old entry is already covered by the memory.
+    const placed = await conversation.submit(
+      {
+        type: "write",
+        entry: {
+          kind: "golem.memory",
+          head: tail.id,
+          edits: [{ target: tail.id, action: "omit" }],
+          model: [
+            {
+              role: "user",
+              content: memory.view(restored),
+              timestamp: Date.now(),
+            },
+          ],
+        },
+      },
+      BACKGROUND_CONTEXT
+    );
+    if ((await placed.wait(BACKGROUND_CONTEXT)).status === "done") {
+      this.compacted.set(orchestrator.id, restored);
     }
   }
 
@@ -2599,21 +2610,6 @@ export class Threads {
   }
 
   /**
-   * Takes the messages of threads that are gone, such as those of a deleted channel, out of the open memories of the
-   * workspace; a memory also does so when it opens.
-   */
-  forget(workspaceId: string): void {
-    for (const thread of this.registry.allThreadsIn(workspaceId)) {
-      if (thread.ownerId !== null) {
-        const seen = this.registry.threadsIn(workspaceId, thread.ownerId);
-        this.memories
-          .get(thread.id)
-          ?.keep(new Set(seen.map((candidate) => candidate.id)));
-      }
-    }
-  }
-
-  /**
    * A tool that runs a shell command on a machine, which waits for a person to allow the command when dcg flags it,
    * such as `rm -rf` or `git reset --hard`. An allowed call keeps its memo, so a rerun after a restart does not ask
    * again.
@@ -2749,23 +2745,20 @@ export class Threads {
     });
   }
 
-  /** One message of a thread whole, for zoom in an orchestrator's memory: of a channel's thread, or its own. */
+  /** One message of the orchestrator's own conversation, with any worker result, for zoom. */
   private async said(
     orchestrator: ThreadRef,
     threadId: string,
     messageId: number
   ): Promise<{ text: string; time: number } | undefined> {
-    const thread = this.registry
-      .threadsIn(orchestrator.workspaceId, orchestrator.ownerId)
-      .find((candidate) => candidate.id === threadId);
-    if (!thread || (thread.ownerId !== null && thread.id !== orchestrator.id)) {
+    if (threadId !== orchestrator.id) {
       return undefined;
     }
-    const { messages } = await this.messages(thread);
+    const { messages } = await this.messages(orchestrator, true);
     const index = messages.findIndex(
       (candidate) => Number(candidate.id) === messageId
     );
-    const said = this.saidIn(thread, messages)[index];
+    const said = this.saidIn(orchestrator, messages)[index];
     return said && { text: said.text, time: messages[index]!.time };
   }
 
@@ -3742,7 +3735,8 @@ async function earlierEntries(
  */
 export function threadMessages(
   view: ConversationView,
-  earlier: readonly EntryRecord[] = []
+  earlier: readonly EntryRecord[] = [],
+  includeQuietReports = false
 ): Omit<ThreadMessages, "approvals"> {
   const { running, generation } = liveOf(view);
   const messages: Message[] = [];
@@ -3755,7 +3749,10 @@ export function threadMessages(
     }
     const message = turn && turnMessage(turn, startedAt, streaming);
     // The answer to a task that needs nobody's attention.
-    if (message && message.text.trim() !== "QUIET") {
+    if (
+      message &&
+      (message.text.trim() !== "QUIET" || (includeQuietReports && turn?.relay))
+    ) {
       messages.push(message);
     }
     turn = undefined;
@@ -4279,7 +4276,10 @@ function titleOf(text: string): string {
 
 /** A message as the memory reads it: its author, its text, and the names of its files. */
 function saidText(message: Message): string {
-  return `${message.author}: ${messageBody(message)}`;
+  const results = (message.work?.steps ?? [])
+    .filter((step) => step.tool === "from_thread")
+    .map((step) => `Golem from ${step.text}: ${step.output}`);
+  return [...results, `${message.author}: ${messageBody(message)}`].join("\n");
 }
 
 /** The text of a message and the names of its files. */

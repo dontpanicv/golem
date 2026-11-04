@@ -129,59 +129,6 @@ test("the messages of all threads come in the order they came, and each thread a
   memory.close();
 });
 
-test("a new memory takes the lines of the workspace's earlier memory only when they include its orchestrator", async () => {
-  const said = [message(1, "user", "Hello"), message(3, "assistant", "Hi")];
-  const earlier = await memoryOf(said, () => "unused");
-  earlier.memory.add(said);
-  earlier.memory.close();
-  const { path } = earlier;
-  const read = async () => undefined;
-  const summarize = async () => "unused";
-  const kept = new Memory(
-    join(directory, "kept.sqlite"),
-    read,
-    summarize,
-    undefined,
-    { path, orchestratorId: "orchestrator" }
-  );
-  expect(kept.view(2)).toContain("0+1|Alice: Hello\n1+1|Golem: Hi");
-  const fresh = new Memory(
-    join(directory, "fresh.sqlite"),
-    read,
-    summarize,
-    undefined,
-    { path, orchestratorId: "another" }
-  );
-  expect(fresh.count()).toBe(0);
-  kept.close();
-  fresh.close();
-});
-
-test("the messages of a deleted thread leave the memory, and the lines over them are written again", async () => {
-  const dinner = (id: number, text: string): Said => ({
-    threadId: "dinner",
-    messageId: id,
-    text: `[Dinner](thread:dinner) Bob: ${text}`,
-  });
-  const said = [
-    dinner(1, "The safe code is 4711"),
-    dinner(2, "Keep it secret"),
-    message(3, "user", "Hello"),
-    message(5, "assistant", "Hi"),
-  ];
-  const { memory } = await memoryOf(said, () => "unused");
-  memory.add(said);
-  expect(await memory.zoom(0, 4)).toContain("4711");
-
-  memory.keep(new Set(["orchestrator"]));
-  expect(memory.view(4)).not.toContain("4711");
-  expect(await memory.zoom(0, 4)).toBe(
-    ["0+2|(deleted) (deleted)", "2+2|Alice: Hello Golem: Hi"].join("\n")
-  );
-  expect(await memory.zoom(0, 2)).toBe("0+1|(deleted)\n1+1|(deleted)");
-  memory.close();
-});
-
 test("the model summarizes long messages and merges long lines, and the view fades older messages to fit", async () => {
   const said = Array.from({ length: 16 }, (_, index) =>
     message(
@@ -197,10 +144,8 @@ test("the model summarizes long messages and merges long lines, and the view fad
       : `merged ${/Merge lines (\d+)\+(\d+)/.exec(prompt)![1]}`
   );
   memory.add(said);
-  await until(
-    async () => memory.view(17, 2000),
-    (view) => heads(view)[0]![1] > 2
-  );
+  await memory.ready();
+  expect(body(memory.view(17, 2000))).not.toContain("not summarized yet");
 
   expect(prompts).toContainEqual(
     expect.stringContaining("Compress message 16 into one line")

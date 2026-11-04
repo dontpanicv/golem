@@ -97,13 +97,7 @@ export async function createApp(
       );
   };
   const pictures = new ProfilePictures(database);
-  const workspaces = new Workspaces(
-    database,
-    auth,
-    pictures,
-    reloadTools,
-    (workspaceId) => threads.forget(workspaceId)
-  );
+  const workspaces = new Workspaces(database, auth, pictures, reloadTools);
   const integrations = new Integrations(database, resolvedSecrets, workspaces, {
     directory: join(config.dataDirectory, "integrations"),
     owner: config.allowedEmails[0] ?? null,

@@ -328,10 +328,13 @@ channel is never one.
 Each member has an orchestrator of their own in the workspace, their personal assistant: one thread that never ends,
 which the workspace opens on, and whose agent gives work to the threads of the channels. Only its person reads and
 writes it: for anyone else, its routes answer `404`, and search, recall, routines, and other agents leave it out. It is
-in the first channel, but no `Channel.threads` list shows it, and it cannot be settled. Its agent remembers every
-message of its own thread, of every thread of the channels every member sees, and of its person's private channels, and
-no other person's orchestrator or private channel: see `src/threads/memory.ts`. The workspace's one orchestrator from before each member had one belongs to the person who
-made the workspace.
+in the first channel, but no `Channel.threads` list shows it, and it cannot be settled. Its memory keeps only its own
+conversation, including the complete text and source link of each result that a worker sends back, even if Golem
+answers `QUIET`. Worker reasoning,
+tool calls, and other channel conversations stay out. `zoom` opens the original conversation messages and returned
+results; `read_thread` and `recall` find other thread history when needed. On startup, the orchestrator restores its
+context from this memory. The transcript keeps all original messages. See `src/threads/memory.ts`. The workspace's one
+orchestrator from before each member had one belongs to the person who made the workspace.
 
 | Request | Body | Response |
 | --- | --- | --- |
@@ -628,8 +631,8 @@ Errors other than `401`, `204`, and `404` have the body `{ error: string }`.
   channel and all of it is its person's alone. An agent's turn sees the channels every member sees and the private
   ones of one person: the person of an orchestrator or of a private channel, or in another channel the person whose
   message the turn answers (also through a relay, routine, or reminder). What that turn writes there, every member
-  reads. Its tools, recall, routines, and reminders follow this rule; notifications and memory follow the thread, so a
-  thread every member reads goes to every orchestrator. A thread of a channel may still report back to the
+  reads. Its tools, recall, routines, and reminders follow this rule; notifications follow the thread. An orchestrator
+  remembers only its own conversation and the results sent back to it. A thread of a channel may still report back to the
   orchestrator that gave it work.
 - Search is one index of the workspace; each search leaves out what the person may not see before it ranks, so
   neither the scores nor the limit depend on another person's private data.

@@ -824,7 +824,7 @@ test("only an owner renames the workspace, and nobody makes or deletes one", asy
   expect(golem.app.workspaces.ids()).toHaveLength(before);
 });
 
-test("a private channel, its threads, search results, and memory lines are its person's alone", async () => {
+test("a private channel and its search results are private, and neither orchestrator copies its messages", async () => {
   golem.faux.setResponses([
     fauxAssistantMessage("Noted."),
     fauxAssistantMessage("Noted."),
@@ -901,8 +901,9 @@ test("a private channel, its threads, search results, and memory lines are its p
       golem.dataDirectory,
       "workspaces",
       workspaceId,
-      "memories",
-      `${orchestratorId}.sqlite`
+      "threads",
+      orchestratorId,
+      "memory.sqlite"
     );
     if (!existsSync(path)) {
       return [];
@@ -915,9 +916,22 @@ test("a private channel, its threads, search results, and memory lines are its p
     return rows.map((row) => row.threadId);
   };
   await until(
-    async () => linesOf(orchestrators[0].id),
-    (threads) => threads.includes(thread.id)
+    async () =>
+      orchestrators.every((orchestrator) =>
+        existsSync(
+          join(
+            golem.dataDirectory,
+            "workspaces",
+            workspaceId,
+            "threads",
+            orchestrator.id,
+            "memory.sqlite"
+          )
+        )
+      ),
+    Boolean
   );
+  expect(linesOf(orchestrators[0].id)).not.toContain(thread.id);
   expect(linesOf(orchestrators[1].id)).not.toContain(thread.id);
 });
 
