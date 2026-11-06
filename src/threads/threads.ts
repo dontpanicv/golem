@@ -393,6 +393,8 @@ export interface ThreadHooks {
   ) => string;
   /** Called when a thread moves to another channel, so the routine and suggestions that it made go with it. */
   readonly moved: (threadId: string, channelId: string) => void;
+  /** Called when a channel merges into another, so its routines, suggestions, and source archives go with it. */
+  readonly merged: (fromChannelId: string, toChannelId: string) => void;
   /**
    * Searches one workspace, with the own thread of `personId` and no other person's; the recall tool of a thread only
    * ever passes its own workspace.
@@ -480,7 +482,7 @@ export type ThreadIntegrations = Pick<Integrations, "tools" | "namespaces">;
 /** The artifacts of a workspace, which its agents make with their tools. */
 export type ThreadArtifacts = Pick<
   Artifacts,
-  "content" | "inWorkspace" | "moveWithThread" | "tools"
+  "content" | "inWorkspace" | "moveChannel" | "moveWithThread" | "tools"
 >;
 
 /** The browser that agents visit websites with. */
@@ -494,6 +496,7 @@ export type ThreadNotifications = Pick<
   Notifications,
   | "activities"
   | "endActivity"
+  | "moveChannel"
   | "moveWithThread"
   | "notify"
   | "startActivity"
@@ -707,6 +710,103 @@ export class Threads {
       throw new HttpError(409, "Move the thread when its agent is done");
     }
     return this.relocate(workspaceId, user.id, user, threadId, channelId);
+  }
+
+  /**
+   * Merges a channel of the person's workspace into another channel they see; see `mergeChannel`. `409` while an agent
+   * of the channel works, so no save of a running turn races the files that move.
+   */
+  async merge(
+    workspaceId: string,
+    user: User,
+    channelId: string,
+    intoId: string
+  ): Promise<Channel> {
+    this.registry.requireMember(workspaceId, user);
+    return await this.mergeChannel(
+      workspaceId,
+      user.id,
+      user,
+      channelId,
+      intoId
+    );
+  }
+
+  /**
+   * Moves every thread of a channel that `realm` sees into another channel it sees, as `relocate` moves one, then the
+   * rest that the channel holds: its other files with their old versions, artifacts, routines, suggestions,
+   * notifications, and source archives. Then the empty channel is deleted, so nothing it held is lost. A channel that
+   * every member sees merges only into another such channel, which keeps its threads with the others. `busy` is the
+   * agent's own thread, which may work while its turn merges the channel.
+   */
+  private async mergeChannel(
+    workspaceId: string,
+    realm: Realm,
+    person: User,
+    channelId: string,
+    intoId: string,
+    busy?: string
+  ): Promise<Channel> {
+    const channels = this.registry.channelsIn(workspaceId, realm);
+    const from = channels.find((candidate) => candidate.id === channelId);
+    const to = channels.find((candidate) => candidate.id === intoId);
+    if (!(from && to)) {
+      throw notFound();
+    }
+    if (from.id === to.id) {
+      throw new HttpError(400, "Merge the channel into another channel");
+    }
+    if (from.ownerId === null && to.ownerId !== null) {
+      throw new HttpError(
+        403,
+        "A channel that every member sees merges only into another such channel"
+      );
+    }
+    const threads = this.registry
+      .allThreadsIn(workspaceId)
+      .filter(
+        (thread) => thread.channelId === from.id && thread.ownerId === null
+      );
+    const working = await this.workingNow(workspaceId);
+    if (
+      threads.some(
+        (thread) => thread.id !== busy && working.includes(thread.id)
+      )
+    ) {
+      throw new HttpError(409, "Merge the channel when its agents are done");
+    }
+    for (const thread of threads) {
+      await this.relocate(
+        workspaceId,
+        realm,
+        person,
+        thread.id,
+        to.id,
+        thread.id === busy
+      );
+    }
+    // What no thread took: files uploaded to the channel, and their old versions.
+    const source = dirname(
+      this.filesDirectory({ workspaceId, channelId: from.id })
+    );
+    const target = dirname(
+      this.filesDirectory({ workspaceId, channelId: to.id })
+    );
+    for (const folder of ["files", "deleted"]) {
+      const names = await readdir(join(source, folder)).catch(() => []);
+      if (names.length) {
+        await mkdir(join(target, folder), { recursive: true });
+      }
+      for (const name of names) {
+        await rename(join(source, folder, name), join(target, folder, name));
+      }
+    }
+    this.artifacts.moveChannel(from.id, to.id);
+    this.notifications.moveChannel(from.id, to.id);
+    this.hooks.merged(from.id, to.id);
+    this.registry.removeChannel(workspaceId, from.id, realm);
+    this.hooks.changed(workspaceId);
+    return to;
   }
 
   /**
@@ -3024,7 +3124,7 @@ export class Threads {
       this.listThreadsTool(workspaceId),
       this.searchChannelsTool(workspaceId),
       this.createChannelTool(workspaceId),
-      this.deleteChannelTool(workspaceId),
+      this.mergeChannelTool(workspaceId),
       this.readThreadTool(workspaceId),
       this.startThreadTool(workspaceId),
       this.moveThreadTool(workspaceId),
@@ -3544,34 +3644,57 @@ export class Threads {
     });
   }
 
-  private deleteChannelTool(workspaceId: string) {
+  private mergeChannelTool(workspaceId: string) {
     return defineTool({
-      name: "delete_channel",
+      name: "merge_channel",
       description:
-        "Delete a channel of this workspace, with its threads and routines. Delete only when the family asks for it.",
+        "Merge a channel of this workspace into another channel: its threads, files, artifacts, and routines move there, and the empty channel goes. Channels are never deleted. Merge only when a person asks for it.",
       parameters: Type.Object({
-        channel: Type.String({ description: "The channel name" }),
+        channel: Type.String({
+          description: "The name of the channel that goes",
+        }),
+        into: Type.String({
+          description: "The name of the channel that takes it",
+        }),
       }),
+      // A rerun after a crash finds the channel gone and merges nothing.
+      replay: "safe",
       execute: async (args, api) => {
-        const realm = await this.realm(workspaceId, api.conversationId);
-        const name = channelName(args.channel);
-        const channel = this.registry
-          .channelsIn(workspaceId, realm)
-          .find((candidate) => candidate.name === name);
-        if (!channel) {
-          throw new Error(
-            `There is no channel #${name}. list_channels shows the channels.`
-          );
+        const requester = await this.requester(workspaceId, api.conversationId);
+        if (!requester) {
+          throw new Error("Merge a channel only when a person asks for it.");
         }
+        const realm = await this.realm(workspaceId, api.conversationId);
+        const channels = this.registry.channelsIn(workspaceId, realm);
+        const [from, to] = [args.channel, args.into].map((given) => {
+          const name = channelName(given);
+          const channel = channels.find((candidate) => candidate.name === name);
+          if (!channel) {
+            throw new Error(
+              `There is no channel #${name}. list_channels shows the channels.`
+            );
+          }
+          return channel;
+        }) as [Channel, Channel];
         try {
-          this.registry.removeChannel(workspaceId, channel.id, realm);
+          await this.mergeChannel(
+            workspaceId,
+            realm,
+            requester,
+            from.id,
+            to.id,
+            this.threadOf(workspaceId, api.conversationId).id
+          );
         } catch (error) {
-          throw new Error(`#${name} stays: ${(error as Error).message}.`, {
+          throw new Error(`#${from.name} stays: ${(error as Error).message}.`, {
             cause: error,
           });
         }
-        this.hooks.changed(workspaceId);
-        return { output: [{ type: "text", text: `Deleted #${name}.` }] };
+        return {
+          output: [
+            { type: "text", text: `Merged #${from.name} into #${to.name}.` },
+          ],
+        };
       },
     });
   }
@@ -3842,7 +3965,7 @@ export class Threads {
     return defineTool({
       name: "notify",
       description:
-        "Notify people of this workspace about something that needs their attention and that nobody waits for, such as what you found in work nobody asked for now. It goes to their inbox and their phone, and opens this thread or its channel. Do not notify about your answer to a person's message, or about the answer of a routine or a reminder: those notify already.",
+        "Notify people of this workspace about something that needs their attention and that nobody waits for, such as what you found in work nobody asked for now. It goes to their inbox and their phone, and opens this thread or its channel. Do not notify about your answer to a person's message or of a reminder: those notify already. The answer of a routine notifies nobody: in a routine's run, notify only when something is wrong or not usual, or when its instructions ask you to alert people.",
       parameters: Type.Object({
         text: Type.String({
           description: "What needs attention, in one or two sentences",

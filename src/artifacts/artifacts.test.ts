@@ -408,7 +408,7 @@ test("the content policy and the runtime start every page, before any of the age
   );
 });
 
-test("an artifact belongs to its channel: other threads see it after its thread is settled, until the channel is deleted", async () => {
+test("an artifact belongs to its channel: other threads see it after its thread is settled, and it goes with a merge", async () => {
   const { artifacts, threads, workspaces } = golem.app;
   const workspaceId = (await workspaces.create(alice, "Kitchen")).id;
   const recipes = workspaces.createChannel(workspaceId, alice, "recipes");
@@ -439,9 +439,22 @@ test("an artifact belongs to its channel: other threads see it after its thread 
     "Not found"
   );
 
-  workspaces.deleteChannel(workspaceId, alice, recipes.id);
-  expect(() => artifacts.get(banana.id, alice)).toThrow("Not found");
-  expect(artifacts.allInWorkspace(workspaceId)).toEqual([]);
+  const general = workspaces
+    .channels(workspaceId, alice)
+    .find((channel) => channel.name === "general")!;
+  // The merge waits for the agents of the channel.
+  await until(
+    () =>
+      threads.merge(workspaceId, alice, recipes.id, general.id).then(
+        () => true,
+        () => false
+      ),
+    Boolean
+  );
+  expect(artifacts.get(banana.id, alice).channelId).toBe(general.id);
+  expect(
+    workspaces.channels(workspaceId, alice).map((channel) => channel.name)
+  ).toEqual(["general"]);
 });
 
 test("the orchestrator's artifacts belong to the workspace, and an agent puts one in a channel it names", async () => {

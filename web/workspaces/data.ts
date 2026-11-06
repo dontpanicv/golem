@@ -48,7 +48,23 @@ export function refreshWorkspace(workspaceId: string): Promise<void> {
   });
 }
 
-/** The channels of a workspace, in the server's order. Renaming or deleting one shows at once. */
+/**
+ * Merges a channel into another: its threads, files, artifacts, and routines move there, and the empty channel goes.
+ * Channels are never deleted.
+ */
+export async function mergeChannel(
+  workspaceId: string,
+  channelId: string,
+  into: string
+): Promise<void> {
+  await request(`/workspaces/${workspaceId}/channels/${channelId}/merge`, {
+    method: "POST",
+    body: { into },
+  });
+  await refreshWorkspace(workspaceId);
+}
+
+/** The channels of a workspace, in the server's order. Renaming one shows at once. */
 export const channelsOf = keyed((workspaceId: string) =>
   createCollection(
     queryCollectionOptions({
@@ -66,13 +82,6 @@ export const channelsOf = keyed((workspaceId: string) =>
           await request(`/workspaces/${workspaceId}/channels/${mutation.key}`, {
             method: "PUT",
             body: { name: mutation.modified.name },
-          });
-        }
-      },
-      onDelete: async ({ transaction }) => {
-        for (const mutation of transaction.mutations) {
-          await request(`/workspaces/${workspaceId}/channels/${mutation.key}`, {
-            method: "DELETE",
           });
         }
       },

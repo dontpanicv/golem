@@ -82,8 +82,8 @@ final class APIClient {
         return try decode(try await send("PUT", path, ["name": name]).data)
     }
 
-    func deleteChannel(workspaceID: String, channelID: String) async throws {
-        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/channels/\(channelID)")
+    func mergeChannel(workspaceID: String, channelID: String, into: String) async throws {
+        _ = try await send("POST", "/api/v1/workspaces/\(workspaceID)/channels/\(channelID)/merge", ["into": into])
     }
 
     func createThread(

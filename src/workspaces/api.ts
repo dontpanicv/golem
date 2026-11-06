@@ -96,14 +96,6 @@ export const workspaceApiRoutes: readonly Route[] = [
     ),
   ],
   [
-    "DELETE",
-    "/api/v1/workspaces/:workspace/channels/:channel",
-    api(async ({ app, user, params }) => {
-      app.workspaces.deleteChannel(params.workspace!, user, params.channel!);
-      return new Response(null, { status: 204 });
-    }),
-  ],
-  [
     "GET",
     "/api/v1/workspaces/:workspace/facts",
     api(async ({ app, user, params }) =>

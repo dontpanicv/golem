@@ -423,6 +423,7 @@ describe("SqliteCredentialStore", () => {
 const hooks = {
   changed: () => undefined,
   moved: () => undefined,
+  merged: () => undefined,
   recall: async () => ({ results: [] }),
   automations: () => "",
   suggest: () => undefined,
@@ -444,6 +445,7 @@ const noIntegrations = { tools: async () => [], namespaces: () => [] };
 const noArtifacts = {
   content: () => "",
   inWorkspace: () => [],
+  moveChannel: () => undefined,
   moveWithThread: () => undefined,
   tools: () => [],
 };
@@ -455,6 +457,7 @@ const noNotifications = {
     readAt: null,
   }),
   activities: () => [],
+  moveChannel: () => undefined,
   moveWithThread: () => undefined,
   startActivity: () => undefined,
   updateActivity: () => undefined,

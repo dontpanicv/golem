@@ -160,6 +160,15 @@ export class Agenda {
   }
 
   /** Gives the open suggestions of a thread the channel it moved to, where an accepted routine then runs. */
+  /** Moves the open suggestions of channel `from` to channel `to`, as when one channel merges into another. */
+  moveChannel(from: string, to: string): void {
+    this.database
+      .query(
+        "UPDATE suggestion SET channel_id = ? WHERE channel_id = ? AND answered_at IS NULL AND deleted_at IS NULL"
+      )
+      .run(to, from);
+  }
+
   moveWithThread(threadId: string, channelId: string): void {
     this.database
       .query(

@@ -191,6 +191,22 @@ export const threadApiRoutes: readonly Route[] = [
     ),
   ],
   [
+    "POST",
+    "/api/v1/workspaces/:workspace/channels/:channel/merge",
+    api(async ({ app, user, params, body }) => {
+      if (typeof body.into !== "string") {
+        throw new HttpError(400, "Choose a channel");
+      }
+      await app.threads.merge(
+        params.workspace!,
+        user,
+        params.channel!,
+        body.into
+      );
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
     "GET",
     "/api/v1/workspaces/:workspace/channels/:channel/brief",
     api(async ({ app, user, params }) =>

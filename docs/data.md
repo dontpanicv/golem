@@ -53,8 +53,8 @@ data/
 ## Rules
 
 - **Nothing is ever removed.** A delete marks the row with `deleted_at`, and reads leave it out; a deleted thread file
-  moves to `channels/<id>/deleted/`. A deleted channel hides its threads, files, artifacts, and routines, and search
-  leaves them out at once. A result already sent to an orchestrator remains part of its own conversation;
+  moves to `channels/<id>/deleted/`. A channel goes only by merging into another, which first moves its threads, files,
+  artifacts, and routines there; the empty channel is then marked deleted. A result already sent to an orchestrator remains part of its own conversation;
   `session.sqlite` keeps the messages. A deleted workspace (`organization.deletedAt`, from before Golem had one
   workspace) hides all of it, and its folder stays. Deleted
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.

@@ -442,12 +442,11 @@ struct NewChannelDialog: View {
     }
 }
 
-/// Asks before a channel goes with what it holds. It stays open when deleting fails.
-struct DeleteDialog: View {
+/// Asks before a channel merges into another. It stays open when merging fails.
+struct MergeDialog: View {
     let title: String
     let message: String
-    let submit: String
-    let delete: () async throws -> Void
+    let merge: () async throws -> Void
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var busy = false
@@ -459,17 +458,17 @@ struct DeleteDialog: View {
                 .foregroundStyle(Tokens.Colors.textSecondary)
         } actions: {
             Button("Cancel") { dismiss() }.buttonStyle(.golem(.secondary, .large))
-            Button(submit) {
+            Button("Merge") {
                 busy = true
                 Task {
                     await session.run {
-                        try await delete()
+                        try await merge()
                         dismiss()
                     }
                     busy = false
                 }
             }
-            .buttonStyle(.golem(.danger, .large))
+            .buttonStyle(.golem(.primary, .large))
             .disabled(busy)
         }
     }

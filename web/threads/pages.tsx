@@ -26,8 +26,8 @@ import { showError } from "../ui/toast.tsx";
 import {
   channelsOf,
   meQuery,
+  mergeChannel,
   orchestratorQuery,
-  refreshWorkspace,
   rememberOpened,
   setSettled,
   threadsOf,
@@ -280,7 +280,8 @@ const channelRoute = getRouteApi("/signed-in/w/$workspaceId/c/$channelId");
 export function ChannelPage({ details }: { details: ReactNode }) {
   const { workspaceId, channelId } = channelRoute.useParams();
   const navigate = useNavigate();
-  const [deleting, setDeleting] = useState(false);
+  const [into, setInto] = useState<{ id: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
   const channels = channelsOf(workspaceId);
   const { data: channel, isReady } = useLiveQuery({
     query: (q) =>
@@ -317,19 +318,29 @@ export function ChannelPage({ details }: { details: ReactNode }) {
       </section>
     ) : null;
   }
-  const remove = () => {
-    setDeleting(false);
-    const next = [...channels.values()].find((other) => other.id !== channelId);
-    const deleted = channels.delete(channelId);
-    if (next) {
+  // A channel that every member sees merges only into another such channel.
+  const targets = [...channels.values()].filter(
+    (other) =>
+      other.id !== channelId &&
+      (channel.ownerId !== null || other.ownerId === null)
+  );
+  const merge = async () => {
+    if (!into) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await mergeChannel(workspaceId, channelId, into.id);
+      setInto(null);
       navigate({
         to: "/w/$workspaceId/c/$channelId",
-        params: { workspaceId, channelId: next.id },
+        params: { workspaceId, channelId: into.id },
       });
+    } catch (error) {
+      showError(error);
+    } finally {
+      setBusy(false);
     }
-    deleted.isPersisted.promise
-      .then(() => refreshWorkspace(workspaceId))
-      .catch(showError);
   };
   return (
     <>
@@ -342,13 +353,27 @@ export function ChannelPage({ details }: { details: ReactNode }) {
             </>
           }
         >
-          <Button
-            icon="trash"
-            label="Delete channel"
-            onClick={() => setDeleting(true)}
-            size="icon"
-            variant="ghost"
-          />
+          {targets.length > 0 ? (
+            <Menu
+              entries={[
+                { kind: "label", label: "Merge into" },
+                ...targets.map((target) => ({
+                  kind: "action" as const,
+                  label: target.name,
+                  icon: target.ownerId ? ("lock" as const) : ("hash" as const),
+                  onSelect: () => setInto(target),
+                })),
+              ]}
+              trigger={
+                <Button
+                  icon="forward"
+                  label="Merge channel"
+                  size="icon"
+                  variant="ghost"
+                />
+              }
+            />
+          ) : null}
           <PanelToggle />
         </PanelHeader>
         <div className="channel">
@@ -397,13 +422,14 @@ export function ChannelPage({ details }: { details: ReactNode }) {
           placeholder={`Start a thread in #${channel.name}`}
         />
         <Dialog
-          onClose={() => setDeleting(false)}
-          onSubmit={remove}
-          open={deleting}
-          submit="Delete channel"
-          title={`Delete #${channel.name}?`}
+          busy={busy}
+          onClose={() => setInto(null)}
+          onSubmit={merge}
+          open={into !== null}
+          submit="Merge"
+          title={`Merge #${channel.name} into #${into?.name ?? ""}?`}
         >
-          <p>Its threads, files, artifacts, and routines go with it.</p>
+          <p>Its threads, files, artifacts, and routines move there.</p>
         </Dialog>
       </section>
       <PlacePanel place={{ workspaceId, channelId }} />

@@ -295,14 +295,8 @@ export class Workspaces {
     return slug;
   }
 
-  /** Deletes a channel that the person sees; see `removeChannel`. */
-  deleteChannel(workspaceId: string, user: User, channelId: string): Channel {
-    this.requireMember(workspaceId, user);
-    return this.removeChannel(workspaceId, channelId, user.id);
-  }
-
   /**
-   * Deletes a channel that `realm` sees, for an agent that acts for it. Nothing is removed: the channel and its threads
+   * Deletes a channel that `realm` sees, once `Threads.merge` moved all it held to another channel. Nothing is removed: the channel and its threads
    * stay in the database, hidden. Its name gets `~<id>`, which no channel name has, so a new channel can take the
    * name. The orchestrators move to the first other channel that every member sees, so a workspace keeps one such
    * channel at least.

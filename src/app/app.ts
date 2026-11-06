@@ -165,6 +165,11 @@ export async function createApp(
         routines.moveWithThread(threadId, channelId);
         agenda.moveWithThread(threadId, channelId);
       },
+      merged: (from, to) => {
+        routines.moveChannel(from, to);
+        agenda.moveChannel(from, to);
+        intake.moveChannel(from, to);
+      },
       tools: async (workspaceId) => [
         ...(await routines.tools(workspaceId)),
         ...reminders.tools(workspaceId),

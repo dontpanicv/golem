@@ -285,7 +285,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `PUT /api/v1/workspaces/:workspaceId` | `{ name }` | `Workspace`; `403` for a member who is not an owner |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name, private? }` | `Channel`; a `private` one is the person's own. `409` if the name exists, also as another person's private channel |
 | `PUT /api/v1/workspaces/:workspaceId/channels/:channelId` | `{ name }` | `Channel`, with the name as Golem keeps it: lowercase letters, also with diacritics, and numbers, with `-` between words. `409` if the name exists |
-| `DELETE /api/v1/workspaces/:workspaceId/channels/:channelId` | | `204`; its threads, files, artifacts, and routines go with it, and the orchestrators move to the next channel that every member sees; `409` for the last such channel |
+| `POST /api/v1/workspaces/:workspaceId/channels/:channelId/merge` | `{ into }` | `204`; its threads, files, artifacts, routines, suggestions, and source archives move to channel `into`, then the empty channel goes and the orchestrators move to the next channel that every member sees. Nobody deletes a channel otherwise. `403` when a channel that every member sees would merge into a private one; `409` while an agent of the channel works. Agents merge with `merge_channel` when a person asks |
 | `GET /api/v1/workspaces/:workspaceId/facts` | | `{ text }`: facts that the family writes by hand, such as names, birthdays, and places; every agent of the workspace reads them; `""` until someone writes them |
 | `PUT /api/v1/workspaces/:workspaceId/facts` | `{ text }` | `{ text }`; every member can write them; `400` over 20,000 characters |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
@@ -392,8 +392,9 @@ answer. A message waits for a run at work for another person, so that run keeps 
 | `DELETE /api/v1/devices/:token` | | `204`; the device gets no more of the person's pushes |
 
 A notification goes to a person's inbox when the agent answers their message, when a channel thread reports back to a
-thread they write in, for each answer of a routine (to every member) or a reminder (to its recipient) that is not
-`QUIET`, and when an agent calls its `notify` tool. An answer waits while threads that its agent asked still work for
+thread they write in, for each answer of a reminder (to its recipient) that is not `QUIET`, for the answer of a
+routine whose script failed (to every member who sees its thread), and when an agent calls its `notify` tool, as it
+does in a routine's run only when something is wrong or not usual. Other answers of a routine stay in its thread. An answer waits while threads that its agent asked still work for
 it: the answer to their report notifies, or without one, this answer when they stop. While a screen of the person
 follows the thread's events stream, its notifications are read at once and send no push; opening the stream reads the
 thread's notifications before its first event, so load the inbox again then. Others go to the person's devices through

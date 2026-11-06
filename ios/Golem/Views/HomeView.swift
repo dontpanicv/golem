@@ -39,8 +39,6 @@ struct HomeView: View {
                 }
                 FoldingSection(title: "Channels", folded: $channelsFolded) {
                     ForEach(session.channels.filter { $0.ownerId == nil }) { channelRow($0) }
-                    Button { newChannel = true } label: { ListRow("Add channel", systemImage: "plus") }
-                        .buttonStyle(.row)
                 }
                 let privateChannels = session.channels.filter { $0.ownerId != nil }
                 if session.owner || !privateChannels.isEmpty {
@@ -62,8 +60,9 @@ struct HomeView: View {
         .refreshable { await session.run { try await session.reloadWorkspace() } }
         .phoneTabBar()
         .mobileBackground()
-        .navigationTitle(session.workspace?.name ?? "Home")
-        .toolbar(.hidden, for: .navigationBar)
+        // A bar, as on the other tabs: the back button of a screen pushed from here then fades where it is instead of
+        // sliding away with a bar that Home would hide.
+        .screenTitle(session.workspace?.name ?? "Home")
         .sheet(isPresented: $newChannel) {
             NewChannelDialog { name, isPrivate in
                 if let channel = try await session.createChannel(name: name, isPrivate: isPrivate) {

@@ -16,11 +16,15 @@ struct ChannelView: View {
     @State private var files: [URL] = []
     @State private var sending = false
     @State private var settledFolded = true
-    @State private var confirmDelete = false
+    @State private var mergeInto: Channel?
     @Environment(\.phoneTabBar) private var tabBar
     @Environment(\.dismiss) private var dismiss
 
     private var channel: Channel? { session.channels.first { $0.id == channelID } }
+    /// The channels this one can merge into: a channel that every member sees merges only into another such channel.
+    private var mergeTargets: [Channel] {
+        session.channels.filter { $0.id != channelID && (channel?.ownerId != nil || $0.ownerId == nil) }
+    }
     private var activeThreads: [ThreadSummary] {
         (channel?.threads.filter { $0.settledAt == nil } ?? []).sorted { $0.updatedAt < $1.updatedAt }
     }
@@ -72,8 +76,14 @@ struct ChannelView: View {
                 Menu {
                     Button("Files and artifacts", systemImage: "sidebar.right") { showArtifacts = true }
                     Button("Channel details", systemImage: "info.circle") { open(.channelDetails(channelID)) }
-                    Divider()
-                    Button("Delete channel", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                    if !mergeTargets.isEmpty {
+                        Divider()
+                        Menu("Merge into", systemImage: "arrow.triangle.merge") {
+                            ForEach(mergeTargets) { target in
+                                Button("# \(target.name)") { mergeInto = target }
+                            }
+                        }
+                    }
                 } label: {
                     HeaderTitle(title: "# \(channel?.name ?? "")", caption: threadCount)
                 }
@@ -81,19 +91,15 @@ struct ChannelView: View {
             }
         }
         .onAppear { if artifactID != nil { showArtifacts = true } }
-        .sheet(isPresented: $confirmDelete) {
-            DeleteDialog(
-                title: "Delete #\(channel?.name ?? "")?",
-                message: "Its threads, files, artifacts, and routines go with it.",
-                submit: "Delete channel"
+        .sheet(item: $mergeInto) { target in
+            MergeDialog(
+                title: "Merge #\(channel?.name ?? "") into #\(target.name)?",
+                message: "Its threads, files, artifacts, and routines move there."
             ) {
-                try await session.deleteChannel(channelID: channelID)
-                // On iPhone the channel leaves its tab's stack; the split view opens Golem in its place.
-                if tabBar != nil {
-                    dismiss()
-                } else if let orchestrator = session.orchestrator {
-                    open(.thread(orchestrator.id))
-                }
+                try await session.mergeChannel(channelID: channelID, into: target.id)
+                // The merged channel is gone: on iPhone it leaves its tab's stack, and the other channel opens.
+                if tabBar != nil { dismiss() }
+                open(.channel(target.id))
             }
         }
         .task { await session.run { try await session.reloadWorkspace() } }

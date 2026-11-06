@@ -158,6 +158,14 @@ function agent(context: Context) {
   return fauxAssistantMessage("Ok.");
 }
 
+/** The texts of Alice's notifications that open the thread. */
+function noticesOf(threadId: string): string[] {
+  return golem.app.notifications
+    .inbox(workspaceId, alice)
+    .notifications.filter((notice) => notice.threadId === threadId)
+    .map((notice) => notice.text);
+}
+
 function threadOf(threadId: string | null) {
   return golem.app.workspaces
     .allThreadsIn(workspaceId)
@@ -227,6 +235,8 @@ test("the agent judges what the script found: quiet answers stay out of the thre
   expect(messages.map((message) => message.text)).toEqual([
     "The class goes on a trip on Friday.",
   ]);
+  // A run's answer stays in its thread; only the agent's notify tool notifies.
+  expect(noticesOf(thread.id)).toEqual([]);
   const { runs } = routines.inChannel(workspaceId, channelId, alice);
   expect(runs.slice(0, 2).map((run) => run.outcome)).toEqual([
     "posted",
@@ -288,6 +298,8 @@ test("a failing script fails the run and goes to the agent to repair", async () 
   expect(messages.map((message) => message.text)).toEqual([
     "I cannot read the school system.",
   ]);
+  // A source that does not work notifies.
+  expect(noticesOf(thread.id)).toEqual(["I cannot read the school system."]);
   routines.delete(routine.id, alice);
 });
 

@@ -391,6 +391,7 @@ function reopenThreads(): Threads {
     {
       changed: () => undefined,
       moved: () => undefined,
+      merged: () => undefined,
       recall: async () => ({ results: [] }),
       tools: async () => [],
       automations: () => "",

@@ -268,16 +268,18 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (named) {
     return call("read_file", { file: named[1]! });
   }
-  const channelCommand = /(Create|Search|Delete) channels? (.+)$/.exec(text);
+  const channelCommand = /(Create|Search|Merge) channels? (.+)$/.exec(text);
   if (channelCommand) {
     const [, verb, rest] = channelCommand;
     if (verb === "Create") {
       const [name, summary] = rest!.split(": ");
       return call("create_channel", { name: name!, summary: summary! });
     }
-    return verb === "Search"
-      ? call("search_channels", { query: rest! })
-      : call("delete_channel", { channel: rest! });
+    if (verb === "Merge") {
+      const [channel, into] = rest!.split(" into ");
+      return call("merge_channel", { channel: channel!, into: into! });
+    }
+    return call("search_channels", { query: rest! });
   }
   if (text.endsWith("Zoom 0")) {
     return fauxAssistantMessage([fauxToolCall("zoom", { id: 0, n: 1 })], {
@@ -1968,7 +1970,7 @@ test("a settled thread goes into its channel's brief and summary, which a new th
   ).rejects.toThrow();
 });
 
-test("an agent creates, searches, and deletes channels, and a deleted channel keeps everything, hidden", async () => {
+test("an agent creates, searches, and merges channels, and a merge keeps everything in the other channel", async () => {
   const home = await golem.app.workspaces.create(alice, "Channels");
   const [general] = golem.app.workspaces.channels(home.id, alice);
   const asked = await golem.app.threads.create(
@@ -2029,20 +2031,32 @@ test("an agent creates, searches, and deletes channels, and a deleted channel ke
     instructions: "Check the flight prices",
     createdBy: "golem",
   });
-  expect(await ask("Delete channel #trips")).toBe("Deleted #trips.");
+  const [uploaded] = await golem.app.threads.upload(home.id, trips.id, alice, [
+    new File(["Tent, stove"], "packing.md"),
+  ]);
+  expect(await ask("Merge channel #trips into general")).toBe(
+    "Merged #trips into #general."
+  );
   expect(
     golem.app.workspaces.channels(home.id, alice).map((channel) => channel.name)
   ).toEqual(["general"]);
-  // The channel, its thread, and its routine are hidden, and the routine does not run.
-  expect(() => golem.app.workspaces.thread(packing.id, alice)).toThrow(
-    "Not found"
+  // The thread, the file that no thread mentions, and the routine go to #general; nothing is lost.
+  expect(golem.app.workspaces.thread(packing.id, alice).channelId).toBe(
+    general!.id
   );
   expect(
-    golem.app.workspaces.allThreadsIn(home.id).map((thread) => thread.id)
-  ).toEqual([asked.id]);
-  expect(golem.app.routines.inWorkspace(home.id, null)).toEqual([]);
-  expect(golem.app.routines.tick(Date.now() + 3 * 86_400_000)).toEqual([]);
-  // Nothing is removed.
+    (
+      await golem.app.threads.files({
+        workspaceId: home.id,
+        channelId: general!.id,
+      })
+    ).map((file) => file.id)
+  ).toContain(uploaded!.id);
+  expect(
+    golem.app.routines
+      .inWorkspace(home.id, null)
+      .map((routine) => routine.channelId)
+  ).toEqual([general!.id]);
   expect(
     golem.app.database
       .query(
@@ -2050,53 +2064,50 @@ test("an agent creates, searches, and deletes channels, and a deleted channel ke
       )
       .get(trips.id)
   ).toEqual({ name: `trips~${trips.id}`, deleted: 1 });
-  expect(
-    golem.app.database
-      .query("SELECT count(*) AS count FROM thread WHERE id = ?")
-      .get(packing.id)
-  ).toEqual({ count: 1 });
-  expect(
-    golem.app.database
-      .query("SELECT count(*) AS count FROM routine WHERE channel_id = ?")
-      .get(trips.id)
-  ).toEqual({ count: 1 });
 
   expect(await ask("Create channel trips: New trips")).toBe("Created #trips.");
-  expect(await ask("Delete channel trips")).toBe("Deleted #trips.");
-  expect(await ask("Delete channel general")).toContain(
-    "#general stays: A workspace keeps one channel at least."
+  expect(await ask("Merge channel trips into trips")).toContain(
+    "#trips stays: Merge the channel into another channel."
   );
-  expect(await ask("Delete channel trips")).toContain(
-    "There is no channel #trips. list_channels shows the channels."
+  expect(await ask("Merge channel dentist into general")).toContain(
+    "There is no channel #dentist. list_channels shows the channels."
   );
 });
 
-test("people delete a channel; the orchestrator moves to the next channel", async () => {
+test("people merge a channel into another; the orchestrator moves with it, and a shared channel stays shared", async () => {
   const family = await golem.app.workspaces.create(alice, "Moving");
   const [general] = golem.app.workspaces.channels(family.id, alice);
   const food = golem.app.workspaces.createChannel(family.id, alice, "food");
+  const mine = golem.app.workspaces.createChannel(
+    family.id,
+    alice,
+    "mine",
+    true
+  );
   const orchestrator = await golem.app.threads.orchestrator(family.id, alice);
   expect(orchestrator.channelId).toBe(general!.id);
 
   const token = await golem.signIn("Alice", "alice@example.com");
   const outsider = await golem.signIn("Bob", "bob@example.com");
-  const path = (channelId: string) =>
-    `/api/v1/workspaces/${family.id}/channels/${channelId}`;
-  expect(
-    (await golem.call(path(general!.id), { method: "DELETE", token: outsider }))
-      .status
-  ).toBe(404);
-  expect(
-    (await golem.call(path(general!.id), { method: "DELETE", token })).status
-  ).toBe(204);
+  const merge = (channelId: string, into: string, as = token) =>
+    golem.call(`/api/v1/workspaces/${family.id}/channels/${channelId}/merge`, {
+      method: "POST",
+      token: as,
+      body: { into },
+    });
+  expect((await merge(general!.id, food.id, outsider)).status).toBe(404);
+  expect((await merge(food.id, mine.id)).status).toBe(403);
+  expect((await merge(general!.id, food.id)).status).toBe(204);
   const moved = golem.app.workspaces.orchestratorOf(family.id, alice.id)!;
   expect(moved.channelId).toBe(food.id);
   expect(golem.app.workspaces.thread(moved.id, alice).id).toBe(orchestrator.id);
-  const last = await golem.call(path(food.id), { method: "DELETE", token });
-  expect(last.status).toBe(409);
-  expect(await last.json()).toEqual({
-    error: "A workspace keeps one channel at least",
-  });
+  // A private channel merges into a shared one.
+  expect((await merge(mine.id, food.id)).status).toBe(204);
+  expect(
+    golem.app.workspaces
+      .channels(family.id, alice)
+      .map((channel) => channel.name)
+  ).toEqual(["food"]);
 });
 
 test("save_file keeps a machine's file, the browser's screenshot, and a file from the web in the channel", async () => {
@@ -2926,6 +2937,7 @@ function savingThreads(
         golem.app.intake.audit.record(trace, stage, workspaceId, ownerId, data),
       changed: () => undefined,
       moved: () => undefined,
+      merged: () => undefined,
       recall: async () => ({ results: [] }),
       automations: () => "",
       suggest: () => undefined,
@@ -2967,11 +2979,11 @@ test("the model calls the core tools itself, and every other tool from codemode 
   expect(offeredTools[request]!.toSorted()).toEqual([
     "codemode",
     "create_channel",
-    "delete_channel",
     "delete_file",
     "list_channels",
     "list_files",
     "list_threads",
+    "merge_channel",
     "move_thread",
     "notify",
     "read_file",

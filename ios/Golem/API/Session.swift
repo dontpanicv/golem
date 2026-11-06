@@ -234,10 +234,11 @@ final class Session {
         try await reloadWorkspace()
     }
 
-    /// Deletes a channel with its threads and routines; the server keeps them, hidden.
-    func deleteChannel(channelID: String) async throws {
+    /// Merges a channel into another: its threads, files, artifacts, and routines move there, and the empty channel
+    /// goes. Channels are never deleted.
+    func mergeChannel(channelID: String, into: String) async throws {
         guard let workspace else { return }
-        try await api.deleteChannel(workspaceID: workspace.id, channelID: channelID)
+        try await api.mergeChannel(workspaceID: workspace.id, channelID: channelID, into: into)
         try await reloadWorkspace()
     }
 

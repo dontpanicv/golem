@@ -258,6 +258,13 @@ export class Routines {
   }
 
   /** Moves the routine that runs in a thread to the channel the thread moved to, so its results stay in its channel. */
+  /** Moves the routines of channel `from` to channel `to`, as when one channel merges into another. */
+  moveChannel(from: string, to: string): void {
+    this.database
+      .query("UPDATE routine SET channel_id = ? WHERE channel_id = ?")
+      .run(to, from);
+  }
+
   moveWithThread(threadId: string, channelId: string): void {
     this.database
       .query(
@@ -567,7 +574,8 @@ export class Routines {
       const answer = await this.tell(
         routine,
         runId,
-        runTask(routine, this.placeLine(routine), null, startedAt)
+        runTask(routine, this.placeLine(routine), null, startedAt),
+        []
       );
       return answer === null ? "quiet" : "posted";
     }
@@ -585,7 +593,12 @@ export class Routines {
       .query("UPDATE routine_run SET result = ? WHERE id = ?")
       .run(JSON.stringify(result), runId);
     if (!result.ok) {
-      await this.tell(routine, runId, repairTask(routine, result, startedAt));
+      await this.tell(
+        routine,
+        runId,
+        repairTask(routine, result, startedAt),
+        "everyone"
+      );
       throw new Error(result.error);
     }
     // Saved only once the agent has what the script found, so a failed answer finds it again next run.
@@ -595,7 +608,8 @@ export class Routines {
         : await this.tell(
             routine,
             runId,
-            runTask(routine, this.placeLine(routine), result.text, startedAt)
+            runTask(routine, this.placeLine(routine), result.text, startedAt),
+            []
           );
     this.database
       .query("UPDATE routine SET store = ? WHERE id = ?")
@@ -603,11 +617,16 @@ export class Routines {
     return answer === null ? "quiet" : "posted";
   }
 
-  /** Gives the agent of the routine's thread a task, and starts the thread on the first one. */
+  /**
+   * Gives the agent of the routine's thread a task, and starts the thread on the first one. Its answer notifies
+   * `notify`: a run's answer notifies nobody, as the agent calls notify when something is wrong or unusual; a repair's
+   * answer, which says what does not work, notifies everyone who sees the thread.
+   */
   private async tell(
     routine: RoutineRow,
     runId: string,
-    text: string
+    text: string,
+    notify: readonly string[] | "everyone"
   ): Promise<string | null> {
     let thread = this.workspaces
       .allThreadsIn(routine.workspaceId)
@@ -626,7 +645,7 @@ export class Routines {
       thread,
       text,
       `routine:${runId}`,
-      "everyone",
+      notify,
       routine.createdBy,
       "routine"
     );
@@ -991,7 +1010,7 @@ function runTask(
     place ?? "",
     `Its instructions: ${routine.instructions}`,
     found === null ? "" : `What its script found:\n${found}`,
-    `Do what the instructions say, with your tools. Write your answer for the people in this channel. If nothing needs anyone's attention, answer with only QUIET.`,
+    `Do what the instructions say, with your tools. Write your answer for the people in this channel; it stays in this thread and notifies nobody. Call notify only when something is wrong or not usual, such as a source or a connector that fails, or when the instructions ask you to alert people. If nothing needs anyone's attention, answer with only QUIET.`,
   ]
     .filter(Boolean)
     .join("\n\n");

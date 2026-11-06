@@ -194,6 +194,13 @@ export class Notifications {
   }
 
   /** Gives the notifications of a thread the channel it moved to. */
+  /** Moves the notifications of channel `from` to channel `to`, as when one channel merges into another. */
+  moveChannel(from: string, to: string): void {
+    this.database
+      .query("UPDATE notification SET channel_id = ? WHERE channel_id = ?")
+      .run(to, from);
+  }
+
   moveWithThread(threadId: string, channelId: string): void {
     this.database
       .query("UPDATE notification SET channel_id = ? WHERE thread_id = ?")

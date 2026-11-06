@@ -392,6 +392,13 @@ export class Intake {
     return id;
   }
 
+  /** Moves the source archives of channel `from` to channel `to`, whose files moved with it. */
+  moveChannel(from: string, to: string): void {
+    this.database
+      .query("UPDATE intake_archive SET channel_id = ? WHERE channel_id = ?")
+      .run(to, from);
+  }
+
   /** Only connector code can supply this evidence; agent text is not a source observation. */
   recordSourceRead(thread: ThreadRef, ownerId: string, read: SourceRead): void {
     const owner = this.owner(thread.workspaceId, ownerId);
