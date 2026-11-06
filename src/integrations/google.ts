@@ -856,15 +856,14 @@ class Gog {
   }
 }
 
-/** Incoming Primary inbox mail after Gmail filters, plus the owner's sent context. */
+/** The mail the owner sees in their inbox, in every tab, after Gmail's filters, plus their sent context. */
 const WATCHED_MAIL =
-  "{(in:inbox category:primary) in:sent} -in:spam -in:trash -in:chats -in:drafts";
-/** Gmail's tabs of mail that goes to many people. */
+  "{in:inbox in:sent} -in:spam -in:trash -in:chats -in:drafts";
+/** Gmail's tabs of mail that goes to many people; their mail is marked bulk, and the judge decides. */
 const BULK_LABELS = [
   "CATEGORY_PROMOTIONS",
   "CATEGORY_SOCIAL",
   "CATEGORY_FORUMS",
-  "CATEGORY_UPDATES",
 ];
 
 function watchedMail(labels: readonly string[] = []): boolean {
@@ -872,9 +871,7 @@ function watchedMail(labels: readonly string[] = []): boolean {
     !["SPAM", "TRASH", "DRAFT", "CHAT"].some((label) =>
       labels.includes(label)
     ) &&
-    (labels.includes("SENT") ||
-      (labels.includes("INBOX") &&
-        !BULK_LABELS.some((label) => labels.includes(label))))
+    (labels.includes("SENT") || labels.includes("INBOX"))
   );
 }
 

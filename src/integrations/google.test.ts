@@ -390,7 +390,7 @@ test("a draft goes only as the person allowed it", async () => {
   ).rejects.toThrow("The draft changed after the person allowed it");
 });
 
-test("mail intake filters labels before body fetch and raw storage", async () => {
+test("mail intake reads the inbox in every tab and sent mail, and filters labels before body fetch and raw storage", async () => {
   const binary = join(directory, "watch-gog");
   const now = Date.now();
   const messages = [
@@ -417,9 +417,9 @@ test("mail intake filters labels before body fetch and raw storage", async () =>
     `#!/usr/bin/env bun
 const args = process.argv.slice(2);
 if (args.includes("search")) {
-  if (!args.at(-1).includes("{(in:inbox category:primary) in:sent}")) process.exit(2);
+  if (!args.at(-1).includes("{in:inbox in:sent}")) process.exit(2);
   console.log(JSON.stringify(${JSON.stringify(messages)}));
-} else if (["primary", "uncategorized", "sent"].includes(args.at(-1))) {
+} else if (["primary", "uncategorized", "sent", "PROMOTIONS", "SOCIAL", "UPDATES", "FORUMS"].includes(args.at(-1))) {
   console.log(JSON.stringify({body: "Selected body"}));
 } else process.exit(3);
 `
@@ -441,6 +441,10 @@ if (args.includes("search")) {
     "primary",
     "uncategorized",
     "sent",
+    "PROMOTIONS",
+    "SOCIAL",
+    "UPDATES",
+    "FORUMS",
   ]);
   expect(JSON.stringify(records)).not.toContain("archived");
   const observed = await connector.observations!(
@@ -466,5 +470,10 @@ if (args.includes("search")) {
     "primary",
     "uncategorized",
     "sent",
+    "PROMOTIONS",
+    "SOCIAL",
+    "UPDATES",
+    "FORUMS",
   ]);
-});
+  // Each body after the first waits 1.5 s, as the real connector does.
+}, 15_000);
