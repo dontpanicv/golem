@@ -1,0 +1,181 @@
+# Proactive Golem
+
+Golem follows useful matters from accounts that their owner has enabled. A person can continue normal conversations.
+They do not need to maintain a task list or set a routine for each expected reply.
+
+## The process
+
+1. **Collect.** Gmail, WhatsApp, Slack, and Plaud have read adapters. Each account is off until its owner turns on
+   Read for me. Polls run every 15 minutes. The first poll starts one day back. Later polls use a durable cursor,
+   an overlap, and bounded work. A failed or incomplete poll preserves its cursor. Raw results go to the audit.
+2. **Select and batch.** Slack retains the person's messages, direct mentions, DMs, group DMs, and replies in
+   threads where they wrote or were mentioned. The adapter resolves Slack thread roots and preserves cursors for
+   deferred lookups and partial thread reads. General channel activity is excluded. Gmail and WhatsApp keep incoming
+   and outgoing text regardless of whether Golem sent it. Each judge batch has at most six source conversations and
+   normally 24,000 characters of new text. A larger individual message remains whole in its own batch.
+3. **Recall and assess.** FTS5 and EmbeddingGemma find candidate subject threads. Recall adds only matching checks,
+   at most twelve additional evidence records within 8,000 characters, and at most 6,000 characters of thread
+   context. Latest thread messages come before prior summaries, so clipping
+   preserves the latest state.
+   The configured judge receives original text, direction, source IDs, bulk metadata, and attachment names/types/sizes.
+   There is no Qwen reader. Code validates destinations, evidence IDs, exact quotes, and times. A failed batch does
+   not prevent unrelated batches from being assessed. Source text never gives tool instructions.
+4. **Keep state.** Useful context goes into the existing private thread's stable prompt section. A useful new
+   subject stays as a proposed destination in its queued review. Collection creates no subject channel or thread.
+   Passive filing retains evidence without a discussion. Source files for a proposed new discussion wait until its
+   review is confirmed. Other knowledge can remain as source evidence.
+   An internal check keeps the unresolved question, original
+   evidence, and a future time. No inferred task cards are added to Upcoming.
+5. **Check time.** A minute timer finds due internal checks. Collection and related evidence run before assessment.
+   An unresolved request, partial fulfilment, or undated commitment gets an internal review after three days; this is
+   not a promised deadline. Unknown sending or delivery details are verified in the existing thread. Later reviews stay quiet
+   unless a follow-up helps. A stated calendar-day period keeps the local wall time across a clock change.
+6. **Confirm the destination and review.** Before creating a new discussion, Golem reads the relevant sources again
+   and the judge checks whether the queued review still helps. It can suppress a handled matter or reuse an existing
+   thread with a different title or source conversation. Recent threads and their summaries include destinations made
+   earlier in the same batch. Only a confirmed useful review creates a subject thread in a suitable channel, or a
+   private channel and its first thread when none fits. This decision needs no person approval. Related queued updates
+   are then grouped by their selected thread. A saved request id reuses a thread after an interrupted creation.
+   A useful development adds a visible Golem source message, the email or other
+   source as a file, and supported attachments to the existing subject thread. The thread's existing Pi Durable agent
+   reads them, explains what changed, and proposes next actions. A material developer reply is reviewed there. Normal
+   filing stays silent. Nonurgent changes wait for the 08:00 Europe/Prague review and are checked again first.
+7. **Decide whether to notify.** Thread completion is silent, even when its answer is useful. The judge must supply
+   a separate reason and exact source quote before a notification is eligible. After the answer, Golem reads the
+   source accounts again and checks the proposed reason against the latest evidence. A later reply can suppress the
+   notice while the useful answer stays in the thread. A source outage leaves the notice pending for retry. A confirmed
+   notice opens the same thread. A `QUIET` answer stays quiet. Stable request ids prevent duplicate inputs, runs,
+   files, or notifications on retry. There is no separate worker thread or result handoff. A draft, if useful, stays
+   in the original discussion. Automatic reviews use the thread's normal tools, access rules, and approvals.
+8. **Return source findings.** Successful connector reads in a normal or automatic thread can add original source
+   records to intake. Gmail thread reads decode MIME bodies and exclude drafts; WhatsApp message and search reads keep
+   incoming and outgoing text; Slack reads keep the personal selection rule; Plaud note reads keep summaries only.
+   The connector, not the agent, supplies the account and returned records. Only the owner of a still-enabled account
+   can feed its reads back. Intake stores the evidence and a durable pending read in `intake_source_read`.
+   After an automatic review, a bounded judge call updates or resolves the related open checks before a notification
+   can proceed. Reads in person-started threads are assessed on the next intake tick. This call cannot create checks,
+   start threads, run another review, or notify. A partial answer leaves the remaining question open. Failed judgments
+   retain their pending read and retry with backoff; a failed thread cannot block unrelated source-read assessments.
+   Repeated reads reuse the evidence and assessment. These targeted reads do not advance polling coverage.
+
+A source conversation is an email conversation, a WhatsApp chat, a Slack thread or DM, or a Plaud recording. A Golem
+thread is a conversation about a subject. These are different. A source conversation can contain several subjects;
+a subject can span several accounts and Golem threads.
+
+## Example: a response within 30 days
+
+Your outgoing email states that a builder has 30 calendar days to give a substantive response. Golem keeps that exact
+source and a future check. A receipt acknowledgement leaves it open. A full reply in a new email conversation can
+resolve it. A partial reply can leave the unanswered part open. Your statement that you resolved it by phone is also
+evidence. At the due time, Golem looks for replies and checks source coverage. It can report a useful follow-up, or
+state that it could not verify the account. It must not present a source outage as proof that nobody replied.
+
+Business-day rules and periods that start on delivery need evidence of the rule and start. The model is instructed
+to use an uncertain internal review if it cannot establish them. This system does not decide legal deadlines.
+
+## Data and privacy
+
+Operational state lives in `golem.sqlite`, in the `intake_*` tables. Current source versions have an FTS5 index.
+Source reads reuse original message ids, timestamps, and attachment metadata where the connector supplies them.
+Plaud note reads do not supply the recording date: `observedAt` marks their read time, which cannot start a response
+period. Original returned tool data and the source-read judgment are also in the separate audit.
+The thread and file search uses Bun's SQLite FTS5 plus the existing local semantic index. Czech keywords use the
+standard Snowball stemmer; there is no guessed accent restoration. This change does not bundle a separate SQLite
+library. On macOS, Bun still selects Apple's SQLite. FTS5 is enabled; this implementation needs no native extension.
+
+Each record belongs to one member. A shared integration credential still produces private evidence for its owner.
+An existing shared family thread may receive source material that matches its subject, as explicitly permitted.
+Other people's private threads remain inaccessible. The source review and its answer are visible in the matching
+thread. Any confirmed notification goes only to the account owner. Turning an account off stops its reads, checks,
+and queued reviews. It keeps historical audit data. Deleted Golem threads are hidden from source recall.
+
+An intake message starts a normal turn in its destination thread. Its agent has the same tools as a turn started by
+the person, including connected-account search and attachment retrieval. The account owner remains the turn's person;
+normal access checks and approvals still apply. Source text and attachments are untrusted data, never instructions.
+Automatic turns cannot send a completion notification themselves, including through `notify`. The intake service
+owns this decision. Approval requests for protected actions keep their normal rules.
+
+Notification permission defaults to null. It requires one supported reason: the owner asked to be told; a substantive
+reply changes a matter Golem was following and needs attention; an unresolved stated time arrived; or time-sensitive
+preparation or a changed event needs attention now. Ordinary messages, mentions, unread status, important topics,
+and an hour without a reply do not qualify alone. Internal review times do not count as promised deadlines. The morning
+review uses the same rule. A silent thread update leaves future checks eligible for later notification. Only eligible
+notifications incur an extra source read and final judge call. Conversation recall includes short replies such as
+"Handled" even when they share no search words with the original request.
+
+Intake first matches an existing subject thread. An unassigned review stores its proposal in
+`intake_delivery.subject`; it does not create a destination until the final delivery assessment. When only a channel
+fits, it starts the subject thread there. When neither fits, it creates a private channel and its first thread.
+Channel names cover lasting subjects; thread titles
+name specific matters. An invitation or ticket can justify a new thread, including a useful notice on the event day.
+The thread agent can find older related mail and attachments with the connected account's normal tools. Intake has
+no separate related-mail discovery process. Durable time checks still handle a missing reply or an approaching event
+when no new source arrives. Source conversation links and the source FTS index keep known subjects available before semantic indexing catches up. A queued review and notification check pin their existing subject rather than searching for a new destination. Source files
+are saved in the chosen channel. Replays reuse the channel, thread, source input, and notification.
+
+`audit.sqlite` is a separate private database. It contains raw source results, exact model requests and responses,
+model identity and usage, retrieval results, validated decisions, state changes, notices, supported attachment bytes,
+agent context and source-review tool results, and corrections. A runtime event records source-file hashes. It contains
+no integration credential store. [SQLite backup](data.md#audit-export) makes a consistent single file for replay on
+another machine. This raw log supports later evaluation and training; it does not train a model by itself.
+
+A private conversation can use `intake_read` to explain what Golem is following. Ordinary-language corrections use
+`intake_update` with the person's latest exact words. The same services have authenticated JSON endpoints for both
+clients. The web and iOS account settings expose the same opt-in.
+
+## Verification
+
+The direct-judge revision passes its tests, lint, and backend and web type checks. Source tests cover Slack's own
+messages, exact mentions, DMs, group DMs, participating-thread replies, unrelated-channel exclusion, deferred root
+lookups, and partial thread cursors. Intake tests cover whole long email bodies, outgoing direction, attachment
+metadata, bounded batches, per-batch retry isolation, scoped checks, and a queued review's fixed subject.
+Golem source capture resumes after the last saved entry and does not revive older dialogue after an agent answer.
+
+Sequence tests cover a 30-day check across a restart, acknowledgements, replies across conversations, account
+outages, repeated polls, silent due reviews, membership and owner isolation, resolved morning updates, opt-out,
+edited source versions, shared-family subjects, and normal source-review tools and approvals. Conference sequences
+cover existing private and shared channels, a new private channel, and name conflicts. Retrying a review creates
+no second input or notification.
+
+The configured judge also passes eleven invented notification examples in `evals/intake/notification-cases.ts`:
+ordinary requests, a later owner reply, a mention, a stated period before and at its due time, an awaited substantive
+reply, today's conference ticket, an explicitly requested update, and an unresolved claim without a known deadline.
+The final notification phase also covers a confirmed event and the owner already handling it. These examples do
+not establish a full-day false-alert rate.
+
+Private captured-data replays retain the original inputs, raw audit, decisions, all thread activity, files, errors,
+notification records, and reference usage. They run in a separate copy with external writes and real pushes disabled.
+A cold-start replay is not a historical test of each 15-minute poll. A frozen source capture cannot prove that no
+reply arrives after its cutoff. Production is not changed by these tests.
+
+The earlier reader-based run is retained for comparison. It passed almost all source groups to the judge, while
+unrelated recalled evidence made inputs large and queued subjects could drop out of recall. Those findings led to
+code selection, direct bounded batches, scoped recall, and fixed review subjects. The whole uncommitted feature
+still has structural warnings for growth, churn, and duplicate code; it does not pass a clean structural gate.
+
+Source-read sequence tests cover an older answer found during a review, partial fulfilment, restart and retry,
+account opt-out, account isolation, and rejection of drafts, fabricated quotes, new work, and response periods based
+on a read time. The person-correction tool still requires the person's exact words. Agent answers and drafts never
+become source evidence. Connector tools without a source observation adapter do not feed facts into this path.
+Destination sequences cover passive filing, a proposal held until morning across restart, suppression after an owner
+reply without new channels or files, reuse of a differently titled thread created after queuing, two proposals merged
+into one thread review, and recovery after thread creation but before the queue binding was saved. Validation rejects
+new checks, split subjects, and promoted notification reasons during the final destination assessment.
+
+## Manual trial
+
+Use the complete source snapshot with a separate configuration folder and a consistent copy of the data folder.
+Do not point the trial at the running server's database. Give the trial its own `base_url` and port in `golem.toml`.
+Keep the model service available as configured. To inspect recorded notifications without real pushes, omit the
+trial's `[apns]` section. The account Settings control which accounts intake reads.
+
+```sh
+bun install --frozen-lockfile
+GOLEM_CONFIG=/path/to/trial/config GOLEM_DATA=/path/to/trial/data bun start
+```
+
+Check the visible source messages and answers in Golem, use `intake_read` to inspect open questions, and keep the
+trial's separate `audit.sqlite`. The source-read change needs no new model or manual check setup. The trial starts
+normal Golem services, including routines and reminders. A source snapshot alone starts no service and copies no
+credentials or personal data. Destination selection is automatic. The older captured-data reports describe the
+earlier creation behavior; the delayed destination change needs a new live trial.

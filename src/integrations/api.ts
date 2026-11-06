@@ -1,5 +1,7 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
+import { HttpError } from "../platform/errors.ts";
+import type { CredentialSummary } from "./integrations.ts";
 import { PUBLIC_KEY_PATH } from "./tesla.ts";
 
 /**
@@ -91,16 +93,32 @@ export const integrationApiRoutes: readonly Route[] = [
   [
     "PUT",
     "/api/v1/workspaces/:workspace/credentials/:credential",
-    api(async ({ app, user, params, body }) =>
-      json(
-        app.integrations.setShared(
+    api(async ({ app, user, params, body }) => {
+      if (
+        typeof body.shared !== "boolean" &&
+        typeof body.watched !== "boolean"
+      ) {
+        throw new HttpError(400, "Send shared or watched as true or false");
+      }
+      let credential: CredentialSummary | undefined;
+      if (typeof body.shared === "boolean") {
+        credential = app.integrations.setShared(
           params.workspace!,
           user,
           params.credential!,
-          body.shared === true
-        )
-      )
-    ),
+          body.shared
+        );
+      }
+      if (typeof body.watched === "boolean") {
+        credential = app.integrations.setWatched(
+          params.workspace!,
+          user,
+          params.credential!,
+          body.watched
+        );
+      }
+      return json(credential);
+    }),
   ],
   [
     "DELETE",

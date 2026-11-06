@@ -1,8 +1,4 @@
-import { mkdirSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
-import { createServer } from "node:net";
-import { join } from "node:path";
-import { program, type Requirement } from "../platform/requirements.ts";
+import { LLAMA_BUILD, LlamaServer } from "../platform/llama.ts";
 
 /**
  * Text, picture, and audio embeddings from Google's EmbeddingGemma 2 (Apache 2.0), run by a pinned llama.cpp `llama-server` child process.
@@ -43,36 +39,6 @@ const PROJECTOR = {
   url: `${HUGGING_FACE}/mmproj-embeddinggemma-2-Q8_0.gguf`,
   sha256: "c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f",
 };
-/** What the embedder needs before it downloads the rest; Golem checks it before it starts. */
-export function embedderRequirements(): Requirement[] {
-  const platform = `${process.platform}-${process.arch}`;
-  return [
-    {
-      name: "llama.cpp build",
-      purpose: "meaning in search",
-      install: `a machine of ${Object.keys(RUNTIMES).join(", ")}`,
-      problem: RUNTIMES[platform] ? null : `none for ${platform}`,
-    },
-    program("tar", "unpacking llama.cpp", "part of macOS and Linux"),
-  ];
-}
-
-const LLAMA_BUILD = "b11871";
-const RELEASES = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_BUILD}`;
-const RUNTIMES: Record<string, { url: string; sha256: string }> = {
-  "darwin-arm64": {
-    url: `${RELEASES}/llama-${LLAMA_BUILD}-bin-macos-arm64.tar.gz`,
-    sha256: "389977376e89be4708e3e20c2f0c70b7252d15f5b848e754a26cf5fb06748d7c",
-  },
-  "linux-x64": {
-    url: `${RELEASES}/llama-${LLAMA_BUILD}-bin-ubuntu-x64.tar.gz`,
-    sha256: "b0a29cc015275b751c0323875db007583b3bd1cb31e921087dd3cd3d37d5eef9",
-  },
-  "linux-arm64": {
-    url: `${RELEASES}/llama-${LLAMA_BUILD}-bin-ubuntu-arm64.tar.gz`,
-    sha256: "7274d21d4adc889fbcfcb89f422d33d66ccba22d28650a580aa3f64acc9586f3",
-  },
-};
 /** Every input must fit one micro-batch; chunks stay far below it. */
 const MAX_TOKENS = 2048;
 const TEXT_BATCH = 16;
@@ -81,15 +47,37 @@ const MEDIA_BATCH = 8;
 export class LlamaEmbedder implements Embedder {
   readonly fingerprint =
     `google/embeddinggemma-2@bfcd298 Q8_0+mmproj llama.cpp-${LLAMA_BUILD} mean-pooled l2 768`;
-  private base: string | undefined;
-  private process: ReturnType<typeof Bun.spawn> | undefined;
-  private stopped = false;
+  private readonly server: LlamaServer;
 
-  constructor(private readonly dataDirectory: string) {}
+  constructor(dataDirectory: string) {
+    this.server = new LlamaServer(
+      dataDirectory,
+      [MODEL, PROJECTOR],
+      ([model, projector]) => [
+        "-m",
+        model!,
+        "--mmproj",
+        projector!,
+        "--embeddings",
+        "--pooling",
+        "mean",
+        "--embd-normalize",
+        "2",
+        "-c",
+        String(MAX_TOKENS * 4),
+        "-np",
+        "4",
+        "-b",
+        String(MAX_TOKENS),
+        "-ub",
+        String(MAX_TOKENS),
+      ]
+    );
+  }
 
   /** Downloads what is missing and starts the server in the background; restarts it if it exits. */
   start(): void {
-    this.run().catch((error: unknown) =>
+    this.server.start((error: unknown) =>
       console.error(
         "Embeddings are unavailable; search uses keywords only.",
         error
@@ -98,7 +86,7 @@ export class LlamaEmbedder implements Embedder {
   }
 
   ready(): boolean {
-    return this.base !== undefined;
+    return this.server.base !== undefined;
   }
 
   async embed(inputs: readonly EmbedInput[]): Promise<Float32Array[]> {
@@ -107,10 +95,11 @@ export class LlamaEmbedder implements Embedder {
       ? MEDIA_BATCH
       : TEXT_BATCH;
     for (let start = 0; start < inputs.length; start += batch) {
-      if (!this.base) {
+      const { base } = this.server;
+      if (!base) {
         throw new Error("The embedding model is not running");
       }
-      const response = await fetch(`${this.base}/v1/embeddings`, {
+      const response = await fetch(`${base}/v1/embeddings`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -134,78 +123,7 @@ export class LlamaEmbedder implements Embedder {
   }
 
   stop(): void {
-    this.stopped = true;
-    this.base = undefined;
-    this.process?.kill();
-  }
-
-  private async run(): Promise<void> {
-    const runtime = RUNTIMES[`${process.platform}-${process.arch}`];
-    if (!runtime) {
-      throw new Error(
-        `No llama.cpp build for ${process.platform}-${process.arch}`
-      );
-    }
-    const models = join(this.dataDirectory, "models");
-    const runtimes = join(this.dataDirectory, "runtime");
-    const server = join(runtimes, `llama-${LLAMA_BUILD}`, "llama-server");
-    const model = join(models, MODEL.file);
-    const projector = join(models, PROJECTOR.file);
-    await download(MODEL.url, MODEL.sha256, model);
-    await download(PROJECTOR.url, PROJECTOR.sha256, projector);
-    if (!(await Bun.file(server).exists())) {
-      const archive = join(runtimes, `llama-${LLAMA_BUILD}.tar.gz`);
-      await download(runtime.url, runtime.sha256, archive);
-      const tar = Bun.spawnSync(["tar", "xzf", archive, "-C", runtimes]);
-      if (tar.exitCode !== 0) {
-        throw new Error(`Could not unpack llama.cpp: ${tar.stderr.toString()}`);
-      }
-      await rm(archive);
-    }
-    while (!this.stopped) {
-      const port = await freePort();
-      this.process = Bun.spawn(
-        [
-          server,
-          "-m",
-          model,
-          "--mmproj",
-          projector,
-          "--embeddings",
-          "--pooling",
-          "mean",
-          "--embd-normalize",
-          "2",
-          "-c",
-          String(MAX_TOKENS * 4),
-          "-np",
-          "4",
-          "-b",
-          String(MAX_TOKENS),
-          "-ub",
-          String(MAX_TOKENS),
-          "--host",
-          "127.0.0.1",
-          "--port",
-          String(port),
-          "--no-webui",
-          "--offline",
-        ],
-        { stdout: "ignore", stderr: "ignore" }
-      );
-      const base = `http://127.0.0.1:${port}`;
-      if (await healthy(base, this.process)) {
-        this.base = base;
-      }
-      await this.process.exited;
-      this.base = undefined;
-      if (!this.stopped) {
-        console.error(
-          `llama-server exited with ${this.process.exitCode}; restarting in 5 s`
-        );
-        await Bun.sleep(5000);
-      }
-    }
+    this.server.stop();
   }
 }
 
@@ -237,69 +155,6 @@ function serverInput(input: EmbedInput): unknown {
       },
     ],
   };
-}
-
-/** Streams `url` to `<path>.part`, hashing as it goes, and keeps it only if the sha256 matches. */
-export async function download(
-  url: string,
-  sha256: string,
-  path: string
-): Promise<void> {
-  if (await Bun.file(path).exists()) {
-    return;
-  }
-  mkdirSync(join(path, ".."), { recursive: true });
-  const response = await fetch(url);
-  if (!(response.ok && response.body)) {
-    throw new Error(`Download failed: ${url} (${response.status})`);
-  }
-  const part = `${path}.part`;
-  const hash = new Bun.CryptoHasher("sha256");
-  const writer = Bun.file(part).writer();
-  for await (const chunk of response.body) {
-    hash.update(chunk);
-    writer.write(chunk);
-  }
-  await writer.end();
-  const actual = hash.digest("hex");
-  if (actual !== sha256) {
-    await rm(part, { force: true });
-    throw new Error(`Checksum mismatch for ${url}: ${actual}`);
-  }
-  await rename(part, path);
-}
-
-async function healthy(
-  base: string,
-  child: ReturnType<typeof Bun.spawn>
-): Promise<boolean> {
-  for (let attempt = 0; attempt < 600; attempt += 1) {
-    if (child.exitCode !== null) {
-      return false;
-    }
-    if (
-      await fetch(`${base}/health`).then(
-        (response) => response.ok,
-        () => false
-      )
-    ) {
-      return true;
-    }
-    await Bun.sleep(100);
-  }
-  return false;
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
-    });
-  });
 }
 
 /** float32 → float16 bytes for a SQLite BLOB. */

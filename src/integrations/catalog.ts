@@ -3,6 +3,7 @@ import { homeAssistantConnector } from "./home-assistant.ts";
 import { instagramConnector } from "./instagram.ts";
 import type { Connector } from "./integrations.ts";
 import { netatmoConnector } from "./netatmo.ts";
+import { recordingObservations, watchRecordings } from "./plaud.ts";
 import { salusConnector } from "./salus.ts";
 import { PASTE_ADDRESS } from "./sign-in.ts";
 import { slackConnector } from "./slack.ts";
@@ -47,6 +48,8 @@ export function integrationCatalog(
       mcp: ["https://mcp.plaud.ai/mcp"],
       // Golem keeps the sign-in; an agent must not revoke it.
       hiddenTools: ["login", "logout"],
+      watch: watchRecordings,
+      observations: recordingObservations,
     },
     {
       id: "t3",

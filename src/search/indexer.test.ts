@@ -231,6 +231,26 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
         message("m1", "We take the ferry to the island"),
         message("m2", "ferry answer in progress", { streaming: true }),
         message("m3", "ferry answer that failed", { failed: true }),
+        message("m4", "Sent.", {
+          agent: true,
+          work: {
+            startedAt: 0,
+            endedAt: 1,
+            stopped: false,
+            steps: [
+              {
+                kind: "tool",
+                text: "",
+                tool: "execute",
+                input:
+                  '{"code": "google_mail_send({to: [\'office@quaybuilders.example\']})"}',
+                output: null,
+                running: false,
+                failed: false,
+              },
+            ],
+          },
+        }),
       ],
     }),
     artifactsWith([
@@ -278,6 +298,12 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
     expect((await indexer.search("family", "draft", 20, null)).results).toEqual(
       []
     );
+    // A tool call's arguments find the thread by whom it wrote to.
+    expect(
+      (await indexer.search("family", "quaybuilders", 20, null)).results.map(
+        (result) => result.uri
+      )
+    ).toEqual(["thread:t1"]);
     // A file Golem cannot read is still found by its name, with no snippet of its stored path.
     expect(
       (await indexer.search("family", "broken report", 20, null)).results.map(

@@ -29,13 +29,17 @@ const server = Layer.unwrap(
       app.indexer.start();
       app.routines.start();
       app.reminders.start();
+      app.intake.start();
       app.pictures.importGoogle();
       return app;
     }),
     (app) =>
       Effect.promise(async () => {
-        embedder.stop();
-        await closeApp(app);
+        try {
+          await closeApp(app);
+        } finally {
+          embedder.stop();
+        }
       })
   ).pipe(Effect.map((app) => routes(app, allRoutes)))
 );

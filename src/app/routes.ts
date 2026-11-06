@@ -4,6 +4,7 @@ import { artifactApiRoutes } from "../artifacts/api.ts";
 import { artifactWebRoutes } from "../artifacts/web.ts";
 import { feedbackApiRoutes } from "../feedback/api.ts";
 import { handsApiRoutes } from "../hands/api.ts";
+import { intakeApiRoutes } from "../intake/api.ts";
 import { integrationApiRoutes } from "../integrations/api.ts";
 import { llmApiRoutes } from "../llm/api.ts";
 import { notificationApiRoutes } from "../notifications/api.ts";
@@ -40,6 +41,7 @@ export const allRoutes: readonly Route[] = [
   ...llmApiRoutes,
   ...handsApiRoutes,
   ...integrationApiRoutes,
+  ...intakeApiRoutes,
   ...placeApiRoutes,
   ...artifactApiRoutes,
   ...artifactWebRoutes,

@@ -35,6 +35,7 @@
     "idb-keyval": "^6.3.0",
     "jszip": "^3.10.2",
     "leaflet": "^1.9.4",
+    "multilingual-stemmer": "^2.2.1",
     "pptxviewjs": "^1.1.9",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",

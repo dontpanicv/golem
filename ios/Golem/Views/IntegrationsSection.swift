@@ -70,6 +70,16 @@ struct IntegrationsSection: View {
                             }
                             .buttonStyle(.golem(.ghost, .icon))
                         }
+                        if integration.watchable {
+                            SettingsRow("Read for me") {
+                                Toggle(
+                                    "Read \(credential.label) for me",
+                                    isOn: Binding(get: { credential.watched }, set: { watch($credential, $0) })
+                                )
+                                .toggleStyle(.golemSwitch)
+                                .labelsHidden()
+                            }
+                        }
                     } else {
                         SettingsRow(credential.label, description: "Shared by \(credential.ownerName)")
                     }
@@ -136,6 +146,16 @@ struct IntegrationsSection: View {
             await session.run {
                 credential.wrappedValue = try await session.api.setCredentialShared(
                     workspaceID: workspaceID, credentialID: credential.wrappedValue.id, shared: shared
+                )
+            }
+        }
+    }
+
+    private func watch(_ credential: Binding<Credential>, _ watched: Bool) {
+        Task {
+            await session.run {
+                credential.wrappedValue = try await session.api.setCredentialWatched(
+                    workspaceID: workspaceID, credentialID: credential.wrappedValue.id, watched: watched
                 )
             }
         }

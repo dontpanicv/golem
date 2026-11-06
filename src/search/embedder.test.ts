@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { download, fromBlob, LlamaEmbedder, toBlob } from "./embedder.ts";
+import { download } from "../platform/llama.ts";
+import { fromBlob, LlamaEmbedder, toBlob } from "./embedder.ts";
 
 let directory: string;
 beforeAll(async () => {

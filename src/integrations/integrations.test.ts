@@ -11,7 +11,11 @@ import {
 import { startTestApp, type TestApp } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
 import { Secrets } from "../platform/secrets.ts";
-import { type Connector, Integrations } from "./integrations.ts";
+import {
+  type Connector,
+  Integrations,
+  type SourceRead,
+} from "./integrations.ts";
 import { whatsAppConnector } from "./whatsapp.ts";
 
 let golem: TestApp;
@@ -1126,4 +1130,243 @@ esac
       ? (await Bun.file(syncs).text()).trim().split("\n").length
       : 0;
   }
+});
+
+test("only a credential's owner lets Golem read it for them, and only a watched one is read", async () => {
+  await golem.signIn("Bob", "bob@example.com");
+  const { internalAdapter } = await golem.app.auth.$context;
+  const found = (await internalAdapter.findUserByEmail("bob@example.com"))!;
+  const bob = {
+    id: found.user.id,
+    name: found.user.name,
+    email: found.user.email,
+  };
+  if (
+    !golem.app.workspaces
+      .members(workspaceId, alice)
+      .some((member) => member.userId === bob.id)
+  ) {
+    await golem.app.workspaces.addMember(workspaceId, alice, bob.email);
+  }
+  const sinces: number[] = [];
+  const watching = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      directory: join(golem.app.config.dataDirectory, "integrations"),
+      catalog: [
+        {
+          id: "mail",
+          name: "Mail",
+          description: "Mail.",
+          secretLabel: "Token",
+          tools: [],
+          watch: async ({ since, account, secret, seen }) => {
+            sinces.push(since);
+            return [
+              {
+                id: "m1",
+                kind: "message",
+                chat: "t1",
+                chatName: `${account} ${await secret()}`,
+                group: false,
+                sender: "Carol",
+                fromOwner: false,
+                at: since,
+                text: seen("m1") ? "seen" : "new",
+                url: null,
+              },
+            ];
+          },
+          attachment: async ({ secret }, item, attachment) =>
+            new TextEncoder().encode(`${item} ${attachment} ${await secret()}`),
+        },
+        {
+          id: "lights",
+          name: "Lights",
+          description: "Lights.",
+          secretLabel: "Token",
+          tools: [],
+        },
+      ],
+    }
+  );
+  const mail = await watching.addCredential(workspaceId, bob, "mail", {
+    label: "bob@mail",
+    secret: "token",
+  });
+  const lights = await watching.addCredential(workspaceId, bob, "lights", {
+    label: "Home",
+    secret: "token",
+  });
+  expect(watching.list(workspaceId, bob).map((each) => each.watchable)).toEqual(
+    [true, false]
+  );
+  expect(watching.watched()).toEqual([]);
+  await expect(watching.watch(mail.id, 1, () => false)).rejects.toThrow(
+    "Golem does not watch this credential"
+  );
+  watching.setShared(workspaceId, bob, mail.id, true);
+  expect(() => watching.setWatched(workspaceId, alice, mail.id, true)).toThrow(
+    "Not found"
+  );
+  expect(() => watching.setWatched(workspaceId, bob, lights.id, true)).toThrow(
+    "Golem cannot read this integration for you"
+  );
+  expect(watching.setWatched(workspaceId, bob, mail.id, true)).toMatchObject({
+    shared: true,
+    watched: true,
+  });
+  expect(watching.watched()).toEqual([
+    {
+      id: mail.id,
+      workspaceId,
+      integration: "mail",
+      integrationName: "Mail",
+      ownerId: bob.id,
+      label: "bob@mail",
+    },
+  ]);
+  expect(await watching.watch(mail.id, 5, () => true)).toMatchObject([
+    { chatName: "bob@mail token", text: "seen", at: 5 },
+  ]);
+  expect(sinces).toEqual([5]);
+  expect(
+    new TextDecoder().decode(await watching.attachment(mail.id, "m1", "a1"))
+  ).toBe("m1 a1 token");
+  watching.setWatched(workspaceId, bob, mail.id, false);
+  await expect(watching.attachment(mail.id, "m1", "a1")).rejects.toThrow(
+    "Golem does not watch this credential"
+  );
+  expect(watching.watched()).toEqual([]);
+});
+
+test("only an opted-in account owner's thread receives verified read observations", async () => {
+  const evidence = {
+    id: "answer",
+    kind: "message" as const,
+    chat: "claim",
+    chatName: "Claim",
+    group: false,
+    sender: "Builder",
+    fromOwner: false,
+    at: 1,
+    text: "The claim is resolved.",
+    url: null,
+  };
+  const connector: Connector = {
+    id: "evidence",
+    name: "Evidence",
+    description: "Read evidence",
+    secretLabel: "Token",
+    watch: async () => [],
+    observations: async (tool, _args, result) =>
+      tool === "evidence_read" ? [result as typeof evidence] : [],
+    tools: ["read", "draft", "fail"].map((name) => ({
+      name: `evidence_${name}`,
+      description: name,
+      parameters: Type.Object({}),
+      execute: async () => {
+        if (name === "fail") {
+          throw new Error("Read failed");
+        }
+        return evidence;
+      },
+    })),
+  };
+  const observed = new Integrations(
+    golem.app.database,
+    Secrets.forTests(),
+    golem.app.workspaces,
+    {
+      directory: join(golem.app.config.dataDirectory, "observations"),
+      catalog: [connector],
+    }
+  );
+  const credential = await observed.addCredential(
+    workspaceId,
+    alice,
+    "evidence",
+    { label: "Private", secret: "token" }
+  );
+  const tools = await observed.tools(workspaceId);
+  const read = tools.find((tool) => tool.name === "evidence_read")!;
+  const received: SourceRead[] = [];
+  const observe = async (observation: SourceRead) => {
+    await Promise.resolve();
+    received.push(observation);
+  };
+  await read.execute({}, { userId: alice.id, observe });
+  expect(received).toEqual([]);
+  observed.setWatched(workspaceId, alice, credential.id, true);
+  await read.execute({}, { userId: alice.id, observe });
+  expect(received).toHaveLength(1);
+  expect(received[0]).toMatchObject({
+    credential: { id: credential.id, ownerId: alice.id },
+    tool: "evidence_read",
+    result: evidence,
+    items: [evidence],
+  });
+  await tools
+    .find((tool) => tool.name === "evidence_draft")!
+    .execute({}, { userId: alice.id, observe });
+  await expect(
+    tools
+      .find((tool) => tool.name === "evidence_fail")!
+      .execute({}, { userId: alice.id, observe })
+  ).rejects.toThrow("Read failed");
+  observed.setShared(workspaceId, alice, credential.id, true);
+  await read.execute({}, { userId: notOwner.id, observe });
+  await read.execute({}, { userId: alice.id });
+  observed.setWatched(workspaceId, alice, credential.id, false);
+  await read.execute({}, { userId: alice.id, observe });
+  expect(received).toHaveLength(1);
+  await observed.close();
+});
+
+test("WhatsApp source reads use original incoming and outgoing text and exclude drafts and reactions", async () => {
+  const connector = whatsAppConnector("unused");
+  const source = { account: "+420111222333", secret: async () => "unused" };
+  const base = {
+    ChatJID: "420999888777@s.whatsapp.net",
+    ChatName: "Builder",
+    SenderName: "Builder",
+    Timestamp: "2026-10-01T08:00:00Z",
+    ReactionEmoji: "",
+    Revoked: false,
+    MediaCaption: "",
+  };
+  const result = {
+    messages: [
+      {
+        ...base,
+        MsgID: "incoming",
+        FromMe: false,
+        Text: "@420111222333 Confirmed.",
+      },
+      { ...base, MsgID: "outgoing", FromMe: true, Text: "I handled this." },
+      {
+        ...base,
+        MsgID: "reaction",
+        FromMe: false,
+        Text: "",
+        ReactionEmoji: "👍",
+      },
+    ],
+  };
+  const items = await connector.observations!(
+    "whatsapp_search",
+    {},
+    result,
+    source
+  );
+  expect(items.map((item) => [item.fromOwner, item.text])).toEqual([
+    [false, "@me Confirmed."],
+    [true, "I handled this."],
+  ]);
+  expect(items[0]!.at).toBe(Date.parse(base.Timestamp));
+  expect(
+    await connector.observations!("whatsapp_draft", {}, result, source)
+  ).toEqual([]);
 });

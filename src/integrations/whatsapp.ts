@@ -3,7 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { type Static, type TSchema, Type } from "@earendil-works/pi-ai";
-import type { Connector, ConnectorTool, Device } from "./integrations.ts";
+import type {
+  Connector,
+  ConnectorTool,
+  Device,
+  WatchedItem,
+  WatchSource,
+} from "./integrations.ts";
 
 /** How long a read of the store may take. */
 const READ_MS = 30 * 1000;
@@ -47,6 +53,18 @@ export function whatsAppConnector(binary: string): Connector {
       "WhatsApp can ban a number that uses a linked device such as this one.",
     ],
     device: whatsApp,
+    watch: (source) => watchChats(whatsApp, source),
+    observations: async (tool, _args, result, source) => {
+      if (tool !== "whatsapp_messages" && tool !== "whatsapp_search") {
+        return [];
+      }
+      const { messages } = result as { messages?: StoredMessage[] };
+      const mention = `@${source.account.replace(/\D/g, "")}`;
+      return (messages ?? []).flatMap((message) => {
+        const item = observedMessage(message, 0, mention);
+        return item ? [item] : [];
+      });
+    },
     tools: [
       readTool(whatsApp, {
         name: "whatsapp_chats",
@@ -536,6 +554,113 @@ async function readEvents(
       }
     }
   }
+}
+
+/** The pages of messages that one watch reads at most; a day of chats fits. */
+const WATCH_PAGES = 20;
+
+/** A message as `wacli messages list --json` gives it. */
+interface StoredMessage {
+  readonly ChatJID: string;
+  readonly ChatName: string;
+  readonly MsgID: string;
+  readonly SenderName: string;
+  readonly Timestamp: string;
+  readonly FromMe: boolean;
+  readonly Text: string;
+  readonly ReactionEmoji: string;
+  readonly MediaCaption: string;
+  readonly Revoked: boolean;
+}
+
+/** The messages of every chat since a time, from the store that the device keeps current. */
+async function watchChats(
+  whatsApp: WhatsApp,
+  { since, account, secret, signal, record, checkpoint }: WatchSource
+): Promise<WatchedItem[]> {
+  const store = await secret();
+  // A mention of the owner is their number, which the model reads as @me.
+  // shortcut: a mention by WhatsApp's internal id (LID) stays a number; map it when wacli gives the account's own LID.
+  const ownMention = `@${account.replace(/\D/g, "")}`;
+  const items: WatchedItem[] = [];
+  const saved = (checkpoint?.value ?? {}) as {
+    cursor?: string;
+    through?: number;
+  };
+  let { cursor } = saved;
+  const through = saved.through ?? Date.now();
+  for (let page = 0; page < WATCH_PAGES; page += 1) {
+    const data = (await whatsApp.read(
+      store,
+      [
+        "messages",
+        "list",
+        "--after",
+        new Date(since).toISOString(),
+        "--limit",
+        "200",
+        ...option("--cursor", cursor),
+      ],
+      signal
+    )) as {
+      messages?: readonly StoredMessage[];
+      page?: { has_more?: boolean; next_cursor?: string };
+    };
+    record?.("raw", data);
+    for (const message of data.messages ?? []) {
+      const item = observedMessage(message, since, ownMention);
+      if (item) {
+        items.push(item);
+      }
+    }
+    cursor = data.page?.has_more ? data.page.next_cursor : undefined;
+    if (!cursor) {
+      checkpoint?.save({});
+      record?.("coverage", { complete: true, through });
+      break;
+    }
+    if (page === WATCH_PAGES - 1) {
+      checkpoint?.save({ cursor, through });
+      record?.("coverage", { complete: false, reason: "WhatsApp page budget" });
+    }
+  }
+  return items;
+}
+
+function observedMessage(
+  message: StoredMessage,
+  since: number,
+  ownMention: string
+): WatchedItem | null {
+  const text = (message.Text || message.MediaCaption).trim();
+  const at = Date.parse(message.Timestamp);
+  if (ignoredObservation(message, text, at, since)) {
+    return null;
+  }
+  const group = message.ChatJID.endsWith("@g.us");
+  return {
+    id: `${message.ChatJID}/${message.MsgID}`,
+    kind: "message",
+    chat: message.ChatJID,
+    chatName: message.ChatName,
+    group,
+    sender: message.FromMe ? "" : message.SenderName,
+    fromOwner: message.FromMe,
+    at,
+    text: text.replaceAll(ownMention, "@me"),
+    url: group ? null : `https://wa.me/${message.ChatJID.split("@")[0]}`,
+  };
+}
+
+function ignoredObservation(
+  message: StoredMessage,
+  text: string,
+  at: number,
+  since: number
+): boolean {
+  return Boolean(
+    message.ReactionEmoji || message.Revoked || !text || !(at >= since)
+  );
 }
 
 /** A tool that reads the person's linked store with a wacli command. */

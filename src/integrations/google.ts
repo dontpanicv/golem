@@ -1,8 +1,21 @@
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Static, type TSchema, Type } from "@earendil-works/pi-ai";
-import type { Connector, ConnectorTool, FileOf } from "./integrations.ts";
+import { htmlText } from "../platform/html.ts";
+import type {
+  Connector,
+  ConnectorTool,
+  FileOf,
+  WatchedItem,
+  WatchSource,
+} from "./integrations.ts";
 import { PASTE_ADDRESS, SIGN_IN_ADDRESS } from "./sign-in.ts";
 
 /** What the sign-in asks for: mail to read, draft, and send, events to manage, files to read, and files to create and share. */
@@ -22,6 +35,8 @@ const RUN_MS = 60 * 1000;
 /** The gog commands that Golem runs; gog refuses every other one. */
 const COMMANDS = [
   "gmail.search",
+  "gmail.messages.search",
+  "gmail.get",
   "gmail.thread.get",
   "gmail.attachment",
   "gmail.drafts.list",
@@ -123,6 +138,23 @@ export function googleConnector(binary: string): Connector {
     authorizationParameters: {
       access_type: "offline",
       prompt: "consent select_account",
+    },
+    watch: (source) => watchMail(gog, source),
+    observations: async (tool, _args, result, source) =>
+      tool === "google_mail_thread" ? readMail(result, source.account) : [],
+    attachment: async ({ secret, signal }, message, attachment) => {
+      const directory = mkdtempSync(join(tmpdir(), "golem-attachment-"));
+      try {
+        const path = join(directory, "file");
+        await gog.run(
+          await secret(),
+          ["gmail", "attachment", `--out=${path}`, "--", message, attachment],
+          signal
+        );
+        return new Uint8Array(await Bun.file(path).arrayBuffer());
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
     },
     tools: [
       gogTool(gog, {
@@ -822,6 +854,211 @@ class Gog {
       rmSync(directory, { recursive: true, force: true });
     }
   }
+}
+
+/** The mail that Golem reads for an account's owner: not spam, trash, or chats. */
+const WATCHED_MAIL = "-in:spam -in:trash -in:chats";
+/** Gmail's tabs of mail that goes to many people. */
+const BULK_LABELS = [
+  "CATEGORY_PROMOTIONS",
+  "CATEGORY_SOCIAL",
+  "CATEGORY_FORUMS",
+];
+
+/** A message as `gog gmail messages search` gives it; text fields carry untrusted markers. */
+interface FoundMail {
+  readonly id: string;
+  readonly threadId: string;
+  readonly internalDateIso: string;
+  readonly from?: string;
+  readonly subject?: string;
+  readonly labels?: readonly string[];
+}
+
+/** Senders that only send automatic notices, such as alerts. */
+const AUTOMATIC_SENDER =
+  /<?(no-?reply|do-?not-?reply|mailer-daemon|postmaster|system|alerts?|monitoring)@/i;
+
+/**
+ * The mail that an account got and sent since a time, with full bodies and attachment metadata. Automatic sender
+ * and bulk labels stay as metadata; the judge decides relevance.
+ */
+async function watchMail(
+  gog: Gog,
+  { since, account, seen, secret, signal, record }: WatchSource
+): Promise<WatchedItem[]> {
+  const token = await secret();
+  const found = (await gog.run(
+    token,
+    [
+      "gmail",
+      "messages",
+      "search",
+      "--all",
+      "--max=100",
+      "--",
+      `after:${Math.floor(since / 1000)} ${WATCHED_MAIL}`,
+    ],
+    signal
+  )) as FoundMail[] | { done: true };
+  record?.("raw", { querySince: since, response: found });
+  const items: WatchedItem[] = [];
+  let fetched = 0;
+  for (const mail of Array.isArray(found) ? found : []) {
+    const at = Date.parse(mail.internalDateIso);
+    const sender = untrusted(mail.from ?? "");
+    if (!(at >= since) || seen(mail.id)) {
+      continue;
+    }
+    const bulk =
+      AUTOMATIC_SENDER.test(sender) ||
+      BULK_LABELS.some((label) => mail.labels?.includes(label));
+    if (fetched >= 30) {
+      record?.("coverage", { complete: false, reason: "Mail body budget" });
+      break;
+    }
+    if (fetched > 0) {
+      await Bun.sleep(1500);
+    }
+    fetched += 1;
+    const { body, attachments } = (await gog.run(
+      token,
+      ["gmail", "get", mail.id],
+      signal
+    )) as {
+      body?: string;
+      attachments?: {
+        attachmentId: string;
+        filename: string;
+        mimeType: string;
+        size: number;
+      }[];
+    };
+    record?.("raw", { id: mail.id, body, attachments });
+    const subject = untrusted(mail.subject ?? "");
+    const text = untrusted(body ?? "");
+    items.push({
+      id: mail.id,
+      kind: "message",
+      chat: mail.threadId,
+      chatName: subject,
+      group: false,
+      sender,
+      fromOwner: mail.labels?.includes("SENT") ?? false,
+      at,
+      text: `Subject: ${subject}\n\n${/<(html|body|div|p|br|table)\b/i.test(text) ? htmlText(text) : text}`,
+      url: `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${mail.threadId}`,
+      bulk,
+      attachments: (attachments ?? []).map((attachment) => ({
+        id: attachment.attachmentId,
+        name: untrusted(attachment.filename),
+        type: attachment.mimeType,
+        size: attachment.size,
+      })),
+    });
+  }
+  return items;
+}
+
+interface MailPart {
+  readonly mimeType?: string;
+  readonly filename?: string;
+  readonly headers?: readonly { name: string; value: string }[];
+  readonly body?: { data?: string; attachmentId?: string; size?: number };
+  readonly parts?: readonly MailPart[];
+}
+
+/** Uses the original message ids and times from Gmail, including messages outside the poll window. */
+function readMail(result: unknown, account: string): WatchedItem[] {
+  const { thread } = result as {
+    thread?: {
+      id: string;
+      messages?: {
+        id: string;
+        threadId: string;
+        internalDate: string | number;
+        labelIds?: string[];
+        payload: MailPart;
+      }[];
+    };
+  };
+  return (thread?.messages ?? []).flatMap((message) => {
+    if (message.labelIds?.includes("DRAFT")) {
+      return [];
+    }
+    const at = Number(message.internalDate);
+    const header = (name: string) =>
+      untrusted(
+        message.payload.headers?.find(
+          (entry) => untrusted(entry.name).toLowerCase() === name
+        )?.value ?? ""
+      );
+    const subject = header("subject");
+    const sender = header("from");
+    const parts = mailParts(message.payload);
+    const bodies = parts.filter((part) => !part.filename && part.body?.data);
+    const plain = bodies.filter((part) => part.mimeType === "text/plain");
+    const body = (
+      plain.length
+        ? plain
+        : bodies.filter((part) => part.mimeType === "text/html")
+    )
+      .map((part) => {
+        const text = untrusted(
+          Buffer.from(untrusted(part.body!.data!), "base64url").toString("utf8")
+        );
+        return part.mimeType === "text/html" ? htmlText(text) : text;
+      })
+      .join("\n\n");
+    if (!(message.id && Number.isFinite(at) && body.trim())) {
+      return [];
+    }
+    const chat = message.threadId || thread!.id;
+    return [
+      {
+        id: message.id,
+        kind: "message" as const,
+        chat,
+        chatName: subject,
+        group: false,
+        sender,
+        fromOwner: message.labelIds?.includes("SENT") ?? false,
+        at,
+        text: `Subject: ${subject}\n\n${body}`,
+        url: `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${chat}`,
+        bulk:
+          AUTOMATIC_SENDER.test(sender) ||
+          BULK_LABELS.some((label) => message.labelIds?.includes(label)),
+        attachments: parts.flatMap((part) =>
+          part.filename && part.body?.attachmentId
+            ? [
+                {
+                  id: part.body.attachmentId,
+                  name: untrusted(part.filename),
+                  type: part.mimeType ?? "application/octet-stream",
+                  size: part.body.size ?? 0,
+                },
+              ]
+            : []
+        ),
+      },
+    ];
+  });
+}
+
+function mailParts(part: MailPart): MailPart[] {
+  return [part, ...(part.parts ?? []).flatMap(mailParts)];
+}
+
+/** A text field of gog's answer without the markers that `--wrap-untrusted` puts around it. */
+function untrusted(value: string): string {
+  return value
+    .replace(
+      /^<<<EXTERNAL_UNTRUSTED_CONTENT[^\n]*\n(?:Source:[^\n]*\n)?(?:---\n)?/,
+      ""
+    )
+    .replace(/\n?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>\s*$/, "")
+    .trim();
 }
 
 /** A tool that runs one gog command with the access token of the call's account. */

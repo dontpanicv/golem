@@ -44,8 +44,14 @@ addresses, or code and data from employers or clients.
   needs its entry in `src/phone/tools.ts` and in `PhoneLink.tools`.
 - Golem stays quiet by default: background work notifies a person only when they must act or asked for it, and a
   routine or reminder answers `QUIET` when nothing needs anyone.
-- Consent first: Golem makes no routine, reminder, or message that no person asked for. It suggests one
-  (`src/agenda/`), which waits, with no push, until its person accepts it.
+- Consent first: explicit routines, reminders, and external messages still need a person's request or an accepted
+  suggestion. "Read for me" (`credential.watched`) is standing consent for `src/intake/` to read that account,
+  retain useful context and infer future checks. A useful development adds a visible source message and files to the
+  existing subject thread, including a matching shared family thread; that thread's existing agent reviews it and its
+  answer stays in that thread. A notification needs a separate supported reason and a fresh source check; useful
+  answers alone never notify. No separate worker thread is made. Code selects personally relevant Slack
+  conversations and keeps incoming and outgoing context. Bounded batches and subject-scoped recall reach the
+  configured model provider. Silent filing starts no agent turn and sends no push.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
 - Golem has one workspace, the family's; nobody makes or deletes one. A private channel (`channel.owner_id`) and all
   of it belong to one member. Every read of channels, threads, files, artifacts, routines, reminders, search, or memory
@@ -74,7 +80,7 @@ addresses, or code and data from employers or clients.
 ## Modules
 
 - `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `places`, `artifacts`,
-  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`, `phone`, `feedback`) holds one domain: its service, routes, and tests. `src/platform/`
+  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`, `intake`, `phone`, `feedback`) holds one domain: its service, routes, and tests. `src/platform/`
   is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
 - A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` from
   routes. A module reads only the tables it owns. `test/architecture.test.ts` enforces these rules;

@@ -34,6 +34,8 @@ export interface CredentialSummary {
   readonly ownerName: string;
   /** Whether the turns of every member use it; else only the turns of its owner. */
   readonly shared: boolean;
+  /** Whether its owner lets Golem read it for them; see `Connector.watch`. */
+  readonly watched: boolean;
 }
 export interface Integration {
   readonly credentials: readonly CredentialSummary[];
@@ -51,6 +53,8 @@ export interface Integration {
   readonly username: string | null;
   /** The steps that set it up, in Markdown; empty when Connect is all. */
   readonly guide: readonly string[];
+  /** Whether Golem can find its owner's tasks in a credential of it, once they turn that on. */
+  readonly watchable: boolean;
   /**
    * Golem's own OAuth client, for an integration whose sign-in server does not register clients: its ID once the
    * server's owner set it, and whether this person may set it. `null` for the other integrations.
@@ -176,10 +180,97 @@ export interface Connector {
   /** The PEM public key that its API checks Golem's signed commands with, which Golem serves at its own address. */
   readonly publicKey?: () => string;
   /**
+   * Reads what an account got and sent since a time, for its owner, once they turn that on for the credential
+   * (`watched`). Only the `intake` module calls it, never an agent.
+   */
+  readonly watch?: (source: WatchSource) => Promise<WatchedItem[]>;
+  /** Extracts source evidence from successful read tools; never drafts or other writes. */
+  readonly observations?: (
+    tool: string,
+    args: Record<string, unknown>,
+    result: unknown,
+    source: Pick<WatchSource, "account" | "secret">
+  ) => Promise<WatchedItem[]>;
+  /** The bytes of an attachment of a watched item, by the ids that `watch` gave. */
+  readonly attachment?: (
+    source: WatchSource,
+    itemId: string,
+    attachmentId: string
+  ) => Promise<Uint8Array>;
+  /**
    * Registers Golem with its API when the server's owner sets the client, such as Tesla's partner account for Golem's
    * domain; Golem keeps the client only when it works.
    */
   readonly registerClient?: (client: OAuthClient) => Promise<void>;
+}
+
+/** What a watch reads with: the time to read from, and the credential's secret or its MCP server. */
+export interface WatchSource {
+  /** Read what came or went at this time or later, in milliseconds. */
+  readonly since: number;
+  readonly record?: (stage: string, data: unknown) => void;
+  readonly checkpoint?: { value: unknown; save: (value: unknown) => void };
+  /** The credential's label, such as the address of a Google account. */
+  readonly account: string;
+  /** Whether Golem already has an item, so a watch does not fetch it again. */
+  readonly seen: (id: string) => boolean;
+  /** What the connector's own tools get as the secret: a device's store, a fresh access token, or the secret. */
+  readonly secret: () => Promise<string>;
+  /** Calls a tool of the connector's MCP server by its own name, and gives its structured content, else its text. */
+  readonly call: (
+    tool: string,
+    args: Record<string, unknown>
+  ) => Promise<unknown>;
+  readonly signal?: AbortSignal;
+}
+
+/** A message or a document that a watched account got or sent, which Golem reads for its owner. */
+export interface WatchedItem {
+  /** Unique within the credential and stable, such as the id of a Gmail message. */
+  readonly id: string;
+  /** One message of a chat or a mail thread, or a whole text, such as the summary of a recorded meeting. */
+  readonly kind: "message" | "document";
+  /** The conversation it belongs to, such as a mail thread or a chat; the earlier messages of a chat are context. */
+  readonly chat: string;
+  readonly chatName: string;
+  /** Whether more than two people write in the chat. */
+  readonly group: boolean;
+  readonly sender: string;
+  /** Whether the owner of the account wrote it. */
+  readonly fromOwner: boolean;
+  /** When it was written or recorded, in milliseconds. */
+  readonly at: number;
+  /** The read time when the source gives no original time. It cannot start a response period. */
+  readonly observedAt?: number;
+  /** Its text, with "@me" where the source mentions the owner by an id or a number. */
+  readonly text: string;
+  /** Where its person opens it, such as the mail in Gmail; null when it has no address. */
+  readonly url: string | null;
+  /**
+   * Whether it came to many people or from an automatic sender. This is source metadata, not a reason to skip
+   * reading: a ticket or an automatic notice can be useful.
+   */
+  readonly bulk?: boolean;
+  readonly attachments?: readonly WatchedAttachment[];
+}
+
+/** A file attached to a watched item, which `Connector.attachment` gives by its id. */
+export interface WatchedAttachment {
+  readonly id: string;
+  readonly name: string;
+  /** Its media type, such as `application/pdf`. */
+  readonly type: string;
+  readonly size: number;
+}
+
+/** A credential whose owner lets Golem read it for them. */
+export interface WatchedCredential {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly integration: string;
+  readonly integrationName: string;
+  readonly ownerId: string;
+  readonly label: string;
 }
 
 /** Keeps data of a connector's credentials while Golem runs, each in the store directory of its credential. */
@@ -207,6 +298,8 @@ export interface Device {
 /** The turn a tool call is part of: the person it is for, whose own credentials come first, also private ones. */
 export interface Turn {
   readonly userId: string | null;
+  /** Receives evidence extracted by the connector from its actual read result. */
+  readonly observe?: (read: SourceRead) => void | Promise<void>;
   readonly signal?: AbortSignal;
   /** The files that its tools can take, such as attachments; a routine has none. */
   readonly file?: FileOf;
@@ -217,6 +310,13 @@ export interface Turn {
    * member answer. Only an agent in a thread can ask, so a routine's script cannot act as a person.
    */
   readonly approve?: (text: string, approverId: string | null) => Promise<void>;
+}
+
+export interface SourceRead {
+  readonly credential: WatchedCredential;
+  readonly tool: string;
+  readonly result: unknown;
+  readonly items: readonly WatchedItem[];
 }
 
 /** A connector tool of one workspace; each call uses the credential of the turn it is part of. */
@@ -363,6 +463,7 @@ export class Integrations {
         address: connector.address ?? false,
         username: connector.username ?? null,
         guide: connector.guide ?? [],
+        watchable: connector.watch !== undefined,
         client: connector.registered ? { clientId, changeable: owner } : null,
         credentials: credentials
           .filter((credential) => credential.integration === connector.id)
@@ -377,13 +478,18 @@ export class Integrations {
   ): (CredentialSummary & { integration: string })[] {
     const rows = this.database
       .query(
-        `SELECT c.id, c.integration, c.label, c.owner_id AS ownerId, u.name AS ownerName, c.shared, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE ${where} AND c.deleted_at IS NULL ORDER BY c.created_at`
+        `SELECT c.id, c.integration, c.label, c.owner_id AS ownerId, u.name AS ownerName, c.shared, c.watched, c.created_at AS createdAt FROM credential c JOIN user u ON u.id = c.owner_id WHERE ${where} AND c.deleted_at IS NULL ORDER BY c.created_at`
       )
-      .all(...params) as (Omit<CredentialSummary, "shared"> & {
+      .all(...params) as (Omit<CredentialSummary, "shared" | "watched"> & {
       integration: string;
       shared: number;
+      watched: number;
     })[];
-    return rows.map((row) => ({ ...row, shared: row.shared === 1 }));
+    return rows.map((row) => ({
+      ...row,
+      shared: row.shared === 1,
+      watched: row.watched === 1,
+    }));
   }
 
   /**
@@ -674,6 +780,7 @@ export class Integrations {
       ownerId: user.id,
       ownerName: user.name,
       shared: false,
+      watched: false,
       createdAt: Date.now(),
     };
     this.database
@@ -713,6 +820,128 @@ export class Integrations {
       credentialId
     )[0]!;
     return credential;
+  }
+
+  /**
+   * Lets Golem read the person's own credential for them, or stops it. Only the owner does, also for a shared
+   * credential: what Golem finds is always theirs, and goes only where they can see it.
+   */
+  setWatched(
+    workspaceId: string,
+    user: User,
+    credentialId: string,
+    watched: boolean
+  ): CredentialSummary {
+    this.workspaces.requireMember(workspaceId, user);
+    const row = this.database
+      .query(`SELECT integration FROM credential WHERE ${OWN_CREDENTIAL}`)
+      .get(credentialId, workspaceId, user.id) as {
+      integration: string;
+    } | null;
+    if (!row) {
+      throw notFound();
+    }
+    if (watched && !this.connector(row.integration).watch) {
+      throw new HttpError(400, "Golem cannot read this integration for you");
+    }
+    this.database
+      .query("UPDATE credential SET watched = ? WHERE id = ?")
+      .run(watched ? 1 : 0, credentialId);
+    const { integration: _, ...credential } = this.summaries(
+      "c.id = ?",
+      credentialId
+    )[0]!;
+    return credential;
+  }
+
+  /** The credentials whose owners let Golem find their tasks in them, of every workspace. */
+  watched(): WatchedCredential[] {
+    const rows = this.database
+      .query(
+        "SELECT id, workspace_id AS workspaceId, integration, owner_id AS ownerId, label FROM credential WHERE watched = 1 AND deleted_at IS NULL ORDER BY created_at"
+      )
+      .all() as Omit<WatchedCredential, "integrationName">[];
+    return rows.flatMap((row) => {
+      const connector = this.catalog.find(({ id }) => id === row.integration);
+      return connector?.watch
+        ? [{ ...row, integrationName: connector.name }]
+        : [];
+    });
+  }
+
+  /** Reads what a watched credential got and sent since `since`; it throws when the credential is not watched. */
+  async watch(
+    credentialId: string,
+    since: number,
+    seen: (id: string) => boolean,
+    signal?: AbortSignal,
+    record?: (stage: string, data: unknown) => void,
+    checkpoint?: WatchSource["checkpoint"]
+  ): Promise<WatchedItem[]> {
+    const { connector, source } = this.watchSource(
+      credentialId,
+      since,
+      seen,
+      signal
+    );
+    return await connector.watch!({ ...source, record, checkpoint });
+  }
+
+  /** The bytes of an attachment of an item that a watched credential got. */
+  async attachment(
+    credentialId: string,
+    itemId: string,
+    attachmentId: string,
+    signal?: AbortSignal
+  ): Promise<Uint8Array> {
+    const { connector, source } = this.watchSource(
+      credentialId,
+      0,
+      () => false,
+      signal
+    );
+    if (!connector.attachment) {
+      throw new Error(`${connector.name} has no attachments`);
+    }
+    return await connector.attachment(source, itemId, attachmentId);
+  }
+
+  private watchSource(
+    credentialId: string,
+    since: number,
+    seen: (id: string) => boolean,
+    signal?: AbortSignal
+  ): { connector: Connector; source: WatchSource } {
+    const row = this.database
+      .query(
+        "SELECT integration, label FROM credential WHERE id = ? AND watched = 1 AND deleted_at IS NULL"
+      )
+      .get(credentialId) as { integration: string; label: string } | null;
+    const connector = this.catalog.find(({ id }) => id === row?.integration);
+    if (!connector?.watch) {
+      throw new Error("Golem does not watch this credential");
+    }
+    const credential = this.liveCredential(credentialId);
+    return {
+      connector,
+      source: {
+        since,
+        account: row!.label,
+        seen,
+        secret: () => this.secretOf(connector, credential),
+        call: (tool, args) =>
+          // A connector that watches through MCP has one server.
+          this.callMcp(
+            credential,
+            connector,
+            connector.mcp![0]!,
+            tool,
+            args,
+            signal
+          ),
+        ...(signal ? { signal } : {}),
+      },
+    };
   }
 
   /** Deletes the person's credential. */
@@ -946,35 +1175,69 @@ export class Integrations {
         const allowed = tool.approval
           ? await tool.approval(rest, credential, turn.signal, turn.file)
           : null;
-        if (allowed === null) {
-          return tool.call(
-            rest,
-            credential,
-            turn.signal,
-            turn.file,
-            undefined,
-            turn.save
+        if (allowed !== null) {
+          if (!turn.approve) {
+            throw new Error(
+              `Only an agent in a thread can use ${tool.name}, after a person allows it.`
+            );
+          }
+          await turn.approve(
+            allowed,
+            this.approverOf(workspaceId, credential, turn.userId)
           );
         }
-        if (!turn.approve) {
-          throw new Error(
-            `Only an agent in a thread can use ${tool.name}, after a person allows it.`
-          );
-        }
-        await turn.approve(
-          allowed,
-          this.approverOf(workspaceId, credential, turn.userId)
-        );
-        return tool.call(
+        const result = await tool.call(
           rest,
           credential,
           turn.signal,
           turn.file,
-          allowed,
+          allowed ?? undefined,
           turn.save
         );
+        await this.observeRead(
+          connector,
+          credential,
+          { tool: tool.name, args: rest, result },
+          turn
+        );
+        return result;
       },
     };
+  }
+
+  private async observeRead(
+    connector: Connector,
+    credential: Credential,
+    read: { tool: string; args: Record<string, unknown>; result: unknown },
+    turn: Turn
+  ): Promise<void> {
+    if (
+      !(turn.observe && connector.observations) ||
+      credential.ownerId !== turn.userId
+    ) {
+      return;
+    }
+    const watched = this.watched().find((each) => each.id === credential.id);
+    if (!watched) {
+      return;
+    }
+    const items = await connector.observations(
+      read.tool,
+      read.args,
+      read.result,
+      {
+        account: watched.label,
+        secret: () => this.secretOf(connector, credential),
+      }
+    );
+    if (items.length) {
+      await turn.observe({
+        credential: watched,
+        tool: read.tool,
+        result: read.result,
+        items,
+      });
+    }
   }
 
   private accountsTool(
@@ -1052,33 +1315,15 @@ export class Integrations {
                 ...(tool.outputSchema
                   ? { outputSchema: tool.outputSchema as TSchema }
                   : {}),
-                call: async (args, credential, signal) => {
-                  const result = await this.withClient(
+                call: (args, credential, signal) =>
+                  this.callMcp(
                     credential,
                     connector,
                     server,
-                    (client) =>
-                      client.callTool(
-                        {
-                          name: tool.name,
-                          arguments: args as Record<string, unknown>,
-                        },
-                        undefined,
-                        { signal }
-                      )
-                  );
-                  const text = (
-                    result.content as { type: string; text?: string }[]
-                  )
-                    .flatMap((item) =>
-                      item.type === "text" ? [item.text ?? ""] : []
-                    )
-                    .join("\n");
-                  if (result.isError) {
-                    throw new Error(text || `${connector.name} failed`);
-                  }
-                  return result.structuredContent ?? text;
-                },
+                    tool.name,
+                    args as Record<string, unknown>,
+                    signal
+                  ),
               })
             );
         } catch (error) {
@@ -1088,6 +1333,31 @@ export class Integrations {
       })
     );
     return servers.flat();
+  }
+
+  /** Calls a tool of an MCP server with a credential, and gives its structured content, else its text. */
+  private async callMcp(
+    credential: Credential,
+    connector: Connector,
+    server: string,
+    name: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal | undefined
+  ): Promise<unknown> {
+    const result = await this.withClient(
+      credential,
+      connector,
+      server,
+      (client) =>
+        client.callTool({ name, arguments: args }, undefined, { signal })
+    );
+    const text = (result.content as { type: string; text?: string }[])
+      .flatMap((item) => (item.type === "text" ? [item.text ?? ""] : []))
+      .join("\n");
+    if (result.isError) {
+      throw new Error(text || `${connector.name} failed`);
+    }
+    return result.structuredContent ?? text;
   }
 
   /**

@@ -159,6 +159,7 @@ export interface Credential {
   readonly ownerName: string;
   /** Whether every member's turns use it; else only its owner's. */
   readonly shared: boolean;
+  readonly watched: boolean;
   readonly createdAt: number;
 }
 
@@ -177,6 +178,7 @@ export interface Integration {
   readonly username: string | null;
   /** The steps that set it up, in Markdown; empty when Connect is all. */
   readonly guide: readonly string[];
+  readonly watchable: boolean;
   /** Golem's own OAuth client, which the server's owner sets: its ID, and whether this person may set it. */
   readonly client: {
     readonly clientId: string | null;
@@ -346,6 +348,7 @@ export type UsageSource =
   | "orchestrator"
   | "routine"
   | "reminder"
+  | "intake"
   | "background";
 
 export interface Usage {

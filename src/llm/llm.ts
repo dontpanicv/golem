@@ -57,12 +57,16 @@ export interface LlmStatus {
   readonly provider: string;
 }
 
-/** What a model call was for: a person's thread, their orchestrator, a routine run, a reminder, or work for nobody. */
+/**
+ * What a model call was for: a person's thread, their orchestrator, a routine run, a reminder, what Golem read in the
+ * accounts a person watches, or work for nobody.
+ */
 export type UsageSource =
   | "thread"
   | "orchestrator"
   | "routine"
   | "reminder"
+  | "intake"
   | "background";
 
 /** Whom a model call's cost counts for. */
@@ -129,7 +133,8 @@ export class Llm {
     private readonly database: Database,
     secrets: Secrets,
     readonly llmProvider: LlmProvider,
-    private readonly owner: string | null
+    private readonly owner: string | null,
+    private readonly observe?: (spend: Spend | undefined, data: unknown) => void
   ) {
     this.models = createModels({
       credentials: new SqliteCredentialStore(database, secrets),
@@ -304,6 +309,15 @@ export class Llm {
       throw new Error(`Unknown model: ${modelId}`);
     }
     const effort = clampThinkingLevel(model, "low");
+    const callId = randomUUID();
+    this.observe?.(spend, {
+      callId,
+      stage: "request",
+      model: `${this.providerId}/${modelId}`,
+      systemPrompt,
+      text,
+      effort,
+    });
     const answer = await this.models.completeSimple(
       model,
       {
@@ -315,6 +329,12 @@ export class Llm {
     if (spend) {
       this.record(spend, `${this.providerId}/${modelId}`, answer.usage);
     }
+    this.observe?.(spend, {
+      callId,
+      stage: "response",
+      model: `${this.providerId}/${modelId}`,
+      answer,
+    });
     if (answer.stopReason === "error" || answer.stopReason === "aborted") {
       throw new Error(answer.errorMessage ?? "The model did not answer");
     }

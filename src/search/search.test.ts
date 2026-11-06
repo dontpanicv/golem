@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -489,6 +490,60 @@ test("search handles stop words, a text without vectors, and long excerpts", asy
   expect(result?.snippet).toContain("The passport is in the blue folder.");
   expect(result?.snippet.length).toBeLessThanOrEqual(202);
   index.close();
+});
+
+test("standard Czech stems find inflections, exact words ignore accents, and English plurals match", async () => {
+  const path = join(dataDirectory, "stems.sqlite");
+  const index = new WorkspaceIndex(path, "model");
+  await sync(index, "notes/claim.md", "1", [
+    { key: "0", text: "Poslali jsme reklamace balkonu developerovi." },
+  ]);
+  await sync(
+    index,
+    "notes/deadline.md",
+    "1",
+    [{ key: "0", text: "Termín je 30 dní." }],
+    "Lhůta pro vyřízení reklamací"
+  );
+  await sync(index, "notes/invoices.md", "1", [
+    { key: "0", text: "All invoices are paid." },
+  ]);
+  const found = (query: string) =>
+    index
+      .search(query, null, 5, all)
+      .map((result) => result.uri)
+      .sort((a, b) => a.localeCompare(b));
+  expect(found("reminder k reklamacím")).toEqual([
+    "notes/claim.md",
+    "notes/deadline.md",
+  ]);
+  expect(found("reklamaci")).toEqual(["notes/claim.md", "notes/deadline.md"]);
+  expect(found("lhůty")).toEqual(["notes/deadline.md"]);
+  expect(found("invoice")).toEqual(["notes/invoices.md"]);
+  index.close();
+});
+
+test("an index of older keywords rebuilds them with stems and keeps its vectors", async () => {
+  const path = join(dataDirectory, "rebuild.sqlite");
+  const index = new WorkspaceIndex(path, "model");
+  await sync(index, "notes/claim.md", "1", [
+    { key: "0", text: prose("reklamace balkonu") },
+  ]);
+  embedWaiting(index);
+  index.close();
+  const older = new Database(path);
+  older.run("DELETE FROM fts");
+  older.run(
+    "INSERT INTO fts (rowid, name, body) SELECT s.id, src.title, s.excerpt FROM segments s JOIN sources src ON src.id = s.source"
+  );
+  older.run("DELETE FROM meta WHERE key = 'keywords'");
+  older.close();
+  const reopened = new WorkspaceIndex(path, "model");
+  expect(reopened.counts().waiting).toBe(0);
+  expect(
+    reopened.search("reklamací", null, 5, all).map((result) => result.uri)
+  ).toEqual(["notes/claim.md"]);
+  reopened.close();
 });
 
 test("a query of 500 words uses only its first 32 terms", async () => {

@@ -219,45 +219,6 @@ struct Member: Codable, Hashable, Identifiable {
     var id: String { userId }
 }
 
-struct Credential: Codable, Hashable, Identifiable {
-    let id: String
-    let label: String
-    /// The person who connected it; only they share or delete it.
-    let ownerId: String
-    let ownerName: String
-    /// Whether every member's turns use it; else only its owner's.
-    var shared: Bool
-    let createdAt: Double
-}
-
-struct Integration: Codable, Hashable, Identifiable {
-    let id: String
-    let name: String
-    /// How people connect it: with a secret, by signing in on its page, or by linking a phone number with a code.
-    let connect: Connection
-    /// The name of the secret, for `.secret`.
-    let secretLabel: String?
-    /// Whether the person names a credential; else Golem names it from the secret.
-    let labeled: Bool
-    /// Whether the secret, or the sign-in, also needs the address of the person's own server.
-    let address: Bool
-    /// The name of the account that the secret also needs, such as "Email", which names the credential.
-    let username: String?
-    /// The steps that set it up, in Markdown; empty when Connect is all.
-    let guide: [String]
-    /// Golem's own OAuth client, which the server's owner sets; nil for integrations without one.
-    let client: Client?
-    var credentials: [Credential]
-
-    enum Connection: String, Codable { case secret, signIn = "sign-in", phone }
-
-    struct Client: Codable, Hashable {
-        let clientId: String?
-        /// Whether this person may set it.
-        let changeable: Bool
-    }
-}
-
 /// The sign-in page of an integration's MCP server.
 struct ConnectPage: Decodable {
     let url: URL

@@ -115,8 +115,8 @@ type SearchResult = {
 };
 type RecentSearch = { query: string; searchedAt: number }; // newest first; the same query again, in any case, only moves to the top
 type Member = { userId: string; name: string; email: string; picture: string | null; role: "owner" | "admin" | "member" };
-type Credential = { id: string; label: string; ownerId: string; ownerName: string; shared: boolean; createdAt: number }; // ownerId: the person who connected it, who alone shares or deletes it; shared: every member's turns use it, else only its owner's
-type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; username: string | null; guide: string[]; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret, or for "sign-in" the MCP servers, also needs the address of the person's own server; username: the name of the account that the secret also needs, such as "Email", which names the credential; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
+type Credential = { id: string; label: string; ownerId: string; ownerName: string; shared: boolean; watched: boolean; createdAt: number }; // ownerId: the person who connected it, who alone shares, watches, or deletes it; shared: every member's turns use it, else only its owner's; watched: its owner lets Golem read it for them (`src/intake/`)
+type Integration = { id: string; name: string; connect: "secret" | "sign-in" | "phone"; secretLabel: string | null; labeled: boolean; address: boolean; username: string | null; guide: string[]; watchable: boolean; client: { clientId: string | null; changeable: boolean } | null; credentials: Credential[] }; // watchable: Golem can read a credential of it for its owner; secretLabel: for "secret"; labeled: the person names a credential, else Golem names it from the secret, as Slack's by its workspace; address: the secret, or for "sign-in" the MCP servers, also needs the address of the person's own server; username: the name of the account that the secret also needs, such as "Email", which names the credential; guide: the steps that set it up, in Markdown; client: Golem's own OAuth client, and whether this person may set it
 type RoutineRun = {
 	id: string;
 	routineId: string;
@@ -205,7 +205,7 @@ type Llm = {
 	error: string | null; // the last login error
 };
 type UsageTotals = { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; input leaves out cacheRead, the tokens read from the prompt cache; cost in US dollars at the model's list price, which a ChatGPT login does not pay
-type UsageSource = "thread" | "orchestrator" | "routine" | "reminder" | "background"; // background: briefs, memory, names, emojis, and what Golem learns
+type UsageSource = "thread" | "orchestrator" | "routine" | "reminder" | "intake" | "background"; // intake: what Golem reads in watched accounts; background: briefs, memory, names, emojis, and what Golem learns
 type Usage = {
 	days: (UsageTotals & { day: string })[]; // "YYYY-MM-DD" in UTC, oldest first; a day without use is left out
 	total: UsageTotals;
@@ -226,11 +226,11 @@ type Learned = {
 };
 type Suggestion = {
 	id: string;
-	kind: "routine" | "reminder";
-	name: string; // the routine's name, or the reminder's text
-	text: string; // the routine's instructions, or the reminder's text
+	kind: "routine" | "reminder" | "channel";
+	name: string; // the routine's name, the reminder's text, or the private channel's name
+	text: string; // the routine's instructions, the reminder's text, or what the channel is for
 	schedule: string | null; // a routine's cron expression in the server's time zone
-	at: number | null; // when the reminder is due, or the routine's first run
+	at: number | null; // when the reminder is due, or the routine's first run; null for a channel
 	channelId: string; // where the routine would run
 	threadId: string; // the thread whose messages gave it
 	createdAt: number;
@@ -478,7 +478,7 @@ to put that host on the internet while the rest of Golem stays private.
 | `POST …/integrations/:integrationId/credentials` | `{ label?, secret, address?, username? }`; `label` when the integration is `labeled`, `address` when it has `address`, `username` when it has `username` | `Credential`, private; `400` unless `connect` is `"secret"`, or when the integration cannot use the secret, such as a Slack cURL whose session Slack refuses |
 | `POST …/integrations/:integrationId/connect` | `{ phone }` for `"phone"`; `{ address }` for `"sign-in"` with `address`: the person's own server | `{ url }`: the integration's sign-in page; `{ code }` for `"phone"`. `400` when `address` is not http or https |
 | `POST …/integrations/:integrationId/sign-in` | `{ address }`; `{}` for `"phone"` | `Credential`, private; `400` when the address is not of the person's own sign-in in this workspace, the sign-in did not finish, or the number did not link within a minute |
-| `PUT …/credentials/:credentialId` | `{ shared }` | `Credential`; `404` unless it is the person's own |
+| `PUT …/credentials/:credentialId` | `{ shared }`, `{ watched }`, or both | `Credential`; `404` unless it is the person's own; `400` for `watched: true` when the integration is not `watchable` |
 | `DELETE …/credentials/:credentialId` | | `204`; `404` unless it is the person's own |
 | `PUT /api/v1/integrations/:integrationId/client` | `{ clientId, clientSecret }` | `204`; the next sign-in uses it, at once. `403` unless the person is the server's owner, `404` unless the integration has `client`, `400` with the reason when the integration's API refuses the client, such as Tesla's when it cannot register Golem's domain |
 | `GET /.well-known/appspecific/com.tesla.3p.public-key.pem` | | The public key that Tesla's Fleet API checks Golem's signed commands with, with no sign-in; `404` without the Tesla integration |
@@ -550,12 +550,61 @@ and the person who asks both use. It is due once the recipient crosses the circl
 when Golem hears of it late. A new reminder starts as outside: one for an arrival where the recipient is now is due at
 once.
 
+### Intake (`src/intake/`)
+
+| Request | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/intake?q=words` | | `{ evidence, checks, coverage }`, scoped to the signed-in person; evidence contains up to 30 current source records |
+| `POST /api/v1/workspaces/:workspaceId/intake/checks/:checkId` | `{ resolved: boolean, quote: string, at?: string }` | `{ updated: true }`; `at` is an ISO time; the correction is recorded in the audit; `404` for another person's check; `400` for invalid input |
+
+Evidence has `id`, `conversation` (source account and conversation), `text`, `at` (Unix milliseconds), `source`,
+`url`, and `fromOwner`, with optional `bulk` and attachment name, type, and size metadata. A check has `id`, `threadId`,
+`text`, `sourceIds`, `checkAt`, `deadlineAt`, `reviewAt`, and `notifiedAt`. A null `deadlineAt` means an internal review,
+not a promised deadline. Coverage has `source` (credential id), `through` (Unix milliseconds), and `error`.
+All workspace access requires membership. Turning off an account stops its source reads and automatic checks and
+notices. Existing audit records remain private. Deleted Golem threads are excluded from source recall.
+
+"Read for me" is off by default and only its credential owner can change it. It permits automatic private context,
+future checks, and useful source reviews in the existing subject thread. Matching shared family threads may receive
+the source material. External messages still need the person's request and normal tool approval. Collection runs every 15 minutes, starts one day back, and uses saved cursors with an overlap. A bounded
+poll can retain a backlog checkpoint without claiming complete source coverage.
+
+Personally relevant Slack messages and both directions of Gmail and WhatsApp are grouped into bounded batches. Related source history and subject checks reach the
+configured model provider. Golem validates source ids, exact supporting quotes, destinations, and time fields before
+it changes state. Each subject gets its own decision. Current source versions are searchable; older versions remain
+as historical evidence. Full source and decision records live in the private audit database.
+
+Future checks run from durable times, even without new messages. Before a no-reply decision, Golem checks source
+coverage and related replies. Passive filing starts no thread turn. Useful thread reviews can run silently. A useful development starts a source review
+in its existing subject thread, with a visible input message and attached source files. Its existing Pi Durable agent
+explains the change and proposes next actions. Completion is silent by default, including useful written answers.
+When no thread matches a useful development, Golem starts a subject thread in a suitable visible channel. If no
+channel fits, Golem creates a private channel and its first thread. Invitations and tickets can start these threads.
+Channel names cover lasting subjects; thread titles name specific matters. The normal agent can search connected
+accounts for older related sources. No background worker thread is made. Nonurgent developments wait for the 08:00 Europe/Prague
+review and are checked again. One delivery group belongs to one person and one subject thread. Stable request ids
+prevent duplicate review messages, runs, and notices. A resolved check cancels queued reviews. A `QUIET` answer sends
+no notice and does not mark an internal check as already notified. The judge separately proposes a notification with
+an exact source quote and one reason: the owner requested it, a substantive awaited reply needs attention, a stated
+time arrived, or time-sensitive preparation helps now. A new message, mention, or hour without a reply is insufficient.
+Only a proposed notification triggers a fresh read of its source accounts and a final judge check after the thread
+answers. A later owner reply can suppress the notice while the useful answer remains visible. Source failures keep
+the notification pending for retry. Silent turns cannot promote themselves with `notify` or a useful answer. A morning
+review cannot promote a silent update either. Only confirmed notifications mark their related due checks as notified.
+Automatic reviews use the normal tools of the
+thread, including connected accounts, with the same person, access rules, and approvals as a normal turn. Tool calls,
+results, and errors remain in the private audit log. Source inputs and files use the existing message endpoints and
+event streams on web and iOS.
+
+Private agents use the script tools `intake_read({ query })` and `intake_update({ id, resolved, at?, quote })`. The latter
+requires an exact quote from the person's latest message. Source text is untrusted data. See [process](proactive.md).
+
 ### Agenda (`src/agenda/`)
 
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/upcoming` | | `Upcoming`: what Golem runs for the person and what waits for them |
-| `POST /api/v1/workspaces/:workspaceId/suggestions/:suggestionId` | `{ accept: boolean }` | `204`; `accept` makes the routine in its channel, or the reminder in the person's orchestrator, both as theirs; else Golem does not suggest it again. `404` for another person's suggestion; `409` when its channel is gone or its time has passed |
+| `POST /api/v1/workspaces/:workspaceId/suggestions/:suggestionId` | `{ accept: boolean }` | `204`; `accept` makes the routine in its channel, the reminder in the person's orchestrator, or the person's private channel, all as theirs; else Golem does not suggest it again. `404` for another person's suggestion; `409` when its channel is gone or its time has passed |
 | `GET /api/v1/workspaces/:workspaceId/watched-places` | | `{ places: WatchedPlace[] }`: the places that the person's iPhone watches, those of their pending reminders and enabled routines at a place |
 | `POST /api/v1/workspaces/:workspaceId/watched-places/:placeId/reports` | `{ event: "arrive" \| "leave", at, initial }` | `204`; the iPhone saw the person arrive or leave at `at` (Unix milliseconds; a time in the future is now). `initial`: the first state after it started to watch the place, which is no crossing. A report older than the last one, or of the same state, changes nothing. `400` for another body; `404` unless the person's iPhone watches the place |
 | `DELETE /api/v1/workspaces/:workspaceId/reminders/:reminderId` | | `204`; cancels a pending reminder for the person or from them; `404` for another one; `409` while it runs or after it was delivered |
@@ -566,8 +615,8 @@ makes due the reminders and runs the routines of its event. The first state afte
 makes due only the reminders for an arrival, as a reminder starts as outside. The iPhone gets a new place when the app
 opens or goes to the background.
 
-Golem suggests and never makes an automation itself: a suggestion waits, with no push, until its person accepts or
-declines it. A person has at most 3 waiting; Golem drops one with the same name as one they already had, and one whose
+Golem suggests and never makes an automation or a channel itself: a suggestion waits, with no push, until its person
+accepts or declines it. A person has at most 3 waiting; Golem drops one with the same name as one they already had, and one whose
 schedule or time cannot run.
 
 ### Places (`src/places/`)

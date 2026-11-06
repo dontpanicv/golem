@@ -3,6 +3,7 @@ import { type FSWatcher, mkdirSync, statSync, watch } from "node:fs";
 import { basename, join } from "node:path";
 import type { Artifacts } from "../artifacts/artifacts.ts";
 import { HttpError } from "../platform/errors.ts";
+import { htmlText } from "../platform/html.ts";
 import type { Threads } from "../threads/threads.ts";
 import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { documentPrompt, type Embedder, queryPrompt } from "./embedder.ts";
@@ -10,7 +11,6 @@ import {
   type ExtractedSegment,
   type Extraction,
   extract,
-  htmlText,
   isIgnored,
 } from "./extract.ts";
 import {
@@ -167,7 +167,8 @@ export class Indexer {
     workspaceId: string,
     query: string,
     limit: number,
-    realm: Realm
+    realm: Realm,
+    kind?: SearchKind
   ): Promise<SearchResponse> {
     const index = this.index(workspaceId);
     let vector: Float32Array | null = null;
@@ -197,6 +198,7 @@ export class Indexer {
         vector,
         limit,
         (source) =>
+          (kind === undefined || source.kind === kind) &&
           (source.channelId === null || channels.has(source.channelId)) &&
           (source.kind !== "artifact" || artifacts.has(source.uri)) &&
           (source.kind !== "thread" || threads.has(source.uri))
@@ -262,21 +264,27 @@ export class Indexer {
           threadId: thread.id,
           channelId: thread.channelId,
           // A new name or channel also indexes the thread again; unchanged messages keep their vectors.
-          version: `${await this.threads.version(thread)}:${thread.title}:${thread.channelId}`,
+          version: `${await this.threads.version(thread)}:${thread.title}:${thread.channelId}:tools`,
           updatedAt: thread.updatedAt,
         },
         async () => {
           const { messages } = await this.threads.messages(thread);
           const segments = messages
             .filter((message) => !(message.streaming || message.failed))
-            .flatMap((message) =>
-              chunk(`${message.author}: ${cardWords(message.text)}`).map(
-                (text, part) => ({
-                  key: `${message.id}:${part}`,
-                  text,
-                })
-              )
-            );
+            .flatMap((message) => [
+              ...chunk(`${message.author}: ${cardWords(message.text)}`).map(
+                (text, part) => ({ key: `${message.id}:${part}`, text })
+              ),
+              // A tool call's arguments find a thread by whom it wrote to, and what it saved or looked up.
+              ...(message.work?.steps ?? []).flatMap((step, stepIndex) =>
+                step.kind === "tool" && step.input
+                  ? chunk(`${step.tool}: ${step.input}`).map((text, part) => ({
+                      key: `${message.id}:tool:${stepIndex}:${part}`,
+                      text,
+                    }))
+                  : []
+              ),
+            ]);
           return { segments };
         }
       );

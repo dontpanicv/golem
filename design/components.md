@@ -172,7 +172,8 @@ Used by the workspace switcher and action menus.
 - An integration is one card. Its first row has the name and the count of accounts, and at the right its actions as
   small buttons: Client (for the server's owner, when it has one), then the way to connect (Connect, Link number, or
   Add credential), then the info button of its guide. Each credential is a compact row under it. On a narrow page the
-  buttons wrap under the name.
+  buttons wrap under the name. Under each of the person's own credentials of an integration that Golem can read for
+  them, a compact row with the `check` icon (iOS: none), "Read for me", and its switch.
 - Places: a compact row per place with its name and its radius and Shared or Private, then the Private switch and the
   change and remove icon buttons (iOS: the switch and a menu). Add place opens a dialog: the Name field; the Address
   field, where Enter or Return moves the map to the address (the web asks OpenStreetMap's search through Golem, iOS asks

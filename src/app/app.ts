@@ -7,6 +7,7 @@ import { Artifacts } from "../artifacts/artifacts.ts";
 import { Browser, browserRequirements } from "../browser/browser.ts";
 import { FeedbackReports } from "../feedback/feedback.ts";
 import { Hands, handsRequirements } from "../hands/hands.ts";
+import { Intake } from "../intake/intake.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
 import { apnsPush } from "../notifications/apns.ts";
@@ -16,11 +17,12 @@ import { Places } from "../places/places.ts";
 import { type Auth, createAuth, migrateAuth } from "../platform/auth.ts";
 import type { Config } from "../platform/config.ts";
 import { migrate, openDatabase } from "../platform/database.ts";
+import { llamaRequirements } from "../platform/llama.ts";
 import type { Requirement } from "../platform/requirements.ts";
 import { Secrets } from "../platform/secrets.ts";
 import { Reminders } from "../reminders/reminders.ts";
 import { Routines } from "../routines/routines.ts";
-import { type Embedder, embedderRequirements } from "../search/embedder.ts";
+import type { Embedder } from "../search/embedder.ts";
 import { extractRequirements, jpeg, readText } from "../search/extract.ts";
 import { Indexer, RecentSearches } from "../search/search.ts";
 import { Threads } from "../threads/threads.ts";
@@ -45,6 +47,7 @@ export interface App {
   readonly places: Places;
   readonly reminders: Reminders;
   readonly agenda: Agenda;
+  readonly intake: Intake;
   readonly phone: Phone;
   readonly feedback: FeedbackReports;
 }
@@ -55,7 +58,7 @@ const HANDS_BINARIES = resolve(import.meta.dir, "../../hands/dist");
 export async function checkRequirements(): Promise<Requirement[]> {
   const requirements = await Promise.all([
     extractRequirements(),
-    embedderRequirements(),
+    llamaRequirements(),
     handsRequirements(HANDS_BINARIES),
     browserRequirements(),
   ]);
@@ -82,11 +85,20 @@ export async function createApp(
   });
   await migrateAuth(auth);
   migrate(database);
+  const audit = Intake.audit(join(config.dataDirectory, "audit.sqlite"));
   const llm = new Llm(
     database,
     resolvedSecrets,
     llmProvider,
-    config.allowedEmails[0] ?? null
+    config.allowedEmails[0] ?? null,
+    (spend, data) =>
+      audit.record(
+        `model:${spend?.source ?? "background"}:${spend?.threadId ?? ""}`,
+        "model.call",
+        spend?.workspaceId ?? "",
+        spend?.userId ?? "",
+        data
+      )
   );
   // New connector tools reach the agents' next runs.
   const reloadTools = (workspaceId: string) => {
@@ -140,9 +152,15 @@ export async function createApp(
     browser,
     notifications,
     {
+      audit: (workspaceId, ownerId, trace, stage, data) =>
+        audit.record(trace, stage, workspaceId, ownerId, data),
       recall: (workspaceId, query, limit, personId) =>
         indexer.search(workspaceId, query, limit, personId),
       changed: (workspaceId) => indexer.touch(workspaceId),
+      observedContext: (workspaceId, threadId, ownerId) =>
+        intake.contextFor(workspaceId, threadId, ownerId),
+      sourceRead: (thread, ownerId, read) =>
+        intake.recordSourceRead(thread, ownerId, read),
       moved: (threadId, channelId) => {
         routines.moveWithThread(threadId, channelId);
         agenda.moveWithThread(threadId, channelId);
@@ -151,6 +169,7 @@ export async function createApp(
         ...(await routines.tools(workspaceId)),
         ...reminders.tools(workspaceId),
         ...phone.tools(workspaceId),
+        ...intake.tools(workspaceId),
         ...feedback.tools(workspaceId),
       ],
       automations: (workspaceId, personId) =>
@@ -186,6 +205,16 @@ export async function createApp(
     reminders,
     places
   );
+  const intake = new Intake(
+    database,
+    workspaces,
+    integrations,
+    threads,
+    indexer,
+    llm,
+    audit,
+    notifications
+  );
   const phone = new Phone(threads);
   const feedback = new FeedbackReports(
     database,
@@ -212,17 +241,20 @@ export async function createApp(
     places,
     reminders,
     agenda,
+    intake,
     phone,
     feedback,
   };
 }
 
 export async function closeApp(app: App): Promise<void> {
+  await app.intake.close();
   app.reminders.close();
   app.routines.close();
   await app.indexer.close();
   await app.threads.closeAll();
   await app.integrations.close();
   await app.hands.close();
+  app.intake.audit.close();
   app.database.close();
 }

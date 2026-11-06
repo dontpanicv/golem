@@ -31,8 +31,11 @@ SQLite and Markdown.
 - **It makes pages and small apps.** Ask for an invite, a poll, a packing list, or a game, and Golem builds it as an
   artifact that keeps its own data. Keep it for the family, or share a public link with anyone, while the rest of
   Golem stays private.
-- **It stays quiet.** Background work tells a person only when they must act or asked to know. Golem makes no routine,
-  reminder, or message that nobody asked for: it suggests one, and the suggestion waits until its person accepts it.
+- **It reads your accounts for you.** Turn on "Read for me" for mail, WhatsApp, Slack, or Plaud. Golem keeps useful
+  context and follows unresolved matters. If the builder has 30 days to reply, Golem checks later without a routine
+  or a task card. A local model reads new material first.
+- **It stays quiet.** Passive updates send no push. Golem tells you about useful changes and due follow-ups in your
+  matching Golem thread. Explicit routines, reminders, and external messages still need your request or consent.
 - **Your data stays with you.** One server, one SQLite database, Markdown files, and a search index that runs on the
   machine. Each person's own channels, machines, accounts, and places are private until they share them.
 
@@ -311,6 +314,40 @@ run at a place instead of on a schedule; the iPhone tells Golem when it happens.
   online again; it also shows the reminders of that place itself. Golem still makes a late reminder due, but does not
   run a routine for a crossing that it hears of more than 15 minutes late.
 
+### Your accounts, read for you
+
+Turn on "Read for me" for each account in Settings. Golem reads incoming and outgoing material every 15 minutes.
+The first read covers one day; later reads continue from a saved cursor, including after an outage. Slack covers
+private messages, mentions, and your own messages. Plaud supplies meeting summaries.
+
+Intake keeps Slack messages that the person sends, direct mentions, DMs, group DMs, and replies in those Slack
+threads. Gmail and WhatsApp retain both incoming and outgoing text. The configured judge reads bounded batches
+with subject-scoped source history and candidate Golem threads. EmbeddingGemma remains the local recall model.
+There is no separate relevance-reading model.
+
+The clock also starts work. A stated response period gets a durable check. When it is due, Golem reads fresh source
+evidence before it decides whether you need to know. An acknowledgement does not count as a substantive answer.
+An undated promise gets an internal review, with no claim that a deadline was missed.
+
+Useful developments add a visible message and source files to the existing subject thread. That thread's normal
+agent reads them, explains what changed, and proposes next actions. Its answer stays in the thread silently. A separate
+notification decision needs exact source evidence: the owner asked, an awaited reply needs attention, a stated time
+arrived, or time-sensitive preparation helps now. Golem checks the latest source before a permitted notification.
+Normal messages, mentions, and an hour without a reply do not qualify alone. A matching shared family thread can
+receive the sources too. New subjects start in a suitable channel;
+when no channel fits, Golem creates a private channel and its first thread. The thread agent has its normal tools and
+can find older related mail and tickets. No separate worker thread is made.
+Nonurgent developments wait for the 08:00 Europe/Prague review and are checked again before they reach the thread.
+Silent context updates and filing send no push. Automatic reviews use the thread's normal tools, access rules, and
+approvals. External messages still need a person's request and approval.
+
+Source data, model calls, searches, state changes, agent work, and corrections go to a separate private `audit.sqlite`.
+See [the process and verification notes](docs/proactive.md), [API](docs/api.md#intake-srcintake), and
+[data storage](docs/data.md). The account setting and conversation flow work on web and iOS. Upcoming keeps explicit
+reminders and routines; it has no inferred task list.
+
+Private replay data must stay outside this public repository.
+
 ### More
 
 - **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
@@ -393,7 +430,7 @@ so they work without a connection and nothing is downloaded on the phone.
   and for the Linux binaries on a Mac, `brew install zig && cargo install --locked cargo-zigbuild`.
 - **A domain on Cloudflare**, for the tunnel and the HTTPS address. Google sign-in needs `https` on a public name.
 - **A Google Cloud project** for Google sign-in. Nobody can sign in with a password.
-- **A ChatGPT account** for the model.
+- **A ChatGPT account** for the model, and enough free memory for the local search model.
 - **Optional:** an Apple Developer account and Xcode for the iPhone app and its push notifications, and `gog`,
   `slackcli`, `wacli`, or `tesla-control` for those integrations.
 

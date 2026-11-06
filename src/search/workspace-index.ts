@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createStemmer } from "multilingual-stemmer";
 import { DIMENSIONS, fromBlob, toBlob } from "./embedder.ts";
 
 /**
@@ -83,6 +84,9 @@ const SCHEMA = `
 `;
 
 const SCHEMA_VERSION = "2";
+/** How keywords read text; when it changes, they are rebuilt from the stored segments, which keep their vectors. */
+const KEYWORDS_VERSION = "czech-stems-standard";
+const czechStem = createStemmer("cs");
 /**
  * Too few vectors give no meaningful spread; until then, assume typical EmbeddingGemma 2 scores, measured per kind:
  * a related text scored 0.80 against 0.58 for an unrelated one, the right photo 0.70-0.76 against 0.52-0.56 for an
@@ -136,6 +140,7 @@ export class WorkspaceIndex {
         .run(SCHEMA_VERSION);
     }
     this.database.run(SCHEMA);
+    this.rebuildKeywords();
     const stored = this.database
       .query("SELECT value FROM meta WHERE key = 'fingerprint'")
       .get() as { value: string } | null;
@@ -155,6 +160,42 @@ export class WorkspaceIndex {
           .run(fingerprint);
       })();
     }
+  }
+
+  private rebuildKeywords(): void {
+    const keywords = this.database
+      .query("SELECT value FROM meta WHERE key = 'keywords'")
+      .get() as { value: string } | null;
+    if (keywords?.value === KEYWORDS_VERSION) {
+      return;
+    }
+    this.database.transaction(() => {
+      this.database.run("DELETE FROM fts");
+      const segments = this.database
+        .query(
+          "SELECT s.id, src.title, s.excerpt, s.modality FROM segments s JOIN sources src ON src.id = s.source"
+        )
+        .all() as {
+        id: number;
+        title: string;
+        excerpt: string;
+        modality: Modality;
+      }[];
+      for (const segment of segments) {
+        const media =
+          segment.modality === "image" || segment.modality === "audio";
+        this.writeKeywords(
+          segment.id,
+          segment.title,
+          media ? "" : segment.excerpt
+        );
+      }
+      this.database
+        .query(
+          "INSERT OR REPLACE INTO meta (key, value) VALUES ('keywords', ?)"
+        )
+        .run(KEYWORDS_VERSION);
+    })();
   }
 
   /** Re-reads a source when its version changed: new or edited segments get re-embedded, unchanged ones keep their vector. */
@@ -262,7 +303,7 @@ export class WorkspaceIndex {
     if (previous?.hash === hash && !(media && segment.vector)) {
       this.database
         .query("UPDATE fts SET name = ? WHERE rowid = ?")
-        .run(title, previous.id);
+        .run(withStems(title), previous.id);
       return;
     }
     if (previous) {
@@ -285,9 +326,13 @@ export class WorkspaceIndex {
         segment.vector ? toBlob(segment.vector) : null
       ) as { id: number };
     // Media labels such as "Page 3" carry no words worth matching; the title still finds the file.
+    this.writeKeywords(id, title, media ? "" : segment.text);
+  }
+
+  private writeKeywords(id: number, title: string, text: string): void {
     this.database
       .query("INSERT INTO fts (rowid, name, body) VALUES (?, ?, ?)")
-      .run(id, title, media ? "" : segment.text);
+      .run(id, withStems(title), withStems(text));
   }
 
   /** Removes sources that no longer exist; `keep` holds the uris seen in this scan. */
@@ -604,21 +649,43 @@ export function chunk(text: string, size = 1800, overlap = 200): string[] {
 }
 
 function queryTerms(query: string): string[] {
-  return [
-    ...new Set(
-      query
-        .normalize("NFKC")
-        .toLowerCase()
-        .match(/[\p{L}\p{N}]+/gu) ?? []
-    ),
-  ]
+  return [...new Set(wordsOf(query))]
     .filter((term) => !STOPWORDS.has(term))
     .slice(0, MAX_QUERY_TERMS);
 }
 
+function wordsOf(text: string): string[] {
+  return (
+    text
+      .normalize("NFKC")
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? []
+  );
+}
+
+/**
+ * The text, then each distinct Snowball Czech stem. Exact words ignore accents in FTS5; the Czech stemmer uses
+ * the original spelling. FTS5's Porter stemmer handles English.
+ */
+function withStems(text: string): string {
+  const stems = new Set(
+    wordsOf(text).flatMap((word) => {
+      const stem = stemOf(word);
+      return stem === word ? [] : [stem];
+    })
+  );
+  return stems.size > 0 ? `${text}\n${[...stems].join(" ")}` : text;
+}
+
+function stemOf(word: string): string {
+  return czechStem(word);
+}
+
 function ftsTerm(term: string): string {
   // Terms of three or more characters also match words that start with them, as while typing.
-  return term.length >= 3 ? `"${term}"*` : `"${term}"`;
+  const typed = term.length >= 3 ? `"${term}"*` : `"${term}"`;
+  const stem = stemOf(term);
+  return stem === term ? typed : `(${typed} OR "${stem}")`;
 }
 
 /** An artifact's text starts with its heading, which the result already shows as its title. */

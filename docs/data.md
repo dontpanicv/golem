@@ -43,8 +43,9 @@ data/
 │   ├── <credential-id>/             A device linked to a person's number, such as WhatsApp's: its keys and its
 │   │                                copy of the person's chats, kept by wacli.
 │   └── deleted/                     The folders of deleted credentials, kept as they were.
+├── audit.sqlite                    Private raw process log; SQLite backup makes one portable copy.
 ├── models/                          Downloaded models, shared because they hold no data.
-│   └── embeddinggemma-2-Q8_0.gguf
+│   ├── embeddinggemma-2-Q8_0.gguf
 └── logs/
     └── golem.log
 ```
@@ -88,6 +89,8 @@ data/
 | --- | --- | --- |
 | People, sessions, workspaces, members | `golem.sqlite` (better-auth tables) | SQLite |
 | Channels, threads, credentials, routines and their runs, one-time reminders, suggestions, notifications, push devices, Live Activities, recent searches, the usage of the model by day, the feedback of agents | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
+| Current and historical source evidence, collection cursors, private context, internal checks, and delivery state | `golem.sqlite`, `intake_item`, `intake_source`, `intake_fts`, `intake_check`, `intake_context`, `intake_delivery`, `intake_thread_read` | SQLite; all rows belong to one person |
+| Raw collection results, attachment bytes, prompts, model responses and usage, retrieval results, state changes, notices, agent work, corrections, and runtime fingerprints | `audit.sqlite`, `event` and `blob` | SQLite WAL, synchronous FULL; local private file, no integration credential secrets |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
 | A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
 | A routine run's fixed definition and initial store, and its script result | `golem.sqlite`, `routine_run.input` and `routine_run.result`; retained after completion | JSON |
@@ -103,6 +106,18 @@ data/
 
 The old orchestrator memory tables in `memory.sqlite` and the databases in `memories/` stay on disk, but Golem does
 not read them. Each current memory is built from its orchestrator's complete saved transcript, including past worker results.
+
+`intake_delivery.notification` is a nullable, validated proposal with a reason, source id, and exact quote. Null means
+the thread update is silent, including rows made by the prior version. The additive migration keeps those rows and
+adds a source-conversation index for short replies. Delivery and notification are separate: a useful thread answer
+can complete without a notice or a change to `intake_check.notified_at`. Only confirmed notices consume matching due
+checks. The private audit records the proposal, fresh source read, final judge input and result, and suppression or
+confirmation. Source failures retain the delivery for retry with the same thread request and notification ids.
+
+`intake_delivery.subject` keeps a proposed new subject while `thread_id` is null. The additive column leaves
+previously routed rows unchanged. A final evidence assessment can cancel the proposal or select an existing thread;
+only a still-useful review can create a destination. The binding saves its thread, source references, and check links
+together. A stable thread request id prevents another thread when creation succeeds before the binding is saved.
 
 ## Backups
 
@@ -130,7 +145,10 @@ The workspace's index is `data/workspaces/<workspace-id>/index.sqlite`. Search, 
   Pictures, audio, and video need **ffmpeg**; scanned PDF pages need **poppler**; OCR needs **tesseract**, which reads
   in every language it has (add Czech with `ces.traineddata`). On a Mac: `brew install ffmpeg poppler tesseract`.
   Without a tool, that part is skipped and the file is found by its name.
-- **Keywords:** SQLite FTS5 (`porter unicode61`), with the title weighted three times the text.
+- **Keywords:** SQLite FTS5 (`porter unicode61 remove_diacritics 2`), with the title weighted three times the text.
+  Each word also gets its Czech stem from the Snowball Czech stemmer
+  ([multilingual-stemmer](https://github.com/MrRefactoring/multilingual-stemmer), MIT), to match common Czech inflections. Exact words ignore diacritics; Czech stems use standard Snowball rules without
+  guessed spelling. A query word also matches words that start with it, or its stem. When this changes, Golem rebuilds the keywords from the stored segments, which keep their vectors.
 - **Meaning:** Google's [EmbeddingGemma 2](https://huggingface.co/ggml-org/embeddinggemma-2-GGUF) (Apache 2.0),
   run by a pinned llama.cpp `llama-server` child process. On first start Golem downloads the text model (310 MB) and
   the picture and audio encoders (555 MB) to `data/models/`, and llama.cpp to `data/runtime/`, all checked against
@@ -144,3 +162,20 @@ The workspace's index is `data/workspaces/<workspace-id>/index.sqlite`. Search, 
 - **Freshness:** Golem rescans a workspace a second after any change to one of its threads, and every minute for
   files. Only changed sources are re-read, and only changed text is re-embedded. A different model or runtime
   re-embeds everything. Until the model runs, search and recall use keywords only.
+
+## Audit export
+
+`audit.sqlite` is separate from operational state. Each event has a trace id, stage, workspace, owner, time, and JSON
+payload. Attachments use content hashes in `blob`. Prompts and raw model results preserve the inputs for later replay
+or training. `audit.open` records the Bun version and source-file hashes. Model calls record model identity and usage.
+The audit contains private communications. It is never served by a public route or added to Git.
+
+Use SQLite backup to get a consistent, single file while Golem runs:
+
+```sh
+sqlite3 data/audit.sqlite ".backup '/private/export/golem-audit.sqlite'"
+```
+
+Then copy that file to the machine used for evaluation or training. Do not copy only the main database file while its WAL is active. Account opt-out stops
+future processing; it does not remove audit history. In operational reads, a changed source record replaces its prior
+version. Original versions remain as evidence for previously inferred checks.

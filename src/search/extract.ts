@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { unzipSync } from "fflate";
 import { extractText, getDocumentProxy, getMeta } from "unpdf";
+import { element, entities, htmlText, withoutTag } from "../platform/html.ts";
 import { program, type Requirement } from "../platform/requirements.ts";
 import { chunk, isProse } from "./workspace-index.ts";
 
@@ -92,9 +93,6 @@ const CELL = new RegExp(
   "g"
 );
 const SLIDE_PARAGRAPH = element("a:p");
-const HIDDEN_ELEMENTS = ["script", "style", "head"].map((tag) =>
-  element(tag, "gi")
-);
 
 export const tools = {
   ffmpeg: Bun.which("ffmpeg"),
@@ -306,14 +304,6 @@ function zipEntries(
 }
 
 /** `<tag …>body</tag>`, with the body as group 1. */
-function element(tag: string, flags = "g"): RegExp {
-  return new RegExp(`<${tag}\\b[^<>]*>(${withoutTag(tag)})<\\/${tag}>`, flags);
-}
-
-/** Any text without `<tag` or `</tag`, so a missing end tag ends the match at the next start tag. */
-function withoutTag(tag: string): string {
-  return `[^<]*(?:<(?!\\/?${tag}\\b)[^<]*)*`;
-}
 
 /** A sheet is its name, then one tab-separated line per row. */
 function xlsxText(path: string): string {
@@ -407,38 +397,11 @@ function xmlText(
     .trim();
 }
 
-/** The visible text of an HTML page, as search reads it. */
-export function htmlText(html: string): string {
-  return entities(
-    HIDDEN_ELEMENTS.reduce((text, hidden) => text.replace(hidden, " "), html)
-      .replace(/<\/(p|div|li|h\d|tr|br)>|<br\s*\/?>/gi, "\n")
-      .replace(/<[^<>]+>/g, " ")
-  )
-    .replace(/[ \t]+/g, " ")
-    .trim();
-}
-
 function rtfText(rtf: string): string {
   return rtf
     .replace(/\\par[d]?\b/g, "\n")
     .replace(/\{\\\*[^{}]*\}|\\[a-z]+-?\d* ?|[{}]/gi, "")
     .trim();
-}
-
-function entities(text: string): string {
-  return text
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
-      String.fromCodePoint(Number.parseInt(hex, 16))
-    )
-    .replace(/&#(\d+);/g, (_, number: string) =>
-      String.fromCodePoint(Number(number))
-    )
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
 }
 
 // PDF: one segment per page; a page without enough text is rendered and embedded as a picture.

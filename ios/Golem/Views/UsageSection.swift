@@ -96,6 +96,7 @@ struct UsageSection: View {
         case "orchestrator": "Golem"
         case "routine": "Routines"
         case "reminder": "Reminders"
+        case "intake": "Accounts"
         case "background": "Briefs, memory, and names"
         default: source ?? ""
         }

@@ -19,6 +19,7 @@ const MODULES = [
   "routines",
   "reminders",
   "agenda",
+  "intake",
   "phone",
   "feedback",
 ];

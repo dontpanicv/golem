@@ -21,6 +21,8 @@ export type NotificationInput = Pick<
   "workspaceId" | "channelId" | "threadId" | "title" | "text"
 > & {
   readonly userId: string;
+  /** A durable producer's id, so a retry creates no second notification or push. */
+  readonly id?: string;
   /** The approval that the push lets the person allow or deny. */
   readonly approvalId?: string;
   /** A push that comes through a Focus: a reminder or an approval. */
@@ -131,12 +133,20 @@ export class Notifications {
    * notifications.notify({ workspaceId, userId: anna.id, channelId, threadId, title: "Flights", text: answer });
    */
   notify(input: NotificationInput): Notification {
+    if (input.id) {
+      const existing = this.database
+        .query(`SELECT ${COLUMNS} FROM notification WHERE id=? AND user_id=?`)
+        .get(input.id, input.userId) as Notification | null;
+      if (existing) {
+        return existing;
+      }
+    }
     const now = Date.now();
     const seen =
       input.threadId !== null &&
       this.watching.has(watchKey(input.userId, input.threadId));
     const notification: Notification = {
-      id: Bun.randomUUIDv7(),
+      id: input.id ?? Bun.randomUUIDv7(),
       workspaceId: input.workspaceId,
       channelId: input.channelId,
       threadId: input.threadId,

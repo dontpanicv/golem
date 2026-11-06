@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { request } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
@@ -128,6 +128,14 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
+  const watch = useMutation({
+    mutationFn: (input: { credentialId: string; watched: boolean }) =>
+      request(`${base}/credentials/${input.credentialId}`, {
+        method: "PUT",
+        body: { watched: input.watched },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  });
   const remove = useMutation({
     mutationFn: (credentialId: string) =>
       request(`${base}/credentials/${credentialId}`, {
@@ -201,31 +209,55 @@ export function IntegrationsSection({ workspaceId }: { workspaceId: string }) {
           </SettingsRow>
           {integration.credentials.map((credential) =>
             credential.ownerId === user.id ? (
-              <SettingsRow
-                compact
-                description={credential.shared ? "Shared" : "Private"}
-                key={credential.id}
-                label={credential.label}
-                lead={<Icon name="key" />}
-              >
-                <Switch
-                  checked={!credential.shared}
-                  label="Private"
-                  onChange={(checked) =>
-                    share.mutate({
-                      credentialId: credential.id,
-                      shared: !checked,
-                    })
-                  }
-                />
-                <Button
-                  icon="trash"
-                  label={`Delete ${credential.label}`}
-                  onClick={() => remove.mutate(credential.id)}
-                  size="icon"
-                  variant="ghost"
-                />
-              </SettingsRow>
+              <Fragment key={credential.id}>
+                <SettingsRow
+                  compact
+                  description={credential.shared ? "Shared" : "Private"}
+                  label={credential.label}
+                  lead={<Icon name="key" />}
+                >
+                  <Switch
+                    checked={!credential.shared}
+                    label="Private"
+                    onChange={(checked) =>
+                      share.mutate({
+                        credentialId: credential.id,
+                        shared: !checked,
+                      })
+                    }
+                  />
+                  <Button
+                    icon="trash"
+                    label={`Delete ${credential.label}`}
+                    onClick={() => remove.mutate(credential.id)}
+                    size="icon"
+                    variant="ghost"
+                  />
+                </SettingsRow>
+                {integration.watchable ? (
+                  <SettingsRow
+                    compact
+                    label="Read for me"
+                    lead={<Icon name="check" />}
+                  >
+                    <Switch
+                      checked={
+                        watch.isPending &&
+                        watch.variables.credentialId === credential.id
+                          ? watch.variables.watched
+                          : credential.watched
+                      }
+                      label={`Read ${credential.label} for me`}
+                      onChange={(checked) =>
+                        watch.mutate({
+                          credentialId: credential.id,
+                          watched: checked,
+                        })
+                      }
+                    />
+                  </SettingsRow>
+                ) : null}
+              </Fragment>
             ) : (
               <SettingsRow
                 compact

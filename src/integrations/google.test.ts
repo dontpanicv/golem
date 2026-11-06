@@ -38,6 +38,110 @@ async function call(name: string, args: object, file?: FileOf) {
   };
 }
 
+test("mail observations decode original MIME bodies and exclude drafts and search summaries", async () => {
+  const connector = googleConnector(gog);
+  const source = { account: "alice@example.com", secret: async () => "unused" };
+  const result = {
+    thread: {
+      id: "conversation",
+      messages: [
+        {
+          id: "reply",
+          threadId: "conversation",
+          internalDate: "1790841600000",
+          labelIds: ["SENT"],
+          payload: {
+            mimeType: "multipart/mixed",
+            headers: [
+              { name: "From", value: "Alice" },
+              { name: "Subject", value: "Repairs" },
+            ],
+            parts: [
+              {
+                mimeType: "text/plain",
+                body: {
+                  data: Buffer.from("The repair is complete.").toString(
+                    "base64url"
+                  ),
+                },
+              },
+              {
+                mimeType: "text/html",
+                body: {
+                  data: Buffer.from("<p>The repair is complete.</p>").toString(
+                    "base64url"
+                  ),
+                },
+              },
+              {
+                mimeType: "application/pdf",
+                filename: "receipt.pdf",
+                body: { attachmentId: "attachment", size: 42 },
+              },
+            ],
+          },
+        },
+        {
+          id: "draft",
+          labelIds: ["DRAFT"],
+          payload: {},
+        },
+      ],
+    },
+  };
+  const items = await connector.observations!(
+    "google_mail_thread",
+    {},
+    result,
+    source
+  );
+  expect(items).toHaveLength(1);
+  expect(items[0]).toMatchObject({
+    id: "reply",
+    chat: "conversation",
+    at: 1_790_841_600_000,
+    fromOwner: true,
+    text: "Subject: Repairs\n\nThe repair is complete.",
+    attachments: [
+      {
+        id: "attachment",
+        name: "receipt.pdf",
+        type: "application/pdf",
+        size: 42,
+      },
+    ],
+  });
+  for (const tool of [
+    "google_mail_search",
+    "google_mail_draft",
+    "google_mail_drafts",
+    "google_mail_send",
+  ]) {
+    expect(await connector.observations!(tool, {}, result, source)).toEqual([]);
+  }
+  const html = {
+    thread: {
+      id: "conversation",
+      messages: [
+        {
+          id: "html",
+          internalDate: 1_790_841_600_000,
+          payload: {
+            mimeType: "text/html",
+            body: {
+              data: Buffer.from("<p>Confirmed.</p>").toString("base64url"),
+            },
+          },
+        },
+      ],
+    },
+  };
+  expect(
+    (await connector.observations!("google_mail_thread", {}, html, source))[0]!
+      .text
+  ).toContain("Confirmed.");
+});
+
 test("each tool runs one allowed gog command, with the token outside its arguments", async () => {
   const answer = await call("google_mail_draft", {
     subject: "Dinner",

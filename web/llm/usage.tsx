@@ -22,6 +22,7 @@ const SOURCES: Record<UsageSource, string> = {
   orchestrator: "Golem",
   routine: "Routines",
   reminder: "Reminders",
+  intake: "Accounts",
   background: "Background work",
 };
 

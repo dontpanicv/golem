@@ -458,6 +458,53 @@ const migrations = [
 	CREATE INDEX feedback_workspace ON feedback (workspace_id, deleted_at, created_at);`,
   // routines: keep the definition and script store a run started with; older servers leave this nullable column unset.
   "ALTER TABLE routine_run ADD COLUMN input TEXT;",
+
+  // integrations: whether the owner of a credential lets Golem read its account for them.
+  "ALTER TABLE credential ADD COLUMN watched INTEGER NOT NULL DEFAULT 0;",
+  // intake: durable source observations, private context, future checks, and idempotent deliveries.
+  `CREATE TABLE intake_source (
+    credential_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+    polled_at INTEGER NOT NULL DEFAULT 0, attempted_at INTEGER NOT NULL DEFAULT 0, error TEXT, checkpoint TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE TABLE intake_item (
+    id TEXT PRIMARY KEY, credential_id TEXT NOT NULL, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+    source_id TEXT NOT NULL, version TEXT NOT NULL, payload TEXT NOT NULL, at INTEGER NOT NULL,
+    read_at INTEGER, reading TEXT, assessed_at INTEGER, thread_id TEXT, archived_id TEXT, superseded_at INTEGER,
+    UNIQUE(credential_id,source_id,version)
+  );
+  CREATE INDEX intake_pending ON intake_item(owner_id,assessed_at,at);
+  CREATE VIRTUAL TABLE intake_fts USING fts5(text, tokenize="unicode61 remove_diacritics 2");
+  CREATE TABLE intake_check (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL, thread_id TEXT,
+    text TEXT NOT NULL, source_ids TEXT NOT NULL, explicit_time INTEGER NOT NULL, check_at INTEGER NOT NULL, next_review_at INTEGER NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open', notified_at INTEGER, revised_at INTEGER NOT NULL,
+    deleted_at INTEGER
+  );
+  CREATE INDEX intake_due ON intake_check(state,check_at);
+  CREATE TABLE intake_context (
+    workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL, thread_id TEXT NOT NULL,
+    summary TEXT NOT NULL, source_ids TEXT NOT NULL, updated_at INTEGER NOT NULL,
+    PRIMARY KEY(workspace_id,owner_id,thread_id)
+  );
+  CREATE TABLE intake_delivery (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+    thread_id TEXT, body TEXT NOT NULL, attention TEXT NOT NULL,
+    check_ids TEXT NOT NULL, evidence_ids TEXT NOT NULL, created_at INTEGER NOT NULL, delivered_at INTEGER, cancelled_at INTEGER
+  );
+  CREATE TABLE intake_thread_read (
+    workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL, thread_id TEXT NOT NULL, version TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,owner_id,thread_id)
+  );`,
+  // intake: a thread update is silent unless the judge supplies a separate notification reason.
+  `ALTER TABLE intake_delivery ADD COLUMN notification TEXT;
+   CREATE INDEX intake_conversation ON intake_item(workspace_id,owner_id,credential_id,json_extract(payload,'$.chat'),at);`,
+  `CREATE TABLE intake_source_read (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL, credential_id TEXT NOT NULL, source_ids TEXT NOT NULL,
+    observed_at INTEGER NOT NULL, assessed_at INTEGER, deleted_at INTEGER
+  );
+  CREATE INDEX intake_unassessed_read ON intake_source_read(workspace_id,owner_id,assessed_at);`,
+  "ALTER TABLE intake_delivery ADD COLUMN subject TEXT;",
 ];
 
 export function openDatabase(path: string): Database {

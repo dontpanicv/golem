@@ -3,10 +3,10 @@ import { chmod, mkdtemp, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
+import { htmlText } from "../platform/html.ts";
 import {
   type Extraction,
   extract,
-  htmlText,
   isIgnored,
   kindOf,
   readText,
