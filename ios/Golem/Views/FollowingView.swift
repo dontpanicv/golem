@@ -4,6 +4,8 @@ import SwiftUI
 /// follows, its sources, what it keeps, and what it did. Each row opens its detail, where the person gives feedback.
 struct FollowingView: View {
     let open: (Destination) -> Void
+    /// Shown inside Agenda, which gives the title.
+    var embedded = false
     @Environment(Session.self) private var session
     @Environment(\.scenePhase) private var scenePhase
     @State private var checks: [FollowingCheck]?
@@ -41,9 +43,11 @@ struct FollowingView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                DetailTitle(title: "Following")
-                    .padding(.horizontal, Tokens.Mobile.Size.margin)
-                    .padding(.vertical, Tokens.Space.md)
+                if !embedded {
+                    DetailTitle(title: "Following")
+                        .padding(.horizontal, Tokens.Mobile.Size.margin)
+                        .padding(.vertical, Tokens.Space.md)
+                }
                 section("Waiting", waiting.map(Selected.update))
                 section("Following", following.map(Selected.check))
                 section("Sources", (overview?.sources ?? []).map(Selected.source))
@@ -104,7 +108,7 @@ struct FollowingView: View {
         }
         .phoneTabBar()
         .mobileBackground()
-        .pushedScreen("Following")
+        .pushedScreen(embedded ? nil : "Following")
     }
 
     @ViewBuilder

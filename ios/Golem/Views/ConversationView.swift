@@ -21,6 +21,7 @@ struct ConversationView: View {
     /// The routines and reminders Golem suggests to the person, in their orchestrator only.
     @State private var suggestions: [Suggestion] = []
     @Environment(\.phoneTabBar) private var tabBar
+    @Environment(\.youMenu) private var youMenu
     @Environment(\.scenePhase) private var scenePhase
 
     private var talk: VoiceChat { VoiceSession.shared.talk }
@@ -100,6 +101,10 @@ struct ConversationView: View {
         // After the inspector: in a navigation stack, a title and toolbar set before it do not show.
         .pushedScreen(isOrchestrator ? "Golem" : state?.thread.title ?? "")
         .toolbar {
+            if let youMenu {
+                ToolbarItem(placement: .topBarLeading) { YouMenu(open: youMenu) }
+                    .sharedBackgroundVisibility(.hidden)
+            }
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     Button("Files and artifacts", systemImage: "sidebar.right") { showArtifacts = true }

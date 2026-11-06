@@ -337,15 +337,18 @@ iPad keeps the sidebar with the same screens.
   `textSecondary` for unselected pills and icons, `textTertiary` for captions, `textQuaternary` for section titles and
   chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
 - Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt glass capsule 20 pt
-  from the screen edges and 24 pt above the bottom: Home, Golem, Activity, Search, and You, each an 18 pt icon (Golem's
-  face glyph, 16 pt) over its `tabLabel` name. You opens a native menu with Settings and Workspace settings. The open
+  from the screen edges and 24 pt above the bottom: Home, Search, Golem, Activity, and Agenda, each an 18 pt icon
+  (Golem's face glyph, 16 pt) over its `tabLabel` name. The person's avatar at the leading edge of each tab's first
+  screen, before its title, opens a native menu with Settings and Workspace settings, as X's does. The open
   one is `title` on a `tabSelected` capsule that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
   screen. The keyboard covers the bar.
-- Tabs keep their own stacks and fade into each other in 200 ms. Golem, Activity, and Search open in their tabs; a
+- Agenda: the title, then pills for Upcoming and Following, then the chosen list without its own title. A link to
+  Upcoming or Following opens Agenda on that pill.
+- Tabs keep their own stacks and fade into each other in 200 ms. Golem, Activity, Search, and Agenda open in their tabs; a
   channel or a thread opens on the open tab's stack. Settings and Workspace settings open as sheets with a close
   button.
-- Home: as Slack's, with no navigation bar. The three newest open threads with their channel under the title, and
-  Show more for the rest, then the channels with their count of open threads and Add channel, then the private
+- Home: as Slack's, with the workspace's name as its title. The three newest open threads with their channel under the title, and
+  Show more for the rest, then the channels with their count of open threads, then the private
   channels, each with a lock, in sections whose title folds them. A 48 pt accent glass circle over the bar opens a
   native menu: New thread in a channel, or New channel.
 - Screen title: top-level screens put it in the navigation bar at its leading edge, 12 pt from the screen edge, level

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The open workspace, as Slack's Home: Upcoming, its newest open threads, and its channels, in sections that fold.
+/// The open workspace, as Slack's Home: its newest open threads and its channels, in sections that fold.
 /// The round button starts a thread or a channel.
 struct HomeView: View {
     let open: (Destination) -> Void
@@ -18,11 +18,6 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                Button { open(.upcoming) } label: { ListRow("Upcoming", systemImage: "calendar") }
-                    .buttonStyle(.row)
-                Button { open(.following) } label: { ListRow("Following", systemImage: "eye") }
-                    .buttonStyle(.row)
-                ListSeparator()
                 if !openThreads.isEmpty {
                     FoldingSection(title: "Threads", folded: $threadsFolded) {
                         ForEach(allThreads ? openThreads : Array(openThreads.prefix(3))) { threadRow($0) }

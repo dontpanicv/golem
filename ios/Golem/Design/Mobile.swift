@@ -21,6 +21,12 @@ extension View {
             .toolbar(removing: .title)
     }
 
+    /// A pushed screen, or nothing for a list that another screen shows inside it under its own title.
+    @ViewBuilder
+    func pushedScreen(_ title: String?) -> some View {
+        if let title { pushedScreen(title) } else { self }
+    }
+
     /// Lets the ``HeaderTitle`` of the screens inside grow to the trailing button of the bar: the width less the
     /// 20 pt margins, the 44 pt back and trailing buttons, the gaps of 16 pt beside the capsule, and its padding.
     func headerTitleRoom() -> some View { modifier(HeaderTitleRoom()) }
@@ -55,6 +61,7 @@ private struct HeaderTitleRoom: ViewModifier {
 private struct ScreenTitle: ViewModifier {
     let title: String
     @Environment(\.closeSheet) private var closeSheet
+    @Environment(\.youMenu) private var youMenu
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -82,6 +89,10 @@ private struct ScreenTitle: ViewModifier {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(removing: .title)
                 .toolbar {
+                    if let youMenu {
+                        ToolbarItem(placement: .topBarLeading) { YouMenu(open: youMenu) }
+                            .sharedBackgroundVisibility(.hidden)
+                    }
                     ToolbarItem(placement: .topBarLeading) {
                         Text(title)
                             .font(.golem(Tokens.Mobile.FontSize.title, Tokens.FontWeight.semibold))

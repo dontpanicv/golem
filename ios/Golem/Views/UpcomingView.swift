@@ -5,6 +5,8 @@ import SwiftUI
 /// routines. Routines pause and resume here; reminders cancel here.
 struct UpcomingView: View {
     let open: (Destination) -> Void
+    /// Shown inside Agenda, which gives the title.
+    var embedded = false
     @Environment(Session.self) private var session
     @State private var upcoming: Upcoming?
 
@@ -13,9 +15,11 @@ struct UpcomingView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                DetailTitle(title: "Upcoming")
-                    .padding(.horizontal, Tokens.Mobile.Size.margin)
-                    .padding(.vertical, Tokens.Space.md)
+                if !embedded {
+                    DetailTitle(title: "Upcoming")
+                        .padding(.horizontal, Tokens.Mobile.Size.margin)
+                        .padding(.vertical, Tokens.Space.md)
+                }
                 ForEach(groups) { group in
                     ListSeparator()
                     ListSectionHeader(title: group.kind.rawValue)
@@ -34,7 +38,7 @@ struct UpcomingView: View {
         .refreshable { await session.run { try await load() } }
         .phoneTabBar()
         .mobileBackground()
-        .pushedScreen("Upcoming")
+        .pushedScreen(embedded ? nil : "Upcoming")
     }
 
     private func load() async throws {

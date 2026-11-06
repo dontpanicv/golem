@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// The iPhone app, as Slack's iOS app: Home, Golem, Activity, and Search in a floating glass tab bar that stays under
-/// every screen and its composer, with a fifth item, You, whose menu opens the settings in sheets.
+/// The iPhone app, as Slack's iOS app: Home, Search, Golem, Activity, and Agenda in a floating glass tab bar that
+/// stays under every screen and its composer. The person's picture at the top left of each tab's first screen, as
+/// X's, has a menu that opens the settings in sheets.
 /// Each tab keeps its own stack; screens leave room for the bar with ``View/phoneTabBar()`` or ``ComposerRow``.
 struct PhoneShell: View {
-    enum Tab: CaseIterable { case home, golem, activity, search }
+    enum Tab: CaseIterable { case home, search, golem, activity, agenda }
 
     /// The screen to open first, as when the phone turns back from the split view.
     var resume: Destination?
@@ -90,7 +91,10 @@ struct PhoneShell: View {
 
     private func stack(_ tab: Tab) -> some View {
         NavigationStack(path: Binding { paths[tab] ?? [] } set: { paths[tab] = $0 }) {
-            root(tab).navigationDestination(for: Destination.self) { screen($0) }
+            // Only a tab's first screen shows the person's picture; the screens pushed on it have a back button there.
+            root(tab)
+                .environment(\.youMenu, open)
+                .navigationDestination(for: Destination.self) { screen($0) }
         }
         .headerTitleRoom()
     }
@@ -109,6 +113,8 @@ struct PhoneShell: View {
             InboxView(open: open).id(session.workspace?.id)
         case .search:
             SearchView(open: open).id(session.workspace?.id)
+        case .agenda:
+            AgendaView(page: Bindable(bar).agendaPage, open: open).id(session.workspace?.id)
         }
     }
 
@@ -133,13 +139,10 @@ struct PhoneShell: View {
             ChannelDetailsView(channelID: id, open: open).id(id)
         case let .thread(id):
             WithArtifacts { ConversationView(threadID: id, showArtifacts: $0, open: open) }.id(id)
-        case .following:
-            FollowingView(open: open).id(session.workspace?.id)
-        case .upcoming:
-            UpcomingView(open: open).id(session.workspace?.id)
         case .feedback:
             FeedbackView(open: open).id(session.workspace?.id)
-        case .search, .inbox, .workspaceSettings, .settings:
+        // These open a tab or a sheet instead; see `open`.
+        case .search, .inbox, .workspaceSettings, .settings, .upcoming, .following:
             EmptyView()
         }
     }
@@ -154,6 +157,10 @@ struct PhoneShell: View {
             bar.tab = .golem
         case .search:
             bar.tab = .search
+        case .upcoming, .following:
+            paths[.agenda] = []
+            bar.agendaPage = destination == .upcoming ? .upcoming : .following
+            bar.tab = .agenda
         case .inbox:
             bar.tab = .activity
         case .settings, .workspaceSettings:
@@ -177,6 +184,8 @@ private struct WithArtifacts<Content: View>: View {
     var tab = PhoneShell.Tab.home
     /// The keyboard shows and covers the bar.
     var keyboard = false
+    /// The page that Agenda shows, which a link to Upcoming or Following opens.
+    var agendaPage = AgendaView.Page.upcoming
 
     /// The room a screen leaves at its bottom for the bar: the bar sits 24 pt above the bottom of the screen, which
     /// is 10 pt into the home indicator's area, and the screen's content stops 8 pt above it.
@@ -186,6 +195,26 @@ private struct WithArtifacts<Content: View>: View {
 
 extension EnvironmentValues {
     @Entry var phoneTabBar: PhoneTabBar?
+    /// Opens a screen from the person's picture at the top left of a tab's first screen; nil elsewhere.
+    @Entry var youMenu: ((Destination) -> Void)?
+}
+
+/// The person's picture, whose native menu opens both settings.
+struct YouMenu: View {
+    let open: (Destination) -> Void
+    @Environment(Session.self) private var session
+
+    var body: some View {
+        Menu {
+            Section(session.user?.name ?? "") {
+                Button("Settings", systemImage: "gearshape") { open(.settings) }
+                Button("Workspace settings", systemImage: "person.2") { open(.workspaceSettings) }
+            }
+        } label: {
+            PersonAvatar(name: session.user?.name ?? "", picture: session.user?.picture)
+        }
+        .accessibilityLabel("You")
+    }
 }
 
 extension View {
@@ -210,6 +239,7 @@ extension PhoneShell.Tab {
         case .golem: "Golem"
         case .activity: "Activity"
         case .search: "Search"
+        case .agenda: "Agenda"
         }
     }
 
@@ -220,13 +250,13 @@ extension PhoneShell.Tab {
         case .golem: nil
         case .activity: "bell"
         case .search: "magnifyingglass"
+        case .agenda: "calendar"
         }
     }
 }
 
 /// The bar, as Slack's: a glass capsule across the screen of four tabs with their names, the open one on a filled
-/// capsule that slides to the tab tapped, and the count of unread notifications on Activity; then You, a native menu
-/// with both settings.
+/// capsule that slides to the tab tapped, and the count of unread notifications on Activity.
 private struct TabBar: View {
     let bar: PhoneTabBar
     let unread: Int
@@ -239,7 +269,6 @@ private struct TabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(PhoneShell.Tab.allCases, id: \.self) { item($0) }
-            you
         }
         .padding(Tokens.Space.xs)
         .frame(height: Tokens.Mobile.Size.tabBar)
@@ -248,27 +277,6 @@ private struct TabBar: View {
         .padding(.bottom, Tokens.Mobile.Size.tabBarBottom - Tokens.Mobile.Size.homeIndicator)
         .animation(.snappy, value: bar.tab)
         .animation(.snappy, value: unread)
-    }
-
-    private var you: some View {
-        Menu {
-            Section(session.user?.name ?? "") {
-                Button("Settings", systemImage: "gearshape") { open(.settings) }
-                Button("Workspace settings", systemImage: "person.2") { open(.workspaceSettings) }
-            }
-        } label: {
-            VStack(spacing: Tokens.Space.xxs) {
-                Image(systemName: "person.crop.circle")
-                    .font(.system(size: 18, weight: .medium))
-                    .frame(height: 22)
-                Text("You").font(.golem(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.medium))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
-        .accessibilityLabel("You")
     }
 
     private func item(_ tab: PhoneShell.Tab) -> some View {
