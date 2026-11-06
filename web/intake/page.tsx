@@ -26,10 +26,12 @@ import { PanelHeader } from "../workspaces/shell.tsx";
 import {
   changeFollowing,
   changeUpdate,
+  deleteUpdate,
   followingDetailQuery,
   followingOf,
   overviewQuery,
   sendFeedback,
+  unblock,
 } from "./data.ts";
 
 const route = getRouteApi("/signed-in/w/$workspaceId/following");
@@ -133,6 +135,9 @@ export function FollowingPage() {
                 onOpen={(id) => setSelected({ kind: "source", id })}
                 overview={overview}
               />
+              {overview.blocked.length > 0 ? (
+                <BlockedSection overview={overview} workspaceId={workspaceId} />
+              ) : null}
               <KeptSection
                 kept={overview.kept}
                 onOpen={(id) => setSelected({ kind: "kept", id })}
@@ -195,6 +200,36 @@ function SourcesSection({
             onClick={() => onOpen(source.id)}
           >
             {source.error ? <Badge label="Error" tone="danger" /> : null}
+          </SettingsRow>
+        ))}
+      </SettingsCard>
+    </PageSection>
+  );
+}
+
+function BlockedSection({
+  overview,
+  workspaceId,
+}: {
+  overview: FollowingOverview;
+  workspaceId: string;
+}) {
+  return (
+    <PageSection title="Blocked">
+      <SettingsCard>
+        {overview.blocked.map((block) => (
+          <SettingsRow
+            compact
+            description={`${block.kind === "sender" ? "Sender" : "Chat"} · ${weekdayTime(block.createdAt)}`}
+            key={block.id}
+            label={block.label}
+            lead={<Icon name="blocked" />}
+          >
+            <Button
+              label="Unblock"
+              onClick={() => unblock(workspaceId, block.id).catch(showError)}
+              variant="ghost"
+            />
           </SettingsRow>
         ))}
       </SettingsCard>
@@ -276,7 +311,7 @@ function CheckRow({
       compact
       description={checkState(check)}
       label={line(check.text)}
-      lead={<Icon name={check.state === "open" ? "search" : "check"} />}
+      lead={<Icon name={check.state === "open" ? "eye" : "check"} />}
       onClick={onOpen}
     />
   );
@@ -367,7 +402,11 @@ function UpdateDialog({
       <p className="following-text">{message(update.body)}</p>
       <div className="following-actions">
         {waits ? (
-          <UpdateActions update={update} workspaceId={props.workspaceId} />
+          <UpdateActions
+            onDeleted={props.onClose}
+            update={update}
+            workspaceId={props.workspaceId}
+          />
         ) : null}
         <OpenThread
           threadId={update.threadId}
@@ -479,21 +518,62 @@ function FeedbackDialog({
 function UpdateActions({
   workspaceId,
   update,
+  onDeleted,
 }: {
   workspaceId: string;
   update: IntakeUpdate;
+  onDeleted: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const act = async (action: "now" | "cancel") => {
+  const [confirming, setConfirming] = useState(false);
+  const act = async (action: "now" | "cancel" | "delete") => {
     setBusy(true);
     try {
-      await changeUpdate(workspaceId, update.id, action);
+      if (action === "delete") {
+        await deleteUpdate(workspaceId, update.id);
+        onDeleted();
+      } else {
+        await changeUpdate(workspaceId, update.id, action);
+      }
     } catch (error) {
       showError(error);
     } finally {
       setBusy(false);
     }
   };
+  const senders = [
+    ...new Set(
+      update.evidence
+        .filter((each) => !each.fromOwner)
+        // The sender alone: a block covers all their conversations.
+        .map((each) => each.source.split("; ")[2] || sourceName(each))
+    ),
+  ];
+  if (confirming) {
+    return (
+      <div className="following-confirm">
+        <p>
+          Golem deletes this update and all it read from{" "}
+          {senders.join(", ") || "these sources"}, with its files, and reads
+          nothing more from them.
+        </p>
+        <div className="following-actions">
+          <Button
+            disabled={busy}
+            label="Delete and block"
+            onClick={() => act("delete")}
+            variant="danger"
+          />
+          <Button
+            disabled={busy}
+            label="Cancel"
+            onClick={() => setConfirming(false)}
+            variant="ghost"
+          />
+        </div>
+      </div>
+    );
+  }
   return (
     <>
       {update.attention === "brief" ? (
@@ -503,6 +583,12 @@ function UpdateActions({
         disabled={busy}
         label="Don't send"
         onClick={() => act("cancel")}
+      />
+      <Button
+        disabled={busy}
+        label="Delete"
+        onClick={() => setConfirming(true)}
+        variant="danger"
       />
     </>
   );

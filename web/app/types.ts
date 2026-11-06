@@ -483,6 +483,13 @@ export interface FollowingOverview {
   updates: IntakeUpdate[];
   kept: IntakeKept[];
   feedback: IntakeFeedback[];
+  blocked: IntakeBlock[];
+}
+export interface IntakeBlock {
+  id: string;
+  kind: "sender" | "chat";
+  label: string;
+  createdAt: number;
 }
 export interface IntakeUpdate {
   id: string;

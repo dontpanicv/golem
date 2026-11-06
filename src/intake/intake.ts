@@ -34,6 +34,7 @@ export type {
   FollowingCheck,
   FollowingDetail,
   FollowingOverview,
+  IntakeBlock,
   IntakeFeedback,
   IntakeUpdate,
 } from "./following.ts";
@@ -359,6 +360,10 @@ export class Intake {
     });
     const version = hash(payload);
     const id = hash(`${credential.id}:${item.id}:${version}`);
+    // A blocked sender or chat is kept as deleted: no assessment, file, or search reads it, and the source skips it.
+    const deletedAt = this.following.blocks(credential, item)
+      ? Date.now()
+      : null;
     this.database
       .query(
         "UPDATE intake_item SET superseded_at=? WHERE credential_id=? AND source_id=? AND version!=? AND superseded_at IS NULL"
@@ -366,7 +371,7 @@ export class Intake {
       .run(Date.now(), credential.id, item.id, version);
     this.database
       .query(
-        "INSERT INTO intake_item(id,credential_id,workspace_id,owner_id,source_id,version,payload,at,assessed_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(credential_id,source_id,version) DO UPDATE SET superseded_at=NULL,assessed_at=excluded.assessed_at,read_at=NULL,reading=NULL WHERE intake_item.superseded_at IS NOT NULL"
+        "INSERT INTO intake_item(id,credential_id,workspace_id,owner_id,source_id,version,payload,at,assessed_at,deleted_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(credential_id,source_id,version) DO UPDATE SET superseded_at=NULL,assessed_at=excluded.assessed_at,read_at=NULL,reading=NULL WHERE intake_item.superseded_at IS NOT NULL"
       )
       .run(
         id,
@@ -377,8 +382,12 @@ export class Intake {
         version,
         payload,
         item.at,
-        assessedAt
+        assessedAt,
+        deletedAt
       );
+    if (deletedAt !== null) {
+      return id;
+    }
     this.database
       .query(
         "INSERT OR REPLACE INTO intake_fts(rowid,text) SELECT rowid,? FROM intake_item WHERE credential_id=? AND source_id=? AND version=?"
@@ -390,6 +399,19 @@ export class Intake {
         version
       );
     return id;
+  }
+
+  /**
+   * Deletes a waiting update and blocks what it came from, as `Following.deleteUpdate` does, then takes the deleted
+   * observations out of the files that hold them.
+   */
+  async deleteUpdate(
+    workspaceId: string,
+    owner: User,
+    id: string
+  ): Promise<void> {
+    const deleted = this.following.deleteUpdate(workspaceId, owner, id);
+    await this.archives.forget(workspaceId, owner, deleted);
   }
 
   /** Moves the source archives of channel `from` to channel `to`, whose files moved with it. */
@@ -589,7 +611,7 @@ export class Intake {
       owner,
       this.database
         .query(
-          "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND assessed_at IS NULL AND superseded_at IS NULL ORDER BY at,id LIMIT ?"
+          "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND assessed_at IS NULL AND superseded_at IS NULL AND deleted_at IS NULL ORDER BY at,id LIMIT ?"
         )
         .all(workspaceId, owner.id, BATCH) as ItemRow[]
     );
@@ -1619,7 +1641,9 @@ Read the attached sources in the context of this discussion. Explain what change
             deliveries[0]!.workspace_id,
             owner.id
           ) as ItemRow | null;
-        return row ? this.recall.evidence([row]) : [];
+        return row && row.deleted_at === null
+          ? this.recall.evidence([row])
+          : [];
       });
   }
 
@@ -1640,7 +1664,11 @@ Read the attached sources in the context of this discussion. Explain what change
           "SELECT * FROM intake_item WHERE id=? AND workspace_id=? AND owner_id=?"
         )
         .get(id, first.workspace_id, owner.id) as ItemRow | null;
-      return row && !row.credential_id.startsWith("thread:") ? [row] : [];
+      return row &&
+        row.deleted_at === null &&
+        !row.credential_id.startsWith("thread:")
+        ? [row]
+        : [];
     });
     return this.archives.save(first.workspace_id, channelId, owner, rows);
   }

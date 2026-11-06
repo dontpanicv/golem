@@ -47,6 +47,8 @@ const paths = {
   clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/>', // clock
   place:
     '<path d="M8 14s4.5-4.25 4.5-7.75a4.5 4.5 0 0 0-9 0C3.5 9.75 8 14 8 14z"/><circle cx="8" cy="6.25" r="1.5"/>', // mappin
+  eye: '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>', // eye
+  blocked: '<circle cx="8" cy="8" r="5.5"/><path d="m4.1 4.1 7.8 7.8"/>', // nosign
   lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>', // lock
   // Golem's face from the icon's 8 × 8 pixels, in one color with its marks and eyes cut out: 12 of the 14 px of
   // a navigation icon, so each pixel is 1.5 px, whole device pixels on a Retina screen. iOS: GolemGlyph.

@@ -19,6 +19,17 @@ extension APIClient {
         try await post("/api/v1/workspaces/\(workspaceID)/following/updates/\(updateID)", ["action": action])
     }
 
+    /// Deletes a waiting update and blocks its senders, or its group chat: Golem deletes what it read from them, with
+    /// its files, and reads nothing more from them.
+    func deleteUpdate(workspaceID: String, updateID: String) async throws {
+        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/following/updates/\(updateID)")
+    }
+
+    /// Lets Golem read a blocked sender or chat again.
+    func unblock(workspaceID: String, blockID: String) async throws {
+        _ = try await send("DELETE", "/api/v1/workspaces/\(workspaceID)/following/blocks/\(blockID)")
+    }
+
     func sendFeedback(workspaceID: String, target: String, quote: String) async throws -> IntakeFeedback {
         try await post("/api/v1/workspaces/\(workspaceID)/following/feedback", ["target": target, "quote": quote])
     }
@@ -89,6 +100,15 @@ struct FollowingOverview: Codable {
     let updates: [IntakeUpdate]
     let kept: [IntakeKept]
     let feedback: [IntakeFeedback]
+    let blocked: [IntakeBlock]
+}
+
+/// A sender, or a group chat, whose messages Golem never reads again.
+struct IntakeBlock: Codable, Hashable, Identifiable {
+    let id: String
+    let kind: String
+    let label: String
+    let createdAt: Double
 }
 
 struct IntakeSource: Codable, Hashable, Identifiable {

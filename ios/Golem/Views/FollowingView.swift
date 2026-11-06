@@ -11,6 +11,7 @@ struct FollowingView: View {
     @State private var query = ""
     @State private var allKept = false
     @State private var selected: Selected?
+    @State private var unblocking: IntakeBlock?
 
     /// The kept observations that show before "Show all".
     private let keptRows = 15
@@ -46,6 +47,19 @@ struct FollowingView: View {
                 section("Waiting", waiting.map(Selected.update))
                 section("Following", following.map(Selected.check))
                 section("Sources", (overview?.sources ?? []).map(Selected.source))
+                if let blocked = overview?.blocked, !blocked.isEmpty {
+                    ListSeparator()
+                    ListSectionHeader(title: "Blocked")
+                    ForEach(blocked) { block in
+                        Button { unblocking = block } label: {
+                            ListRow(
+                                block.label, systemImage: "nosign",
+                                subtitle: block.kind == "sender" ? "Sender" : "Chat"
+                            )
+                        }
+                        .buttonStyle(.row)
+                    }
+                }
                 if let overview, !overview.sources.isEmpty { keptSection(overview.kept) }
                 section("Done", done.map(\.row))
                 if let feedback = overview?.feedback, !feedback.isEmpty {
@@ -75,6 +89,16 @@ struct FollowingView: View {
             await session.run { try await load() }
         }
         .refreshable { await session.run { try await load() } }
+        .confirmationDialog(
+            "Unblock \(unblocking?.label ?? "")?",
+            isPresented: Binding { unblocking != nil } set: { if !$0 { unblocking = nil } },
+            titleVisibility: .visible,
+            presenting: unblocking
+        ) { block in
+            Button("Unblock") { unblock(block) }
+        } message: { _ in
+            Text("Golem reads new messages from it again.")
+        }
         .sheet(item: $selected, onDismiss: reload) { selection in
             NavigationStack { detail(selection) }
         }
@@ -173,6 +197,16 @@ struct FollowingView: View {
                 SettingsCard {
                     SettingsRow(source.state, description: source.error)
                 }
+            }
+        }
+    }
+
+    private func unblock(_ block: IntakeBlock) {
+        guard let workspace = session.workspace else { return }
+        Task {
+            await session.run {
+                try await session.api.unblock(workspaceID: workspace.id, blockID: block.id)
+                try await load()
             }
         }
     }

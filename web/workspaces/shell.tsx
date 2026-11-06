@@ -353,7 +353,7 @@ function WorkspaceNav({
             params={{ workspaceId }}
             to="/w/$workspaceId/following"
           >
-            <NavContent icon="search" label="Following" />
+            <NavContent icon="eye" label="Following" />
           </Link>
           <Link
             className="nav-item"

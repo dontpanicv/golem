@@ -26,6 +26,8 @@ export interface ItemRow {
   thread_id: string | null;
   archived_id: string | null;
   superseded_at: number | null;
+  /** When the person deleted it, as with its blocked sender; reads leave it out. */
+  deleted_at: number | null;
 }
 export interface SourceRow {
   credential_id: string;
@@ -278,7 +280,7 @@ export class IntakeRecall {
       .query(`SELECT DISTINCT i.* FROM intake_item i JOIN intake_item original
       ON i.credential_id=original.credential_id AND json_extract(i.payload,'$.chat')=json_extract(original.payload,'$.chat')
       WHERE original.id IN (SELECT value FROM json_each(?)) AND original.workspace_id=? AND original.owner_id=?
-      AND i.workspace_id=? AND i.owner_id=? AND i.superseded_at IS NULL ORDER BY i.at DESC LIMIT 24`)
+      AND i.workspace_id=? AND i.owner_id=? AND i.superseded_at IS NULL AND i.deleted_at IS NULL ORDER BY i.at DESC LIMIT 24`)
       .all(
         JSON.stringify(evidence.map((item) => item.id)),
         workspaceId,
@@ -310,7 +312,7 @@ export class IntakeRecall {
       .join(" OR ");
     const rows = this.database
       .query(
-        "SELECT i.* FROM intake_fts f JOIN intake_item i ON i.rowid=f.rowid WHERE intake_fts MATCH ? AND i.superseded_at IS NULL AND i.workspace_id=? AND i.owner_id=? AND i.id NOT IN (SELECT value FROM json_each(?)) ORDER BY bm25(intake_fts),i.at DESC LIMIT 6"
+        "SELECT i.* FROM intake_fts f JOIN intake_item i ON i.rowid=f.rowid WHERE intake_fts MATCH ? AND i.superseded_at IS NULL AND i.deleted_at IS NULL AND i.workspace_id=? AND i.owner_id=? AND i.id NOT IN (SELECT value FROM json_each(?)) ORDER BY bm25(intake_fts),i.at DESC LIMIT 6"
       )
       .all(
         match,
@@ -401,12 +403,12 @@ export class IntakeRecall {
     const rows = match
       ? (this.database
           .query(
-            "SELECT i.* FROM intake_fts f JOIN intake_item i ON i.rowid=f.rowid WHERE (intake_fts MATCH ?) AND i.workspace_id=? AND i.owner_id=? ORDER BY bm25(intake_fts),i.at DESC LIMIT ?"
+            "SELECT i.* FROM intake_fts f JOIN intake_item i ON i.rowid=f.rowid WHERE (intake_fts MATCH ?) AND i.deleted_at IS NULL AND i.workspace_id=? AND i.owner_id=? ORDER BY bm25(intake_fts),i.at DESC LIMIT ?"
           )
           .all(match, workspaceId, owner.id, limit) as ItemRow[])
       : (this.database
           .query(
-            "SELECT * FROM intake_item WHERE superseded_at IS NULL AND workspace_id=? AND owner_id=? ORDER BY at DESC LIMIT ?"
+            "SELECT * FROM intake_item WHERE superseded_at IS NULL AND deleted_at IS NULL AND workspace_id=? AND owner_id=? ORDER BY at DESC LIMIT ?"
           )
           .all(workspaceId, owner.id, limit) as ItemRow[]);
     return this.visible(workspaceId, owner, rows);
@@ -423,7 +425,7 @@ export class IntakeRecall {
       .map((credential) => {
         const row = this.database
           .query(
-            "SELECT polled_at,error,(SELECT count(*) FROM intake_item WHERE credential_id=? AND superseded_at IS NULL) AS kept FROM intake_source WHERE credential_id=?"
+            "SELECT polled_at,error,(SELECT count(*) FROM intake_item WHERE credential_id=? AND superseded_at IS NULL AND deleted_at IS NULL) AS kept FROM intake_source WHERE credential_id=?"
           )
           .get(credential.id, credential.id) as {
           polled_at: number;
@@ -441,7 +443,9 @@ export class IntakeRecall {
   }
   visible(workspaceId: string, owner: User, rows: ItemRow[]): ItemRow[] {
     const sources = this.sources(workspaceId, owner);
-    return rows.filter((row) => sources.has(row.credential_id));
+    return rows.filter(
+      (row) => row.deleted_at === null && sources.has(row.credential_id)
+    );
   }
 
   private sources(workspaceId: string, owner: User): Set<string> {

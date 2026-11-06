@@ -154,7 +154,7 @@ export class SourceReads {
           owner,
           this.database
             .query(
-              "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND superseded_at IS NULL AND id IN (SELECT value FROM json_each(?)) ORDER BY at,id"
+              "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND superseded_at IS NULL AND deleted_at IS NULL AND id IN (SELECT value FROM json_each(?)) ORDER BY at,id"
             )
             .all(
               workspaceId,

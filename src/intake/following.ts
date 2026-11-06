@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
+import type { WatchedItem } from "../integrations/integrations.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import type { Evidence } from "./assess.ts";
@@ -72,11 +73,19 @@ export interface IntakeFeedback {
   quote: string;
   createdAt: number;
 }
+/** A sender, or a group chat, whose messages intake never reads again. */
+export interface IntakeBlock {
+  id: string;
+  kind: "sender" | "chat";
+  label: string;
+  createdAt: number;
+}
 export interface FollowingOverview {
   sources: IntakeSourceStatus[];
   updates: IntakeUpdate[];
   kept: IntakeKept[];
   feedback: IntakeFeedback[];
+  blocked: IntakeBlock[];
 }
 const WEEK = 7 * 24 * 60 * 60_000;
 /** The newest feedback that every assessment reads. */
@@ -265,7 +274,140 @@ export class Following {
       updates: this.updates(workspaceId, owner),
       kept: this.kept(workspaceId, owner, query),
       feedback: this.feedbackOf(workspaceId, owner),
+      blocked: this.database
+        .query(
+          "SELECT id,kind,label,created_at AS createdAt FROM intake_block WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL ORDER BY created_at DESC"
+        )
+        .all(workspaceId, owner.id) as IntakeBlock[],
     };
+  }
+
+  /**
+   * Deletes a waiting update and blocks what it came from: the sender of each observation that the person did not
+   * write, or the chat of a group or a document. Every observation of a blocked sender or chat is deleted, the
+   * waiting updates that rest on one are cancelled, and the checks that rest only on them are deleted. Returns the ids of the deleted observations, whose files
+   * `IntakeArchives.forget` takes away.
+   */
+  deleteUpdate(workspaceId: string, owner: User, id: string): string[] {
+    const update = this.updates(workspaceId, owner).find(
+      (each) => each.id === id
+    );
+    if (!update) {
+      throw notFound();
+    }
+    if (update.deliveredAt !== null || update.cancelledAt !== null) {
+      throw new HttpError(409, "This update was already posted or cancelled");
+    }
+    const delivery = this.database
+      .query("SELECT evidence_ids FROM intake_delivery WHERE id=?")
+      .get(id) as { evidence_ids: string };
+    const sources = this.rows(
+      workspaceId,
+      owner,
+      JSON.parse(delivery.evidence_ids) as string[]
+    ).filter((row) => !(JSON.parse(row.payload) as WatchedItem).fromOwner);
+    const now = Date.now();
+    const blocks = new Map(
+      sources.map((row) => {
+        const key = blockKey(
+          row.credential_id,
+          JSON.parse(row.payload) as WatchedItem
+        );
+        return [`${key.kind}:${key.credentialId}:${key.value}`, key];
+      })
+    );
+    const deleted: string[] = [];
+    this.database.transaction(() => {
+      for (const key of blocks.values()) {
+        this.database
+          .query(
+            "INSERT INTO intake_block(id,workspace_id,owner_id,credential_id,kind,value,label,created_at) VALUES(?,?,?,?,?,?,?,?)"
+          )
+          .run(
+            randomUUID(),
+            workspaceId,
+            owner.id,
+            key.credentialId,
+            key.kind,
+            key.value,
+            key.label,
+            now
+          );
+      }
+      const rows = this.database
+        .query(
+          "SELECT id,credential_id,payload FROM intake_item WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL"
+        )
+        .all(workspaceId, owner.id) as Pick<
+        ItemRow,
+        "id" | "credential_id" | "payload"
+      >[];
+      for (const row of rows) {
+        const key = blockKey(
+          row.credential_id,
+          JSON.parse(row.payload) as WatchedItem
+        );
+        if (blocks.has(`${key.kind}:${key.credentialId}:${key.value}`)) {
+          deleted.push(row.id);
+        }
+      }
+      this.database
+        .query(
+          "UPDATE intake_item SET deleted_at=? WHERE id IN (SELECT value FROM json_each(?))"
+        )
+        .run(now, JSON.stringify(deleted));
+      this.database
+        .query(
+          "UPDATE intake_delivery SET cancelled_at=? WHERE workspace_id=? AND owner_id=? AND delivered_at IS NULL AND cancelled_at IS NULL AND (id=? OR EXISTS(SELECT 1 FROM json_each(evidence_ids) e JOIN intake_item i ON i.id=e.value WHERE i.deleted_at IS NOT NULL))"
+        )
+        .run(now, workspaceId, owner.id, id);
+      // A check that rests only on deleted observations goes too.
+      this.database
+        .query(
+          "UPDATE intake_check SET deleted_at=? WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL AND json_array_length(source_ids)>0 AND NOT EXISTS(SELECT 1 FROM json_each(source_ids) s JOIN intake_item i ON i.id=s.value WHERE i.deleted_at IS NULL)"
+        )
+        .run(now, workspaceId, owner.id);
+    })();
+    this.audit.record(id, "update.deleted", workspaceId, owner.id, {
+      blocked: [...blocks.values()],
+      deleted,
+    });
+    return deleted;
+  }
+
+  /** Lets intake read a blocked sender or chat again; what it deleted stays deleted. */
+  unblock(workspaceId: string, owner: User, id: string): void {
+    this.workspaces.requireMember(workspaceId, owner);
+    const changed = this.database
+      .query(
+        "UPDATE intake_block SET deleted_at=? WHERE id=? AND workspace_id=? AND owner_id=? AND deleted_at IS NULL"
+      )
+      .run(Date.now(), id, workspaceId, owner.id).changes;
+    if (!changed) {
+      throw notFound();
+    }
+    this.audit.record(id, "block.removed", workspaceId, owner.id, {});
+  }
+
+  /** Whether the person blocked the sender or the chat of an observation that a source gives. */
+  blocks(
+    credential: { id: string; workspaceId: string; ownerId: string },
+    item: WatchedItem
+  ): boolean {
+    const key = blockKey(credential.id, item);
+    return (
+      this.database
+        .query(
+          "SELECT 1 FROM intake_block WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL AND kind=? AND value=? AND credential_id IS ?"
+        )
+        .get(
+          credential.workspaceId,
+          credential.ownerId,
+          key.kind,
+          key.value,
+          key.credentialId
+        ) !== null
+    );
   }
 
   /** Posts a waiting update at the next minute, or cancels it. */
@@ -609,4 +751,34 @@ export class Following {
       notifiedAt: changedTime ? null : detail.check.notifiedAt,
     };
   }
+}
+
+/**
+ * What a block matches in an observation: the chat of a group or a document, within its account; else the sender's
+ * address, in every account of the person.
+ */
+function blockKey(
+  credentialId: string,
+  item: WatchedItem
+): {
+  kind: "sender" | "chat";
+  credentialId: string | null;
+  value: string;
+  label: string;
+} {
+  if (item.group || item.kind === "document") {
+    return {
+      kind: "chat",
+      credentialId,
+      value: item.chat,
+      label: item.chatName || item.chat,
+    };
+  }
+  const address = /<([^>]+)>/.exec(item.sender)?.[1] ?? item.sender;
+  return {
+    kind: "sender",
+    credentialId: null,
+    value: address.trim().toLowerCase(),
+    label: item.sender,
+  };
 }

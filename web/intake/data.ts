@@ -130,3 +130,26 @@ export async function sendFeedback(
     queryKey: ["workspaces", workspaceId, "following-overview"],
   });
 }
+
+/**
+ * Deletes a waiting update and blocks its senders, or its group chat: Golem deletes what it read from them, with its
+ * files, and reads nothing more from them.
+ */
+export async function deleteUpdate(workspaceId: string, id: string) {
+  await request(`/workspaces/${workspaceId}/following/updates/${id}`, {
+    method: "DELETE",
+  });
+  await queryClient.invalidateQueries({
+    queryKey: ["workspaces", workspaceId, "following-overview"],
+  });
+}
+
+/** Lets Golem read a blocked sender or chat again. */
+export async function unblock(workspaceId: string, id: string) {
+  await request(`/workspaces/${workspaceId}/following/blocks/${id}`, {
+    method: "DELETE",
+  });
+  await queryClient.invalidateQueries({
+    queryKey: ["workspaces", workspaceId, "following-overview"],
+  });
+}

@@ -63,6 +63,72 @@ export class IntakeArchives {
     return files;
   }
 
+  /**
+   * Takes deleted observations out of the conversation files that hold them: a file left with no observation goes with
+   * its attachments, and another is written again without them. Deleted files move aside, as every delete does.
+   */
+  async forget(
+    workspaceId: string,
+    owner: User,
+    itemIds: readonly string[]
+  ): Promise<void> {
+    const groups = this.database
+      .query(
+        "SELECT * FROM intake_archive WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM json_each(item_ids) WHERE value IN (SELECT value FROM json_each(?)))"
+      )
+      .all(workspaceId, owner.id, JSON.stringify(itemIds)) as ArchiveRow[];
+    for (const group of groups) {
+      const left = this.observations(group);
+      const saved = JSON.parse(group.attachment_ids) as Record<string, FileRef>;
+      const kept = new Set(
+        left.flatMap(({ row, item }) =>
+          (item.attachments ?? []).map((attachment) =>
+            hash(JSON.stringify([row.source_id, attachment.id]))
+          )
+        )
+      );
+      const gone = [
+        ...Object.entries(saved)
+          .filter(([key]) => !kept.has(key))
+          .map(([, file]) => file.id),
+        ...(left.length === 0 && group.file_id ? [group.file_id] : []),
+      ];
+      for (const fileId of gone) {
+        // A file that the person deleted already is gone too.
+        await this.threads
+          .deleteFile(workspaceId, owner, fileId)
+          .catch(() => undefined);
+      }
+      const attachments = JSON.stringify(
+        Object.fromEntries(
+          Object.entries(saved).filter(([key]) => kept.has(key))
+        )
+      );
+      if (left.length === 0) {
+        this.database
+          .query(
+            "UPDATE intake_archive SET deleted_at=?,attachment_ids=? WHERE id=?"
+          )
+          .run(Date.now(), attachments, group.id);
+      } else {
+        this.database
+          .query(
+            "UPDATE intake_archive SET item_ids=?,attachment_ids=?,pending=1 WHERE id=?"
+          )
+          .run(
+            JSON.stringify(left.map(({ row }) => row.id)),
+            attachments,
+            group.id
+          );
+        await this.resume(group.id, workspaceId, owner);
+      }
+      this.audit.record(group.id, "archive.forgotten", workspaceId, owner.id, {
+        itemIds,
+        files: gone,
+      });
+    }
+  }
+
   /** Repairs interrupted writes, then folds old per-message files without a model or new source reads. */
   async maintain(workspaceId: string, owner: User): Promise<void> {
     this.workspaces.requireMember(workspaceId, owner);
@@ -93,7 +159,7 @@ export class IntakeArchives {
     let complete = true;
     const rows = this.database
       .query(
-        "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND archived_id IS NOT NULL"
+        "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND archived_id IS NOT NULL AND deleted_at IS NULL"
       )
       .all(workspaceId, owner.id) as ItemRow[];
     if (!rows.length) {
@@ -183,7 +249,7 @@ export class IntakeArchives {
       }
       const row = this.database
         .query(
-          "SELECT * FROM intake_item WHERE credential_id=? AND id=? AND workspace_id=? AND owner_id=?"
+          "SELECT * FROM intake_item WHERE credential_id=? AND id=? AND workspace_id=? AND owner_id=? AND deleted_at IS NULL"
         )
         .get(
           credential.id,
@@ -430,7 +496,7 @@ export class IntakeArchives {
     return (
       this.database
         .query(
-          "SELECT i.* FROM json_each(?) m JOIN intake_item i ON i.id=m.value WHERE i.workspace_id=? AND i.owner_id=? AND i.credential_id=? ORDER BY CAST(m.key AS INTEGER)"
+          "SELECT i.* FROM json_each(?) m JOIN intake_item i ON i.id=m.value WHERE i.workspace_id=? AND i.owner_id=? AND i.credential_id=? AND i.deleted_at IS NULL ORDER BY CAST(m.key AS INTEGER)"
         )
         .all(
           group.item_ids,

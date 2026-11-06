@@ -54,6 +54,22 @@ export const intakeApiRoutes: readonly Route[] = [
     }),
   ],
   [
+    "DELETE",
+    "/api/v1/workspaces/:workspace/following/updates/:update",
+    api(async ({ app, params, user }) => {
+      await app.intake.deleteUpdate(params.workspace!, user, params.update!);
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
+    "DELETE",
+    "/api/v1/workspaces/:workspace/following/blocks/:block",
+    api(async ({ app, params, user }) => {
+      app.intake.following.unblock(params.workspace!, user, params.block!);
+      return new Response(null, { status: 204 });
+    }),
+  ],
+  [
     "GET",
     "/api/v1/workspaces/:workspace/following",
     api(async ({ app, params, user }) =>

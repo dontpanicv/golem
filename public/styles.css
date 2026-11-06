@@ -2571,6 +2571,11 @@ form[aria-busy="true"]:not(:has([type="submit"]))
   flex-wrap: wrap;
   gap: var(--space-sm);
 }
+.following-confirm {
+  display: grid;
+  gap: var(--space-sm);
+  width: 100%;
+}
 .following-source {
   overflow-wrap: anywhere;
 }

@@ -543,6 +543,13 @@ const migrations = [
     target TEXT NOT NULL, about TEXT NOT NULL, quote TEXT NOT NULL, created_at INTEGER NOT NULL, deleted_at INTEGER
   );
   CREATE INDEX intake_feedback_owner ON intake_feedback(workspace_id,owner_id,created_at);`,
+  // intake: the person deletes an observation, and blocks its sender or chat so that intake never reads it again.
+  `ALTER TABLE intake_item ADD COLUMN deleted_at INTEGER;
+  CREATE TABLE intake_block (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL, credential_id TEXT,
+    kind TEXT NOT NULL, value TEXT NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL, deleted_at INTEGER
+  );
+  CREATE INDEX intake_block_owner ON intake_block(workspace_id,owner_id,deleted_at);`,
 ];
 
 export function openDatabase(path: string): Database {

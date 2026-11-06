@@ -445,3 +445,44 @@ test("later messages preserve notes added to a generated conversation file", asy
   expect(repeated!.id).toBe(updated!.id);
   expect(await run.files()).toHaveLength(2);
 });
+
+test("deleted observations leave their conversation files: an emptied file goes with its attachments, another is written again", async () => {
+  const run = await setup();
+  const attachment = {
+    id: "prize",
+    name: "prize.pdf",
+    type: "application/pdf",
+    size: 10,
+  };
+  const spam = run.put("spam", "prizes", START, "You won a prize", {
+    attachments: [attachment],
+  });
+  const [spamFile, spamAttachment] = await run.archives.save(
+    run.workspace.id,
+    run.channel.id,
+    run.owner,
+    [spam]
+  );
+  const first = run.put("first", "repair", START, "The tiler comes Monday");
+  const second = run.put("second", "repair", START + 1000, "Buy a prize now");
+  const [repair] = await run.archives.save(
+    run.workspace.id,
+    run.channel.id,
+    run.owner,
+    [first, second]
+  );
+  expect(await run.text(repair!.id)).toContain("Buy a prize now");
+
+  const now = Date.now();
+  app.app.database
+    .query("UPDATE intake_item SET deleted_at=? WHERE id IN (?,?)")
+    .run(now, spam.id, second.id);
+  await run.archives.forget(run.workspace.id, run.owner, [spam.id, second.id]);
+  const left = (await run.files()).map((file) => file.id);
+  expect(left).not.toContain(spamFile!.id);
+  expect(left).not.toContain(spamAttachment!.id);
+  expect(left).toContain(repair!.id);
+  const text = await run.text(repair!.id);
+  expect(text).toContain("The tiler comes Monday");
+  expect(text).not.toContain("Buy a prize now");
+});

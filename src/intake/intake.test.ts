@@ -1262,6 +1262,75 @@ test("the overview shows a waiting update, takes feedback for the judge, and can
   ).toThrow();
 });
 
+test("deleting a waiting update blocks its sender, deletes what intake read from them, and reads nothing more from them", async () => {
+  const run = await setup({
+    target: "shared",
+    decide: (input) => [{ ...threadUpdate(input), attention: "brief" }],
+  });
+  run.items([
+    {
+      ...item("spam", "You won a prize", false, START),
+      sender: "Prize Team <Prizes@Example.com>",
+    },
+  ]);
+  await intake.tick(START + 1000);
+  const waiting = () =>
+    intake.following
+      .overview(run.workspaceId, run.owner)
+      .updates.filter(
+        (each) => each.deliveredAt === null && each.cancelledAt === null
+      );
+  const kept = () =>
+    intake.following
+      .overview(run.workspaceId, run.owner)
+      .kept.map((each) => each.text);
+  const [update] = waiting();
+  expect(kept()).toContain("You won a prize");
+  await intake.deleteUpdate(run.workspaceId, run.owner, update!.id);
+  expect(waiting()).toEqual([]);
+  expect(kept()).not.toContain("You won a prize");
+  const { blocked } = intake.following.overview(run.workspaceId, run.owner);
+  expect(blocked).toMatchObject([
+    { kind: "sender", label: "Prize Team <Prizes@Example.com>" },
+  ]);
+  await expect(
+    intake.deleteUpdate(run.workspaceId, run.owner, update!.id)
+  ).rejects.toThrow();
+
+  // A new message from the same address, in another conversation, is never assessed or kept.
+  const assessed = run.assessments();
+  run.items([
+    {
+      ...item("spam-2", "Another prize", false, START + 60_000),
+      sender: "prizes@example.com",
+    },
+  ]);
+  await intake.tick(START + 20 * 60_000);
+  expect(run.assessments()).toBe(assessed);
+  expect(kept()).not.toContain("Another prize");
+  // It is kept as deleted, so the source does not give it again.
+  expect(
+    app.app.database
+      .query(
+        "SELECT source_id, deleted_at IS NOT NULL AS deleted FROM intake_item WHERE owner_id=? AND source_id LIKE 'spam%' ORDER BY source_id"
+      )
+      .all(run.owner.id)
+  ).toEqual([
+    { source_id: "spam", deleted: 1 },
+    { source_id: "spam-2", deleted: 1 },
+  ]);
+
+  // Unblocking lets intake read the sender again; what it deleted stays deleted.
+  intake.following.unblock(run.workspaceId, run.owner, blocked[0]!.id);
+  expect(intake.following.overview(run.workspaceId, run.owner).blocked).toEqual(
+    []
+  );
+  expect(kept()).not.toContain("You won a prize");
+  expect(() =>
+    intake.following.unblock(run.workspaceId, run.owner, blocked[0]!.id)
+  ).toThrow("Not found");
+});
+
 test("the owner's own message in a shared thread takes its waiting update once; another member's does not", async () => {
   const run = await setup({
     target: "shared",

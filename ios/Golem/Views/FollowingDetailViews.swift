@@ -6,8 +6,20 @@ struct UpdateDetailView: View {
     let earlier: [IntakeFeedback]
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
     @State private var current: IntakeUpdate?
     @State private var busy = false
+    @State private var confirmDelete = false
+
+    /// Whom a delete blocks: the senders of its sources that the person did not write.
+    private var senders: String {
+        var seen = Set<String>()
+        // The sender alone: a block covers all their conversations.
+        let names = update.evidence.filter { !$0.fromOwner }
+            .map { $0.source.components(separatedBy: "; ").dropFirst(2).first ?? $0.name }
+            .filter { seen.insert($0).inserted }
+        return names.isEmpty ? "these sources" : names.joined(separator: ", ")
+    }
 
     var body: some View {
         let update = current ?? update
@@ -18,6 +30,9 @@ struct UpdateDetailView: View {
                 if update.waits {
                     if update.attention == "brief" { action("Send now", systemImage: "paperplane", change: "now") }
                     action("Don't send", systemImage: "xmark", change: "cancel")
+                    Button { confirmDelete = true } label: { ListRow("Delete and block", systemImage: "trash") }
+                        .buttonStyle(.row)
+                        .disabled(busy)
                 }
                 if let threadID = update.threadId {
                     Button { open(.thread(threadID)) } label: { ListRow("Open thread", systemImage: "bubble.left") }
@@ -25,6 +40,26 @@ struct UpdateDetailView: View {
                 }
             }
             SourcesCard(evidence: update.evidence)
+        }
+        .confirmationDialog("Delete and block?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete and block", role: .destructive) { delete() }
+        } message: {
+            Text(
+                "Golem deletes this update and all it read from \(senders), with its files, "
+                    + "and reads nothing more from them."
+            )
+        }
+    }
+
+    private func delete() {
+        guard let workspace = session.workspace else { return }
+        busy = true
+        Task {
+            await session.run {
+                try await session.api.deleteUpdate(workspaceID: workspace.id, updateID: update.id)
+                dismiss()
+            }
+            busy = false
         }
     }
 

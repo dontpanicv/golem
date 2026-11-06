@@ -609,6 +609,8 @@ checks of the last week that are done, and the person's feedback. Each row opens
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/following/overview?q=` | | `FollowingOverview`; `q` searches what intake keeps, else the 100 newest observations |
 | `POST /api/v1/workspaces/:workspaceId/following/updates/:updateId` | `{ action: "now" \| "cancel" }` | The `IntakeUpdate`; `now` posts a waiting update at the next minute, before the 08:00 review, even if the destination check would wait; `cancel` drops it. `409` once it was posted or cancelled; `404` for an update outside the person's visible threads and sources |
+| `DELETE /api/v1/workspaces/:workspaceId/following/updates/:updateId` | | `204`; deletes a waiting update and blocks what it came from: the sender's address of each observation that the person did not write, in all their accounts, or the chat of a group or a document. Every observation of a blocked sender or chat is deleted, the files that hold one are written again without it or deleted when nothing is left, the waiting updates that rest on one are cancelled, and the checks that rest only on them are deleted. Intake keeps later messages of a blocked sender or chat as deleted and never assesses them. `409` once it was posted or cancelled |
+| `DELETE /api/v1/workspaces/:workspaceId/following/blocks/:blockId` | | `204`; intake reads the sender or chat again; what it deleted stays deleted |
 | `POST /api/v1/workspaces/:workspaceId/following/feedback` | `{ target: "item:<id>" \| "update:<id>" \| "source:<credentialId>", quote: string }` | The `IntakeFeedback`; every later assessment reads the 30 newest as the owner's corrections. `404` for a target the person cannot see |
 | `GET /api/v1/workspaces/:workspaceId/following` | | `{ checks: FollowingCheck[] }`, including open, resolved, and stopped checks |
 | `GET /api/v1/workspaces/:workspaceId/following/:checkId` | | `{ check, evidence, history }`; all supporting source text, even outside the latest 30 observations; newest revision first |
@@ -628,6 +630,7 @@ type FollowingOverview = {
   updates: IntakeUpdate[]; // waiting ones, and those of the last week; newest first
   kept: (IntakeEvidence & { outcome: "thread" | "filed" | "context"; threadId: string | null; place: string | null })[];
   feedback: IntakeFeedback[];
+  blocked: { id: string; kind: "sender" | "chat"; label: string; createdAt: number }[]; // newest first
 };
 type IntakeUpdate = {
   id: string; threadId: string | null; threadTitle: string | null; newThread: string | null; // the title of a thread Golem will start
