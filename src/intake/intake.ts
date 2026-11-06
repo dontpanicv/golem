@@ -11,7 +11,7 @@ import type {
 import type { Llm } from "../llm/llm.ts";
 import type { Notifications } from "../notifications/notifications.ts";
 import type { User } from "../platform/auth.ts";
-import { HttpError, notFound } from "../platform/errors.ts";
+import { notFound } from "../platform/errors.ts";
 import type { Indexer } from "../search/search.ts";
 import type { FileRef, Threads } from "../threads/threads.ts";
 import type { ThreadRef, Workspaces } from "../workspaces/workspaces.ts";
@@ -27,6 +27,14 @@ import {
 } from "./assess.ts";
 import { Audit } from "./audit.ts";
 import { IntakeDestinations } from "./destinations.ts";
+import { Following } from "./following.ts";
+
+export type {
+  FollowingChange,
+  FollowingCheck,
+  FollowingDetail,
+} from "./following.ts";
+
 import { saveCheck } from "./future.ts";
 import { IntakeRecall, type ItemRow, type SourceRow } from "./recall.ts";
 import { SourceReads } from "./source-reads.ts";
@@ -97,6 +105,7 @@ export class Intake {
   private readonly recall: IntakeRecall;
   private readonly sourceReads: SourceReads;
   private readonly destinations: IntakeDestinations;
+  readonly following: Following;
 
   constructor(
     private readonly database: Database,
@@ -117,6 +126,13 @@ export class Intake {
       audit
     );
     this.destinations = new IntakeDestinations(database, workspaces, threads);
+    this.following = new Following(
+      database,
+      workspaces,
+      this.recall,
+      audit,
+      llm
+    );
     this.sourceReads = new SourceReads(
       database,
       workspaces,
@@ -674,8 +690,10 @@ export class Intake {
     input: AssessmentInput,
     now: number
   ): Promise<Assessment[]> {
+    const corrections = this.following.corrections(workspaceId, owner);
+    const assessmentTrace = `${trace}:feedback:${new Bun.CryptoHasher("sha256").update(JSON.stringify(corrections)).digest("hex")}`;
     const cached = this.audit.last(
-      trace,
+      assessmentTrace,
       "assessment.validated",
       workspaceId,
       owner.id
@@ -683,10 +701,18 @@ export class Intake {
     if (cached) {
       return cached;
     }
-    this.record(trace, "assessment.input", workspaceId, owner.id, input, now);
+    input.corrections = corrections;
+    this.record(
+      assessmentTrace,
+      "assessment.input",
+      workspaceId,
+      owner.id,
+      input,
+      now
+    );
     const decision = await assess(async (system, text) => {
       this.record(
-        trace,
+        assessmentTrace,
         "model.request",
         workspaceId,
         owner.id,
@@ -701,7 +727,7 @@ export class Intake {
         { workspaceId, userId: owner.id, source: "intake", threadId: null }
       );
       this.record(
-        trace,
+        assessmentTrace,
         "model.response",
         workspaceId,
         owner.id,
@@ -710,8 +736,16 @@ export class Intake {
       );
       return result;
     }, input);
+    if (
+      JSON.stringify(corrections) !==
+      JSON.stringify(this.following.corrections(workspaceId, owner))
+    ) {
+      throw new Error(
+        "The owner corrected a check during this assessment; assess again"
+      );
+    }
     this.record(
-      trace,
+      assessmentTrace,
       "assessment.validated",
       workspaceId,
       owner.id,
@@ -1123,6 +1157,14 @@ export class Intake {
   }
 
   private deliveryAllowed(delivery: Delivery): boolean {
+    const pending = this.database
+      .query(
+        "SELECT 1 FROM intake_delivery WHERE id=? AND cancelled_at IS NULL"
+      )
+      .get(delivery.id);
+    if (!pending) {
+      return false;
+    }
     const owner = this.owner(delivery.workspace_id, delivery.owner_id);
     if (!owner) {
       return false;
@@ -1714,46 +1756,6 @@ Read the attached sources in the context of this discussion. Explain what change
     return this.recall.checks(workspaceId, owner);
   }
 
-  updateCheck(
-    workspaceId: string,
-    owner: User,
-    id: string,
-    input: { resolved: boolean; at?: string; quote: string }
-  ): void {
-    this.workspaces.requireMember(workspaceId, owner);
-    const check = this.openChecks(workspaceId, owner).find(
-      (each) => each.id === id
-    );
-    if (!check) {
-      throw notFound();
-    }
-    const due = input.at === undefined ? check.checkAt : Date.parse(input.at);
-    if (!(Number.isFinite(due) && input.quote.trim())) {
-      throw new HttpError(400, "Give the correction and a valid time");
-    }
-    this.record(id, "feedback", workspaceId, owner.id, input);
-    this.database.transaction(() => {
-      this.database
-        .query(
-          "UPDATE intake_check SET state=?,check_at=?,next_review_at=?,revised_at=?,notified_at=NULL,explicit_time=CASE WHEN ? THEN 1 ELSE explicit_time END WHERE id=? AND owner_id=?"
-        )
-        .run(
-          input.resolved ? "resolved" : "open",
-          due,
-          due,
-          Date.now(),
-          input.at === undefined ? 0 : 1,
-          id,
-          owner.id
-        );
-      this.database
-        .query(
-          "UPDATE intake_delivery SET cancelled_at=? WHERE workspace_id=? AND owner_id=? AND delivered_at IS NULL AND EXISTS(SELECT 1 FROM json_each(check_ids) WHERE value=?)"
-        )
-        .run(Date.now(), workspaceId, owner.id, id);
-    })();
-  }
-
   contextFor(workspaceId: string, threadId: string, ownerId: string): string {
     const owner = this.owner(workspaceId, ownerId);
     if (
@@ -1810,7 +1812,10 @@ Read the attached sources in the context of this discussion. Explain what change
             output: [
               {
                 type: "text",
-                text: JSON.stringify(this.status(workspaceId, user, query)),
+                text: JSON.stringify({
+                  ...this.status(workspaceId, user, query),
+                  following: this.following.list(workspaceId, user),
+                }),
               },
             ],
           };
@@ -1819,15 +1824,21 @@ Read the attached sources in the context of this discussion. Explain what change
       defineTool({
         name: "intake_update",
         description:
-          "Apply the person's correction to a future check: handled, stop following, or wait until a date. Cite their exact words. Do not change other people's checks.",
+          "Apply the person's correction to one check. Read intake_read for its current revision. handled resolves it; stop stops monitoring without claiming success; reopen resumes it; correct applies their plain-text correction, including partial answers or a changed date; undo restores its previous revision. Cite their exact words. Do not change other people's checks.",
         parameters: Type.Object({
           id: Type.String(),
-          resolved: Type.Boolean(),
-          at: Type.Optional(Type.String()),
+          action: Type.Union([
+            Type.Literal("handled"),
+            Type.Literal("stop"),
+            Type.Literal("reopen"),
+            Type.Literal("correct"),
+            Type.Literal("undo"),
+          ]),
+          revision: Type.Number(),
           quote: Type.String(),
         }),
         replay: "safe",
-        execute: async ({ id, resolved, at, quote }, api) => {
+        execute: async ({ id, action, revision, quote }, api) => {
           const user = await actor(api.conversationId);
           const thread = this.workspaces
             .threadsIn(workspaceId, user.id)
@@ -1843,8 +1854,14 @@ Read the attached sources in the context of this discussion. Explain what change
           ) {
             throw new Error("Cite the person's correction");
           }
-          this.updateCheck(workspaceId, user, id, { resolved, at, quote });
-          return { output: [{ type: "text", text: "Updated" }] };
+          const detail = await this.following.change(workspaceId, user, id, {
+            action,
+            revision,
+            quote,
+          });
+          return {
+            output: [{ type: "text", text: JSON.stringify(detail.check) }],
+          };
         },
       }),
     ];

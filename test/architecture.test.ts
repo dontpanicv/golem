@@ -116,6 +116,7 @@ const WEB_MODULES = [
   "search",
   "routines",
   "agenda",
+  "intake",
   "feedback",
   "settings",
 ];

@@ -555,7 +555,6 @@ once.
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/intake?q=words` | | `{ evidence, checks, coverage }`, scoped to the signed-in person; evidence contains up to 30 current source records |
-| `POST /api/v1/workspaces/:workspaceId/intake/checks/:checkId` | `{ resolved: boolean, quote: string, at?: string }` | `{ updated: true }`; `at` is an ISO time; the correction is recorded in the audit; `404` for another person's check; `400` for invalid input |
 
 Evidence has `id`, `conversation` (source account and conversation), `text`, `at` (Unix milliseconds), `source`,
 `url`, and `fromOwner`, with optional `bulk` and attachment name, type, and size metadata. A check has `id`, `threadId`,
@@ -569,7 +568,7 @@ future checks, and useful source reviews in the existing subject thread. Matchin
 the source material. External messages still need the person's request and normal tool approval. Collection runs every 15 minutes, starts one day back, and uses saved cursors with an overlap. A bounded
 poll can retain a backlog checkpoint without claiming complete source coverage.
 
-Personally relevant Slack messages and both directions of Gmail and WhatsApp are grouped into bounded batches. Related source history and subject checks reach the
+Personally relevant Slack messages, Primary inbox mail after Gmail filters plus sent-mail context, and both directions of WhatsApp are grouped into bounded batches. Related source history and subject checks reach the
 configured model provider. Golem validates source ids, exact supporting quotes, destinations, and time fields before
 it changes state. Each subject gets its own decision. Current source versions are searchable; older versions remain
 as historical evidence. Full source and decision records live in the private audit database.
@@ -596,8 +595,31 @@ thread, including connected accounts, with the same person, access rules, and ap
 results, and errors remain in the private audit log. Source inputs and files use the existing message endpoints and
 event streams on web and iOS.
 
-Private agents use the script tools `intake_read({ query })` and `intake_update({ id, resolved, at?, quote })`. The latter
+Private agents use the script tools `intake_read({ query })` and `intake_update({ id, action, revision, quote })`. The latter
 requires an exact quote from the person's latest message. Source text is untrusted data. See [process](proactive.md).
+
+#### Following
+
+Both apps show the signed-in person's check ledger in **Following**. Closed checks appear in **History**.
+
+| Endpoint | Body | Response |
+| --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/following` | | `{ checks: FollowingCheck[] }`, including open, resolved, and stopped checks |
+| `GET /api/v1/workspaces/:workspaceId/following/:checkId` | | `{ check, evidence, history }`; all supporting source text, even outside the latest 30 observations; newest revision first |
+| `POST /api/v1/workspaces/:workspaceId/following/:checkId` | `{ action: "handled" \| "stop" \| "reopen" \| "correct" \| "undo", revision: number, quote: string }` | The updated detail; `409` if the check changed; `404` for a check outside the person's visible sources and threads |
+
+```ts
+type CheckSnapshot = {
+  text: string; state: "open" | "resolved" | "stopped";
+  sourceIds: string[]; threadId: string | null;
+  checkAt: number; reviewAt: number; explicitTime: number; notifiedAt: number | null;
+};
+type FollowingCheck = CheckSnapshot & { id: string; revision: number; updatedAt: number };
+type CheckRevision = { id: number; at: number; action: string; quote: string | null; previous: CheckSnapshot | null; current: CheckSnapshot };
+```
+
+`quote` is the person's exact correction, at most 8000 characters. `correct` uses the intake model to change only the selected matter. A partial answer preserves the remaining question. `stop` stops monitoring without declaring resolution. `undo` restores the previous revision. Changes cancel queued updates for that check and retain the before and after states in the audit. No action creates a thread. The ledger remains private even if the linked discussion is shared. Stated dates (`explicitTime = 1`, `checkAt`) are separate from internal reviews (`reviewAt`). Both apps refresh this view every 30 seconds while it is open; no existing stream publishes check changes.
+
 
 ### Agenda (`src/agenda/`)
 

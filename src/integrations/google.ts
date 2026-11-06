@@ -856,14 +856,27 @@ class Gog {
   }
 }
 
-/** The mail that Golem reads for an account's owner: not spam, trash, or chats. */
-const WATCHED_MAIL = "-in:spam -in:trash -in:chats";
+/** Incoming Primary inbox mail after Gmail filters, plus the owner's sent context. */
+const WATCHED_MAIL =
+  "{(in:inbox category:primary) in:sent} -in:spam -in:trash -in:chats -in:drafts";
 /** Gmail's tabs of mail that goes to many people. */
 const BULK_LABELS = [
   "CATEGORY_PROMOTIONS",
   "CATEGORY_SOCIAL",
   "CATEGORY_FORUMS",
+  "CATEGORY_UPDATES",
 ];
+
+function watchedMail(labels: readonly string[] = []): boolean {
+  return (
+    !["SPAM", "TRASH", "DRAFT", "CHAT"].some((label) =>
+      labels.includes(label)
+    ) &&
+    (labels.includes("SENT") ||
+      (labels.includes("INBOX") &&
+        !BULK_LABELS.some((label) => labels.includes(label))))
+  );
+}
 
 /** A message as `gog gmail messages search` gives it; text fields carry untrusted markers. */
 interface FoundMail {
@@ -880,8 +893,7 @@ const AUTOMATIC_SENDER =
   /<?(no-?reply|do-?not-?reply|mailer-daemon|postmaster|system|alerts?|monitoring)@/i;
 
 /**
- * The mail that an account got and sent since a time, with full bodies and attachment metadata. Automatic sender
- * and bulk labels stay as metadata; the judge decides relevance.
+ * Fetch bodies only for selected mail. Excluded mail never enters the intake audit or archive.
  */
 async function watchMail(
   gog: Gog,
@@ -901,10 +913,13 @@ async function watchMail(
     ],
     signal
   )) as FoundMail[] | { done: true };
-  record?.("raw", { querySince: since, response: found });
+  const selected = (Array.isArray(found) ? found : []).filter((mail) =>
+    watchedMail(mail.labels)
+  );
+  record?.("raw", { querySince: since, response: selected });
   const items: WatchedItem[] = [];
   let fetched = 0;
-  for (const mail of Array.isArray(found) ? found : []) {
+  for (const mail of selected) {
     const at = Date.parse(mail.internalDateIso);
     const sender = untrusted(mail.from ?? "");
     if (!(at >= since) || seen(mail.id)) {
@@ -983,7 +998,7 @@ function readMail(result: unknown, account: string): WatchedItem[] {
     };
   };
   return (thread?.messages ?? []).flatMap((message) => {
-    if (message.labelIds?.includes("DRAFT")) {
+    if (!watchedMail(message.labelIds)) {
       return [];
     }
     const at = Number(message.internalDate);

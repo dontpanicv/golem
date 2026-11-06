@@ -125,6 +125,7 @@ test("mail observations decode original MIME bodies and exclude drafts and searc
       messages: [
         {
           id: "html",
+          labelIds: ["INBOX", "CATEGORY_PERSONAL"],
           internalDate: 1_790_841_600_000,
           payload: {
             mimeType: "text/html",
@@ -387,4 +388,83 @@ test("a draft goes only as the person allowed it", async () => {
       "Send this Gmail draft:\n\nTo: anna@example.com"
     )
   ).rejects.toThrow("The draft changed after the person allowed it");
+});
+
+test("mail intake filters labels before body fetch and raw storage", async () => {
+  const binary = join(directory, "watch-gog");
+  const now = Date.now();
+  const messages = [
+    { id: "primary", labels: ["INBOX", "CATEGORY_PERSONAL"] },
+    { id: "uncategorized", labels: ["INBOX"] },
+    { id: "sent", labels: ["SENT"] },
+    { id: "archived", labels: ["CATEGORY_PERSONAL"] },
+    ...["PROMOTIONS", "SOCIAL", "UPDATES", "FORUMS"].map((category) => ({
+      id: category,
+      labels: ["INBOX", `CATEGORY_${category}`],
+    })),
+    ...["DRAFT", "SPAM", "TRASH"].map((label) => ({
+      id: label,
+      labels: ["INBOX", "SENT", label],
+    })),
+    { id: "missing" },
+  ].map((message) => ({
+    ...message,
+    threadId: message.id,
+    internalDateIso: new Date(now).toISOString(),
+  }));
+  await Bun.write(
+    binary,
+    `#!/usr/bin/env bun
+const args = process.argv.slice(2);
+if (args.includes("search")) {
+  if (!args.at(-1).includes("{(in:inbox category:primary) in:sent}")) process.exit(2);
+  console.log(JSON.stringify(${JSON.stringify(messages)}));
+} else if (["primary", "uncategorized", "sent"].includes(args.at(-1))) {
+  console.log(JSON.stringify({body: "Selected body"}));
+} else process.exit(3);
+`
+  );
+  await chmod(binary, 0o755);
+  const records: unknown[] = [];
+  const connector = googleConnector(binary);
+  const items = await connector.watch!({
+    call: async () => {
+      throw new Error("No tool calls");
+    },
+    since: now - 1000,
+    account: "alice@example.com",
+    secret: async () => "token",
+    seen: () => false,
+    record: (_stage, data) => records.push(data),
+  });
+  expect(items.map((item) => item.id)).toEqual([
+    "primary",
+    "uncategorized",
+    "sent",
+  ]);
+  expect(JSON.stringify(records)).not.toContain("archived");
+  const observed = await connector.observations!(
+    "google_mail_thread",
+    {},
+    {
+      thread: {
+        id: "thread",
+        messages: messages.map((message) => ({
+          ...message,
+          internalDate: now,
+          labelIds: message.labels,
+          payload: {
+            mimeType: "text/plain",
+            body: { data: Buffer.from("Selected body").toString("base64url") },
+          },
+        })),
+      },
+    },
+    { account: "alice@example.com", secret: async () => "token" }
+  );
+  expect(observed.map((item) => item.id)).toEqual([
+    "primary",
+    "uncategorized",
+    "sent",
+  ]);
 });

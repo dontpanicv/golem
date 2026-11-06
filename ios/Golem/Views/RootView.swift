@@ -76,6 +76,7 @@ enum Destination: Hashable, Identifiable {
     case thread(String)
     case inbox
     case upcoming
+    case following
     case feedback
     case workspaceSettings
     case settings
@@ -182,6 +183,8 @@ private struct SplitView: View {
                     ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
                 case .inbox:
                     InboxView(open: open).id(session.workspace?.id)
+                case .following:
+                    FollowingView(open: open).id(session.workspace?.id)
                 case .upcoming:
                     UpcomingView(open: open).id(session.workspace?.id)
                 case .feedback:
@@ -269,6 +272,7 @@ private struct Sidebar: View {
                 row("Inbox", systemImage: "bell", destination: .inbox, count: session.inbox?.unread)
                 row("Search", systemImage: "magnifyingglass", destination: .search)
                 row("Upcoming", systemImage: "calendar", destination: .upcoming)
+                row("Following", systemImage: "eye", destination: .following)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels.filter { $0.ownerId == nil }) { channelRow($0) }
                 Button {

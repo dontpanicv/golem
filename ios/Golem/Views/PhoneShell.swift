@@ -115,10 +115,10 @@ struct PhoneShell: View {
     @ViewBuilder
     private func screen(_ destination: Destination) -> some View {
         switch destination {
-        case let .channel(id):
-            WithArtifacts { ChannelView(channelID: id, showArtifacts: $0, open: open) }.id(id)
-        case let .newThread(id):
-            WithArtifacts { ChannelView(channelID: id, compose: true, showArtifacts: $0, open: open) }.id(id)
+        case let .channel(id), let .newThread(id):
+            WithArtifacts {
+                ChannelView(channelID: id, compose: destination == .newThread(id), showArtifacts: $0, open: open)
+            }.id(id)
         case let .artifact(channel?, artifact):
             WithArtifacts { ChannelView(channelID: channel, artifactID: artifact, showArtifacts: $0, open: open) }
                 .id(artifact)
@@ -133,6 +133,8 @@ struct PhoneShell: View {
             ChannelDetailsView(channelID: id, open: open).id(id)
         case let .thread(id):
             WithArtifacts { ConversationView(threadID: id, showArtifacts: $0, open: open) }.id(id)
+        case .following:
+            FollowingView(open: open).id(session.workspace?.id)
         case .upcoming:
             UpcomingView(open: open).id(session.workspace?.id)
         case .feedback:

@@ -179,3 +179,8 @@ sqlite3 data/audit.sqlite ".backup '/private/export/golem-audit.sqlite'"
 Then copy that file to the machine used for evaluation or training. Do not copy only the main database file while its WAL is active. Account opt-out stops
 future processing; it does not remove audit history. In operational reads, a changed source record replaces its prior
 version. Original versions remain as evidence for previously inferred checks.
+
+
+The personal Following ledger uses `intake_check_revision` in `golem.sqlite`. Additive triggers record check creation and changes made by both current and previous server versions. Each revision holds the previous and current text, state, source IDs, discussion, stated date, and review time. User actions add their exact words and action to the same transaction; the private audit also records the complete correction and result. Stopped checks retain their evidence and history. Existing checks get an initial snapshot when this schema is added. The apps use the revision number to reject concurrent edits.
+
+Automatic Gmail collection selects only incoming Primary inbox mail after Gmail filters and the owner's sent-mail context. Other categories, archived incoming mail, drafts, spam, and trash are excluded before body fetch and raw intake storage. A normal tool can still read older mail when the person or thread agent needs it; only eligible messages from such a read enter the intake ledger. Earlier stored source records remain historical evidence.

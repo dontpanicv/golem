@@ -37,6 +37,7 @@ afterEach(async () => {
 
 async function setup(
   options: {
+    correction?: (text: string) => string;
     initialNotice?: "brief" | "now";
     quietTime?: boolean;
     dialogue?: ThreadMessages["messages"];
@@ -201,6 +202,12 @@ async function setup(
       },
       {
         complete: async (_system, text) => {
+          if (_system.startsWith("Apply the person's correction")) {
+            if (!options.correction) {
+              throw new Error("Unexpected correction call");
+            }
+            return options.correction(text);
+          }
           assessments += 1;
           const input = JSON.parse(text) as AssessmentInput;
           snapshots.push(input);
@@ -1137,12 +1144,13 @@ test("private source reads and corrections require membership and never return a
   ).rejects.toMatchObject({ status: 404 });
   expect(intake.openChecks(run.workspaceId, bob)).toHaveLength(0);
   const check = intake.openChecks(run.workspaceId, run.owner)[0]!;
-  expect(() =>
-    intake.updateCheck(run.workspaceId, bob, check.id, {
-      resolved: true,
+  await expect(
+    intake.following.change(run.workspaceId, bob, check.id, {
+      action: "handled",
+      revision: 1,
       quote: "handled",
     })
-  ).toThrow();
+  ).rejects.toMatchObject({ status: 404 });
   expect(() => intake.status("another-workspace", run.owner)).toThrow();
 });
 
@@ -1238,22 +1246,53 @@ test("the JSON API scopes source reads and validates corrections", async () => {
     ((await response.json()) as { evidence: unknown[] }).evidence
   ).toHaveLength(1);
   const [check] = intake.openChecks(run.workspaceId, run.owner);
-  const corrected = await call(`${base}/checks/${check!.id}`, {
+  const followingBase = `/api/v1/workspaces/${run.workspaceId}/following`;
+  expect((await call(followingBase)).status).toBe(401);
+  const ledger = (await (
+    await call(followingBase, { token: run.token })
+  ).json()) as { checks: { id: string; revision: number }[] };
+  expect(ledger.checks[0]!.id).toBe(check!.id);
+  const corrected = await call(`${followingBase}/${check!.id}`, {
     token: run.token,
-    body: { resolved: false, quote: "Wait until November", at: "invalid" },
+    body: {
+      action: "correct",
+      quote: "Wait until November",
+      revision: "invalid",
+    },
   });
   expect(corrected.status).toBe(400);
   const outsider = await app.signIn("Eve", "eve@example.com");
   expect((await call(base, { token: outsider })).status).toBe(404);
   expect(
     (
-      await call(`${base}/checks/${check!.id}`, {
+      await call(`${followingBase}/${check!.id}`, {
         token: run.token,
-        body: { resolved: true, quote: "Handled offline" },
+        body: {
+          action: "handled",
+          revision: ledger.checks[0]!.revision,
+          quote: "Handled offline",
+        },
       })
     ).status
   ).toBe(200);
   expect(intake.openChecks(run.workspaceId, run.owner)).toHaveLength(0);
+  const detail = (await (
+    await call(`${followingBase}/${check!.id}`, { token: run.token })
+  ).json()) as { check: { state: string }; history: { quote: string }[] };
+  expect(detail.check.state).toBe("resolved");
+  expect(detail.history[0]!.quote).toBe("Handled offline");
+  expect(
+    (
+      await call(`${followingBase}/${check!.id}`, {
+        token: run.token,
+        body: {
+          action: "stop",
+          quote: "Stale edit",
+          revision: ledger.checks[0]!.revision,
+        },
+      })
+    ).status
+  ).toBe(409);
   await dispose();
 });
 
@@ -2187,4 +2226,165 @@ test("two unrelated matters in one email keep separate queued subjects and desti
   ).toEqual(["Conference preparation", "Flat repair claim"]);
   expect(run.reviews).toHaveLength(2);
   expect(new Set(run.reviews.map((review) => review.threadId)).size).toBe(2);
+});
+
+test("Following keeps stops distinct from resolution, cancels work, and can undo or reopen", async () => {
+  const run = await setup({ initialNotice: "brief" });
+  await intake.tick(START + 1000);
+  const [check] = intake.following.list(run.workspaceId, run.owner);
+  expect(check!.state).toBe("open");
+  const original = intake.following.detail(
+    run.workspaceId,
+    run.owner,
+    check!.id
+  );
+  expect(original.evidence[0]!.text).toContain("30 days");
+  expect(original.history.length).toBeGreaterThan(0);
+  const stopped = await intake.following.change(
+    run.workspaceId,
+    run.owner,
+    check!.id,
+    {
+      action: "stop",
+      revision: check!.revision,
+      quote: "Do not follow this repair claim",
+    }
+  );
+  expect(stopped.check.state).toBe("stopped");
+  expect(intake.openChecks(run.workspaceId, run.owner)).toHaveLength(0);
+  expect(stopped.history[0]!.quote).toBe("Do not follow this repair claim");
+  expect(stopped.history[0]!.previous?.state).toBe("open");
+  expect(
+    app.app.database
+      .query(
+        "SELECT count(*) AS n FROM intake_delivery WHERE delivered_at IS NULL AND cancelled_at IS NULL"
+      )
+      .get()
+  ).toEqual({ n: 0 });
+  expect(
+    intake.following.corrections(run.workspaceId, run.owner)[0]
+  ).toMatchObject({
+    state: "stopped",
+    quote: "Do not follow this repair claim",
+  });
+  await expect(
+    intake.following.change(run.workspaceId, run.owner, check!.id, {
+      action: "handled",
+      revision: check!.revision,
+      quote: "Old screen",
+    })
+  ).rejects.toMatchObject({ status: 409 });
+  const restored = await intake.following.change(
+    run.workspaceId,
+    run.owner,
+    check!.id,
+    { action: "undo", revision: stopped.check.revision, quote: "Undo" }
+  );
+  expect(restored.check.state).toBe("open");
+  expect(restored.check.checkAt).toBe(check!.checkAt);
+  const handled = await intake.following.change(
+    run.workspaceId,
+    run.owner,
+    check!.id,
+    {
+      action: "handled",
+      revision: restored.check.revision,
+      quote: "I handled it offline",
+    }
+  );
+  expect(handled.check.state).toBe("resolved");
+  const reopened = await intake.following.change(
+    run.workspaceId,
+    run.owner,
+    check!.id,
+    {
+      action: "reopen",
+      revision: handled.check.revision,
+      quote: "Follow again",
+    }
+  );
+  expect(reopened.check.state).toBe("open");
+  expect(reopened.check.checkAt).toBe(check!.checkAt);
+  expect(reopened.check.reviewAt).toBeGreaterThan(check!.reviewAt);
+  const feedback = intake.audit.last(
+    check!.id,
+    "feedback",
+    run.workspaceId,
+    run.owner.id
+  ) as { before: unknown; after: unknown };
+  expect(feedback.before).toBeDefined();
+  expect(feedback.after).toBeDefined();
+  const otherToken = await app.signIn("Bob", "bob@example.com");
+  const other = (await (
+    await app.call("/api/v1/me", { token: otherToken })
+  ).json()) as { user: typeof run.owner };
+  app.app.database
+    .query(
+      "INSERT INTO member(id,organizationId,userId,role,createdAt) VALUES(?,?,?,'member',?)"
+    )
+    .run("following-bob", run.workspaceId, other.user.id, Date.now());
+  expect(intake.following.list(run.workspaceId, other.user)).toEqual([]);
+  expect(() =>
+    intake.following.detail(run.workspaceId, other.user, check!.id)
+  ).toThrow();
+});
+
+test("a free-text correction changes the remaining matter and preserves its stated date and evidence", async () => {
+  const run = await setup({
+    correction: (text) => {
+      const input = JSON.parse(text) as {
+        check: { text: string };
+        deadlineAt: string;
+        correction: string;
+      };
+      expect(input.correction).toBe(
+        "The warranty question is answered. Keep the repair schedule open."
+      );
+      return JSON.stringify({
+        text: "Await the repair schedule",
+        state: "open",
+        deadlineAt: input.deadlineAt,
+      });
+    },
+  });
+  await intake.tick(START + 1000);
+  const [check] = intake.following.list(run.workspaceId, run.owner);
+  const corrected = await intake.following.change(
+    run.workspaceId,
+    run.owner,
+    check!.id,
+    {
+      action: "correct",
+      revision: check!.revision,
+      quote:
+        "The warranty question is answered. Keep the repair schedule open.",
+    }
+  );
+  expect(corrected.check.text).toBe("Await the repair schedule");
+  expect(corrected.check.checkAt).toBe(check!.checkAt);
+  expect(corrected.check.reviewAt).toBe(check!.reviewAt);
+  expect(corrected.check.sourceIds).toEqual(check!.sourceIds);
+  expect(corrected.history[0]!.previous?.text).toBe(check!.text);
+  expect(intake.openChecks(run.workspaceId, run.owner)[0]!.text).toBe(
+    "Await the repair schedule"
+  );
+});
+
+test("an invalid model correction leaves the check unchanged", async () => {
+  const run = await setup({
+    correction: () =>
+      JSON.stringify({ text: "Change", state: "open", deadlineAt: "nonsense" }),
+  });
+  await intake.tick(START + 1000);
+  const [check] = intake.following.list(run.workspaceId, run.owner);
+  await expect(
+    intake.following.change(run.workspaceId, run.owner, check!.id, {
+      action: "correct",
+      revision: check!.revision,
+      quote: "Wait until next week",
+    })
+  ).rejects.toMatchObject({ status: 502 });
+  expect(
+    intake.following.detail(run.workspaceId, run.owner, check!.id).check
+  ).toEqual(check!);
 });

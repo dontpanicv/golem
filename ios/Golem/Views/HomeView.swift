@@ -20,6 +20,8 @@ struct HomeView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 Button { open(.upcoming) } label: { ListRow("Upcoming", systemImage: "calendar") }
                     .buttonStyle(.row)
+                Button { open(.following) } label: { ListRow("Following", systemImage: "eye") }
+                    .buttonStyle(.row)
                 ListSeparator()
                 if !openThreads.isEmpty {
                     FoldingSection(title: "Threads", folded: $threadsFolded) {

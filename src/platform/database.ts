@@ -505,6 +505,28 @@ const migrations = [
   );
   CREATE INDEX intake_unassessed_read ON intake_source_read(workspace_id,owner_id,assessed_at);`,
   "ALTER TABLE intake_delivery ADD COLUMN subject TEXT;",
+  // intake: durable check history, including writes from machines on the previous version.
+  `CREATE TABLE intake_check_revision (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, check_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL, at INTEGER NOT NULL,
+    action TEXT NOT NULL DEFAULT 'review', quote TEXT, previous TEXT, current TEXT NOT NULL
+  );
+  CREATE INDEX intake_check_history ON intake_check_revision(workspace_id,owner_id,check_id,id);
+  INSERT INTO intake_check_revision(check_id,workspace_id,owner_id,at,current)
+    SELECT id,workspace_id,owner_id,revised_at,json_object('text',text,'state',state,'sourceIds',json(source_ids),'threadId',thread_id,'checkAt',check_at,'reviewAt',next_review_at,'explicitTime',explicit_time,'notifiedAt',notified_at) FROM intake_check WHERE deleted_at IS NULL;
+  CREATE TRIGGER intake_check_created AFTER INSERT ON intake_check BEGIN
+    INSERT INTO intake_check_revision(check_id,workspace_id,owner_id,at,current)
+    VALUES(NEW.id,NEW.workspace_id,NEW.owner_id,NEW.revised_at,json_object('text',NEW.text,'state',NEW.state,'sourceIds',json(NEW.source_ids),'threadId',NEW.thread_id,'checkAt',NEW.check_at,'reviewAt',NEW.next_review_at,'explicitTime',NEW.explicit_time,'notifiedAt',NEW.notified_at));
+  END;
+  CREATE TRIGGER intake_check_changed AFTER UPDATE ON intake_check
+    WHEN OLD.text IS NOT NEW.text OR OLD.state IS NOT NEW.state OR OLD.source_ids IS NOT NEW.source_ids
+      OR OLD.check_at IS NOT NEW.check_at OR OLD.next_review_at IS NOT NEW.next_review_at
+      OR OLD.thread_id IS NOT NEW.thread_id OR OLD.explicit_time IS NOT NEW.explicit_time
+      OR OLD.notified_at IS NOT NEW.notified_at
+    BEGIN
+    INSERT INTO intake_check_revision(check_id,workspace_id,owner_id,at,previous,current)
+    VALUES(NEW.id,NEW.workspace_id,NEW.owner_id,CAST(unixepoch('subsec')*1000 AS INTEGER),json_object('text',OLD.text,'state',OLD.state,'sourceIds',json(OLD.source_ids),'threadId',OLD.thread_id,'checkAt',OLD.check_at,'reviewAt',OLD.next_review_at,'explicitTime',OLD.explicit_time,'notifiedAt',OLD.notified_at),json_object('text',NEW.text,'state',NEW.state,'sourceIds',json(NEW.source_ids),'threadId',NEW.thread_id,'checkAt',NEW.check_at,'reviewAt',NEW.next_review_at,'explicitTime',NEW.explicit_time,'notifiedAt',NEW.notified_at));
+  END;`,
 ];
 
 export function openDatabase(path: string): Database {

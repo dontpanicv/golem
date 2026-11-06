@@ -75,7 +75,7 @@ export class SourceReads {
         tool: read.tool,
         credentialId: credential.id,
         threadId: thread.id,
-        result: read.result,
+        result: credential.integration === "google" ? read.items : read.result,
       },
       now
     );

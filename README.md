@@ -321,7 +321,7 @@ The first read covers one day; later reads continue from a saved cursor, includi
 private messages, mentions, and your own messages. Plaud supplies meeting summaries.
 
 Intake keeps Slack messages that the person sends, direct mentions, DMs, group DMs, and replies in those Slack
-threads. Gmail and WhatsApp retain both incoming and outgoing text. The configured judge reads bounded batches
+threads. Gmail reads incoming mail only from the Primary inbox after Gmail filters, plus sent mail for context. It excludes archived incoming mail, other inbox categories, spam, trash, and drafts before fetching bodies. WhatsApp retains both incoming and outgoing text. The configured judge reads bounded batches
 with subject-scoped source history and candidate Golem threads. EmbeddingGemma remains the local recall model.
 There is no separate relevance-reading model.
 
@@ -342,6 +342,8 @@ Silent context updates and filing send no push. Automatic reviews use the thread
 approvals. External messages still need a person's request and approval.
 
 Source data, model calls, searches, state changes, agent work, and corrections go to a separate private `audit.sqlite`.
+**Following** shows what Golem is monitoring, the supporting sources, and the change history. Mark a matter handled, stop it, reopen it, or correct it in plain text. Stopping a matter does not mark it complete. Corrections remain in the audit and guide later assessments.
+
 See [the process and verification notes](docs/proactive.md), [API](docs/api.md#intake-srcintake), and
 [data storage](docs/data.md). The account setting and conversation flow work on web and iOS. Upcoming keeps explicit
 reminders and routines; it has no inferred task list.

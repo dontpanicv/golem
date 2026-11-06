@@ -7,6 +7,7 @@ import type {
 import type * as Server from "../src/artifacts/artifacts.ts";
 import type { Feedback } from "../src/feedback/feedback.ts";
 import type { MachineSummary, Pairing } from "../src/hands/hands.ts";
+import type { FollowingCheck, FollowingDetail } from "../src/intake/intake.ts";
 import type { Integration } from "../src/integrations/integrations.ts";
 import type { LlmStatus, UsageReport } from "../src/llm/llm.ts";
 import type { Place } from "../src/places/places.ts";
@@ -33,6 +34,8 @@ import type * as Web from "../web/app/types.ts";
 type Fits<Sent extends Read, Read> = Sent extends Read ? true : never;
 
 const checks: true[] = [
+  true satisfies Fits<FollowingCheck, Web.FollowingCheck>,
+  true satisfies Fits<FollowingDetail, Web.FollowingDetail>,
   true satisfies Fits<User & { picture: string | null }, Web.User>,
   true satisfies Fits<Workspace, Web.Workspace>,
   true satisfies Fits<ThreadSummary, Web.ThreadSummary>,

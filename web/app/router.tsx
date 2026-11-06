@@ -7,6 +7,7 @@ import {
 import { LoginPage } from "../accounts/login.tsx";
 import { SuggestionCards, UpcomingPage } from "../agenda/page.tsx";
 import { FeedbackPage } from "../feedback/page.tsx";
+import { FollowingPage } from "../intake/page.tsx";
 import { InboxPage } from "../notifications/page.tsx";
 import { ChannelDetails } from "../routines/details.tsx";
 import { SearchPage } from "../search/page.tsx";
@@ -116,6 +117,12 @@ const upcoming = createRoute({
   component: UpcomingPage,
 });
 
+const following = createRoute({
+  getParentRoute: () => workspace,
+  path: "/following",
+  component: FollowingPage,
+});
+
 const feedback = createRoute({
   getParentRoute: () => workspace,
   path: "/feedback",
@@ -148,6 +155,7 @@ export const router = createRouter({
         thread,
         inbox,
         upcoming,
+        following,
         feedback,
         searchRoute,
         workspaceSettings,

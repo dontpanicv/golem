@@ -434,3 +434,43 @@ export interface Upcoming {
     readonly approval: Approval;
   }[];
 }
+
+export interface CheckSnapshot {
+  text: string;
+  state: "open" | "resolved" | "stopped";
+  sourceIds: string[];
+  threadId: string | null;
+  checkAt: number;
+  reviewAt: number;
+  explicitTime: number;
+  notifiedAt: number | null;
+}
+export interface FollowingCheck extends CheckSnapshot {
+  id: string;
+  revision: number;
+  updatedAt: number;
+}
+export interface FollowingDetail {
+  check: FollowingCheck;
+  evidence: {
+    id: string;
+    source: string;
+    text: string;
+    at: number;
+    url: string | null;
+    attachments?: readonly { name: string; type: string; size: number }[];
+  }[];
+  history: {
+    id: number;
+    at: number;
+    action: string;
+    quote: string | null;
+    previous: CheckSnapshot | null;
+    current: CheckSnapshot;
+  }[];
+}
+export interface FollowingChange {
+  action: "handled" | "stop" | "reopen" | "correct" | "undo";
+  revision: number;
+  quote: string;
+}
