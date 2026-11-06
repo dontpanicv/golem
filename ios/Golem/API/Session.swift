@@ -196,14 +196,13 @@ final class Session {
     }
 
     /// Follows which threads of the open workspace work, reading the stream again after each error, until cancelled.
-    /// The channels and threads load again when work starts or ends.
+    /// The channels and threads load again when work starts or ends, or a thread settles.
     func followWorking() async {
         working = []
         guard let workspace else { return }
         while !Task.isCancelled {
             try? await api.workingEvents(workspaceID: workspace.id) { threadIds in
-                // Agents start threads and channels as they work: the lists load again when work starts or ends.
-                if !working.isEmpty || !threadIds.isEmpty { Task { try? await reloadWorkspace() } }
+                Task { try? await reloadWorkspace() }
                 working = Set(threadIds)
             }
             try? await Task.sleep(for: .seconds(2))

@@ -16,6 +16,7 @@ import type { RecentSearch, SearchResponse } from "../src/search/search.ts";
 import type {
   Brief,
   LearnedItem,
+  ListedThread,
   Message,
   SavedFile,
   ThreadMessages,
@@ -35,6 +36,7 @@ const checks: true[] = [
   true satisfies Fits<User & { picture: string | null }, Web.User>,
   true satisfies Fits<Workspace, Web.Workspace>,
   true satisfies Fits<ThreadSummary, Web.ThreadSummary>,
+  true satisfies Fits<ListedThread, Web.ListedThread>,
   true satisfies Fits<Channel, Web.Channel>,
   true satisfies Fits<Member, Web.Member>,
   true satisfies Fits<Brief, Web.Brief>,

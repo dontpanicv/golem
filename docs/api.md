@@ -36,6 +36,7 @@ stops getting its event streams.
 type User = { id: string; name: string; email: string; picture: string | null }; // picture: the address of the profile picture, or null for none; until a person uploads one, it is a copy of their Google picture, which Golem makes once
 type Workspace = { id: string; name: string; role: "owner" | "member" }; // `role` is the person's
 type ThreadSummary = { id: string; channelId: string; title: string; updatedAt: number; settledAt: number | null }; // times are Unix milliseconds
+type ListedThread = ThreadSummary & { channel: string }; // channel name, without #
 type Channel = {
 	id: string;
 	name: string;
@@ -295,6 +296,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | Request | Body | Response |
 | --- | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/orchestrator` | | `ThreadSummary` of the person's own orchestrator in the workspace; the first call makes it |
+| `GET /api/v1/workspaces/:workspaceId/threads?channel=&since=&before=&order=` | | `{ threads: ListedThread[] }`; all channel threads the person sees, including settled ones. All parameters are optional: `channel` is a name with or without `#`; `since` is inclusive and `before` exclusive, both filter last activity with an ISO 8601 date (UTC) or timestamp with a UTC offset; `order` is `newest` (default) or `oldest`. `400` for invalid dates, date ranges, or order; `404` for a channel the person does not see. Orchestrators are not channel threads |
 | `POST /api/v1/workspaces/:workspaceId/threads` | `{ channelId, text }` | `ThreadSummary`; `text` becomes the first message, and its first line the title until the model names the topic in a few words |
 | `GET /api/v1/threads/:threadId` | | `ThreadState` |
 | `POST /api/v1/workspaces/:workspaceId/threads/:threadId/settled` | `{ settled: boolean }` | `ThreadSummary`; settled threads stay available in their channel; `400` for the orchestrator |
@@ -304,7 +306,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `POST /api/v1/threads/:threadId/approvals/:approvalId` | `{ allow: boolean, scope: "once" \| "turn" }` | `204`; `allow` runs the command once, or with `"turn"` also the rest of the turn's flagged commands on that machine. `403` for a person who is not the approver; `404` when the approval ended or the person is not a member |
 | `POST /api/v1/threads/:threadId/live-activity` | `{ token, environment }` | `204`; a Live Activity of the iPhone, with this push token in hex and `"sandbox"` or `"production"`, follows the work for the person's newest message in the thread. Golem pushes an `ActivityState` when it changes, an alert while it waits for the person, and the end 5 seconds after the last thread of the work stops, which takes it away at once: the answer's notification tells how it went. A newer activity of the person for the thread ends the older one. |
 | `POST /api/v1/threads/:threadId/stop` | | `204`; the agent drops the messages it has not read yet and ends its run. Threads it asked for something, and that still work on that message, stop too |
-| `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and after every change. Load the workspace again when it changes: agents start threads and channels as they work |
+| `GET /api/v1/workspaces/:workspaceId/working` | | Server-sent events: `event: working`, `data: { threadIds: string[] }`, the threads whose agent works, at once and when work changes or a visible thread settles automatically. Load the workspace again on each event, also when `threadIds` stays empty |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/brief` | | `{ brief: Brief \| null }`: what the channel is for, where it is now, its decisions, its open questions, and what each person wants; `null` before the first |
 | `GET /api/v1/workspaces/:workspaceId/channels/:channelId/files` | | `{ files: SavedFile[] }`, oldest first |
 | `POST /api/v1/workspaces/:workspaceId/channels/:channelId/files` | multipart `files` | `{ files: SavedFile[] }`: all files of the channel |
@@ -353,6 +355,24 @@ only messages after the first start of the version that has them.
 Each channel has a brief, which the model writes again from the new messages of the channel's threads when they are
 quiet for 10 minutes or settled, and the channel's summary with it. Every thread of the channel reads the brief and the
 list of the channel's threads before each answer: see `src/threads/brief.ts`.
+
+Agents call `list_threads` with the same optional `channel`, `since`, `before`, and `order` filters as the thread list
+endpoint. Each result has the thread link, channel, last activity timestamp, and open or settled state. For example,
+`list_threads({ since: "2026-11-03T12:00:00Z", order: "newest" })` lists activity since that time, newest first. A tool
+uses the turn's realm, including the person whose message it answers in a shared channel.
+
+Settling only cleans the UI. Settled threads remain in the search index, recall, channel briefs, and agent lists,
+under the same access rules. The channel section of an agent's prompt lists the newest 30 other threads, including
+settled ones; `list_threads`, `read_thread`, and `recall` give access to older threads.
+
+Once every 24 hours, the model reviews open channel threads with no activity for more than seven days. The existing
+five-minute background check starts a review when it is due, including after startup; the last check time is saved
+in the workspace's memory database. The model reads each full conversation separately. It settles completed
+discussions with no pending action, and keeps unresolved questions, unfinished tasks, promised follow-ups, and
+threads waiting for a reply open. Unclear or invalid answers and model errors leave the thread open. Running threads,
+orchestrators, already settled threads, and threads that change during review stay as they are. This sends no
+notification. The thread and workspace event streams update the open screens on web and iOS. A person can reopen a
+thread with the existing settled endpoint.
 
 The web app keeps a text message that it cannot send yet, such as without a connection, and sends it later with a
 `requestId`, so a message that reached Golem before its response was lost stays one message.

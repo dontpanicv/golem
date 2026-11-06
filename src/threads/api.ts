@@ -5,6 +5,24 @@ import { HttpError } from "../platform/errors.ts";
 /** Threads, and the files of channels and of the workspace, for the iOS app. Messages and files post as JSON, or as a multipart form with files. */
 export const threadApiRoutes: readonly Route[] = [
   [
+    "GET",
+    "/api/v1/workspaces/:workspace/threads",
+    api(async ({ app, user, params, request }) => {
+      const query = new URL(request.url).searchParams;
+      return json({
+        threads: app.threads.list(params.workspace!, user, {
+          channel: query.get("channel") ?? undefined,
+          since: query.get("since") ?? undefined,
+          before: query.get("before") ?? undefined,
+          order: (query.get("order") ?? undefined) as
+            | "newest"
+            | "oldest"
+            | undefined,
+        }),
+      });
+    }),
+  ],
+  [
     "POST",
     "/api/v1/workspaces/:workspace/threads",
     api(async ({ app, user, params, body, files }) =>

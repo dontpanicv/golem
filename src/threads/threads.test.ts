@@ -2947,6 +2947,7 @@ test("the model calls the core tools itself, and every other tool from codemode 
     "delete_file",
     "list_channels",
     "list_files",
+    "list_threads",
     "move_thread",
     "notify",
     "read_file",

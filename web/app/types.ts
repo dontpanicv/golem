@@ -23,6 +23,10 @@ export interface ThreadSummary {
   readonly settledAt: number | null;
 }
 
+export interface ListedThread extends ThreadSummary {
+  readonly channel: string;
+}
+
 export interface Channel {
   readonly id: string;
   readonly name: string;

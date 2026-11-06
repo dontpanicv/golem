@@ -541,6 +541,9 @@ function threadsOver(dataDirectory: string, llm: Llm) {
     setChannelIcon: () => undefined,
     factsOf: () => "",
     touchThread: () => undefined,
+    setThreadSettled: () => {
+      throw new Error("No settling here");
+    },
     renameThread: (threadId: string, title: string) => {
       registered.set(threadId, { ...registered.get(threadId)!, title });
     },

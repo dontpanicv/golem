@@ -79,6 +79,7 @@ import {
   type Suggestion,
 } from "./learned.ts";
 import { Memory, memoryExtension, type Said } from "./memory.ts";
+import { Settling } from "./settling.ts";
 
 export type { Brief } from "./brief.ts";
 export type { LearnedItem, Suggestion } from "./learned.ts";
@@ -140,6 +141,17 @@ export interface ThreadMessages {
   readonly running: boolean;
   /** What the agent waits for a person to allow. */
   readonly approvals: readonly Approval[];
+}
+
+export interface ThreadListOptions {
+  readonly channel?: string;
+  readonly since?: string;
+  readonly before?: string;
+  readonly order?: "newest" | "oldest";
+}
+
+export interface ListedThread extends ThreadSummary {
+  readonly channel: string;
 }
 
 /**
@@ -302,6 +314,8 @@ const CATCH_UP_MS = 2000;
 const BRIEF_CHECK_MS = 5 * 60_000;
 /** A brief takes in a thread's new messages after the thread is quiet this long, or at once when it is settled. */
 const BRIEF_QUIET_MS = 10 * 60_000;
+/** A thread must have no activity for more than seven days before the daily settling review. */
+const SETTLING_QUIET_MS = 7 * 24 * 60 * 60_000;
 /** A Live Activity whose work ended waits this long before it ends, in case another thread takes the work on. */
 const ACTIVITY_GRACE_MS = 5000;
 /** The most threads that the channel section lists. */
@@ -400,6 +414,7 @@ export type ThreadRegistry = Pick<
   | "requireMember"
   | "setChannelIcon"
   | "setChannelSummary"
+  | "setThreadSettled"
   | "factsOf"
   | "thread"
   | "threadsIn"
@@ -476,6 +491,8 @@ export class Threads {
   private readonly unreviewed = new Map<string, number>();
   /** The reviews of each workspace, one after another. */
   private readonly reviewing = new Map<string, Promise<void>>();
+  private readonly settlements = new Map<string, Settling>();
+  private readonly settling = new Map<string, Promise<void>>();
   /** The channels whose emoji the model chooses now. */
   private readonly choosingIcon = new Set<string>();
   private readonly catchUpTimers = new Map<string, Timer>();
@@ -503,8 +520,12 @@ export class Threads {
    * only the answer to a report notifies.
    */
   private readonly heldNotices = new Set<string>();
-  /** The thread streams that show approvals, by thread. */
-  private readonly approvalWatchers = new Map<string, Set<() => void>>();
+  /** The streams that show a thread's approvals and settled state. */
+  private readonly threadWatchers = new Map<string, Set<() => void>>();
+  private readonly workspaceWatchers = new Map<
+    string,
+    Set<(threadId: string) => void>
+  >();
 
   constructor(
     private readonly dataDirectory: string,
@@ -517,6 +538,58 @@ export class Threads {
     private readonly notifications: ThreadNotifications,
     private readonly hooks: ThreadHooks
   ) {}
+
+  /** Lists all channel threads the person sees, including settled ones, by their last activity. */
+  list(
+    workspaceId: string,
+    user: User,
+    options: ThreadListOptions = {}
+  ): ListedThread[] {
+    this.registry.requireMember(workspaceId, user);
+    return this.listIn(workspaceId, user.id, options);
+  }
+
+  private listIn(
+    workspaceId: string,
+    realm: Realm,
+    options: ThreadListOptions
+  ): ListedThread[] {
+    const since =
+      threadDate(options.since, "Since") ?? Number.NEGATIVE_INFINITY;
+    const before =
+      threadDate(options.before, "Before") ?? Number.POSITIVE_INFINITY;
+    if (since >= before) {
+      throw new HttpError(400, "Since must be before Before");
+    }
+    if (
+      options.order !== undefined &&
+      !["newest", "oldest"].includes(options.order)
+    ) {
+      throw new HttpError(400, "Order must be newest or oldest");
+    }
+    const channels = this.registry.channelsIn(workspaceId, realm);
+    const channel = options.channel ? channelName(options.channel) : null;
+    if (channel && !channels.some((candidate) => candidate.name === channel)) {
+      throw notFound();
+    }
+    const direction = options.order === "oldest" ? 1 : -1;
+    return channels
+      .filter((candidate) => !channel || candidate.name === channel)
+      .flatMap((candidate) =>
+        candidate.threads.map((thread) => ({
+          ...thread,
+          channel: candidate.name,
+        }))
+      )
+      .filter(
+        (thread) => thread.updatedAt >= since && thread.updatedAt < before
+      )
+      .sort(
+        (left, right) =>
+          direction * (left.updatedAt - right.updatedAt) ||
+          left.id.localeCompare(right.id)
+      );
+  }
 
   /**
    * Starts a thread in a channel with its first message and files. The message, or else the first file, names it at
@@ -1145,9 +1218,9 @@ export class Threads {
     };
     await show(watch.value);
     watch.start(show);
-    const watchers = this.approvalWatchers.get(thread.id) ?? new Set();
+    const watchers = this.threadWatchers.get(thread.id) ?? new Set();
     watchers.add(send);
-    this.approvalWatchers.set(thread.id, watchers);
+    this.threadWatchers.set(thread.id, watchers);
     return async () => {
       watchers.delete(send);
       await watch.stop();
@@ -1211,7 +1284,7 @@ export class Threads {
   }
 
   private approvalsChanged(thread: ThreadRef): void {
-    for (const send of this.approvalWatchers.get(thread.id) ?? []) {
+    for (const send of this.threadWatchers.get(thread.id) ?? []) {
       send();
     }
     this.updateActivities(thread.workspaceId);
@@ -1586,7 +1659,21 @@ export class Threads {
     };
     await show(watch.value);
     watch.start(show);
+    const changed = (threadId: string) => {
+      if (
+        this.registry
+          .threadsIn(workspaceId, user.id)
+          .some((thread) => thread.id === threadId)
+      ) {
+        last = undefined;
+        show(watch.value);
+      }
+    };
+    const watchers = this.workspaceWatchers.get(workspaceId) ?? new Set();
+    watchers.add(changed);
+    this.workspaceWatchers.set(workspaceId, watchers);
     return async () => {
+      watchers.delete(changed);
       await watch.stop();
     };
   }
@@ -1651,6 +1738,7 @@ export class Threads {
     await Promise.allSettled([
       ...this.catchingUp.values(),
       ...this.reviewing.values(),
+      ...this.settling.values(),
       ...this.updatingActivities.values(),
     ]);
     const sessions = await Promise.allSettled(this.open.values());
@@ -1667,6 +1755,10 @@ export class Threads {
       learned.close();
     }
     this.learned.clear();
+    for (const settling of this.settlements.values()) {
+      settling.close();
+    }
+    this.settlements.clear();
     await this.sandbox.close();
     for (const session of sessions) {
       if (session.status === "fulfilled") {
@@ -1975,11 +2067,128 @@ export class Threads {
     }
     this.briefWhenQuiet(workspaceId, briefs);
     this.reviewWhenQuiet(workspaceId);
+    this.settleInactive(workspaceId).catch((error) => {
+      if (!this.background.signal.aborted) {
+        console.error(`Settling threads of ${workspaceId} failed`, error);
+      }
+    });
     for (const channel of this.registry.allChannelsIn(workspaceId)) {
       if (!channel.icon) {
         this.chooseIcon(workspaceId, channel.id);
       }
     }
+  }
+
+  /** Reviews inactive channel threads once a day; concurrent checks share the same work. */
+  settleInactive(workspaceId: string, now = Date.now()): Promise<void> {
+    let running = this.settling.get(workspaceId);
+    if (!running) {
+      running = this.settleInactiveNow(workspaceId, now).finally(() => {
+        this.settling.delete(workspaceId);
+      });
+      this.settling.set(workspaceId, running);
+    }
+    return running;
+  }
+
+  private async settleInactiveNow(
+    workspaceId: string,
+    now: number
+  ): Promise<void> {
+    await this.session(workspaceId);
+    if (
+      this.background.signal.aborted ||
+      !this.settlements.get(workspaceId)!.claim(now)
+    ) {
+      return;
+    }
+    for (const thread of this.registry.allThreadsIn(workspaceId)) {
+      if (this.background.signal.aborted) {
+        return;
+      }
+      if (
+        thread.ownerId !== null ||
+        thread.settledAt !== null ||
+        now - thread.updatedAt <= SETTLING_QUIET_MS
+      ) {
+        continue;
+      }
+      try {
+        await this.settleIfResolved(thread, now);
+      } catch (error) {
+        if (!this.background.signal.aborted) {
+          console.error(`Settling ${thread.id} failed`, error);
+        }
+      }
+    }
+  }
+
+  private async settleIfResolved(
+    thread: ThreadSummary & ThreadRef,
+    now: number
+  ): Promise<void> {
+    const version = await this.version(thread);
+    const state = await this.messages(thread, true);
+    if (
+      state.running ||
+      state.approvals.length ||
+      !state.messages.length ||
+      state.messages.some(
+        (message) =>
+          message.streaming || now - message.time <= SETTLING_QUIET_MS
+      )
+    ) {
+      return;
+    }
+    const resolved = await this.settlements.get(thread.workspaceId)!.resolved(
+      JSON.stringify({
+        title: thread.title,
+        messages: state.messages.map((message) => ({
+          time: new Date(message.time).toISOString(),
+          text: saidText(message),
+          failed: message.failed,
+          stopped: message.work?.stopped ?? false,
+        })),
+      }),
+      (systemPrompt, text, signal) =>
+        this.llm.complete(systemPrompt, text, signal, undefined, {
+          workspaceId: thread.workspaceId,
+          userId: thread.realm,
+          source: "background",
+          threadId: thread.id,
+        }),
+      this.background.signal
+    );
+    if (
+      !resolved ||
+      this.background.signal.aborted ||
+      (await this.version(thread)) !== version
+    ) {
+      return;
+    }
+    const [member] = this.membersSeeing(thread);
+    if (!member) {
+      return;
+    }
+    const user = { id: member.userId, name: member.name, email: member.email };
+    const current = this.registry.thread(thread.id, user);
+    if (
+      current.updatedAt !== thread.updatedAt ||
+      current.channelId !== thread.channelId ||
+      current.realm !== thread.realm ||
+      current.settledAt !== null
+    ) {
+      return;
+    }
+    this.registry.setThreadSettled(thread.workspaceId, thread.id, user, true);
+    for (const send of this.threadWatchers.get(thread.id) ?? []) {
+      send();
+    }
+    for (const changed of this.workspaceWatchers.get(thread.workspaceId) ??
+      []) {
+      changed(thread.id);
+    }
+    this.hooks.changed(thread.workspaceId);
   }
 
   /** The memory of an orchestrator's own transcript, opened at its first use. */
@@ -2550,6 +2759,12 @@ export class Threads {
         })
     );
     this.briefs.set(workspaceId, briefs);
+    this.settlements.set(
+      workspaceId,
+      new Settling(
+        join(this.dataDirectory, "workspaces", workspaceId, "memory.sqlite")
+      )
+    );
     // Reviews start with the messages after this, so it opens before the first message of a new workspace.
     this.learnedOf(workspaceId);
     const memory = memoryExtension(async (conversationId) => {
@@ -2627,6 +2842,7 @@ export class Threads {
     const tools = [
       this.recallTool(workspaceId),
       this.listChannelsTool(workspaceId),
+      this.listThreadsTool(workspaceId),
       this.searchChannelsTool(workspaceId),
       this.createChannelTool(workspaceId),
       this.deleteChannelTool(workspaceId),
@@ -2931,6 +3147,50 @@ export class Threads {
           )
           .map(channelText)
           .join("\n");
+        return { output: [{ type: "text", text }] };
+      },
+    });
+  }
+
+  private listThreadsTool(workspaceId: string) {
+    return defineTool({
+      name: "list_threads",
+      description:
+        "List all visible channel threads, including settled ones, with their channels and last activity times. Filter by channel or last activity, and sort newest first (default) or oldest first.",
+      parameters: Type.Object({
+        channel: Type.Optional(
+          Type.String({ description: "Channel name, with or without #" })
+        ),
+        since: Type.Optional(
+          Type.String({
+            description:
+              "Last activity at or after this ISO 8601 date or timestamp with UTC offset",
+          })
+        ),
+        before: Type.Optional(
+          Type.String({
+            description:
+              "Last activity before this ISO 8601 date or timestamp with UTC offset",
+          })
+        ),
+        order: Type.Optional(
+          Type.Union([Type.Literal("newest"), Type.Literal("oldest")])
+        ),
+      }),
+      replay: "safe",
+      execute: async (args, api) => {
+        const threads = this.listIn(
+          workspaceId,
+          await this.realm(workspaceId, api.conversationId),
+          args
+        );
+        const text =
+          threads
+            .map(
+              (thread) =>
+                `- ${threadLink(thread)} in #${thread.channel} (${new Date(thread.updatedAt).toISOString()}, ${thread.settledAt === null ? "open" : "settled"})`
+            )
+            .join("\n") || "No threads match.";
         return { output: [{ type: "text", text }] };
       },
     });
@@ -4403,6 +4663,29 @@ function messageBody(message: Message): string {
 
 function minute(time: number): string {
   return new Date(time).toISOString().slice(0, 16).replace("T", " ");
+}
+
+function threadDate(
+  value: string | undefined,
+  name: string
+): number | undefined {
+  if (value === undefined) {
+    return;
+  }
+  const time = Date.parse(value);
+  if (
+    !(
+      /^\d{4}-\d\d-\d\d(?:T\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d))?$/.test(
+        value
+      ) && Number.isFinite(time)
+    )
+  ) {
+    throw new HttpError(
+      400,
+      `${name} must be an ISO 8601 date or timestamp with UTC offset`
+    );
+  }
+  return time;
 }
 
 function day(time: number): string {
