@@ -337,7 +337,8 @@ Normal messages, mentions, and an hour without a reply do not qualify alone. A m
 receive the sources too. New subjects start in a suitable channel;
 when no channel fits, Golem creates a private channel and its first thread. The thread agent has its normal tools and
 can find older related mail and tickets. No separate worker thread is made.
-Nonurgent developments wait for the 08:00 Europe/Prague review and are checked again before they reach the thread.
+Nonurgent developments wait for the morning review in the 08:00 Europe/Prague hour: one plan groups them by matter,
+posts one message to each thread, and sends you one summary with a notification.
 Silent context updates and filing send no push. Automatic reviews use the thread's normal tools, access rules, and
 approvals. External messages still need a person's request and approval.
 

@@ -23,6 +23,11 @@ import {
   type IntakeIntegrations,
   type IntakeThreads,
 } from "./intake.ts";
+import {
+  MORNING_SYSTEM,
+  type MorningInput,
+  type MorningPlan,
+} from "./morning.ts";
 import { IntakeRecall } from "./recall.ts";
 
 const DAY = 86_400_000;
@@ -50,6 +55,7 @@ async function setup(
     silent?: boolean;
     reviewRead?: WatchedItem[];
     failAfterThreadStart?: boolean;
+    plan?: (input: MorningInput) => MorningPlan;
   } = {}
 ) {
   app = await startTestApp();
@@ -77,6 +83,13 @@ async function setup(
         "Flat repair claim"
       )
     : null;
+  const posts: {
+    threadId: string;
+    text: string;
+    notify: boolean;
+    files: readonly { id: string; name: string }[];
+  }[] = [];
+  const plans: MorningInput[] = [];
   const reviews: {
     threadId: string;
     requestId: string;
@@ -124,7 +137,9 @@ async function setup(
       running: false,
       approvals: [],
     }),
-    observe: async () => undefined,
+    observe: async (thread, text, _requestId, _owner, notify, files = []) => {
+      posts.push({ threadId: thread.id, text, notify, files });
+    },
     instruct: async (
       _thread,
       text,
@@ -160,6 +175,7 @@ async function setup(
       return "Reviewed";
     },
     file: app.app.threads.file.bind(app.app.threads),
+    orchestrator: app.app.threads.orchestrator.bind(app.app.threads),
     writeFile: app.app.threads.writeFile.bind(app.app.threads),
     deleteFile: app.app.threads.deleteFile.bind(app.app.threads),
     realm: async () => owner.id,
@@ -204,6 +220,11 @@ async function setup(
       },
       {
         complete: async (_system, text) => {
+          if (_system === MORNING_SYSTEM) {
+            const input = JSON.parse(text) as MorningInput;
+            plans.push(input);
+            return JSON.stringify((options.plan ?? morningPlan)(input));
+          }
           if (_system.startsWith("Apply the person's correction")) {
             if (!options.correction) {
               throw new Error("Unexpected correction call");
@@ -336,6 +357,8 @@ async function setup(
     owner,
     target,
     reviews,
+    posts,
+    plans,
     token,
     credential,
     enable: (value: boolean) => {
@@ -354,6 +377,58 @@ async function setup(
     recover: () => {
       outage = false;
     },
+  };
+}
+
+/** The person's subject threads, without their own Golem thread that the morning summary starts. */
+function subjectThreads(run: { workspaceId: string; owner: { id: string } }) {
+  return app.app.workspaces
+    .threadsIn(run.workspaceId, run.owner.id)
+    .filter((thread) => thread.ownerId === null);
+}
+
+/**
+ * The morning plan of the scripted model: it drops every update once the owner handled the matter or the awaited
+ * reply arrived, and else puts the updates of one thread or one proposed title into one topic.
+ */
+function morningPlan(input: MorningInput): MorningPlan {
+  const handled = input.evidence.some(
+    (each) =>
+      each.text === "I handled this." ||
+      each.text.startsWith("Here is the substantive response")
+  );
+  if (handled) {
+    return {
+      summary: "Nothing new",
+      topics: [],
+      dropped: input.updates.map((update) => ({
+        id: update.id,
+        reason: "Handled",
+      })),
+    };
+  }
+  const general = input.channels.find((channel) => channel.name === "general");
+  return {
+    summary: "Good morning",
+    topics: [
+      ...Map.groupBy(
+        input.updates,
+        (update) => update.threadId ?? update.proposedTitle
+      ).values(),
+    ].map((updates) => ({
+      updates: updates.map((update) => update.id),
+      threadId: updates[0]!.threadId,
+      title: updates[0]!.proposedTitle ?? "",
+      channelId:
+        updates[0]!.threadId || updates[0]!.proposedNewChannel
+          ? null
+          : (updates[0]!.proposedChannelId ?? general!.id),
+      newChannel: updates[0]!.threadId ? null : updates[0]!.proposedNewChannel,
+      message: updates.map((update) => update.message).join(" "),
+      work: null,
+      line: updates[0]!.proposedTitle ?? "An update",
+    })),
+    dropped: [],
   };
 }
 
@@ -1204,19 +1279,112 @@ test("current recall replaces an edited source and retains its earlier version f
   ).toMatchObject({ n: 1 });
 });
 
-test("the morning review sends one visible review to the thread", async () => {
+test("the morning review posts one message to the thread without an agent run, then a summary that notifies", async () => {
   const run = await setup({ initialNotice: "brief" });
   await intake.tick(START + 1000);
-  const before = app.faux.state.callCount;
   await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
-  expect(run.deliveries).toHaveLength(1);
-  expect(run.deliveries[0]).toContain("repair claim");
-  expect(run.snapshots.at(-1)!.pendingNotice).toBeDefined();
-  expect(app.faux.state.callCount).toBe(before);
-  expect(run.reviews).toHaveLength(1);
-  expect(run.reviews[0]!.files).toHaveLength(1);
+  expect(run.reviews).toHaveLength(0);
+  expect(run.plans).toHaveLength(1);
+  const [post, summary] = run.posts;
+  expect(post).toMatchObject({ notify: false });
+  expect(post!.text).toContain("repair claim");
+  expect(post!.files).toHaveLength(1);
+  const orchestrator = await app.app.threads.orchestrator(
+    run.workspaceId,
+    run.owner
+  );
+  expect(summary).toMatchObject({ threadId: orchestrator.id, notify: true });
+  expect(summary!.text).toContain(`(thread:${post!.threadId})`);
+  expect(
+    app.app.database.query("SELECT delivered_at FROM intake_delivery").get()
+  ).toMatchObject({ delivered_at: expect.any(Number) });
+  // One review a day.
   await intake.tick(Date.parse("2026-10-02T08:01:00+02:00"));
-  expect(run.deliveries).toHaveLength(1);
+  expect(run.posts).toHaveLength(2);
+  expect(run.plans).toHaveLength(1);
+});
+
+test("the morning review puts the updates of one matter into one new thread, and runs its agent only for work", async () => {
+  const run = await setup({
+    decide: (input) =>
+      input.newEvidenceIds.map((id, index) => ({
+        ...proposedSubject(
+          input,
+          index === 0 ? "OpenSearch logs" : "OpenSearch memory peaks"
+        ),
+        evidence: [id],
+      })),
+    plan: (input) => ({
+      summary: "One matter today",
+      topics: [
+        {
+          updates: input.updates.map((update) => update.id),
+          threadId: null,
+          title: "OpenSearch incident",
+          channelId: input.channels[0]!.id,
+          newChannel: null,
+          message: "Francisco sent the logs and the memory peaks [1][2].",
+          work: "Draft a reply to Francisco.",
+          line: "Francisco sent the OpenSearch diagnostics",
+        },
+      ],
+      dropped: [],
+    }),
+  });
+  run.items([
+    item("logs", "Here are the Docker logs.", false, START),
+    item("peaks", "Memory peaks attached.", false, START),
+  ]);
+  await intake.tick(START);
+  expect(subjectThreads(run)).toHaveLength(0);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  const threads = subjectThreads(run);
+  expect(threads.map((thread) => thread.title)).toEqual([
+    "OpenSearch incident",
+  ]);
+  expect(run.reviews).toHaveLength(1);
+  expect(run.reviews[0]).toMatchObject({ threadId: threads[0]!.id });
+  expect(run.reviews[0]!.text).toContain("Draft a reply to Francisco.");
+  expect(run.reviews[0]!.files).toHaveLength(2);
+  expect(run.posts).toHaveLength(1);
+  expect(run.posts[0]!.notify).toBe(true);
+  expect(run.posts[0]!.text).toContain("One matter today");
+});
+
+test("a morning plan that leaves an update out changes nothing and is tried again", async () => {
+  let complete = false;
+  const run = await setup({
+    initialNotice: "brief",
+    plan: (input) => ({
+      summary: "Morning",
+      topics: complete
+        ? [
+            {
+              updates: [input.updates[0]!.id],
+              threadId: input.updates[0]!.threadId,
+              title: input.updates[0]!.proposedTitle ?? "Balcony claim",
+              channelId: input.updates[0]!.threadId
+                ? null
+                : input.channels[0]!.id,
+              newChannel: null,
+              message: "The claim waits.",
+              work: null,
+              line: "The claim waits",
+            },
+          ]
+        : [],
+      dropped: [],
+    }),
+  });
+  await intake.tick(START + 1000);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  expect(run.posts).toHaveLength(0);
+  expect(
+    app.app.database.query("SELECT delivered_at FROM intake_delivery").get()
+  ).toMatchObject({ delivered_at: null });
+  complete = true;
+  await intake.tick(Date.parse("2026-10-02T08:16:00+02:00"));
+  expect(run.posts).toHaveLength(2);
 });
 
 test("the overview shows a waiting update, takes feedback for the judge, and can post the update now", async () => {
@@ -2167,9 +2335,7 @@ test("a new morning subject stays a proposal until due, survives restart, and cr
     ],
   });
   await intake.tick(START);
-  expect(
-    app.app.workspaces.threadsIn(run.workspaceId, run.owner.id)
-  ).toHaveLength(0);
+  expect(subjectThreads(run)).toHaveLength(0);
   expect(
     app.app.workspaces
       .channelsIn(run.workspaceId, run.owner.id)
@@ -2188,10 +2354,11 @@ test("a new morning subject stays a proposal until due, survives restart, and cr
   await run.restart();
   const morning = Date.parse("2026-10-02T08:00:00+02:00");
   await intake.tick(morning);
-  const threads = app.app.workspaces.threadsIn(run.workspaceId, run.owner.id);
+  const threads = subjectThreads(run);
   expect(threads).toHaveLength(1);
-  expect(run.reviews.map((review) => review.threadId)).toEqual([
+  expect(run.posts.map((post) => post.threadId)).toEqual([
     threads[0]!.id,
+    (await app.app.threads.orchestrator(run.workspaceId, run.owner)).id,
   ]);
   expect(
     app.app.workspaces
@@ -2201,15 +2368,10 @@ test("a new morning subject stays a proposal until due, survives restart, and cr
           channel.name === "housing" && channel.ownerId === run.owner.id
       )
   ).toBe(true);
-  expect(run.reviews[0]!.files).toHaveLength(1);
+  expect(run.posts[0]!.files).toHaveLength(1);
   await intake.tick(morning + 60_000);
-  expect(run.reviews).toHaveLength(1);
-  expect(
-    app.app.workspaces.threadsIn(run.workspaceId, run.owner.id)
-  ).toHaveLength(1);
-  expect(
-    app.app.notifications.inbox(run.workspaceId, run.owner).notifications
-  ).toHaveLength(0);
+  expect(run.posts).toHaveLength(2);
+  expect(subjectThreads(run)).toHaveLength(1);
 });
 
 test("an owner reply cancels a queued new subject without leaving a channel, thread, or files", async () => {
@@ -2265,21 +2427,29 @@ test("an owner reply cancels a queued new subject without leaving a channel, thr
   ).toMatchObject({ cancelled_at: expect.any(Number) });
 });
 
-test("the final AI destination check reuses a differently titled thread created after queuing", async () => {
+test("the morning review reuses a differently titled thread created after queuing", async () => {
   const run = await setup({
-    decide: (input) => {
-      const existing =
-        input.trigger === "destination"
-          ? input.threads.find((thread) => thread.title === "Balcony repairs")
-          : undefined;
-      return [
-        {
-          ...proposedSubject(input, "Developer claim"),
-          threadId: existing?.id ?? null,
-          startThread: !existing,
-          channelId: existing ? null : input.channels[0]!.id,
-        },
-      ];
+    decide: (input) => [proposedSubject(input, "Developer claim")],
+    plan: (input) => {
+      const existing = input.threads.find(
+        (thread) => thread.title === "Balcony repairs"
+      )!;
+      return {
+        summary: "Morning",
+        topics: [
+          {
+            updates: input.updates.map((update) => update.id),
+            threadId: existing.id,
+            title: existing.title,
+            channelId: null,
+            newChannel: null,
+            message: "The developer answered about the balcony.",
+            work: null,
+            line: "The developer answered",
+          },
+        ],
+        dropped: [],
+      };
     },
   });
   await intake.tick(START);
@@ -2293,10 +2463,8 @@ test("the final AI destination check reuses a differently titled thread created 
     "Balcony repairs"
   );
   await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
-  expect(run.reviews.map((review) => review.threadId)).toEqual([existing.id]);
-  expect(
-    app.app.workspaces.threadsIn(run.workspaceId, run.owner.id)
-  ).toHaveLength(1);
+  expect(run.posts[0]!.threadId).toBe(existing.id);
+  expect(subjectThreads(run)).toHaveLength(1);
 });
 
 test("two proposals for the same matter reuse the first destination and produce one thread review", async () => {

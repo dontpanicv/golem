@@ -47,9 +47,11 @@ addresses, or code and data from employers or clients.
 - Consent first: explicit routines, reminders, and external messages still need a person's request or an accepted
   suggestion. "Read for me" (`credential.watched`) is standing consent for `src/intake/` to read that account,
   retain useful context and infer future checks. A useful development adds a visible source message and files to the
-  existing subject thread, including a matching shared family thread; that thread's existing agent reviews it and its
-  answer stays in that thread. A notification needs a separate supported reason and a fresh source check; useful
-  answers alone never notify. No separate worker thread is made. Code selects personally relevant Slack
+  existing subject thread, including a matching shared family thread. An urgent one gets that thread's agent review at
+  once, and the answer stays in that thread. The others wait for the person's one morning review in the 08:00 hour,
+  which groups them by matter, posts one message to each thread, starts an agent only for work the plan names, and
+  sends the person one summary with a notification. Another notification needs a separate supported reason and a fresh
+  source check; useful answers alone never notify. No separate worker thread is made. Code selects personally relevant Slack
   conversations and keeps incoming and outgoing context. Bounded batches and subject-scoped recall reach the
   configured model provider. Silent filing starts no agent turn and sends no push.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.

@@ -39,7 +39,14 @@ They do not need to maintain a task list or set a routine for each expected repl
    A useful development adds a visible Golem source message, the email or other
    source as a file, and supported attachments to the existing subject thread. The thread's existing Pi Durable agent
    reads them, explains what changed, and proposes next actions. A material developer reply is reviewed there. Normal
-   filing stays silent. Nonurgent changes wait for the 08:00 Europe/Prague review and are checked again first.
+   filing stays silent. Nonurgent changes wait for the person's morning review (`src/intake/morning.ts`), once a day in
+   the 08:00 Europe/Prague hour. Golem reads their source accounts again, then one model call plans all of the
+   person's waiting updates together: it groups them by matter, puts each matter into its existing thread or one new
+   thread, and drops what the newest sources show handled or stale. Each matter gets one Golem message with its
+   source files in its thread. The thread's agent works at once only when the plan names work, such as a reply to
+   draft; otherwise it reads the message when the person writes there. Then the person's own Golem thread gets one
+   summary with a link to each thread, and a notification. A plan that leaves an update out or names a thread or
+   channel that was not given changes nothing, and the review is tried again after 15 minutes.
 7. **Decide whether to notify.** Thread completion is silent, even when its answer is useful. The judge must supply
    a separate reason and exact source quote before a notification is eligible. After the answer, Golem reads the
    source accounts again and checks the proposed reason against the latest evidence. A later reply can suppress the

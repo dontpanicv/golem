@@ -11,6 +11,7 @@ import type {
 import type { Llm } from "../llm/llm.ts";
 import type { Notifications } from "../notifications/notifications.ts";
 import type { User } from "../platform/auth.ts";
+import { setSetting, setting } from "../platform/database.ts";
 import { notFound } from "../platform/errors.ts";
 import type { Indexer } from "../search/search.ts";
 import type { FileRef, Threads } from "../threads/threads.ts";
@@ -40,6 +41,12 @@ export type {
 } from "./following.ts";
 
 import { saveCheck } from "./future.ts";
+import {
+  type MorningInput,
+  type MorningPlan,
+  type MorningTopic,
+  planMorning,
+} from "./morning.ts";
 import { IntakeRecall, type ItemRow, type SourceRow } from "./recall.ts";
 import { SourceReads } from "./source-reads.ts";
 
@@ -68,6 +75,7 @@ export type IntakeThreads = Pick<
   | "files"
   | "place"
   | "startAgentThread"
+  | "orchestrator"
 >;
 export type IntakeWorkspaces = Pick<
   Workspaces,
@@ -1054,14 +1062,27 @@ export class Intake {
         hourCycle: "h23",
       }).format(now)
     );
-    const eligible = pending.filter(
+    const allowed = pending.filter(
       (delivery) =>
         enabled.has(`${delivery.workspace_id}:${delivery.owner_id}`) &&
         this.deliveryAllowed(delivery) &&
-        !this.backingOff(delivery.workspace_id, delivery.owner_id, now) &&
-        (delivery.attention !== "brief" || hour === 8)
+        !this.backingOff(delivery.workspace_id, delivery.owner_id, now)
     );
-    const prepared = await this.prepareDestinations(eligible, now, hour === 8);
+    // The brief updates wait for the person's one morning review in the 08:00 hour; the others go now.
+    if (hour === 8) {
+      for (const deliveries of Map.groupBy(
+        allowed.filter((delivery) => delivery.attention === "brief"),
+        (delivery) => `${delivery.workspace_id}:${delivery.owner_id}`
+      ).values()) {
+        await this.morning(deliveries, now);
+      }
+    }
+    const eligible = allowed.filter(
+      (delivery) =>
+        delivery.attention !== "brief" &&
+        !this.backingOff(delivery.workspace_id, delivery.owner_id, now)
+    );
+    const prepared = await this.prepareDestinations(eligible, now, false);
     const groups = Map.groupBy(
       eligible.filter(
         (delivery) =>
@@ -1097,6 +1118,295 @@ export class Intake {
         this.failed.set(`${first.workspace_id}:${owner.id}`, now);
       }
     }
+  }
+
+  /**
+   * The person's morning review, once a day: one plan groups every waiting brief update into topics, drops what the
+   * newest sources show handled or stale, and puts each topic into one thread as one message with its source files.
+   * The thread's agent works at once only on a topic whose plan names work; otherwise it reads the message when the
+   * person writes there. Then the person's own thread gets the morning summary with a notification.
+   */
+  private async morning(deliveries: Delivery[], now: number): Promise<void> {
+    const first = deliveries[0]!;
+    const workspaceId = first.workspace_id;
+    const owner = this.owner(workspaceId, first.owner_id);
+    const day = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Prague",
+    }).format(now);
+    const doneKey = `intake.morning:${workspaceId}:${first.owner_id}`;
+    if (!owner || setting(this.database, doneKey) === day) {
+      return;
+    }
+    const trace = `morning:${workspaceId}:${owner.id}:${day}`;
+    try {
+      const coverage = await this.refreshDeliverySources(
+        deliveries,
+        owner,
+        now,
+        false
+      );
+      const waiting = deliveries.filter((delivery) =>
+        this.deliveryAllowed(delivery)
+      );
+      if (waiting.length > 0) {
+        const input = await this.morningInput(
+          waiting,
+          owner,
+          now,
+          coverage ?? this.recall.coverage(workspaceId, owner)
+        );
+        const plan = await this.morningPlan(
+          trace,
+          workspaceId,
+          owner,
+          input,
+          now
+        );
+        await this.followPlan(trace, waiting, owner, input, plan, now);
+      }
+      setSetting(this.database, doneKey, day);
+    } catch (error) {
+      this.record(
+        trace,
+        "morning.error",
+        workspaceId,
+        owner.id,
+        { error: String(error) },
+        now
+      );
+      this.failed.set(`${workspaceId}:${owner.id}`, now);
+    }
+  }
+
+  private async morningInput(
+    deliveries: Delivery[],
+    owner: User,
+    now: number,
+    coverage: MorningInput["coverage"]
+  ): Promise<MorningInput> {
+    const workspaceId = deliveries[0]!.workspace_id;
+    const originals = this.deliveryEvidence(deliveries, owner);
+    const targets = [
+      ...new Set(
+        deliveries.flatMap((delivery) =>
+          delivery.thread_id ? [delivery.thread_id] : []
+        )
+      ),
+    ];
+    const checks = this.recall.relevantChecks(
+      workspaceId,
+      owner,
+      originals,
+      targets
+    );
+    const threads = await this.recall.context(
+      workspaceId,
+      owner,
+      originals,
+      checks,
+      undefined,
+      true
+    );
+    // The threads that updates already wait for are always given.
+    for (const id of targets.filter(
+      (target) => !threads.some((thread) => thread.id === target)
+    )) {
+      threads.push(
+        ...(await this.recall.context(workspaceId, owner, [], [], id))
+      );
+    }
+    return {
+      owner: owner.name,
+      now,
+      updates: deliveries.map((delivery) => {
+        const subject = delivery.subject
+          ? (JSON.parse(delivery.subject) as Assessment)
+          : null;
+        return {
+          id: delivery.id,
+          threadId: delivery.thread_id,
+          proposedTitle: subject?.title ?? null,
+          proposedChannelId: subject?.channelId ?? null,
+          proposedNewChannel: subject?.newChannel ?? null,
+          message: delivery.body,
+          sourceIds: JSON.parse(delivery.evidence_ids) as string[],
+        };
+      }),
+      evidence: await this.recall.relatedEvidence(
+        workspaceId,
+        owner,
+        originals,
+        checks
+      ),
+      threads,
+      channels: this.recall.channels(workspaceId, owner),
+      checks,
+      corrections: this.following.corrections(workspaceId, owner),
+      coverage,
+    };
+  }
+
+  /** The plan of this morning, from the audit when an earlier attempt made it, so a retry follows the same plan. */
+  private async morningPlan(
+    trace: string,
+    workspaceId: string,
+    owner: User,
+    input: MorningInput,
+    now: number
+  ): Promise<MorningPlan> {
+    const planTrace = `${trace}:${hash(input.updates.map((update) => update.id).join(":"))}`;
+    const cached = this.audit.last(
+      planTrace,
+      "morning.plan",
+      workspaceId,
+      owner.id
+    ) as MorningPlan | undefined;
+    if (cached) {
+      return cached;
+    }
+    this.record(planTrace, "morning.input", workspaceId, owner.id, input, now);
+    const plan = await planMorning(async (system, text) => {
+      const result = await this.llm.complete(
+        system,
+        text,
+        this.stopping.signal,
+        undefined,
+        { workspaceId, userId: owner.id, source: "intake", threadId: null }
+      );
+      this.record(
+        planTrace,
+        "model.response",
+        workspaceId,
+        owner.id,
+        { result },
+        now
+      );
+      return result;
+    }, input);
+    this.record(planTrace, "morning.plan", workspaceId, owner.id, plan, now);
+    return plan;
+  }
+
+  /** Cancels the dropped updates, posts each topic to its thread, and sends the morning summary. */
+  private async followPlan(
+    trace: string,
+    deliveries: Delivery[],
+    owner: User,
+    input: MorningInput,
+    plan: MorningPlan,
+    now: number
+  ): Promise<void> {
+    const workspaceId = deliveries[0]!.workspace_id;
+    for (const dropped of plan.dropped) {
+      this.database
+        .query(
+          "UPDATE intake_delivery SET cancelled_at=? WHERE id=? AND delivered_at IS NULL"
+        )
+        .run(now, dropped.id);
+      this.record(
+        dropped.id,
+        "morning.dropped",
+        workspaceId,
+        owner.id,
+        dropped,
+        now
+      );
+    }
+    const lines: string[] = [];
+    for (const topic of plan.topics) {
+      lines.push(await this.postTopic(topic, deliveries, owner, input, now));
+    }
+    if (lines.length === 0) {
+      return;
+    }
+    // The person asked for this summary to notify them.
+    await this.threads.observe(
+      await this.threads.orchestrator(workspaceId, owner),
+      `${plan.summary}\n\n${lines.join("\n")}`,
+      `${trace}:summary`,
+      owner,
+      true
+    );
+  }
+
+  /** Puts one topic of the morning plan into its thread and gives its line for the morning summary. */
+  private async postTopic(
+    topic: MorningTopic,
+    deliveries: Delivery[],
+    owner: User,
+    input: MorningInput,
+    now: number
+  ): Promise<string> {
+    const workspaceId = deliveries[0]!.workspace_id;
+    const group = topic.updates.map(
+      (id) => deliveries.find((delivery) => delivery.id === id)!
+    );
+    for (const [index, delivery] of group.entries()) {
+      const threadId = index === 0 ? topic.threadId : group[0]!.thread_id;
+      await this.destinations.bind(
+        delivery,
+        owner,
+        {
+          threadId,
+          startThread: threadId === null,
+          channelId: threadId === null ? topic.channelId : null,
+          newChannel: threadId === null ? topic.newChannel : null,
+          title: topic.title,
+          summary: "",
+          attention: "brief",
+          notification: null,
+          message: topic.message,
+          evidence: [],
+          checks: [],
+          resolved: [],
+        },
+        now
+      );
+    }
+    const thread = this.workspaces
+      .threadsIn(workspaceId, owner.id)
+      .find((candidate) => candidate.id === group[0]!.thread_id);
+    if (!thread) {
+      throw notFound();
+    }
+    const sourceIds = new Set(
+      group.flatMap((delivery) => JSON.parse(delivery.evidence_ids) as string[])
+    );
+    const links = input.evidence
+      .filter((item) => sourceIds.has(item.id))
+      .map(sourceLink)
+      .join("\n");
+    const text = links ? `${topic.message}\n\n${links}` : topic.message;
+    const files = await this.reviewFiles(group, owner, thread.channelId);
+    const requestId = `intake:morning:${hash(topic.updates.join(":"))}`;
+    if (topic.work) {
+      await this.threads.instruct(
+        thread,
+        `Morning review:\n${text}\n\n${topic.work}`,
+        requestId,
+        [],
+        owner.id,
+        "intake",
+        files
+      );
+    } else {
+      await this.threads.observe(thread, text, requestId, owner, false, files);
+    }
+    this.finishDelivery(group, owner, [], now);
+    this.record(
+      requestId,
+      "morning.posted",
+      workspaceId,
+      owner.id,
+      {
+        threadId: thread.id,
+        updates: topic.updates,
+        work: topic.work,
+        files,
+      },
+      now
+    );
+    return `- [${thread.title}](thread:${thread.id}): ${topic.line}`;
   }
 
   private async prepareDestinations(

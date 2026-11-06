@@ -581,8 +581,10 @@ explains the change and proposes next actions. Completion is silent by default, 
 When no thread matches a useful development, Golem starts a subject thread in a suitable visible channel. If no
 channel fits, Golem creates a private channel and its first thread. Invitations and tickets can start these threads.
 Channel names cover lasting subjects; thread titles name specific matters. The normal agent can search connected
-accounts for older related sources. No background worker thread is made. Nonurgent developments wait for the 08:00 Europe/Prague
-review and are checked again. One delivery group belongs to one person and one subject thread. Stable request ids
+accounts for older related sources. No background worker thread is made. Nonurgent developments wait for the person's morning
+review in the 08:00 Europe/Prague hour: one plan groups them by matter, drops what is handled or stale, posts one
+message to each thread, starts an agent only for work it names, and sends one summary to the person's own thread with
+a notification (see `docs/proactive.md`). One urgent delivery group belongs to one person and one subject thread. Stable request ids
 prevent duplicate review messages, runs, and notices. A resolved check cancels queued reviews. A `QUIET` answer sends
 no notice and does not mark an internal check as already notified. The judge separately proposes a notification with
 an exact source quote and one reason: the owner requested it, a substantive awaited reply needs attention, a stated
@@ -590,7 +592,7 @@ time arrived, or time-sensitive preparation helps now. A new message, mention, o
 Only a proposed notification triggers a fresh read of its source accounts and a final judge check after the thread
 answers. A later owner reply can suppress the notice while the useful answer remains visible. Source failures keep
 the notification pending for retry. Silent turns cannot promote themselves with `notify` or a useful answer. A morning
-review cannot promote a silent update either. Only confirmed notifications mark their related due checks as notified.
+review cannot promote a silent update either; its one summary notification is the person's. Only confirmed notifications mark their related due checks as notified.
 Automatic reviews use the normal tools of the
 thread, including connected accounts, with the same person, access rules, and approvals as a normal turn. Tool calls,
 results, and errors remain in the private audit log. Source inputs and files use the existing message endpoints and
