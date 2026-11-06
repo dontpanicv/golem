@@ -186,3 +186,19 @@ earlier creation behavior; the delayed destination change needs a new live trial
 Following is a personal view in both apps. It shows open checks, their complete supporting sources, the linked discussion when one exists, and the revision history. Handled resolves the check; Stop following leaves it stopped without claiming success. Reopen resumes monitoring. Undo restores the previous revision. A free-text correction uses the existing intake model and can change only the selected check. Every correction retains the person's exact words and before/after states. The next judge call receives these decisions and must not recreate a stopped matter. No correction creates a thread. An old revision or a revoked source cannot be used to expose another person's private context.
 
 Gmail's automatic query is `after:<checkpoint> {(in:inbox category:primary) in:sent} -in:spam -in:trash -in:chats -in:drafts`. The connector also checks each message's labels before it fetches the body. Incoming messages need INBOX and cannot have a non-Primary category label. SENT keeps outgoing context. Excluded messages do not enter collection audit records or source files. The same admission rule applies when a normal Gmail thread read updates intake checks. Normal deliberate mail searches keep their full access.
+
+## Source files
+
+Source files represent conversations, rather than individual messages:
+
+| Source | One Markdown file |
+| --- | --- |
+| Gmail | One source email thread |
+| Slack channel | One source thread, including its selected replies |
+| Slack DM or group DM | One conversation per local calendar day |
+| WhatsApp | One conversation per local calendar day |
+| Plaud | One meeting, with its latest summary |
+
+New messages update the same file ID. Message edits replace their earlier text in that file. Each entry keeps its original source ID, date, sender, and source link. Attachments remain separate files and appear as links in the conversation file. Overlapping polls and retries do not add duplicate entries or files. The archive is scoped to the owner, account, and destination channel: a shared family review receives only messages selected for that channel. It does not receive the rest of a private conversation.
+
+Existing generated message files are combined during intake maintenance. Original evidence and audit records stay intact. One original file ID is retained, while redundant copies are moved aside through normal soft deletion. Edited source files remain unchanged. This does not create an agent, a thread, or a notification. Existing file views in both apps show the grouped files through their normal updates.

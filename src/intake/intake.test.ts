@@ -159,7 +159,9 @@ async function setup(
       }
       return "Reviewed";
     },
-    upload: app.app.threads.upload.bind(app.app.threads),
+    file: app.app.threads.file.bind(app.app.threads),
+    writeFile: app.app.threads.writeFile.bind(app.app.threads),
+    deleteFile: app.app.threads.deleteFile.bind(app.app.threads),
     realm: async () => owner.id,
     requester: async () => owner,
     files: app.app.threads.files.bind(app.app.threads),

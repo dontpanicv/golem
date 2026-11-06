@@ -1215,6 +1215,30 @@ export class Threads {
     return this.files(place);
   }
 
+  /** Saves a file in this channel, with a stable id when it replaces a file there. */
+  async writeFile(
+    workspaceId: string,
+    channelId: string,
+    user: User,
+    file: File,
+    replaces?: string
+  ): Promise<FileRef> {
+    const place = this.place(workspaceId, channelId, user);
+    const previous = replaces
+      ? await this.fileHere(place, replaces)
+      : undefined;
+    const saved = await this.keep(
+      place,
+      async (path) => {
+        await Bun.write(path, file);
+        return file.name;
+      },
+      previous && { id: replaces!, path: previous.path }
+    );
+    this.hooks.changed(workspaceId);
+    return saved;
+  }
+
   /** A place of the person's workspace: a live channel, or the workspace itself for a null `channelId`. */
   place(workspaceId: string, channelId: string | null, user: User): FilePlace {
     if (channelId === null) {

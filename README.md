@@ -342,6 +342,8 @@ Silent context updates and filing send no push. Automatic reviews use the thread
 approvals. External messages still need a person's request and approval.
 
 Source data, model calls, searches, state changes, agent work, and corrections go to a separate private `audit.sqlite`.
+Source files stay grouped: one per Gmail or Slack thread, one per Plaud meeting, and one per conversation per day for WhatsApp and Slack DMs. New messages update the same file.
+
 **Following** shows what Golem is monitoring, the supporting sources, and the change history. Mark a matter handled, stop it, reopen it, or correct it in plain text. Stopping a matter does not mark it complete. Corrections remain in the audit and guide later assessments.
 
 See [the process and verification notes](docs/proactive.md), [API](docs/api.md#intake-srcintake), and

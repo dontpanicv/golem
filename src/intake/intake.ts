@@ -15,7 +15,7 @@ import { notFound } from "../platform/errors.ts";
 import type { Indexer } from "../search/search.ts";
 import type { FileRef, Threads } from "../threads/threads.ts";
 import type { ThreadRef, Workspaces } from "../workspaces/workspaces.ts";
-import { archiveObservation } from "./archive.ts";
+import { IntakeArchives } from "./archive.ts";
 import {
   type Assessment,
   type AssessmentInput,
@@ -56,7 +56,9 @@ export type IntakeThreads = Pick<
   | "version"
   | "observe"
   | "instruct"
-  | "upload"
+  | "file"
+  | "writeFile"
+  | "deleteFile"
   | "realm"
   | "requester"
   | "files"
@@ -106,6 +108,7 @@ export class Intake {
   private readonly sourceReads: SourceReads;
   private readonly destinations: IntakeDestinations;
   readonly following: Following;
+  private readonly archives: IntakeArchives;
 
   constructor(
     private readonly database: Database,
@@ -132,6 +135,14 @@ export class Intake {
       this.recall,
       audit,
       llm
+    );
+    this.archives = new IntakeArchives(
+      database,
+      workspaces,
+      integrations,
+      threads,
+      audit,
+      this.stopping.signal
     );
     this.sourceReads = new SourceReads(
       database,
@@ -181,6 +192,18 @@ export class Intake {
         const owner = this.owner(person.workspaceId, person.ownerId);
         if (!owner) {
           continue;
+        }
+        try {
+          await this.archives.maintain(person.workspaceId, owner);
+        } catch (error) {
+          this.record(
+            "archives",
+            "archive.error",
+            person.workspaceId,
+            owner.id,
+            { error: String(error) },
+            now
+          );
         }
         await this.captureThreads(person.workspaceId, owner, now);
         await this.process(person.workspaceId, owner, now);
@@ -675,8 +698,7 @@ export class Intake {
           workspaceId,
           owner,
           rows.filter((row) => decision.evidence.includes(row.id)),
-          { ...decision, threadId },
-          now
+          { ...decision, threadId }
         );
       }
     }
@@ -1592,52 +1614,22 @@ Read the attached sources in the context of this discussion. Explain what change
         (delivery) => JSON.parse(delivery.evidence_ids) as string[]
       )
     );
-    const files: FileRef[] = [];
-    for (const id of ids) {
+    const rows = [...ids].flatMap((id) => {
       const row = this.database
         .query(
           "SELECT * FROM intake_item WHERE id=? AND workspace_id=? AND owner_id=?"
         )
         .get(id, first.workspace_id, owner.id) as ItemRow | null;
-      if (!row || row.credential_id.startsWith("thread:")) {
-        continue;
-      }
-      const saved = await archiveObservation(
-        this.threads,
-        (attachmentId) =>
-          this.integrations.attachment(
-            row.credential_id,
-            row.source_id,
-            attachmentId,
-            this.stopping.signal
-          ),
-        this.audit,
-        first.workspace_id,
-        channelId,
-        owner,
-        row.id,
-        JSON.parse(row.payload) as WatchedItem
-      );
-      files.push(...saved);
-      this.database
-        .query(
-          "UPDATE intake_item SET archived_id=coalesce(archived_id,?) WHERE id=? AND workspace_id=? AND owner_id=?"
-        )
-        .run(saved[0]!.id, row.id, first.workspace_id, owner.id);
-      this.record(row.id, "archive.saved", first.workspace_id, owner.id, {
-        channel: channelId,
-        saved,
-      });
-    }
-    return [...new Map(files.map((file) => [file.id, file])).values()];
+      return row && !row.credential_id.startsWith("thread:") ? [row] : [];
+    });
+    return this.archives.save(first.workspace_id, channelId, owner, rows);
   }
 
   private async archive(
     workspaceId: string,
     owner: User,
     rows: ItemRow[],
-    decision: Assessment,
-    now: number
+    decision: Assessment
   ): Promise<void> {
     if (!decision.summary) {
       return;
@@ -1656,39 +1648,15 @@ Read the attached sources in the context of this discussion. Explain what change
     const channel =
       candidates.find((each) => each.id === matching) ??
       this.privateChannel(workspaceId, owner);
-    for (const row of rows.filter(
-      (each) =>
-        each.archived_id === null && !each.credential_id.startsWith("thread:")
-    )) {
-      const item = JSON.parse(row.payload) as WatchedItem;
-      const saved = await archiveObservation(
-        this.threads,
-        (attachmentId) =>
-          this.integrations.attachment(
-            row.credential_id,
-            row.source_id,
-            attachmentId,
-            this.stopping.signal
-          ),
-        this.audit,
-        workspaceId,
-        channel.id,
-        owner,
-        row.id,
-        item
-      );
-      this.database
-        .query("UPDATE intake_item SET archived_id=?,thread_id=? WHERE id=?")
-        .run(saved[0]!.id, decision.threadId, row.id);
-      this.record(
-        row.id,
-        "archive.saved",
-        workspaceId,
-        owner.id,
-        { channel: channel.id, saved },
-        now
-      );
-    }
+    await this.archives.save(
+      workspaceId,
+      channel.id,
+      owner,
+      rows.filter(
+        (each) =>
+          each.archived_id === null && !each.credential_id.startsWith("thread:")
+      )
+    );
   }
 
   private privateChannel(workspaceId: string, owner: User) {

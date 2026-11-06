@@ -527,6 +527,16 @@ const migrations = [
     INSERT INTO intake_check_revision(check_id,workspace_id,owner_id,at,previous,current)
     VALUES(NEW.id,NEW.workspace_id,NEW.owner_id,CAST(unixepoch('subsec')*1000 AS INTEGER),json_object('text',OLD.text,'state',OLD.state,'sourceIds',json(OLD.source_ids),'threadId',OLD.thread_id,'checkAt',OLD.check_at,'reviewAt',OLD.next_review_at,'explicitTime',OLD.explicit_time,'notifiedAt',OLD.notified_at),json_object('text',NEW.text,'state',NEW.state,'sourceIds',json(NEW.source_ids),'threadId',NEW.thread_id,'checkAt',NEW.check_at,'reviewAt',NEW.next_review_at,'explicitTime',NEW.explicit_time,'notifiedAt',NEW.notified_at));
   END;`,
+  // intake: one derived file for each source conversation and destination, with retryable consolidation.
+  `CREATE TABLE intake_archive (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL, credential_id TEXT NOT NULL, integration TEXT NOT NULL,
+    conversation TEXT NOT NULL, period TEXT NOT NULL,
+    item_ids TEXT NOT NULL, file_id TEXT, content_hash TEXT, pending INTEGER NOT NULL DEFAULT 1,
+    attachment_ids TEXT NOT NULL DEFAULT '{}', obsolete_ids TEXT NOT NULL DEFAULT '[]',
+    deleted_at INTEGER
+  );
+  CREATE INDEX intake_archive_owner ON intake_archive(workspace_id,owner_id,deleted_at);`,
 ];
 
 export function openDatabase(path: string): Database {
