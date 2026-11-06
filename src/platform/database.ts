@@ -537,6 +537,12 @@ const migrations = [
     deleted_at INTEGER
   );
   CREATE INDEX intake_archive_owner ON intake_archive(workspace_id,owner_id,deleted_at);`,
+  // intake: the person's words about an observation, an update, or a source, which later assessments respect.
+  `CREATE TABLE intake_feedback (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+    target TEXT NOT NULL, about TEXT NOT NULL, quote TEXT NOT NULL, created_at INTEGER NOT NULL, deleted_at INTEGER
+  );
+  CREATE INDEX intake_feedback_owner ON intake_feedback(workspace_id,owner_id,created_at);`,
 ];
 
 export function openDatabase(path: string): Database {

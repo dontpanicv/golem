@@ -6,6 +6,55 @@ import { HttpError } from "../platform/errors.ts";
 export const intakeApiRoutes: readonly Route[] = [
   [
     "GET",
+    "/api/v1/workspaces/:workspace/following/overview",
+    api(async ({ app, params, user, request }) =>
+      json(
+        app.intake.following.overview(
+          params.workspace!,
+          user,
+          new URL(request.url).searchParams.get("q") ?? ""
+        )
+      )
+    ),
+  ],
+  [
+    "POST",
+    "/api/v1/workspaces/:workspace/following/feedback",
+    api(async ({ app, params, user, body }) => {
+      if (
+        !(typeof body.target === "string" && typeof body.quote === "string")
+      ) {
+        throw new HttpError(400, "Send target and quote");
+      }
+      return json(
+        app.intake.following.feedback(
+          params.workspace!,
+          user,
+          body.target,
+          body.quote
+        )
+      );
+    }),
+  ],
+  [
+    "POST",
+    "/api/v1/workspaces/:workspace/following/updates/:update",
+    api(async ({ app, params, user, body }) => {
+      if (!(body.action === "now" || body.action === "cancel")) {
+        throw new HttpError(400, "Send action now or cancel");
+      }
+      return json(
+        app.intake.following.changeUpdate(
+          params.workspace!,
+          user,
+          params.update!,
+          body.action
+        )
+      );
+    }),
+  ],
+  [
+    "GET",
     "/api/v1/workspaces/:workspace/following",
     api(async ({ app, params, user }) =>
       json({ checks: app.intake.following.list(params.workspace!, user) })

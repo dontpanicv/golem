@@ -46,6 +46,14 @@ interface CheckRow {
   next_review_at: number;
   notified_at: number | null;
 }
+export interface IntakeSourceStatus {
+  id: string;
+  name: string;
+  /** Until when Golem has read the account; null before its first read. */
+  readAt: number | null;
+  error: string | null;
+  kept: number;
+}
 /** Reads the current private evidence and the Golem context that a person can use. */
 export class IntakeRecall {
   constructor(
@@ -378,25 +386,58 @@ export class IntakeRecall {
   }
 
   status(workspaceId: string, owner: User, query = "") {
+    return {
+      evidence: this.evidence(this.items(workspaceId, owner, query, 30)),
+      checks: this.checks(workspaceId, owner),
+      coverage: this.coverage(workspaceId, owner),
+    };
+  }
+
+  /** The person's visible observations that match `query`, best first, or else the newest. */
+  items(workspaceId: string, owner: User, query: string, limit: number) {
     this.workspaces.requireMember(workspaceId, owner);
     const terms = (query.match(/[\p{L}\p{N}]+/gu) ?? []).slice(0, 32);
     const match = terms.map((term) => `"${term}"`).join(" OR ");
     const rows = match
       ? (this.database
           .query(
-            "SELECT i.* FROM intake_fts f JOIN intake_item i ON i.rowid=f.rowid WHERE (intake_fts MATCH ?) AND i.workspace_id=? AND i.owner_id=? ORDER BY bm25(intake_fts),i.at DESC LIMIT 30"
+            "SELECT i.* FROM intake_fts f JOIN intake_item i ON i.rowid=f.rowid WHERE (intake_fts MATCH ?) AND i.workspace_id=? AND i.owner_id=? ORDER BY bm25(intake_fts),i.at DESC LIMIT ?"
           )
-          .all(match, workspaceId, owner.id) as ItemRow[])
+          .all(match, workspaceId, owner.id, limit) as ItemRow[])
       : (this.database
           .query(
-            "SELECT * FROM intake_item WHERE superseded_at IS NULL AND workspace_id=? AND owner_id=? ORDER BY at DESC LIMIT 30"
+            "SELECT * FROM intake_item WHERE superseded_at IS NULL AND workspace_id=? AND owner_id=? ORDER BY at DESC LIMIT ?"
           )
-          .all(workspaceId, owner.id) as ItemRow[]);
-    return {
-      evidence: this.evidence(this.visible(workspaceId, owner, rows)),
-      checks: this.checks(workspaceId, owner),
-      coverage: this.coverage(workspaceId, owner),
-    };
+          .all(workspaceId, owner.id, limit) as ItemRow[]);
+    return this.visible(workspaceId, owner, rows);
+  }
+
+  /** Each account that the person lets Golem read: how far Golem read it, its error, and how much it keeps. */
+  sourceStatus(workspaceId: string, owner: User): IntakeSourceStatus[] {
+    this.workspaces.requireMember(workspaceId, owner);
+    return this.integrations
+      .watched()
+      .filter(
+        (each) => each.workspaceId === workspaceId && each.ownerId === owner.id
+      )
+      .map((credential) => {
+        const row = this.database
+          .query(
+            "SELECT polled_at,error,(SELECT count(*) FROM intake_item WHERE credential_id=? AND superseded_at IS NULL) AS kept FROM intake_source WHERE credential_id=?"
+          )
+          .get(credential.id, credential.id) as {
+          polled_at: number;
+          error: string | null;
+          kept: number;
+        } | null;
+        return {
+          id: credential.id,
+          name: `${credential.integrationName} · ${credential.label}`,
+          readAt: row?.polled_at || null,
+          error: row?.error ?? null,
+          kept: row?.kept ?? 0,
+        };
+      });
   }
   visible(workspaceId: string, owner: User, rows: ItemRow[]): ItemRow[] {
     const sources = this.sources(workspaceId, owner);

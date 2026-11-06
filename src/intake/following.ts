@@ -4,8 +4,8 @@ import type { User } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import type { Evidence } from "./assess.ts";
 import type { Audit } from "./audit.ts";
-import type { IntakeLlm, IntakeWorkspaces } from "./intake.ts";
-import type { IntakeRecall, ItemRow } from "./recall.ts";
+import type { Delivery, IntakeLlm, IntakeWorkspaces } from "./intake.ts";
+import type { IntakeRecall, IntakeSourceStatus, ItemRow } from "./recall.ts";
 
 export interface CheckSnapshot {
   text: string;
@@ -40,6 +40,48 @@ export interface FollowingChange {
   revision: number;
   quote: string;
 }
+/** A thread update that intake made: it waits, was posted, or was cancelled. */
+export interface IntakeUpdate {
+  id: string;
+  threadId: string | null;
+  threadTitle: string | null;
+  /** The title of the thread that Golem will start, when no thread fits yet. */
+  newThread: string | null;
+  body: string;
+  /** now: at the next minute; brief: at the 08:00 review. */
+  attention: "now" | "brief";
+  /** Why Golem will also notify the person; null for a silent update. */
+  notice: string | null;
+  createdAt: number;
+  deliveredAt: number | null;
+  cancelledAt: number | null;
+  evidence: Evidence[];
+}
+/** An observation that intake keeps, and where it went. */
+export interface IntakeKept extends Evidence {
+  outcome: "thread" | "filed" | "context";
+  threadId: string | null;
+  /** The thread's title, or the channel's name for a filed observation. */
+  place: string | null;
+}
+export interface IntakeFeedback {
+  id: string;
+  /** `item:<id>`, `update:<id>`, or `source:<credential id>`. */
+  target: string;
+  about: string;
+  quote: string;
+  createdAt: number;
+}
+export interface FollowingOverview {
+  sources: IntakeSourceStatus[];
+  updates: IntakeUpdate[];
+  kept: IntakeKept[];
+  feedback: IntakeFeedback[];
+}
+const WEEK = 7 * 24 * 60 * 60_000;
+/** The newest feedback that every assessment reads. */
+const FEEDBACK = 30;
+
 interface RevisionRow {
   id: number;
   at: number;
@@ -215,25 +257,247 @@ export class Following {
     return after;
   }
 
+  /** All that intake holds for the person: its sources, its updates of the last week, what it keeps, and their feedback. */
+  overview(workspaceId: string, owner: User, query = ""): FollowingOverview {
+    this.workspaces.requireMember(workspaceId, owner);
+    return {
+      sources: this.recall.sourceStatus(workspaceId, owner),
+      updates: this.updates(workspaceId, owner),
+      kept: this.kept(workspaceId, owner, query),
+      feedback: this.feedbackOf(workspaceId, owner),
+    };
+  }
+
+  /** Posts a waiting update at the next minute, or cancels it. */
+  changeUpdate(
+    workspaceId: string,
+    owner: User,
+    id: string,
+    action: "now" | "cancel"
+  ): IntakeUpdate {
+    const update = this.updates(workspaceId, owner).find(
+      (each) => each.id === id
+    );
+    if (!update) {
+      throw notFound();
+    }
+    if (update.deliveredAt !== null || update.cancelledAt !== null) {
+      throw new HttpError(409, "This update was already posted or cancelled");
+    }
+    this.database
+      .query(
+        action === "now"
+          ? "UPDATE intake_delivery SET attention='now' WHERE id=? AND delivered_at IS NULL AND cancelled_at IS NULL"
+          : "UPDATE intake_delivery SET cancelled_at=? WHERE id=? AND delivered_at IS NULL AND cancelled_at IS NULL"
+      )
+      .run(...(action === "now" ? [id] : [Date.now(), id]));
+    this.audit.record(id, "update.changed", workspaceId, owner.id, {
+      action,
+    });
+    return this.updates(workspaceId, owner).find((each) => each.id === id)!;
+  }
+
+  /** Keeps the person's words about what intake did; later assessments respect them like corrections. */
+  feedback(
+    workspaceId: string,
+    owner: User,
+    target: string,
+    quote: string
+  ): IntakeFeedback {
+    if (!quote.trim() || quote.length > 8000) {
+      throw new HttpError(400, "Give feedback of at most 8000 characters");
+    }
+    const about = this.about(workspaceId, owner, target);
+    if (about === null) {
+      throw notFound();
+    }
+    const feedback = {
+      id: randomUUID(),
+      target,
+      about,
+      quote: quote.trim(),
+      createdAt: Date.now(),
+    };
+    this.database
+      .query(
+        "INSERT INTO intake_feedback(id,workspace_id,owner_id,target,about,quote,created_at) VALUES(?,?,?,?,?,?,?)"
+      )
+      .run(
+        feedback.id,
+        workspaceId,
+        owner.id,
+        target,
+        about,
+        feedback.quote,
+        feedback.createdAt
+      );
+    this.audit.record(target, "feedback", workspaceId, owner.id, feedback);
+    return feedback;
+  }
+
   corrections(workspaceId: string, owner: User) {
     this.workspaces.requireMember(workspaceId, owner);
-    return this.list(workspaceId, owner).flatMap((check) => {
-      const row = this.database
-        .query(
-          "SELECT quote FROM intake_check_revision WHERE check_id=? AND workspace_id=? AND owner_id=? AND quote IS NOT NULL ORDER BY id DESC LIMIT 1"
-        )
-        .get(check.id, workspaceId, owner.id) as { quote: string } | null;
-      return row
-        ? [
-            {
-              id: check.id,
-              text: check.text,
-              state: check.state,
-              quote: row.quote,
-            },
-          ]
-        : [];
+    const feedback = this.feedbackOf(workspaceId, owner).map((each) => ({
+      id: `feedback:${each.id}`,
+      text: each.about,
+      state: "feedback",
+      quote: each.quote,
+    }));
+    const checks: { id: string; text: string; state: string; quote: string }[] =
+      this.list(workspaceId, owner).flatMap((check) => {
+        const row = this.database
+          .query(
+            "SELECT quote FROM intake_check_revision WHERE check_id=? AND workspace_id=? AND owner_id=? AND quote IS NOT NULL ORDER BY id DESC LIMIT 1"
+          )
+          .get(check.id, workspaceId, owner.id) as { quote: string } | null;
+        return row
+          ? [
+              {
+                id: check.id,
+                text: check.text,
+                state: check.state,
+                quote: row.quote,
+              },
+            ]
+          : [];
+      });
+    return [...checks, ...feedback];
+  }
+
+  private updates(workspaceId: string, owner: User): IntakeUpdate[] {
+    const titles = this.threadTitles(workspaceId, owner);
+    const rows = this.database
+      .query(
+        "SELECT * FROM intake_delivery WHERE workspace_id=? AND owner_id=? AND ((delivered_at IS NULL AND cancelled_at IS NULL) OR created_at>?) ORDER BY created_at DESC LIMIT 100"
+      )
+      .all(workspaceId, owner.id, Date.now() - WEEK) as (Delivery & {
+      created_at: number;
+    })[];
+    return rows.flatMap((row) => {
+      const ids = JSON.parse(row.evidence_ids) as string[];
+      const sources = this.rows(workspaceId, owner, ids);
+      // Like delivery itself: an update shows only while the person sees its thread and all its sources.
+      if (
+        (row.thread_id !== null && !titles.has(row.thread_id)) ||
+        sources.length !== ids.length
+      ) {
+        return [];
+      }
+      const notice = row.notification
+        ? (JSON.parse(row.notification) as { reason?: string }).reason
+        : null;
+      const subject = row.subject
+        ? (JSON.parse(row.subject) as { title?: string }).title
+        : null;
+      return [
+        {
+          id: row.id,
+          threadId: row.thread_id,
+          threadTitle: row.thread_id ? titles.get(row.thread_id)! : null,
+          newThread: subject ?? null,
+          body: row.body,
+          attention: row.attention === "now" ? "now" : "brief",
+          notice: notice ?? null,
+          createdAt: row.created_at,
+          deliveredAt: row.delivered_at,
+          cancelledAt: row.cancelled_at,
+          evidence: this.recall.evidence(sources),
+        },
+      ];
     });
+  }
+
+  private kept(workspaceId: string, owner: User, query: string): IntakeKept[] {
+    const titles = this.threadTitles(workspaceId, owner);
+    const channels = new Map(
+      this.workspaces
+        .channelsIn(workspaceId, owner.id)
+        .map((channel) => [channel.id, channel.name])
+    );
+    const rows = this.recall.items(workspaceId, owner, query, 100);
+    const evidence = this.recall.evidence(rows);
+    return rows.map((row, index) => {
+      const channel = row.archived_id
+        ? (
+            this.database
+              .query("SELECT channel_id FROM intake_archive WHERE id=?")
+              .get(row.archived_id) as { channel_id: string } | null
+          )?.channel_id
+        : undefined;
+      if (row.thread_id && titles.has(row.thread_id)) {
+        return {
+          ...evidence[index]!,
+          outcome: "thread",
+          threadId: row.thread_id,
+          place: titles.get(row.thread_id)!,
+        };
+      }
+      if (channel && channels.has(channel)) {
+        return {
+          ...evidence[index]!,
+          outcome: "filed",
+          threadId: null,
+          place: `#${channels.get(channel)}`,
+        };
+      }
+      return {
+        ...evidence[index]!,
+        outcome: "context",
+        threadId: null,
+        place: null,
+      };
+    });
+  }
+
+  private feedbackOf(workspaceId: string, owner: User): IntakeFeedback[] {
+    return (
+      this.database
+        .query(
+          "SELECT id,target,about,quote,created_at AS createdAt FROM intake_feedback WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?"
+        )
+        .all(workspaceId, owner.id, FEEDBACK) as IntakeFeedback[]
+    ).filter((each) => this.about(workspaceId, owner, each.target) !== null);
+  }
+
+  /** What a feedback target names, in a line for the assessment; null when the person cannot see it. */
+  private about(
+    workspaceId: string,
+    owner: User,
+    target: string
+  ): string | null {
+    const [kind, ...rest] = target.split(":");
+    const id = rest.join(":");
+    if (kind === "item") {
+      const [evidence] = this.recall.evidence(
+        this.rows(workspaceId, owner, [id])
+      );
+      return evidence
+        ? `Observation ${id} (${evidence.source}): ${evidence.text.slice(0, 300)}`
+        : null;
+    }
+    if (kind === "update") {
+      const update = this.updates(workspaceId, owner).find(
+        (each) => each.id === id
+      );
+      return update
+        ? `Thread update for ${update.threadTitle ?? update.newThread ?? "a new thread"}: ${update.body.slice(0, 300)}`
+        : null;
+    }
+    if (kind === "source") {
+      const source = this.recall
+        .sourceStatus(workspaceId, owner)
+        .find((each) => each.id === id);
+      return source ? `Everything from ${source.name}` : null;
+    }
+    return null;
+  }
+
+  private threadTitles(workspaceId: string, owner: User) {
+    return new Map(
+      this.workspaces
+        .threadsIn(workspaceId, owner.id)
+        .map((thread) => [thread.id, thread.title])
+    );
   }
 
   private requireRevision(check: FollowingCheck, revision: number): void {

@@ -1,16 +1,40 @@
 import SwiftUI
 
-/// The person's follow-up ledger. Golem does the monitoring; this view shows and corrects its understanding.
+/// All that Golem holds for the person from the accounts it reads: the thread updates that wait, the matters it
+/// follows, its sources, what it keeps, and what it did. Each row opens its detail, where the person gives feedback.
 struct FollowingView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @Environment(\.scenePhase) private var scenePhase
     @State private var checks: [FollowingCheck]?
-    @State private var history = false
-    @State private var selected: FollowingCheck?
+    @State private var overview: FollowingOverview?
+    @State private var query = ""
+    @State private var allKept = false
+    @State private var selected: Selected?
 
-    private var rows: [FollowingCheck] {
-        (checks ?? []).filter { ($0.state != "open") == history }
+    /// The kept observations that show before "Show all".
+    private let keptRows = 15
+
+    enum Selected: Identifiable {
+        case check(FollowingCheck), update(IntakeUpdate), kept(IntakeKept), source(IntakeSource)
+
+        var id: String {
+            switch self {
+            case let .check(check): "check:\(check.id)"
+            case let .update(update): "update:\(update.id)"
+            case let .kept(item): "item:\(item.id)"
+            case let .source(source): "source:\(source.id)"
+            }
+        }
+    }
+
+    private var waiting: [IntakeUpdate] { (overview?.updates ?? []).filter(\.waits) }
+    private var following: [FollowingCheck] { (checks ?? []).filter { $0.state == "open" } }
+    private var done: [(at: Double, row: Selected)] {
+        let updates = (overview?.updates ?? []).filter { !$0.waits }
+            .map { (at: $0.deliveredAt ?? $0.cancelledAt ?? $0.createdAt, row: Selected.update($0)) }
+        let closed = (checks ?? []).filter { $0.state != "open" }.map { (at: $0.updatedAt, row: Selected.check($0)) }
+        return (updates + closed).sorted { $0.at > $1.at }
     }
 
     var body: some View {
@@ -19,25 +43,24 @@ struct FollowingView: View {
                 DetailTitle(title: "Following")
                     .padding(.horizontal, Tokens.Mobile.Size.margin)
                     .padding(.vertical, Tokens.Space.md)
-                Picker("View", selection: $history) {
-                    Text("Following").tag(false)
-                    Text("History").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, Tokens.Mobile.Size.margin)
-                .padding(.bottom, Tokens.Space.md)
-                ForEach(rows) { check in
-                    Button { selected = check } label: {
-                        ListRow(check.text, systemImage: "eye", subtitle: subtitle(check))
+                section("Waiting", waiting.map(Selected.update))
+                section("Following", following.map(Selected.check))
+                section("Sources", (overview?.sources ?? []).map(Selected.source))
+                if let overview, !overview.sources.isEmpty { keptSection(overview.kept) }
+                section("Done", done.map(\.row))
+                if let feedback = overview?.feedback, !feedback.isEmpty {
+                    ListSeparator()
+                    ListSectionHeader(title: "Your feedback")
+                    ForEach(feedback) { each in
+                        ListRow(each.quote, systemImage: "text.bubble", subtitle: each.about)
                     }
-                    .buttonStyle(.row)
                 }
             }
             .padding(.bottom, Tokens.Space.xxxl)
         }
         .overlay {
-            if checks != nil, rows.isEmpty {
-                EmptyState(title: history ? "No history" : "Nothing to follow", systemImage: "eye")
+            if let overview, overview.sources.isEmpty {
+                EmptyState(title: "Golem reads no account for you", systemImage: "tray")
             }
         }
         .task(id: scenePhase) {
@@ -47,18 +70,111 @@ struct FollowingView: View {
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }
             }
         }
+        .task(id: query) {
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            await session.run { try await load() }
+        }
         .refreshable { await session.run { try await load() } }
-        .sheet(item: $selected, onDismiss: reload, content: { check in
-            NavigationStack {
-                FollowingDetailView(checkID: check.id) { destination in
-                    selected = nil
-                    open(destination)
-                }
-            }
-        })
+        .sheet(item: $selected, onDismiss: reload) { selection in
+            NavigationStack { detail(selection) }
+        }
         .phoneTabBar()
         .mobileBackground()
         .pushedScreen("Following")
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, _ rows: [Selected]) -> some View {
+        if !rows.isEmpty {
+            ListSeparator()
+            ListSectionHeader(title: title)
+            ForEach(rows) { row in
+                Button { selected = row } label: { label(row) }
+                    .buttonStyle(.row)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func keptSection(_ kept: [IntakeKept]) -> some View {
+        ListSeparator()
+        ListSectionHeader(title: "Kept")
+        TextField("Search mail, messages, and notes", text: $query)
+            .textFieldStyle(.roundedBorder)
+            .font(.golem(Tokens.Mobile.FontSize.row))
+            .padding(.horizontal, Tokens.Mobile.Size.margin)
+            .padding(.vertical, Tokens.Space.md)
+        ForEach(allKept ? kept : Array(kept.prefix(keptRows))) { item in
+            Button { selected = .kept(item) } label: { label(.kept(item)) }
+                .buttonStyle(.row)
+        }
+        if !allKept, kept.count > keptRows {
+            Button("Show all \(kept.count)") { allKept = true }
+                .buttonStyle(.secondary)
+                .padding(.horizontal, Tokens.Mobile.Size.margin)
+                .padding(.vertical, Tokens.Space.md)
+        }
+    }
+
+    @ViewBuilder
+    private func label(_ row: Selected) -> some View {
+        switch row {
+        case let .update(update):
+            ListRow(
+                update.title, systemImage: update.deliveredAt == nil ? "clock" : "checkmark",
+                subtitle: "\(update.state) · \(update.message)"
+            )
+        case let .check(check):
+            ListRow(
+                check.text, systemImage: check.state == "open" ? "eye" : "checkmark", subtitle: checkState(check)
+            )
+        case let .source(source):
+            ListRow(title: source.name, systemImage: "tray", subtitle: source.error ?? source.state) {
+                if source.error != nil { Badge(label: "Error", tone: .danger) }
+            }
+        case let .kept(item):
+            ListRow(
+                title: item.evidence.name, systemImage: item.fromOwner ? "arrow.up" : "tray",
+                subtitle: "\(Date(milliseconds: item.timestamp).formatted()) · \(item.text)"
+            ) {
+                Badge(label: item.badge, tone: item.outcome == "context" ? .neutral : .success)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func detail(_ selection: Selected) -> some View {
+        let leave: (Destination) -> Void = { destination in
+            selected = nil
+            open(destination)
+        }
+        let earlier = (overview?.feedback ?? []).filter { $0.target == selection.id }
+        switch selection {
+        case let .check(check):
+            FollowingDetailView(checkID: check.id, open: leave)
+        case let .update(update):
+            UpdateDetailView(update: update, earlier: earlier, open: leave)
+        case let .kept(item):
+            IntakeDetailView(title: item.evidence.name, target: selection.id, earlier: earlier) {
+                SettingsCard {
+                    SettingsRow(Date(milliseconds: item.timestamp).formatted(), description: item.location)
+                    DetailText(text: item.text)
+                    if let threadID = item.threadId {
+                        Button { leave(.thread(threadID)) } label: {
+                            ListRow("Open thread", systemImage: "bubble.left")
+                        }
+                        .buttonStyle(.row)
+                    }
+                    SourceLink(url: item.url)
+                }
+            }
+        case let .source(source):
+            IntakeDetailView(title: source.name, target: selection.id, earlier: earlier) {
+                SettingsCard {
+                    SettingsRow(source.state, description: source.error)
+                }
+            }
+        }
     }
 
     private func reload() {
@@ -67,152 +183,17 @@ struct FollowingView: View {
 
     private func load() async throws {
         guard let workspace = session.workspace else { return }
-        checks = try await session.api.following(workspaceID: workspace.id)
+        async let checks = session.api.following(workspaceID: workspace.id)
+        async let overview = session.api.followingOverview(workspaceID: workspace.id, query: query)
+        (self.checks, self.overview) = try await (checks, overview)
     }
 
-    private func subtitle(_ check: FollowingCheck) -> String {
-        guard check.explicitTime != 0 else { return check.stateLabel }
-        return "\(check.stateLabel) · Stated date · \(Date(milliseconds: check.checkAt).formatted())"
-    }
-}
-
-private struct FollowingDetailView: View {
-    let checkID: String
-    let open: (Destination) -> Void
-    @Environment(Session.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    @State private var detail: FollowingDetail?
-    @State private var quote = ""
-    @State private var busy = false
-
-    var body: some View {
-        SettingsList {
-            if let detail {
-                checkCard(detail)
-                evidenceCard(detail)
-                historyCard(detail)
-            } else {
-                ProgressView().frame(maxWidth: .infinity)
-            }
+    private func checkState(_ check: FollowingCheck) -> String {
+        if check.state != "open" {
+            return "\(check.stateLabel) · \(Date(milliseconds: check.updatedAt).formatted())"
         }
-        .navigationTitle("Following")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-        }
-        .task { await session.run { try await load() } }
-        .refreshable { await session.run { try await load() } }
+        return check.explicitTime != 0
+            ? "Due \(Date(milliseconds: check.checkAt).formatted())"
+            : "Next look \(Date(milliseconds: check.reviewAt).formatted())"
     }
-
-    private func checkCard(_ detail: FollowingDetail) -> some View {
-        SettingsCard(title: detail.check.text) {
-            SettingsRow("State", description: detail.check.stateLabel) { EmptyView() }
-            if detail.check.explicitTime != 0 {
-                SettingsRow("Stated date", description: time(detail.check.checkAt)) { EmptyView() }
-            }
-            if detail.check.state == "open" {
-                SettingsRow("Next review", description: time(detail.check.reviewAt)) { EmptyView() }
-            }
-            SettingsRow("Last change", description: time(detail.check.updatedAt)) { EmptyView() }
-            if let threadID = detail.check.threadId {
-                Button { open(.thread(threadID)) } label: {
-                    ListRow("Open discussion", systemImage: "bubble.left")
-                }
-                .buttonStyle(.row)
-            }
-            if detail.check.state == "open" {
-                action("Handled", systemImage: "checkmark", change: "handled")
-                action("Stop following", systemImage: "stop", change: "stop")
-            } else {
-                action("Reopen", systemImage: "arrow.clockwise", change: "reopen")
-            }
-            if detail.history.first?.previous != nil {
-                action("Undo last change", systemImage: "arrow.uturn.backward", change: "undo")
-            }
-            VStack(alignment: .leading, spacing: Tokens.Space.md) {
-                Text("Correct").font(.golem(Tokens.Mobile.FontSize.row))
-                TextField("Correction", text: $quote, axis: .vertical)
-                    .lineLimit(3...8)
-                    .font(.golem(Tokens.Mobile.FontSize.row))
-                    .disabled(busy)
-                Button(busy ? "Saving…" : "Apply correction") { change("correct", quote: quote) }
-                    .buttonStyle(.secondary)
-                    .disabled(
-                        busy || quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || quote.count > 8000
-                    )
-            }
-            .padding(.horizontal, Tokens.Mobile.Size.margin)
-            .padding(.vertical, Tokens.Space.md)
-        }
-    }
-
-    private func evidenceCard(_ detail: FollowingDetail) -> some View {
-        SettingsCard(title: "Evidence") {
-            ForEach(detail.evidence) { evidence in
-                DisclosureGroup {
-                    if let address = evidence.url, let url = URL(string: address), url.scheme == "https" {
-                        Link("Open source", destination: url)
-                    }
-                    Text(evidence.text).textSelection(.enabled)
-                    ForEach(Array((evidence.attachments ?? []).enumerated()), id: \.offset) { _, file in
-                        Text(file.name)
-                    }
-                } label: {
-                    Text("\(evidence.source) · \(time(evidence.timestamp))")
-                }
-                .font(.golem(Tokens.Mobile.FontSize.row))
-                .padding(.horizontal, Tokens.Mobile.Size.margin)
-                .padding(.vertical, Tokens.Space.md)
-            }
-        }
-    }
-
-    private func historyCard(_ detail: FollowingDetail) -> some View {
-        SettingsCard(title: "History") {
-            ForEach(detail.history) { revision in
-                DisclosureGroup {
-                    if let previous = revision.previous { Text("Before · \(previous.state) · \(previous.text)") }
-                    Text("After · \(revision.current.state) · \(revision.current.text)")
-                    if revision.current.explicitTime != 0 { Text("Stated date · \(time(revision.current.checkAt))") }
-                } label: {
-                    Text("\(revision.quote ?? "Golem review") · \(time(revision.timestamp))")
-                }
-                .font(.golem(Tokens.Mobile.FontSize.row))
-                .padding(.horizontal, Tokens.Mobile.Size.margin)
-                .padding(.vertical, Tokens.Space.md)
-            }
-        }
-    }
-
-    private func action(_ title: String, systemImage: String, change: String) -> some View {
-        Button { self.change(change, quote: title) } label: { ListRow(title, systemImage: systemImage) }
-            .buttonStyle(.row)
-            .disabled(busy)
-    }
-
-    private func change(_ action: String, quote: String) {
-        guard let workspace = session.workspace, let check = detail?.check else { return }
-        busy = true
-        Task {
-            await session.run {
-                do {
-                    detail = try await session.api.changeFollowing(
-                        workspaceID: workspace.id, check: check, action: action, quote: quote
-                    )
-                    self.quote = ""
-                } catch {
-                    try? await load()
-                    throw error
-                }
-            }
-            busy = false
-        }
-    }
-
-    private func load() async throws {
-        guard let workspace = session.workspace else { return }
-        detail = try await session.api.followingDetail(workspaceID: workspace.id, checkID: checkID)
-    }
-
-    private func time(_ milliseconds: Double) -> String { Date(milliseconds: milliseconds).formatted() }
 }

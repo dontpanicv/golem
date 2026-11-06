@@ -119,7 +119,10 @@ agent context and source-review tool results, and corrections. A runtime event r
 no integration credential store. [SQLite backup](data.md#audit-export) makes a consistent single file for replay on
 another machine. This raw log supports later evaluation and training; it does not train a model by itself.
 
-A private conversation can use `intake_read` to explain what Golem is following. Ordinary-language corrections use
+A turn reads intake as the person it answers, in any thread they see, also in a channel that others see: it can use
+`intake_read` to explain what Golem is following. When the person writes in a thread, the updates that wait for it
+from their accounts join that turn in its observed context, and the morning review skips them. Another member's
+message never takes them. Ordinary-language corrections use
 `intake_update` with the person's latest exact words. The same services have authenticated JSON endpoints for both
 clients. The web and iOS account settings expose the same opt-in.
 

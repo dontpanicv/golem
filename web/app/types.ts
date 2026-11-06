@@ -450,16 +450,19 @@ export interface FollowingCheck extends CheckSnapshot {
   revision: number;
   updatedAt: number;
 }
+/** A source observation: a mail, a message, or a note that intake keeps. */
+export interface IntakeEvidence {
+  id: string;
+  source: string;
+  text: string;
+  at: number;
+  url: string | null;
+  fromOwner: boolean;
+  attachments?: readonly { name: string; type: string; size: number }[];
+}
 export interface FollowingDetail {
   check: FollowingCheck;
-  evidence: {
-    id: string;
-    source: string;
-    text: string;
-    at: number;
-    url: string | null;
-    attachments?: readonly { name: string; type: string; size: number }[];
-  }[];
+  evidence: IntakeEvidence[];
   history: {
     id: number;
     at: number;
@@ -468,6 +471,43 @@ export interface FollowingDetail {
     previous: CheckSnapshot | null;
     current: CheckSnapshot;
   }[];
+}
+export interface FollowingOverview {
+  sources: {
+    id: string;
+    name: string;
+    readAt: number | null;
+    error: string | null;
+    kept: number;
+  }[];
+  updates: IntakeUpdate[];
+  kept: IntakeKept[];
+  feedback: IntakeFeedback[];
+}
+export interface IntakeUpdate {
+  id: string;
+  threadId: string | null;
+  threadTitle: string | null;
+  newThread: string | null;
+  body: string;
+  attention: "now" | "brief";
+  notice: string | null;
+  createdAt: number;
+  deliveredAt: number | null;
+  cancelledAt: number | null;
+  evidence: IntakeEvidence[];
+}
+export interface IntakeKept extends IntakeEvidence {
+  outcome: "thread" | "filed" | "context";
+  threadId: string | null;
+  place: string | null;
+}
+export interface IntakeFeedback {
+  id: string;
+  target: string;
+  about: string;
+  quote: string;
+  createdAt: number;
 }
 export interface FollowingChange {
   action: "handled" | "stop" | "reopen" | "correct" | "undo";

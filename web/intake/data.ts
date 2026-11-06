@@ -8,6 +8,7 @@ import type {
   FollowingChange,
   FollowingCheck,
   FollowingDetail,
+  FollowingOverview,
 } from "../app/types.ts";
 
 /** The person's ledger; a state change shows at once and rolls back if the server refuses it. */
@@ -86,4 +87,46 @@ export function changeFollowing(
       draft.updatedAt = Date.now();
     }
   ).isPersisted.promise;
+}
+
+/** All that intake holds for the person; `query` searches what it keeps. */
+export function overviewQuery(workspaceId: string, query: string) {
+  return queryOptions({
+    queryKey: ["workspaces", workspaceId, "following-overview", query],
+    queryFn: ({ signal }) =>
+      request<FollowingOverview>(
+        `/workspaces/${workspaceId}/following/overview?q=${encodeURIComponent(query)}`,
+        { signal }
+      ),
+    // No event stream publishes intake changes.
+    refetchInterval: 30_000,
+  });
+}
+
+export async function changeUpdate(
+  workspaceId: string,
+  id: string,
+  action: "now" | "cancel"
+) {
+  await request(`/workspaces/${workspaceId}/following/updates/${id}`, {
+    method: "POST",
+    body: { action },
+  });
+  await queryClient.invalidateQueries({
+    queryKey: ["workspaces", workspaceId, "following-overview"],
+  });
+}
+
+export async function sendFeedback(
+  workspaceId: string,
+  target: string,
+  quote: string
+) {
+  await request(`/workspaces/${workspaceId}/following/feedback`, {
+    method: "POST",
+    body: { target, quote },
+  });
+  await queryClient.invalidateQueries({
+    queryKey: ["workspaces", workspaceId, "following-overview"],
+  });
 }

@@ -595,15 +595,20 @@ thread, including connected accounts, with the same person, access rules, and ap
 results, and errors remain in the private audit log. Source inputs and files use the existing message endpoints and
 event streams on web and iOS.
 
-Private agents use the script tools `intake_read({ query })` and `intake_update({ id, action, revision, quote })`. The latter
+A turn uses the script tools for the person it answers, in any thread: `intake_read({ query })` and `intake_update({ id, action, revision, quote })`. The latter
 requires an exact quote from the person's latest message. Source text is untrusted data. See [process](proactive.md).
 
 #### Following
 
-Both apps show the signed-in person's check ledger in **Following**. Closed checks appear in **History**.
+Both apps show in **Following** all that intake holds for the signed-in person: the thread updates that wait, the
+open checks, the sources with how far Golem read them, what it keeps and where each observation went, the updates and
+checks of the last week that are done, and the person's feedback. Each row opens its detail.
 
 | Endpoint | Body | Response |
 | --- | --- | --- |
+| `GET /api/v1/workspaces/:workspaceId/following/overview?q=` | | `FollowingOverview`; `q` searches what intake keeps, else the 100 newest observations |
+| `POST /api/v1/workspaces/:workspaceId/following/updates/:updateId` | `{ action: "now" \| "cancel" }` | The `IntakeUpdate`; `now` posts a waiting update at the next minute, before the 08:00 review, even if the destination check would wait; `cancel` drops it. `409` once it was posted or cancelled; `404` for an update outside the person's visible threads and sources |
+| `POST /api/v1/workspaces/:workspaceId/following/feedback` | `{ target: "item:<id>" \| "update:<id>" \| "source:<credentialId>", quote: string }` | The `IntakeFeedback`; every later assessment reads the 30 newest as the owner's corrections. `404` for a target the person cannot see |
 | `GET /api/v1/workspaces/:workspaceId/following` | | `{ checks: FollowingCheck[] }`, including open, resolved, and stopped checks |
 | `GET /api/v1/workspaces/:workspaceId/following/:checkId` | | `{ check, evidence, history }`; all supporting source text, even outside the latest 30 observations; newest revision first |
 | `POST /api/v1/workspaces/:workspaceId/following/:checkId` | `{ action: "handled" \| "stop" \| "reopen" \| "correct" \| "undo", revision: number, quote: string }` | The updated detail; `409` if the check changed; `404` for a check outside the person's visible sources and threads |
@@ -616,6 +621,19 @@ type CheckSnapshot = {
 };
 type FollowingCheck = CheckSnapshot & { id: string; revision: number; updatedAt: number };
 type CheckRevision = { id: number; at: number; action: string; quote: string | null; previous: CheckSnapshot | null; current: CheckSnapshot };
+type IntakeEvidence = { id: string; source: string; text: string; at: number; url: string | null; fromOwner: boolean; attachments?: { name: string; type: string; size: number }[] };
+type FollowingOverview = {
+  sources: { id: string; name: string; readAt: number | null; error: string | null; kept: number }[];
+  updates: IntakeUpdate[]; // waiting ones, and those of the last week; newest first
+  kept: (IntakeEvidence & { outcome: "thread" | "filed" | "context"; threadId: string | null; place: string | null })[];
+  feedback: IntakeFeedback[];
+};
+type IntakeUpdate = {
+  id: string; threadId: string | null; threadTitle: string | null; newThread: string | null; // the title of a thread Golem will start
+  body: string; attention: "now" | "brief"; notice: string | null; // why Golem will also notify
+  createdAt: number; deliveredAt: number | null; cancelledAt: number | null; evidence: IntakeEvidence[];
+};
+type IntakeFeedback = { id: string; target: string; about: string; quote: string; createdAt: number };
 ```
 
 `quote` is the person's exact correction, at most 8000 characters. `correct` uses the intake model to change only the selected matter. A partial answer preserves the remaining question. `stop` stops monitoring without declaring resolution. `undo` restores the previous revision. Changes cancel queued updates for that check and retain the before and after states in the audit. No action creates a thread. The ledger remains private even if the linked discussion is shared. Stated dates (`explicitTime = 1`, `checkAt`) are separate from internal reviews (`reviewAt`). Both apps refresh this view every 30 seconds while it is open; no existing stream publishes check changes.

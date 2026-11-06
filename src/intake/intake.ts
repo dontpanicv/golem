@@ -33,6 +33,9 @@ export type {
   FollowingChange,
   FollowingCheck,
   FollowingDetail,
+  FollowingOverview,
+  IntakeFeedback,
+  IntakeUpdate,
 } from "./following.ts";
 
 import { saveCheck } from "./future.ts";
@@ -1140,7 +1143,17 @@ export class Intake {
       delivery.notification = result.proposed[0]
         ? JSON.stringify(result.proposed[0])
         : null;
-      if (result.decision.attention === "brief" && !briefReady) {
+      // The person's "Send now" in Following outranks the judge's morning review.
+      const sendNow =
+        (
+          this.audit.last(
+            delivery.id,
+            "update.changed",
+            delivery.workspace_id,
+            owner.id
+          ) as { action?: string } | undefined
+        )?.action === "now";
+      if (result.decision.attention === "brief" && !briefReady && !sendNow) {
         this.database
           .query(
             "UPDATE intake_delivery SET attention='brief',body=?,notification=?,subject=? WHERE id=?"
@@ -1724,18 +1737,31 @@ Read the attached sources in the context of this discussion. Explain what change
     return this.recall.checks(workspaceId, owner);
   }
 
-  contextFor(workspaceId: string, threadId: string, ownerId: string): string {
+  /**
+   * What intake knows about a thread for the person a turn answers, in any thread they see. With `claim`, the turn
+   * answers their own message: their updates that wait for this thread join it, and the morning review skips them.
+   */
+  contextFor(
+    workspaceId: string,
+    threadId: string,
+    ownerId: string,
+    claim = false,
+    now = Date.now()
+  ): string {
     const owner = this.owner(workspaceId, ownerId);
     if (
       !(
         owner &&
         this.workspaces
           .threadsIn(workspaceId, ownerId)
-          .some((thread) => thread.id === threadId && thread.realm === ownerId)
+          .some((thread) => thread.id === threadId)
       )
     ) {
       return "";
     }
+    const arrived = claim
+      ? this.claimUpdates(owner, workspaceId, threadId, now)
+      : [];
     const context = this.database
       .query(
         "SELECT summary,source_ids FROM intake_context WHERE workspace_id=? AND owner_id=? AND thread_id=?"
@@ -1747,9 +1773,70 @@ Read the attached sources in the context of this discussion. Explain what change
     const checks = this.openChecks(workspaceId, owner).filter(
       (check) => check.threadId === threadId
     );
-    return context || checks.length
-      ? JSON.stringify({ observedContext: context, futureChecks: checks })
+    return context || checks.length || arrived.length
+      ? JSON.stringify({
+          observedContext: context,
+          futureChecks: checks,
+          ...(arrived.length ? { newFromWatchedAccounts: arrived } : {}),
+        })
       : "";
+  }
+
+  /** Marks the person's waiting updates for a thread as delivered, and gives their messages and untrusted sources. */
+  private claimUpdates(
+    owner: User,
+    workspaceId: string,
+    threadId: string,
+    now: number
+  ) {
+    const waiting = (
+      this.database
+        .query(
+          "SELECT * FROM intake_delivery WHERE workspace_id=? AND owner_id=? AND thread_id=? AND delivered_at IS NULL AND cancelled_at IS NULL ORDER BY created_at"
+        )
+        .all(workspaceId, owner.id, threadId) as Delivery[]
+    ).filter((delivery) => this.deliveryAllowed(delivery));
+    if (waiting.length === 0) {
+      return [];
+    }
+    const claimed = waiting.map((delivery) => ({
+      update: delivery.body,
+      sources: this.recall
+        .evidence(
+          this.recall.visible(
+            workspaceId,
+            owner,
+            (JSON.parse(delivery.evidence_ids) as string[]).flatMap((id) => {
+              const row = this.database
+                .query("SELECT * FROM intake_item WHERE id=?")
+                .get(id) as ItemRow | null;
+              return row ? [row] : [];
+            })
+          )
+        )
+        .map((evidence) => ({
+          ...evidence,
+          text: evidence.text.slice(0, 8000),
+        })),
+    }));
+    this.database.transaction(() => {
+      for (const delivery of waiting) {
+        this.database
+          .query(
+            "UPDATE intake_delivery SET delivered_at=? WHERE id=? AND delivered_at IS NULL"
+          )
+          .run(now, delivery.id);
+      }
+    })();
+    this.record(
+      `claim:${threadId}:${now}`,
+      "attention.claimed",
+      workspaceId,
+      owner.id,
+      { threadId, deliveries: waiting.map((delivery) => delivery.id) },
+      now
+    );
+    return claimed;
   }
 
   /** Private source search and ordinary-language corrections are available to the existing agents. */

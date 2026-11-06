@@ -1219,6 +1219,92 @@ test("the morning review sends one visible review to the thread", async () => {
   expect(run.deliveries).toHaveLength(1);
 });
 
+test("the overview shows a waiting update, takes feedback for the judge, and can post the update now", async () => {
+  const run = await setup({ initialNotice: "brief" });
+  await intake.tick(START + 1000);
+  const overview = intake.following.overview(run.workspaceId, run.owner);
+  expect(overview.sources).toHaveLength(1);
+  expect(overview.sources[0]!.readAt).not.toBeNull();
+  expect(overview.sources[0]!.kept).toBeGreaterThan(0);
+  expect(overview.kept.length).toBeGreaterThan(0);
+  const [update] = overview.updates;
+  expect(update).toMatchObject({ attention: "brief", deliveredAt: null });
+  expect(update!.evidence.length).toBeGreaterThan(0);
+  const feedback = intake.following.feedback(
+    run.workspaceId,
+    run.owner,
+    `update:${update!.id}`,
+    "Updates about this claim can go to the thread at once"
+  );
+  expect(
+    intake.following.overview(run.workspaceId, run.owner).feedback
+  ).toEqual([feedback]);
+  expect(
+    intake.following
+      .corrections(run.workspaceId, run.owner)
+      .some(
+        (each) => each.state === "feedback" && each.quote === feedback.quote
+      )
+  ).toBe(true);
+  expect(() =>
+    intake.following.feedback(run.workspaceId, run.owner, "item:none", "Wrong")
+  ).toThrow();
+  intake.following.changeUpdate(run.workspaceId, run.owner, update!.id, "now");
+  await intake.tick(START + 2 * 60_000);
+  expect(run.deliveries).toHaveLength(1);
+  expect(() =>
+    intake.following.changeUpdate(
+      run.workspaceId,
+      run.owner,
+      update!.id,
+      "cancel"
+    )
+  ).toThrow();
+});
+
+test("the owner's own message in a shared thread takes its waiting update once; another member's does not", async () => {
+  const run = await setup({
+    target: "shared",
+    decide: (input) => [{ ...threadUpdate(input), attention: "brief" }],
+  });
+  await intake.tick(START + 1000);
+  const threadId = run.target!.id;
+  const waiting = () =>
+    app.app.database
+      .query(
+        "SELECT count(*) AS n FROM intake_delivery WHERE thread_id=? AND delivered_at IS NULL"
+      )
+      .get(threadId) as { n: number };
+  expect(waiting().n).toBe(1);
+  const otherToken = await app.signIn("Bob", "bob@example.com");
+  const other = (await (
+    await app.call("/api/v1/me", { token: otherToken })
+  ).json()) as { user: typeof run.owner };
+  app.app.database
+    .query(
+      "INSERT INTO member(id,organizationId,userId,role,createdAt) VALUES(?,?,?,'member',?)"
+    )
+    .run("claim-bob", run.workspaceId, other.user.id, Date.now());
+  expect(
+    intake.contextFor(run.workspaceId, threadId, other.user.id, true)
+  ).not.toContain("30 days");
+  expect(waiting().n).toBe(1);
+  const context = intake.contextFor(
+    run.workspaceId,
+    threadId,
+    run.owner.id,
+    true
+  );
+  expect(context).toContain("newFromWatchedAccounts");
+  expect(context).toContain("within 30 days");
+  expect(waiting().n).toBe(0);
+  expect(
+    intake.contextFor(run.workspaceId, threadId, run.owner.id, true)
+  ).not.toContain("newFromWatchedAccounts");
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  expect(run.deliveries).toHaveLength(0);
+});
+
 test("the JSON API scopes source reads and validates corrections", async () => {
   const run = await setup();
   await intake.tick(START + 1000);

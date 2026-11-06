@@ -2142,6 +2142,22 @@ img.avatar {
   padding-top: var(--space-md);
   padding-bottom: var(--space-md);
 }
+button.settings-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+button.settings-row:focus-visible {
+  outline-offset: -1px;
+}
+@media (any-hover: hover) and (any-pointer: fine) {
+  button.settings-row:hover {
+    background: var(--color-fill-subtle);
+  }
+}
 .settings-row form {
   display: contents;
 }
@@ -2538,66 +2554,27 @@ form[aria-busy="true"]:not(:has([type="submit"]))
   }
 }
 
-/* The personal follow-up ledger. Both panes scroll within the app's content area. */
-.following-tabs,
+/* Following: one line per row, the whole text in its dialog. */
+.following-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.following-text {
+  max-height: 40vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .following-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
-  padding: var(--space-md);
 }
-.following-layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-.following-list {
-  flex: 1;
-  overflow-y: auto;
-  border-right: 1px solid var(--color-border);
-}
-.following-list > button {
-  width: 100%;
-  text-align: left;
-}
-.following-list > button[aria-pressed="true"] {
-  background: var(--color-surface-raised);
-}
-.following-detail {
-  display: flex;
-  flex: 2;
-  flex-direction: column;
-  gap: var(--space-xxl);
-  min-width: 0;
-  padding: var(--space-xxl);
-  overflow-y: auto;
-}
-.following-detail .following-actions {
-  padding: 0;
-}
-.following-evidence {
-  padding-block: var(--space-md);
+.following-source {
   overflow-wrap: anywhere;
 }
-.following-evidence summary {
+.following-source summary {
   cursor: pointer;
-}
-.following-evidence pre {
-  white-space: pre-wrap;
-  font: inherit;
-}
-@media (max-width: 700px) {
-  .following-layout {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-  .following-list {
-    flex: none;
-    max-height: 40%;
-    border-right: 0;
-  }
-  .following-detail {
-    flex: none;
-    overflow-y: visible;
-  }
+  color: var(--color-text-secondary);
 }

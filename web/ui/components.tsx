@@ -455,29 +455,42 @@ export function SettingsCard({ children }: { children: ReactNode }) {
   return <div className="settings-card">{children}</div>;
 }
 
-/** A settings row: label and description on the left, `children`, the control, on the right. */
+/**
+ * A settings row: label and description on the left, `children`, the control, on the right. With `onClick`, the whole
+ * row is a button that opens what it names.
+ */
 export function SettingsRow({
   label,
   description,
   lead,
   compact = false,
+  onClick,
   children,
 }: {
   label: ReactNode;
   description?: string | null;
   lead?: ReactNode;
   compact?: boolean;
+  onClick?: () => void;
   children?: ReactNode;
 }) {
-  return (
-    <div className={compact ? "settings-row compact" : "settings-row"}>
+  const content = (
+    <>
       {lead ? <span className="settings-lead">{lead}</span> : null}
       <div className="settings-text">
         <strong>{label}</strong>
         {description ? <span>{description}</span> : null}
       </div>
       {children}
-    </div>
+    </>
+  );
+  const className = compact ? "settings-row compact" : "settings-row";
+  return onClick ? (
+    <button className={className} onClick={onClick} type="button">
+      {content}
+    </button>
+  ) : (
+    <div className={className}>{content}</div>
   );
 }
 
