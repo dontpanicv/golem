@@ -2,6 +2,8 @@ package dev.golem.views
 
 import android.Manifest
 import android.net.Uri
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import dev.golem.GolemApp
@@ -55,6 +59,8 @@ import dev.golem.design.Toasts
 import dev.golem.design.Tokens
 import dev.golem.design.golemText
 import dev.golem.design.mobileBackground
+import dev.golem.phone.PhoneLink
+import dev.golem.places.PlacePermission
 import kotlinx.coroutines.launch
 
 /** Sign-in, then the open workspace. Every screen reads the server through the session. */
@@ -79,6 +85,26 @@ fun RootView(openSignIn: (Uri, String, String) -> Unit) {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { runCatching { session.loadInbox() } }
         }
         NotificationPermission()
+        PlacePermission()
+        // The agents use the phone's tools while the app is on screen. A reminder or a routine at a place that an agent
+        // made while the app was open is watched once the app goes to the background.
+        val activity = LocalActivity.current as? ComponentActivity
+        DisposableEffect(session.signedIn, activity) {
+            if (!session.signedIn || activity == null) return@DisposableEffect onDispose {}
+            val link = PhoneLink(activity, session.api)
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_START) link.start()
+                if (event == Lifecycle.Event.ON_STOP) {
+                    link.stop()
+                    session.scope.launch { session.watchPlaces() }
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose {
+                lifecycle.removeObserver(observer)
+                link.close()
+            }
+        }
     }
 }
 

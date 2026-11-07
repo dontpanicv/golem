@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.golem.BuildConfig
 import dev.golem.notifications.Notifier
+import dev.golem.places.PlaceWatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -144,6 +145,7 @@ class Session(private val context: Context, val scope: CoroutineScope) {
     }
 
     suspend fun signOut() {
+        PlaceWatcher.stop(context)
         runCatching { api.signOut() }
         clear()
     }
@@ -172,6 +174,7 @@ class Session(private val context: Context, val scope: CoroutineScope) {
         val detail = api.workspace(workspace.id)
         val orchestrator = api.orchestrator(workspace.id)
         val members = api.members(workspace.id)
+        val opened = this.workspace?.id != detail.workspace.id
         this.workspace = detail.workspace
         this.members = members
         channels = detail.channels
@@ -179,6 +182,14 @@ class Session(private val context: Context, val scope: CoroutineScope) {
         preferences.edit().putString(WORKSPACE, workspace.id).apply()
         revision++
         runCatching { loadInbox() }
+        if (opened) scope.launch { watchPlaces() }
+    }
+
+    /** Watches the places of the person's pending reminders and routines at a place in the open workspace. */
+    suspend fun watchPlaces() {
+        val workspace = workspace ?: return
+        val places = runCatching { api.watchedPlaces(workspace.id) }.getOrElse { if (it is CancellationException) throw it else return }
+        PlaceWatcher.watch(context, places, workspace.id)
     }
 
     suspend fun reloadWorkspace() {

@@ -658,11 +658,11 @@ type IntakeFeedback = { id: string; target: string; about: string; quote: string
 | `POST /api/v1/workspaces/:workspaceId/watched-places/:placeId/reports` | `{ event: "arrive" \| "leave", at, initial }` | `204`; the iPhone saw the person arrive or leave at `at` (Unix milliseconds; a time in the future is now). `initial`: the first state after it started to watch the place, which is no crossing. A report older than the last one, or of the same state, changes nothing. `400` for another body; `404` unless the person's iPhone watches the place |
 | `DELETE /api/v1/workspaces/:workspaceId/reminders/:reminderId` | | `204`; cancels a pending reminder for the person or from them; `404` for another one; `409` while it runs or after it was delivered |
 
-The iPhone watches the places of `watched-places` with Core Location and tells Golem only what it sees there, never
-where the person is. Golem keeps only each person's last state at each place, and decides what is due: a crossing
-makes due the reminders and runs the routines of its event. The first state after the iPhone starts to watch a place
-makes due only the reminders for an arrival, as a reminder starts as outside. The iPhone gets a new place when the app
-opens or goes to the background.
+The iPhone watches the places of `watched-places` with Core Location, and an Android phone with geofences; each tells
+Golem only what it sees there, never where the person is. Golem keeps only each person's last state at each place, and
+decides what is due: a crossing makes due the reminders and runs the routines of its event. The first state after the
+iPhone starts to watch a place makes due only the reminders for an arrival, as a reminder starts as outside. The
+iPhone gets a new place when the app opens or goes to the background.
 
 Golem suggests and never makes an automation or a channel itself: a suggestion waits, with no push, until its person
 accepts or declines it. A person has at most 3 waiting; Golem drops one with the same name as one they already had, and one whose
@@ -689,9 +689,10 @@ they share it.
 | `GET /api/v1/phone/calls` | | Server-sent events: `event: call`, `data: { id, workspaceId, name, arguments }`, a call of an agent's `phone_<name>` tool for the person's phone |
 | `POST /api/v1/phone/calls/:callId` | `{ text }` or `{ error }`; as `multipart/form-data`, also `files`: JPEG pictures | `204`; the tool returns the text and the pictures, or fails with the error. `404` unless the call went to the person and still waits |
 
-Only the iOS app opens the stream, while it is open: a turn's phone tools act on the phone of the turn's person,
-and fail when no stream of that person is open. A call goes to the stream that the person opened last, and waits 3
-minutes for its answer; it fails when that stream closes first.
+Only the iOS and Android apps open the stream, while they are open: a turn's phone tools act on the phone of the
+turn's person, and fail when no stream of that person is open. A tool that Android cannot run, such as Apple Home,
+fails with the reason. A call goes to the stream that the person opened last, and waits 3 minutes for its answer; it
+fails when that stream closes first.
 
 ### Feedback (`src/feedback/`)
 
