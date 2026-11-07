@@ -342,7 +342,8 @@ iPad keeps the sidebar with the same screens.
   screen, before its title, opens a native menu with Settings and Workspace settings, as X's does. The open
   one is `title` on a `tabSelected` capsule that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
   screen. The keyboard covers the bar.
-- Agenda: the title, then pills for Upcoming and Following, then the chosen list without its own title. A link to
+- Agenda: the title, then pills for Following and Upcoming, Following first and open at the start, then the chosen
+  list without its own title. A link to
   Upcoming or Following opens Agenda on that pill.
 - Tabs keep their own stacks and fade into each other in 200 ms. Golem, Activity, Search, and Agenda open in their tabs; a
   channel or a thread opens on the open tab's stack. Settings and Workspace settings open as sheets with a close

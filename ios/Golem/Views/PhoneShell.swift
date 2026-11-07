@@ -185,7 +185,7 @@ private struct WithArtifacts<Content: View>: View {
     /// The keyboard shows and covers the bar.
     var keyboard = false
     /// The page that Agenda shows, which a link to Upcoming or Following opens.
-    var agendaPage = AgendaView.Page.upcoming
+    var agendaPage = AgendaView.Page.following
 
     /// The room a screen leaves at its bottom for the bar: the bar sits 24 pt above the bottom of the screen, which
     /// is 10 pt into the home indicator's area, and the screen's content stops 8 pt above it.

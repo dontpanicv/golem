@@ -308,12 +308,14 @@ export class Following {
     ).filter((row) => !(JSON.parse(row.payload) as WatchedItem).fromOwner);
     const now = Date.now();
     const blocks = new Map(
-      sources.map((row) => {
+      sources.flatMap((row) => {
         const key = blockKey(
           row.credential_id,
           JSON.parse(row.payload) as WatchedItem
         );
-        return [`${key.kind}:${key.credentialId}:${key.value}`, key];
+        return key
+          ? [[`${key.kind}:${key.credentialId}:${key.value}`, key] as const]
+          : [];
       })
     );
     const deleted: string[] = [];
@@ -347,7 +349,7 @@ export class Following {
           row.credential_id,
           JSON.parse(row.payload) as WatchedItem
         );
-        if (blocks.has(`${key.kind}:${key.credentialId}:${key.value}`)) {
+        if (key && blocks.has(`${key.kind}:${key.credentialId}:${key.value}`)) {
           deleted.push(row.id);
         }
       }
@@ -396,6 +398,7 @@ export class Following {
   ): boolean {
     const key = blockKey(credential.id, item);
     return (
+      key !== null &&
       this.database
         .query(
           "SELECT 1 FROM intake_block WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL AND kind=? AND value=? AND credential_id IS ?"
@@ -776,8 +779,9 @@ export class Following {
 }
 
 /**
- * What a block matches in an observation: the chat of a group or a document, within its account; else the sender's
- * address, in every account of the person.
+ * What a block matches in an observation: a mail sender's address, in every account of the person; else the chat,
+ * such as a WhatsApp or Slack conversation, a group, or a meeting note, within its account. Null when there is
+ * nothing to match, so an empty sender or chat never blocks everything; the owner's own mail never matches a sender.
  */
 function blockKey(
   credentialId: string,
@@ -787,20 +791,26 @@ function blockKey(
   credentialId: string | null;
   value: string;
   label: string;
-} {
-  if (item.group || item.kind === "document") {
-    return {
-      kind: "chat",
-      credentialId,
-      value: item.chat,
-      label: item.chatName || item.chat,
-    };
+} | null {
+  const address = (/<([^>]+)>/.exec(item.sender)?.[1] ?? item.sender)
+    .trim()
+    .toLowerCase();
+  if (!(item.group || item.kind === "document") && address.includes("@")) {
+    return item.fromOwner
+      ? null
+      : {
+          kind: "sender",
+          credentialId: null,
+          value: address,
+          label: item.sender,
+        };
   }
-  const address = /<([^>]+)>/.exec(item.sender)?.[1] ?? item.sender;
-  return {
-    kind: "sender",
-    credentialId: null,
-    value: address.trim().toLowerCase(),
-    label: item.sender,
-  };
+  return item.chat.trim()
+    ? {
+        kind: "chat",
+        credentialId,
+        value: item.chat,
+        label: item.chatName || item.chat,
+      }
+    : null;
 }

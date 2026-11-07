@@ -495,9 +495,10 @@ export class Workspaces {
   }
 
   /** Moves the thread up in its channel, after a new message. */
+  /** Marks new activity in a thread; a settled thread opens again, so a new message never hides in the settled list. */
   touchThread(threadId: string): void {
     this.database
-      .query("UPDATE thread SET updated_at = ? WHERE id = ?")
+      .query("UPDATE thread SET updated_at = ?, settled_at = NULL WHERE id = ?")
       .run(Date.now(), threadId);
   }
 

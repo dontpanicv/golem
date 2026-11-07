@@ -344,7 +344,7 @@ export class IntakeArchives {
         ];
         this.database
           .query(
-            "INSERT INTO intake_archive(id,workspace_id,owner_id,channel_id,credential_id,integration,conversation,period,item_ids,obsolete_ids) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET item_ids=excluded.item_ids,obsolete_ids=excluded.obsolete_ids,pending=CASE WHEN item_ids!=excluded.item_ids THEN 1 ELSE pending END"
+            "INSERT INTO intake_archive(id,workspace_id,owner_id,channel_id,credential_id,integration,conversation,period,item_ids,obsolete_ids) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET item_ids=excluded.item_ids,obsolete_ids=excluded.obsolete_ids,pending=CASE WHEN item_ids!=excluded.item_ids OR deleted_at IS NOT NULL THEN 1 ELSE pending END,file_id=CASE WHEN deleted_at IS NULL THEN file_id END,content_hash=CASE WHEN deleted_at IS NULL THEN content_hash END,attachment_ids=CASE WHEN deleted_at IS NULL THEN attachment_ids ELSE '{}' END,deleted_at=NULL"
           )
           .run(
             row.id,
@@ -368,7 +368,10 @@ export class IntakeArchives {
       .query(
         "SELECT * FROM intake_archive WHERE id=? AND owner_id=? AND deleted_at IS NULL"
       )
-      .get(id, owner.id) as ArchiveRow;
+      .get(id, owner.id) as ArchiveRow | null;
+    if (!group) {
+      return [];
+    }
     this.workspaces.requireMember(group.workspace_id, owner);
     const credential = this.integrations
       .watched()
@@ -533,13 +536,25 @@ export class IntakeArchives {
           );
           continue;
         }
-        saved[key] = await this.saveAttachment(
-          group,
-          owner,
-          row,
-          attachment,
-          stored
-        );
+        try {
+          saved[key] = await this.saveAttachment(
+            group,
+            owner,
+            row,
+            attachment,
+            stored
+          );
+        } catch (error) {
+          // One attachment that the source no longer gives, or that is too large, never stops the conversation.
+          this.audit.record(
+            row.id,
+            "attachment.skipped",
+            group.workspace_id,
+            owner.id,
+            { attachment, reason: String(error) }
+          );
+          continue;
+        }
         this.database
           .query("UPDATE intake_archive SET attachment_ids=? WHERE id=?")
           .run(JSON.stringify(saved), group.id);
@@ -630,12 +645,23 @@ function hash(text: string): string {
   return new Bun.CryptoHasher("sha256").update(text).digest("hex");
 }
 
+/** A file name without separators or control characters, at most 150 bytes, keeping its extension. */
 function safeName(name: string): string {
-  return (
+  const clean =
     name
       // biome-ignore lint/suspicious/noControlCharactersInRegex: file names must not contain control characters
       .replace(/[/\\\u0000-\u001f]/g, "-")
       .replace(/^\.+/, "")
-      .trim() || "attachment"
-  );
+      .trim() || "attachment";
+  const dot = clean.lastIndexOf(".");
+  const extension = dot > 0 && clean.length - dot <= 10 ? clean.slice(dot) : "";
+  // Stored names add about 50 bytes, and a file name has at most 255.
+  const stem = [...clean.slice(0, clean.length - extension.length)];
+  while (
+    stem.length > 1 &&
+    Buffer.byteLength(stem.join("") + extension) > 150
+  ) {
+    stem.pop();
+  }
+  return stem.join("") + extension;
 }

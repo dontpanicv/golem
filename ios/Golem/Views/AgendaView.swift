@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Upcoming and Following on one tab of the iPhone: what Golem runs and what waits for the person, and what it follows
-/// from the accounts it reads. Pills switch between them, as Linear's do.
+/// Following and Upcoming on one tab of the iPhone: what Golem follows from the accounts it reads, and what it runs
+/// and what waits for the person. Pills switch between them, as Linear's do; Following comes first.
 struct AgendaView: View {
-    enum Page: String, CaseIterable { case upcoming = "Upcoming", following = "Following" }
+    enum Page: String, CaseIterable { case following = "Following", upcoming = "Upcoming" }
 
     @Binding var page: Page
     let open: (Destination) -> Void

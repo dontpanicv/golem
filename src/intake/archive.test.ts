@@ -39,7 +39,10 @@ async function setup(integration = "google") {
   const integrations = {
     watched: () => [credential],
     watch: async () => [],
-    attachment: async () => {
+    attachment: async (_credential: string, _source: string, id: string) => {
+      if (id === "gone") {
+        throw new Error("The source no longer has this attachment");
+      }
       downloads += 1;
       return new TextEncoder().encode("Attachment");
     },
@@ -485,4 +488,49 @@ test("deleted observations leave their conversation files: an emptied file goes 
   const text = await run.text(repair!.id);
   expect(text).toContain("The tiler comes Monday");
   expect(text).not.toContain("Buy a prize now");
+
+  // A new message in the forgotten conversation, such as the owner's reply, starts its file again.
+  const reply = run.put(
+    "reply",
+    "prizes",
+    START + 2000,
+    "Please stop writing",
+    {
+      fromOwner: true,
+    }
+  );
+  const [again] = await run.archives.save(
+    run.workspace.id,
+    run.channel.id,
+    run.owner,
+    [reply]
+  );
+  expect(again!.id).not.toBe(spamFile!.id);
+  expect(await run.text(again!.id)).toContain("Please stop writing");
+  expect(await run.text(again!.id)).not.toContain("You won a prize");
+});
+
+test("an attachment that the source no longer gives is skipped, and the conversation is still saved", async () => {
+  const run = await setup();
+  const row = run.put("mail", "thread", START, "See the attached ticket", {
+    attachments: [
+      { id: "gone", name: "ticket.pdf", type: "application/pdf", size: 10 },
+      {
+        id: "long",
+        name: `${"Vyúčtování ".repeat(30)}.pdf`,
+        type: "application/pdf",
+        size: 10,
+      },
+    ],
+  });
+  const saved = await run.archives.save(
+    run.workspace.id,
+    run.channel.id,
+    run.owner,
+    [row]
+  );
+  expect(saved).toHaveLength(2);
+  expect(await run.text(saved[0]!.id)).toContain("See the attached ticket");
+  expect(saved[1]!.name.endsWith(".pdf")).toBe(true);
+  expect(Buffer.byteLength(saved[1]!.name)).toBeLessThan(200);
 });

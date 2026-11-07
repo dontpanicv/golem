@@ -1528,6 +1528,39 @@ test("deleting a waiting update blocks its sender, deletes what intake read from
   ).toThrow("Not found");
 });
 
+test("deleting a chat update from a contact with no name blocks only that chat, never the owner's own messages", async () => {
+  const run = await setup({
+    source: "whatsapp",
+    target: "shared",
+    decide: (input) => [{ ...threadUpdate(input), attention: "brief" }],
+  });
+  run.items([
+    {
+      ...item("unknown", "Buy cheap followers", false, START),
+      chat: "unknown-contact",
+      sender: "",
+    },
+    {
+      ...item("mine", "I will bring the cake", true, START),
+      chat: "family",
+      sender: "",
+    },
+  ]);
+  await intake.tick(START + 1000);
+  const update = intake.following
+    .overview(run.workspaceId, run.owner)
+    .updates.find((each) => each.deliveredAt === null)!;
+  await intake.deleteUpdate(run.workspaceId, run.owner, update.id);
+  const overview = intake.following.overview(run.workspaceId, run.owner);
+  expect(overview.blocked).toMatchObject([{ kind: "chat" }]);
+  expect(overview.kept.map((each) => each.text)).toContain(
+    "I will bring the cake"
+  );
+  expect(overview.kept.map((each) => each.text)).not.toContain(
+    "Buy cheap followers"
+  );
+});
+
 test("the owner's own message in a shared thread takes its waiting update once; another member's does not", async () => {
   const run = await setup({
     target: "shared",
