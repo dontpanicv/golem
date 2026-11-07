@@ -55,7 +55,8 @@ fun ConfirmDialog(title: String, message: String, action: String, onDismiss: () 
 
 /**
  * A dialog with Cancel and one action, which runs in the session's scope: the dialog closes when it succeeds and stays
- * open with a toast when it fails. `content` gets the action, for the keyboard's Done.
+ * open with a toast when it fails; with `dismissOnSuccess` false it stays open for a next step. `content` gets the
+ * action, for the keyboard's Done.
  */
 @Composable
 fun BusyDialog(
@@ -64,6 +65,7 @@ fun BusyDialog(
     onDismiss: () -> Unit,
     enabled: Boolean = true,
     danger: Boolean = false,
+    dismissOnSuccess: Boolean = true,
     act: suspend () -> Unit,
     content: @Composable (submit: () -> Unit) -> Unit,
 ) {
@@ -80,7 +82,7 @@ fun BusyDialog(
                 done = true
             }
             busy = false
-            if (done) onDismiss()
+            if (done && dismissOnSuccess) onDismiss()
         }
     }
     GolemDialog(title, onDismiss, actions = {
