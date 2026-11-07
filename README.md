@@ -333,9 +333,9 @@ Useful developments add a visible message and source files to the existing subje
 agent reads them, explains what changed, and proposes next actions. Its answer stays in the thread silently. A separate
 notification decision needs exact source evidence: the owner asked, an awaited reply needs attention, a stated time
 arrived, or time-sensitive preparation helps now. Golem checks the latest source before a permitted notification.
-Normal messages, mentions, and an hour without a reply do not qualify alone. A matching shared family thread can
-receive the sources too. New subjects start in a suitable channel;
-when no channel fits, Golem creates a private channel and its first thread. The thread agent has its normal tools and
+Normal messages, mentions, and an hour without a reply do not qualify alone. An existing matching shared family thread can
+receive the sources too, as a visible message. New subjects start in your own private channels;
+when none fits, Golem creates a private channel and its first thread. The thread agent has its normal tools and
 can find older related mail and tickets. No separate worker thread is made.
 Nonurgent developments wait for the morning review in the 08:00 Europe/Prague hour: one plan groups them by matter,
 posts one message to each thread, and sends you one summary with a notification.

@@ -102,9 +102,13 @@ export class IntakeDestinations {
   private channel(workspaceId: string, owner: User, decision: Assessment) {
     this.workspaces.requireMember(workspaceId, owner);
     if (decision.channelId) {
+      // A new matter of the person's sources starts only in their own private channel.
       const existing = this.workspaces
         .channelsIn(workspaceId, owner.id)
-        .find((channel) => channel.id === decision.channelId);
+        .find(
+          (channel) =>
+            channel.id === decision.channelId && channel.ownerId === owner.id
+        );
       if (!existing) {
         throw notFound();
       }

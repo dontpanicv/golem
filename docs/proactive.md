@@ -33,8 +33,9 @@ They do not need to maintain a task list or set a routine for each expected repl
 6. **Confirm the destination and review.** Before creating a new discussion, Golem reads the relevant sources again
    and the judge checks whether the queued review still helps. It can suppress a handled matter or reuse an existing
    thread with a different title or source conversation. Recent threads and their summaries include destinations made
-   earlier in the same batch. Only a confirmed useful review creates a subject thread in a suitable channel, or a
-   private channel and its first thread when none fits. This decision needs no person approval. Related queued updates
+   earlier in the same batch. Only a confirmed useful review creates a subject thread, and only in one of the
+   person's own private channels, or a new private channel and its first thread when none fits; a channel that others
+   see is never offered for a new matter, and silent filing stays in the person's private channels too. This decision needs no person approval. Related queued updates
    are then grouped by their selected thread. A saved request id reuses a thread after an interrupted creation.
    A useful development adds a visible Golem source message, the email or other
    source as a file, and supported attachments to the existing subject thread. The thread's existing Pi Durable agent
@@ -46,7 +47,10 @@ They do not need to maintain a task list or set a routine for each expected repl
    source files in its thread. The thread's agent works at once only when the plan names work, such as a reply to
    draft; otherwise it reads the message when the person writes there. Then the person's own Golem thread gets one
    summary with a link to each thread, and a notification. A plan that leaves an update out or names a thread or
-   channel that was not given changes nothing, and the review is tried again after 15 minutes.
+   channel that was not given changes nothing, and the review is tried again after 15 minutes, then 30. After two
+   failed plans, each update goes alone to its thread without a plan. A failing review has its own back-off, so the
+   person's urgent updates never wait for it, and a summary that a try could not send goes at the next try. Other
+   failed intake work waits 15 minutes, then twice as long each time it fails in a row, up to a day.
 7. **Decide whether to notify.** Thread completion is silent, even when its answer is useful. The judge must supply
    a separate reason and exact source quote before a notification is eligible. After the answer, Golem reads the
    source accounts again and checks the proposed reason against the latest evidence. A later reply can suppress the
@@ -140,7 +144,7 @@ The direct-judge revision passes its tests, lint, and backend and web type check
 messages, exact mentions, DMs, group DMs, participating-thread replies, unrelated-channel exclusion, deferred root
 lookups, and partial thread cursors. Intake tests cover whole long email bodies, outgoing direction, attachment
 metadata, bounded batches, per-batch retry isolation, scoped checks, and a queued review's fixed subject.
-Golem source capture resumes after the last saved entry and does not revive older dialogue after an agent answer.
+Intake does not read the messages that people write in Golem threads; agents apply corrections with `intake_update`.
 
 Sequence tests cover a 30-day check across a restart, acknowledgements, replies across conversations, account
 outages, repeated polls, silent due reviews, membership and owner isolation, resolved morning updates, opt-out,

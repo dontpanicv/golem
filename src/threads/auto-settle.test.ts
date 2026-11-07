@@ -1,8 +1,7 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import type { Context, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { startTestApp, until } from "../../test/harness.ts";
-import type { ThreadSummary } from "../workspaces/workspaces.ts";
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -21,25 +20,18 @@ function systemOf(context: Context): string {
   ].join("\n");
 }
 
-test("daily settling reviews only inactive channel threads, keeps unresolved work open, and rejects stale decisions", async () => {
+test("daily settling settles channel threads quiet for more than 14 days, without a model, and new activity opens them again", async () => {
   const golem = await startTestApp();
-  const reviews: string[] = [];
-  let changedThread: ThreadSummary;
   let release: (() => void) | undefined;
+  const reviews: string[] = [];
   try {
     await golem.signIn("Alice", "alice@example.com");
-    await golem.signIn("Bob", "bob@example.com");
     const { internalAdapter } = await golem.app.auth.$context;
     const alice = (await internalAdapter.findUserByEmail("alice@example.com"))!
       .user;
-    const bob = (await internalAdapter.findUserByEmail("bob@example.com"))!
-      .user;
     const home = await golem.app.workspaces.create(alice, "Daily settling");
-    await golem.app.workspaces.addMember(home.id, alice, bob.email);
     const general = golem.app.workspaces.channels(home.id, alice)[0]!;
-
     const agent = async (context: Context, options?: SimpleStreamOptions) => {
-      const system = systemOf(context);
       const last = context.messages.at(-1)!;
       const text =
         typeof last.content === "string"
@@ -47,36 +39,8 @@ test("daily settling reviews only inactive channel threads, keeps unresolved wor
           : last.content
               .flatMap((block) => (block.type === "text" ? [block.text] : []))
               .join("");
-      if (system.includes("You review an inactive thread")) {
+      if (systemOf(context).includes("inactive thread")) {
         reviews.push(text);
-        if (
-          text.includes("Waiting for a reply") ||
-          text.includes("Unclear outcome")
-        ) {
-          return fauxAssistantMessage("KEEP_OPEN");
-        }
-        if (text.includes("Review unavailable")) {
-          throw new Error("Model unavailable");
-        }
-        if (text.includes("Invalid review")) {
-          return fauxAssistantMessage("Maybe SETTLE");
-        }
-        if (text.includes("Changed during review")) {
-          await golem.app.threads.send(
-            changedThread.id,
-            alice,
-            "A new unresolved question"
-          );
-        }
-        return fauxAssistantMessage("SETTLE");
-      }
-      if (system.includes("You keep the brief")) {
-        return fauxAssistantMessage(
-          "<summary>General.</summary><brief>Family discussions.</brief>"
-        );
-      }
-      if (system.includes("You are the learning loop")) {
-        return fauxAssistantMessage("{}");
       }
       if (last.role === "user" && text.endsWith("Still running")) {
         return new Promise<ReturnType<typeof fauxAssistantMessage>>(
@@ -91,7 +55,6 @@ test("daily settling reviews only inactive channel threads, keeps unresolved wor
       return fauxAssistantMessage("Done.");
     };
     golem.faux.setResponses(Array.from({ length: 300 }, () => agent));
-
     const create = async (text: string) => {
       const thread = await golem.app.threads.create(
         home.id,
@@ -108,16 +71,9 @@ test("daily settling reviews only inactive channel threads, keeps unresolved wor
       );
       return thread;
     };
-    const recipe = await create("Recipe completed");
-    const waiting = await create("Waiting for a reply");
-    const uncertain = await create("Unclear outcome");
-    const unavailable = await create("Review unavailable");
-    const invalid = await create("Invalid review");
-    changedThread = await create("Changed during review");
+    const quiet = await create("Recipe completed");
     const recent = await create("Recent discussion");
-    const boundary = await create("Exactly seven days");
-    const already = await create("Already settled");
-    golem.app.workspaces.setThreadSettled(home.id, already.id, alice, true);
+    const boundary = await create("Exactly fourteen days");
     const own = await golem.app.threads.orchestrator(home.id, alice);
     const running = await golem.app.threads.create(
       home.id,
@@ -127,85 +83,48 @@ test("daily settling reviews only inactive channel threads, keeps unresolved wor
     );
     await until(async () => release, Boolean);
 
-    const now = Date.now() + 8 * DAY_MS;
+    const now = Date.now() + 15 * DAY_MS;
     golem.app.database
       .query("UPDATE thread SET updated_at = ? WHERE id = ?")
       .run(now - DAY_MS, recent.id);
     golem.app.database
       .query("UPDATE thread SET updated_at = ? WHERE id = ?")
-      .run(now - 7 * DAY_MS, boundary.id);
+      .run(now - 14 * DAY_MS, boundary.id);
     const states: (number | null)[] = [];
     const stopThread = await golem.app.threads.watch(
-      golem.app.workspaces.thread(recipe.id, alice),
+      golem.app.workspaces.thread(quiet.id, alice),
       () => {
-        states.push(golem.app.workspaces.thread(recipe.id, alice).settledAt);
+        states.push(golem.app.workspaces.thread(quiet.id, alice).settledAt);
       }
     );
-    const workspaceStates: (number | null)[] = [];
-    const stopWorkspace = await golem.app.threads.watchWorking(
-      home.id,
-      alice,
-      () => {
-        workspaceStates.push(
-          golem.app.workspaces.thread(recipe.id, alice).settledAt
-        );
-      }
-    );
-    const errors = spyOn(console, "error").mockImplementation(() => undefined);
     try {
       const first = golem.app.threads.settleInactive(home.id, now);
       expect(golem.app.threads.settleInactive(home.id, now)).toBe(first);
       await first;
-      expect(errors.mock.calls).toHaveLength(2);
     } finally {
-      errors.mockRestore();
       await stopThread();
-      await stopWorkspace();
     }
-    expect(golem.app.workspaces.thread(recipe.id, alice).settledAt).toEqual(
+    expect(golem.app.workspaces.thread(quiet.id, alice).settledAt).toEqual(
       expect.any(Number)
     );
-    for (const thread of [
-      waiting,
-      uncertain,
-      unavailable,
-      invalid,
-      changedThread,
-      recent,
-      boundary,
-      running,
-      own,
-    ]) {
+    expect(states.at(-1)).toEqual(expect.any(Number));
+    for (const thread of [recent, boundary, running, own]) {
       expect(
         golem.app.workspaces.thread(thread.id, alice).settledAt
       ).toBeNull();
     }
-    expect(states.at(-1)).toEqual(expect.any(Number));
-    expect(workspaceStates.at(-1)).toEqual(expect.any(Number));
-    expect(reviews).toHaveLength(6);
-    const checked = reviews.length;
-    await golem.app.threads.settleInactive(home.id, now + DAY_MS - 1);
-    expect(reviews).toHaveLength(checked);
+    expect(reviews).toEqual([]);
 
-    release!();
-    release = undefined;
-    await until(
-      () =>
-        golem.app.threads.messages(
-          golem.app.workspaces.thread(running.id, alice)
-        ),
-      (state) => !state.running
-    );
-    await golem.app.indexer.scan(home.id);
-    const recalled = await golem.app.indexer.search(
-      home.id,
-      "Recipe completed",
-      20,
-      alice.id
-    );
-    expect(
-      recalled.results.some((result) => result.threadId === recipe.id)
-    ).toBe(true);
+    // One check a day.
+    golem.app.database
+      .query("UPDATE thread SET updated_at = ? WHERE id = ?")
+      .run(now - 20 * DAY_MS, recent.id);
+    await golem.app.threads.settleInactive(home.id, now + DAY_MS - 1);
+    expect(golem.app.workspaces.thread(recent.id, alice).settledAt).toBeNull();
+
+    // A new message, such as a routine's answer, opens the settled thread again.
+    await golem.app.threads.send(quiet.id, alice, "One more question");
+    expect(golem.app.workspaces.thread(quiet.id, alice).settledAt).toBeNull();
   } finally {
     release?.();
     await golem.close();
@@ -231,15 +150,7 @@ test("private threads settle without sending workspace events to another member"
       true
     );
     golem.faux.setResponses(
-      Array.from(
-        { length: 100 },
-        () => (context: Context) =>
-          fauxAssistantMessage(
-            systemOf(context).includes("You review an inactive thread")
-              ? "SETTLE"
-              : "Done."
-          )
-      )
+      Array.from({ length: 100 }, () => () => fauxAssistantMessage("Done."))
     );
     const recipe = await golem.app.threads.create(
       home.id,
@@ -267,7 +178,7 @@ test("private threads settle without sending workspace events to another member"
       bobs += 1;
     });
     try {
-      await golem.app.threads.settleInactive(home.id, Date.now() + 8 * DAY_MS);
+      await golem.app.threads.settleInactive(home.id, Date.now() + 15 * DAY_MS);
       expect(golem.app.workspaces.thread(recipe.id, alice).settledAt).toEqual(
         expect.any(Number)
       );

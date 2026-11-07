@@ -24,7 +24,8 @@ const PAGE_CHARACTERS = 100_000;
 const CALLS = 4;
 /** How often a summary call asks again for a line that is too long. */
 const TRIES = 3;
-const MAX_RETRY_MS = 5 * 60_000;
+/** How often a summary call is made before its line waits for the next build, such as the next message. */
+const ATTEMPTS = 4;
 const WAIT = "(not summarized yet: zoom it)";
 
 const SYSTEM = `You write the memory of Golem, a family assistant: one step of a tree of summaries of the conversation of one person with Golem, including results that other threads send back. Work inside those other threads is not part of this memory. You compress one message into one line, or merge two adjacent lines into one line. Your line stands in for its messages for months or years. Golem opens it only when its words show that what it needs is inside: what your line leaves out is lost for good.
@@ -343,16 +344,19 @@ export class Memory {
         return;
       }
       if (!this.running.has(key)) {
-        const pending = this.write(job)
-          .catch((error) => {
+        const pending = this.write(job).then(
+          () => {
+            this.running.delete(key);
+            this.build();
+          },
+          (error) => {
+            // The line waits for the next build, so a model that stays down never holds the background work.
+            this.running.delete(key);
             if (!this.abort.signal.aborted) {
               console.error(`The memory summary ${key} failed`, error);
             }
-          })
-          .finally(() => {
-            this.running.delete(key);
-            this.build();
-          });
+          }
+        );
         this.running.set(key, pending);
       }
     }
@@ -401,12 +405,12 @@ export class Memory {
 
   /** One line from the model; it asks again after a failure until it gets one, so an outage only delays a summary. */
   private async ask(prompt: string): Promise<string> {
-    for (let delay = 1000; ; delay = Math.min(delay * 2, MAX_RETRY_MS)) {
+    for (let attempt = 1, delay = 1000; ; attempt += 1, delay *= 2) {
       try {
         const answer = await this.summarize(SYSTEM, prompt, this.abort.signal);
         return oneLine(answer).replace(/^\d+\+\d+\|/, "");
       } catch (error) {
-        if (this.abort.signal.aborted) {
+        if (this.abort.signal.aborted || attempt >= ATTEMPTS) {
           throw error;
         }
         console.error("A memory summary call failed; it asks again", error);

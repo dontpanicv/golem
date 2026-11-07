@@ -1,4 +1,9 @@
-import type { AssessmentInput, Evidence, FutureCheck } from "./assess.ts";
+import {
+  type AssessmentInput,
+  type Evidence,
+  type FutureCheck,
+  pragueTime,
+} from "./assess.ts";
 
 /** What the morning review knows for one person: every update that waited for it, and where they could go. */
 export interface MorningInput {
@@ -62,7 +67,11 @@ export async function planMorning(
 ): Promise<MorningPlan> {
   const raw = await complete(
     MORNING_SYSTEM,
-    JSON.stringify({ ...input, currentTime: new Date(input.now).toISOString() })
+    JSON.stringify({
+      ...input,
+      currentTime: pragueTime(input.now),
+      timeZone: "Europe/Prague",
+    })
   );
   return validateMorningPlan(
     JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, "")) as MorningPlan,
@@ -154,5 +163,40 @@ function validateTopic(
     message: topic.message.trim(),
     work: topic.work?.trim() || null,
     line: typeof topic.line === "string" ? topic.line.trim() : "",
+  };
+}
+
+/**
+ * The morning plan without a model, when two plans failed: each update goes alone to its thread or to the new thread
+ * it proposed, in its proposed private channel or a private channel for updates.
+ */
+export function fallbackPlan(input: MorningInput): MorningPlan {
+  const channels = new Set(input.channels.map((channel) => channel.id));
+  return {
+    summary: "The updates of this morning, each in its thread:",
+    topics: input.updates.map((update) => {
+      const channel =
+        update.proposedChannelId && channels.has(update.proposedChannelId)
+          ? update.proposedChannelId
+          : null;
+      return {
+        updates: [update.id],
+        threadId: update.threadId,
+        title: update.proposedTitle ?? "Update",
+        channelId: update.threadId ? null : channel,
+        newChannel:
+          update.threadId || channel
+            ? null
+            : (update.proposedNewChannel ?? {
+                name: "updates",
+                summary: "Updates from the accounts that Golem reads",
+              }),
+        message: update.message,
+        work: null,
+        line:
+          update.proposedTitle ?? update.message.split("\n")[0]!.slice(0, 120),
+      };
+    }),
+    dropped: [],
   };
 }

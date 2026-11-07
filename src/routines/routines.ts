@@ -93,7 +93,12 @@ export type RoutineWorkspaces = Pick<
 >;
 export type RoutineThreads = Pick<
   Threads,
-  "instruct" | "messages" | "realm" | "requester" | "startAgentThread"
+  | "instruct"
+  | "messages"
+  | "observe"
+  | "realm"
+  | "requester"
+  | "startAgentThread"
 >;
 export type RoutineSearch = Pick<Indexer, "search">;
 export type RoutinePlaces = Pick<Places, "find" | "usable">;
@@ -530,6 +535,12 @@ export class Routines {
       }
       outcome = "failed";
       error = (failure as Error).message;
+      await this.reportFailure(routine, id, error).catch((report: unknown) => {
+        console.error(
+          `Reporting the failed run of ${routine.name} failed`,
+          report
+        );
+      });
     } finally {
       this.running.delete(routine.id);
     }
@@ -593,11 +604,12 @@ export class Routines {
       .query("UPDATE routine_run SET result = ? WHERE id = ?")
       .run(JSON.stringify(result), runId);
     if (!result.ok) {
+      // The run's failure notifies its person once; the agent's repair answer stays in the thread.
       await this.tell(
         routine,
         runId,
         repairTask(routine, result, startedAt),
-        "everyone"
+        []
       );
       throw new Error(result.error);
     }
@@ -628,27 +640,57 @@ export class Routines {
     text: string,
     notify: readonly string[] | "everyone"
   ): Promise<string | null> {
-    let thread = this.workspaces
-      .allThreadsIn(routine.workspaceId)
-      .find((candidate) => candidate.id === routine.threadId);
-    if (!thread) {
-      thread = await this.threads.startAgentThread(
-        routine.workspaceId,
-        routine.channelId,
-        routine.name
-      );
-      this.database
-        .query("UPDATE routine SET thread_id = ? WHERE id = ?")
-        .run(thread.id, routine.id);
-    }
     return this.threads.instruct(
-      thread,
+      await this.threadFor(routine),
       text,
       `routine:${runId}`,
       notify,
       routine.createdBy,
       "routine"
     );
+  }
+
+  /**
+   * Tells the routine's person in its thread that a run failed, with a notification, every time, also when the agent
+   * repaired the script or could not answer.
+   */
+  private async reportFailure(
+    routine: RoutineRow,
+    runId: string,
+    error: string
+  ): Promise<void> {
+    if (routine.createdBy === "golem") {
+      return;
+    }
+    await this.threads.observe(
+      await this.threadFor(routine),
+      `The routine "${routine.name}" failed: ${error}`,
+      `routine:${runId}:failed`,
+      { id: routine.createdBy, name: "", email: "" },
+      true
+    );
+  }
+
+  /** The routine's thread, started at its first run; read again, as an earlier step of this run may have started it. */
+  private async threadFor(routine: RoutineRow) {
+    const { threadId } = this.database
+      .query("SELECT thread_id AS threadId FROM routine WHERE id = ?")
+      .get(routine.id) as { threadId: string | null };
+    const existing = this.workspaces
+      .allThreadsIn(routine.workspaceId)
+      .find((candidate) => candidate.id === threadId);
+    if (existing) {
+      return existing;
+    }
+    const thread = await this.threads.startAgentThread(
+      routine.workspaceId,
+      routine.channelId,
+      routine.name
+    );
+    this.database
+      .query("UPDATE routine SET thread_id = ? WHERE id = ?")
+      .run(thread.id, routine.id);
+    return thread;
   }
 
   /** Runs a script with the integrations of the person `userId`'s turns use, and what `realm` sees. */
@@ -1025,7 +1067,7 @@ function repairTask(
     `The script of the routine "${routine.name}" (routine ${routine.id}) failed at ${localTime(startedAt)}: ${result.error}`,
     result.text ? `It printed:\n${cut(result.text)}` : "",
     `The script:\n${routine.script}`,
-    "Find the cause. If the script is wrong, fix it: run the new script with routines_test_script, then save it with routines_update. If something outside the script fails, such as a connector or a website, tell the people in this channel in plain words what does not work. If you fixed the script, answer with only QUIET.",
+    "Find the cause. If the script is wrong, fix it: run the new script with routines_test_script, then save it with routines_update. Say in plain words what did not work and what you did; when something outside the script fails, such as a connector or a website, say what the people can do. Golem notifies the routine's person of the failure itself.",
   ]
     .filter(Boolean)
     .join("\n\n");

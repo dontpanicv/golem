@@ -220,14 +220,21 @@ export class IntakeRecall {
       .slice(0, 12);
   }
 
+  /**
+   * The channels where a new matter of the person's sources may start: only their private ones, so their mail and
+   * chats reach a channel that others see only as a visible update to an existing matching thread there.
+   */
   channels(workspaceId: string, owner: User): AssessmentInput["channels"] {
     this.workspaces.requireMember(workspaceId, owner);
-    return this.workspaces.channelsIn(workspaceId, owner.id).map((channel) => ({
-      id: channel.id,
-      name: channel.name,
-      summary: channel.summary,
-      private: channel.ownerId !== null,
-    }));
+    return this.workspaces
+      .channelsIn(workspaceId, owner.id)
+      .filter((channel) => channel.ownerId === owner.id)
+      .map((channel) => ({
+        id: channel.id,
+        name: channel.name,
+        summary: channel.summary,
+        private: true,
+      }));
   }
 
   async relatedEvidence(

@@ -324,8 +324,8 @@ const CATCH_UP_MS = 2000;
 const BRIEF_CHECK_MS = 5 * 60_000;
 /** A brief takes in a thread's new messages after the thread is quiet this long, or at once when it is settled. */
 const BRIEF_QUIET_MS = 10 * 60_000;
-/** A thread must have no activity for more than seven days before the daily settling review. */
-const SETTLING_QUIET_MS = 7 * 24 * 60 * 60_000;
+/** A channel thread with no activity for more than 14 days settles at the daily check; new activity opens it again. */
+const SETTLING_QUIET_MS = 14 * 24 * 60 * 60_000;
 /** A Live Activity whose work ended waits this long before it ends, in case another thread takes the work on. */
 const ACTIVITY_GRACE_MS = 5000;
 /** The most threads that the channel section lists. */
@@ -2363,7 +2363,7 @@ export class Threads {
     }
   }
 
-  /** Reviews inactive channel threads once a day; concurrent checks share the same work. */
+  /** Settles quiet channel threads once a day; concurrent checks share the same work. */
   settleInactive(workspaceId: string, now = Date.now()): Promise<void> {
     let running = this.settling.get(workspaceId);
     if (!running) {
@@ -2398,7 +2398,7 @@ export class Threads {
         continue;
       }
       try {
-        await this.settleIfResolved(thread, now);
+        await this.settleQuiet(thread, now);
       } catch (error) {
         if (!this.background.signal.aborted) {
           console.error(`Settling ${thread.id} failed`, error);
@@ -2407,11 +2407,11 @@ export class Threads {
     }
   }
 
-  private async settleIfResolved(
+  /** Settles a quiet thread with no running work and no pending approval; no model reads it. */
+  private async settleQuiet(
     thread: ThreadSummary & ThreadRef,
     now: number
   ): Promise<void> {
-    const version = await this.version(thread);
     const state = await this.messages(thread, true);
     if (
       state.running ||
@@ -2421,32 +2421,6 @@ export class Threads {
         (message) =>
           message.streaming || now - message.time <= SETTLING_QUIET_MS
       )
-    ) {
-      return;
-    }
-    const resolved = await this.settlements.get(thread.workspaceId)!.resolved(
-      JSON.stringify({
-        title: thread.title,
-        messages: state.messages.map((message) => ({
-          time: new Date(message.time).toISOString(),
-          text: saidText(message),
-          failed: message.failed,
-          stopped: message.work?.stopped ?? false,
-        })),
-      }),
-      (systemPrompt, text, signal) =>
-        this.llm.complete(systemPrompt, text, signal, undefined, {
-          workspaceId: thread.workspaceId,
-          userId: thread.realm,
-          source: "background",
-          threadId: thread.id,
-        }),
-      this.background.signal
-    );
-    if (
-      !resolved ||
-      this.background.signal.aborted ||
-      (await this.version(thread)) !== version
     ) {
       return;
     }

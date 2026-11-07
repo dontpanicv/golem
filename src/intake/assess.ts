@@ -91,7 +91,7 @@ attention: none for filing without an agent turn, brief for a thread review at t
 notification: null by default, even when a useful answer or draft belongs in the thread. A notification needs {kind: requested, awaited_reply, due, or time_sensitive; reason: why interrupting this person helps now; evidence: a supporting source id; quote: exact supporting words}. requested means the owner asked to be told; awaited_reply means a substantive reply changes a matter Golem was already following and the person needs to know; due means an explicit stated time has arrived and the matter remains unresolved; time_sensitive means concrete preparation or a changed event needs attention now, such as today's conference ticket or a changed departure. Preserve an exact source quote. An important topic, a new message, an @mention, an unread message, or an hour without a reply never qualifies alone. Ordinary Slack and WhatsApp exchanges stay silent, including when someone replies later. A morning review cannot turn silent updates into notifications. Never treat an inferred internal review time as a promised deadline;
 message: the useful thread update in the person's language, whether or not a notification is warranted;
 evidence: supporting evidence ids;
-checks: [{id: an existing check id or null, text: what remains unresolved or becomes useful, evidence: source id, quote: exact source words, at: an explicit ISO date/time with UTC offset or null, afterDays: explicit calendar-day count after that evidence's timestamp or null}];
+checks: [{id: an existing check id or null, text: what remains unresolved or becomes useful, evidence: source id, quote: exact source words, at: an explicit ISO date/time with UTC offset or null; the family lives in Europe/Prague, so currentTime and written show Prague time with its offset, and a time that a source gives without a zone is Prague time, afterDays: explicit calendar-day count after that evidence's timestamp or null}];
 resolved: [{id: given check id, evidence: source id, quote: exact words showing resolution or cancellation}].
 Create a new check only from newEvidenceIds. Earlier evidence is context and must not recreate resolved checks. Create a future check for a clear commitment, an unanswered request or partially fulfilled matter that remains useful to follow, a stated response period, a deadline, or an event where later preparation is useful. Waiting for a reply is not resolution. An ongoing matter must not be forgotten merely because its response date or sending details are uncertain: keep an undated internal check, and let the existing thread agent verify those details with its normal tools. This does not justify a notification. Use only dates supported by the evidence; at and afterDays are mutually exclusive. No assumed 3-day or 30-day expiry. Never convert business days or a period that starts at delivery into calendar days from the message timestamp without proof of the start and rule. Keep an uncertain internal review instead. For an event, check before it starts, not afterwards. For an undated clear commitment, choose at=null,afterDays=null: Golem will revisit it later without claiming a promised deadline. Tentative ideas need no check. A postponement changes the same check. A resolved check needs evidence, including another person's confirmation or the owner's account of an offline resolution.
 At a time trigger, first check new evidence and source coverage. Never claim no reply when a relevant source has an error or stale coverage; explain the verification gap only when the owner needs it. An unresolved due check can justify attention now. deadlineAt=null means an internal review, not a promised deadline. At that review, stay quiet unless following up is useful; never claim a missed deadline. Once it has notifiedAt, do not repeat the same notice without a material change.
@@ -110,11 +110,12 @@ export async function assess(
     ASSESS_SYSTEM,
     JSON.stringify({
       ...input,
-      currentTime: new Date(input.now).toISOString(),
+      currentTime: pragueTime(input.now),
+      timeZone: "Europe/Prague",
       evidence: input.evidence.map((item) => ({
         ...item,
         ...(item.observedAt === undefined
-          ? { written: new Date(item.at).toISOString() }
+          ? { written: pragueTime(item.at) }
           : {}),
       })),
     })
@@ -365,23 +366,43 @@ function validateChecks(
   }
 }
 
+/** The family's wall clock: the date and time parts of a time in Europe/Prague. */
+function parts(time: number): Record<string, string> {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Prague",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(time)
+      .map((part) => [part.type, part.value])
+  );
+}
+
+/** A time as the family reads it: ISO 8601 in Europe/Prague with its offset, such as 2026-11-07T09:00:00+01:00. */
+export function pragueTime(time: number): string {
+  const local = parts(time);
+  const shown = Date.UTC(
+    Number(local.year),
+    Number(local.month) - 1,
+    Number(local.day),
+    Number(local.hour),
+    Number(local.minute),
+    Number(local.second)
+  );
+  const offset = Math.round((shown - Math.floor(time / 1000) * 1000) / 60_000);
+  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
+  const minutes = String(Math.abs(offset) % 60).padStart(2, "0");
+  return `${local.year}-${local.month}-${local.day}T${local.hour}:${local.minute}:${local.second}${offset < 0 ? "-" : "+"}${hours}:${minutes}`;
+}
+
 /** Calendar days preserve the source's local wall time across daylight-saving changes. */
 export function afterCalendarDays(at: number, days: number): number {
-  const parts = (time: number) =>
-    Object.fromEntries(
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Europe/Prague",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hourCycle: "h23",
-      })
-        .formatToParts(time)
-        .map((part) => [part.type, part.value])
-    );
   const local = parts(at);
   const wall = Date.UTC(
     Number(local.year),

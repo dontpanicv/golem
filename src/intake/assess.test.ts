@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { type AssessmentInput, afterCalendarDays, assess } from "./assess.ts";
+import {
+  type AssessmentInput,
+  afterCalendarDays,
+  assess,
+  pragueTime,
+} from "./assess.ts";
 
 const evidence = {
   id: "source",
@@ -418,5 +423,17 @@ test("a final destination assessment cannot split a proposal, invent checks, or 
     await expect(
       assess(async () => JSON.stringify({ decisions }), finalInput)
     ).rejects.toThrow();
+  }
+});
+
+test("the model reads times as the family's Prague wall clock, with the offset, across daylight-saving changes", () => {
+  for (const [utc, local] of [
+    ["2026-11-07T08:00:00Z", "2026-11-07T09:00:00+01:00"],
+    ["2026-07-01T22:30:15Z", "2026-07-02T00:30:15+02:00"],
+    ["2026-03-29T00:59:59Z", "2026-03-29T01:59:59+01:00"],
+    ["2026-03-29T01:00:00Z", "2026-03-29T03:00:00+02:00"],
+  ]) {
+    expect(pragueTime(Date.parse(utc!))).toBe(local!);
+    expect(Date.parse(local!)).toBe(Date.parse(utc!));
   }
 });

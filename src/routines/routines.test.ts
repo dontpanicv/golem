@@ -279,7 +279,7 @@ test("what the script found waits for the next run when the agent cannot answer"
   }
 });
 
-test("a failing script fails the run and goes to the agent to repair", async () => {
+test("a failing script fails the run, goes to the agent to repair, and notifies its person every time", async () => {
   const routine = routines.create(workspaceId, channelId, {
     id: crypto.randomUUID(),
     name: "Failing",
@@ -294,12 +294,16 @@ test("a failing script fails the run and goes to the agent to repair", async () 
     error: "Error: The login page changed",
   });
   const thread = threadOf(routines.get(routine.id, alice).threadId);
+  const failure = 'The routine "Failing" failed: Error: The login page changed';
   const { messages } = await golem.app.threads.messages(thread);
   expect(messages.map((message) => message.text)).toEqual([
     "I cannot read the school system.",
+    failure,
   ]);
-  // A source that does not work notifies.
-  expect(noticesOf(thread.id)).toEqual(["I cannot read the school system."]);
+  // Every failed run notifies its person once, with the failure; the repair answer stays in the thread.
+  expect(noticesOf(thread.id)).toEqual([failure]);
+  await routines.tick(routines.get(routine.id, alice).nextRunAt!)[0];
+  expect(noticesOf(thread.id)).toEqual([failure, failure]);
   routines.delete(routine.id, alice);
 });
 
@@ -523,6 +527,7 @@ test("a run that a stop cuts off goes on at the next start, and the agent does i
     realm: (workspace, conversation) => threads.realm(workspace, conversation),
     startAgentThread: (workspace, channel, title) =>
       threads.startAgentThread(workspace, channel, title),
+    observe: (...args) => threads.observe(...args),
     instruct: (...args) => {
       answered = threads.instruct(...args);
       beforeStop.close();
@@ -751,6 +756,7 @@ test("a restart before input admission uses the saved instructions, script resul
         threads.realm(workspace, conversation),
       startAgentThread: (workspace, channel, title) =>
         threads.startAgentThread(workspace, channel, title),
+      observe: (...args) => threads.observe(...args),
       instruct: () => {
         beforeStop.close();
         return Promise.reject(new Error("Server stopped before admission"));

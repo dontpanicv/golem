@@ -365,13 +365,11 @@ Settling only cleans the UI. Settled threads remain in the search index, recall,
 under the same access rules. The channel section of an agent's prompt lists the newest 30 other threads, including
 settled ones; `list_threads`, `read_thread`, and `recall` give access to older threads.
 
-Once every 24 hours, the model reviews open channel threads with no activity for more than seven days. The existing
-five-minute background check starts a review when it is due, including after startup; the last check time is saved
-in the workspace's memory database. The model reads each full conversation separately. It settles completed
-discussions with no pending action, and keeps unresolved questions, unfinished tasks, promised follow-ups, and
-threads waiting for a reply open. Unclear or invalid answers and model errors leave the thread open. Running threads,
-orchestrators, already settled threads, and threads that change during review stay as they are. This sends no
-notification. The thread and workspace event streams update the open screens on web and iOS. A person can reopen a
+Once every 24 hours, Golem settles the open channel threads with no activity for more than 14 days; no model reads
+them. The existing five-minute background check starts the check when it is due, including after startup; the last
+check time is saved in the workspace's memory database. Running threads, threads that wait for an approval,
+orchestrators, and already settled threads stay as they are. Any new message in a settled thread, such as a
+routine's answer, opens it again. This sends no notification. The thread and workspace event streams update the open screens on web and iOS. A person can reopen a
 thread with the existing settled endpoint.
 
 The web app keeps a text message that it cannot send yet, such as without a connection, and sends it later with a
@@ -392,8 +390,8 @@ answer. A message waits for a run at work for another person, so that run keeps 
 | `DELETE /api/v1/devices/:token` | | `204`; the device gets no more of the person's pushes |
 
 A notification goes to a person's inbox when the agent answers their message, when a channel thread reports back to a
-thread they write in, for each answer of a reminder (to its recipient) that is not `QUIET`, for the answer of a
-routine whose script failed (to every member who sees its thread), and when an agent calls its `notify` tool, as it
+thread they write in, for each answer of a reminder (to its recipient) that is not `QUIET`, for every failed
+run of a routine (to its person, with the error, as a Golem message in its thread), and when an agent calls its `notify` tool, as it
 does in a routine's run only when something is wrong or not usual. Other answers of a routine stay in its thread. An answer waits while threads that its agent asked still work for
 it: the answer to their report notifies, or without one, this answer when they stop. While a screen of the person
 follows the thread's events stream, its notifications are read at once and send no push; opening the stream reads the
@@ -578,8 +576,8 @@ Future checks run from durable times, even without new messages. Before a no-rep
 coverage and related replies. Passive filing starts no thread turn. Useful thread reviews can run silently. A useful development starts a source review
 in its existing subject thread, with a visible input message and attached source files. Its existing Pi Durable agent
 explains the change and proposes next actions. Completion is silent by default, including useful written answers.
-When no thread matches a useful development, Golem starts a subject thread in a suitable visible channel. If no
-channel fits, Golem creates a private channel and its first thread. Invitations and tickets can start these threads.
+When no thread matches a useful development, Golem starts a subject thread in one of the person's own private
+channels. If none fits, Golem creates a private channel and its first thread. Invitations and tickets can start these threads.
 Channel names cover lasting subjects; thread titles name specific matters. The normal agent can search connected
 accounts for older related sources. No background worker thread is made. Nonurgent developments wait for the person's morning
 review in the 08:00 Europe/Prague hour: one plan groups them by matter, drops what is handled or stale, posts one

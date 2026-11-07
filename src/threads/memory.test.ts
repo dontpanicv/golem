@@ -229,3 +229,26 @@ test("a failed call is asked again, and a new process writes the summaries that 
   expect(failures).toBe(2);
   memory.close();
 });
+
+test("a model that stays down leaves the line for later instead of holding the memory ready", async () => {
+  const said = [message(1, "user", "d".repeat(600))];
+  let down = true;
+  let calls = 0;
+  const { memory } = await memoryOf(said, () => {
+    calls += 1;
+    if (down) {
+      throw new Error("The model is down");
+    }
+    return "Alice: many d";
+  });
+  memory.add(said);
+  await memory.ready();
+  expect(calls).toBe(4);
+  expect(memory.view(1)).not.toContain("Alice: many d");
+  // The next message builds again, and the line that waited gets written.
+  down = false;
+  memory.add([...said, message(2, "user", "short")]);
+  await memory.ready();
+  expect(memory.view(1)).toContain("0+1|Alice: many d");
+  memory.close();
+}, 20_000);

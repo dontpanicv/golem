@@ -42,10 +42,12 @@ export type {
 
 import { saveCheck } from "./future.ts";
 import {
+  fallbackPlan,
   type MorningInput,
   type MorningPlan,
   type MorningTopic,
   planMorning,
+  validateMorningPlan,
 } from "./morning.ts";
 import { IntakeRecall, type ItemRow, type SourceRow } from "./recall.ts";
 import { SourceReads } from "./source-reads.ts";
@@ -64,7 +66,6 @@ export type IntakeIntegrations = Pick<
 export type IntakeThreads = Pick<
   Threads,
   | "messages"
-  | "version"
   | "observe"
   | "instruct"
   | "file"
@@ -115,7 +116,10 @@ export class Intake {
   private working = false;
   private idle: Promise<void> = Promise.resolve();
   private readonly stopping = new AbortController();
-  private readonly failed = new Map<string, number>();
+  /** The latest failure of each piece of work and how many came in a row, so retries wait longer and longer. */
+  private readonly failures = new Map<string, { at: number; count: number }>();
+  /** Failed morning reviews by day and person; after two, the review posts each update without a plan. */
+  private readonly morningFailures = new Map<string, number>();
   private readonly recall: IntakeRecall;
   private readonly sourceReads: SourceReads;
   private readonly destinations: IntakeDestinations;
@@ -217,7 +221,6 @@ export class Intake {
             now
           );
         }
-        await this.captureThreads(person.workspaceId, owner, now);
         await this.process(person.workspaceId, owner, now);
         await this.reconcileSourceReads(person.workspaceId, owner, now);
         await this.checkDue(person.workspaceId, owner, credentials, now);
@@ -453,7 +456,7 @@ export class Intake {
         continue;
       }
       const trace = `source-reads:${group.reads.map((read) => read.id).join(":")}`;
-      if (now - (this.failed.get(trace) ?? 0) < POLL_MS) {
+      if (this.waiting(trace, now)) {
         if (threadId) {
           throw new Error("Source read reassessment is waiting for retry");
         }
@@ -470,7 +473,7 @@ export class Intake {
           { error: String(error) },
           now
         );
-        this.failed.set(trace, now);
+        this.fail(trace, now);
         if (threadId) {
           throw error;
         }
@@ -542,73 +545,6 @@ export class Intake {
     this.sourceReads.finish(group.reads, now);
   }
 
-  /** A person's Golem messages are new evidence, including offline resolutions. Agent answers remain retrieval context. */
-  private async captureThreads(
-    workspaceId: string,
-    owner: User,
-    now: number
-  ): Promise<void> {
-    this.workspaces.requireMember(workspaceId, owner);
-    for (const thread of this.workspaces.threadsIn(workspaceId, owner.id)) {
-      const version = await this.threads.version(thread);
-      const prior = this.database
-        .query(
-          "SELECT version FROM intake_thread_read WHERE workspace_id=? AND owner_id=? AND thread_id=?"
-        )
-        .get(workspaceId, owner.id, thread.id) as { version: string } | null;
-      if (prior?.version === version) {
-        continue;
-      }
-      const state = await this.threads.messages(thread);
-      if (state.running) {
-        continue;
-      }
-      // A thread version is its last Pi Durable entry ID, including agent entries.
-      const messages = prior
-        ? state.messages.filter(
-            (message) => Number(message.id) > Number(prior.version)
-          )
-        : state.messages.slice(-6);
-      for (const message of messages) {
-        if (
-          message.failed ||
-          message.agent ||
-          message.observation ||
-          message.work?.steps.some((step) => step.tool === "intake_update")
-        ) {
-          continue;
-        }
-        const item: WatchedItem = {
-          id: message.id,
-          kind: "message",
-          chat: thread.id,
-          chatName: thread.title,
-          group: thread.realm === null,
-          sender: message.author,
-          fromOwner: message.authorId === owner.id,
-          at: message.time,
-          text: message.text,
-          url: `thread:${thread.id}`,
-        };
-        const credential = {
-          id: `thread:${thread.id}`,
-          workspaceId,
-          ownerId: owner.id,
-          integrationName: "Golem",
-          label: thread.title,
-        } as WatchedCredential;
-        const trace = `thread:${owner.id}:${thread.id}:${message.id}`;
-        this.record(trace, "collect.thread", workspaceId, owner.id, item, now);
-        this.keep(credential, item);
-      }
-      this.database
-        .query(
-          "INSERT INTO intake_thread_read VALUES(?,?,?,?) ON CONFLICT DO UPDATE SET version=excluded.version"
-        )
-        .run(workspaceId, owner.id, thread.id, version);
-    }
-  }
-
   private async process(
     workspaceId: string,
     owner: User,
@@ -625,7 +561,7 @@ export class Intake {
     );
     for (const rows of this.batches(pending)) {
       const trace = rows.map((row) => row.id).join(":");
-      if (now - (this.failed.get(trace) ?? 0) < POLL_MS) {
+      if (this.waiting(trace, now)) {
         continue;
       }
       try {
@@ -639,7 +575,7 @@ export class Intake {
           { error: String(error), evidence: rows.map((row) => row.id) },
           now
         );
-        this.failed.set(trace, now);
+        this.fail(trace, now);
       }
     }
   }
@@ -962,7 +898,7 @@ export class Intake {
       (check) => check.threadId ?? check.id
     ).values()) {
       const trace = `time:${checks.map((check) => `${check.id}:${check.reviewAt}`).join(":")}`;
-      if (now - (this.failed.get(trace) ?? 0) < POLL_MS) {
+      if (this.waiting(trace, now)) {
         continue;
       }
       try {
@@ -976,7 +912,7 @@ export class Intake {
           { error: String(error) },
           now
         );
-        this.failed.set(trace, now);
+        this.fail(trace, now);
       }
     }
   }
@@ -1070,11 +1006,14 @@ export class Intake {
     );
     // The brief updates wait for the person's one morning review in the 08:00 hour; the others go now.
     if (hour === 8) {
-      for (const deliveries of Map.groupBy(
+      const brief = Map.groupBy(
         allowed.filter((delivery) => delivery.attention === "brief"),
         (delivery) => `${delivery.workspace_id}:${delivery.owner_id}`
-      ).values()) {
-        await this.morning(deliveries, now);
+      );
+      // Also for a person with nothing waiting, whose summary an earlier try may not have sent.
+      for (const person of enabled) {
+        const [workspaceId, ownerId] = person.split(":") as [string, string];
+        await this.morning(workspaceId, ownerId, brief.get(person) ?? [], now);
       }
     }
     const eligible = allowed.filter(
@@ -1115,7 +1054,7 @@ export class Intake {
           { error: String(error) },
           now
         );
-        this.failed.set(`${first.workspace_id}:${owner.id}`, now);
+        this.fail(`${first.workspace_id}:${owner.id}`, now);
       }
     }
   }
@@ -1126,19 +1065,32 @@ export class Intake {
    * The thread's agent works at once only on a topic whose plan names work; otherwise it reads the message when the
    * person writes there. Then the person's own thread gets the morning summary with a notification.
    */
-  private async morning(deliveries: Delivery[], now: number): Promise<void> {
-    const first = deliveries[0]!;
-    const workspaceId = first.workspace_id;
-    const owner = this.owner(workspaceId, first.owner_id);
+  private async morning(
+    workspaceId: string,
+    ownerId: string,
+    deliveries: Delivery[],
+    now: number
+  ): Promise<void> {
+    const owner = this.owner(workspaceId, ownerId);
     const day = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Europe/Prague",
     }).format(now);
-    const doneKey = `intake.morning:${workspaceId}:${first.owner_id}`;
-    if (!owner || setting(this.database, doneKey) === day) {
+    const doneKey = `intake.morning:${workspaceId}:${ownerId}`;
+    const trace = `morning:${workspaceId}:${ownerId}:${day}`;
+    // Its own back-off: a failing plan never holds back the person's urgent updates.
+    if (
+      !owner ||
+      setting(this.database, doneKey) === day ||
+      this.waiting(trace, now)
+    ) {
       return;
     }
-    const trace = `morning:${workspaceId}:${owner.id}:${day}`;
     try {
+      if (deliveries.length === 0) {
+        // Nothing waits: only a summary that an earlier try left unsent; a later update still goes this morning.
+        await this.sendSummary(trace, workspaceId, owner);
+        return;
+      }
       const coverage = await this.refreshDeliverySources(
         deliveries,
         owner,
@@ -1164,6 +1116,7 @@ export class Intake {
         );
         await this.followPlan(trace, waiting, owner, input, plan, now);
       }
+      await this.sendSummary(trace, workspaceId, owner);
       setSetting(this.database, doneKey, day);
     } catch (error) {
       this.record(
@@ -1174,7 +1127,11 @@ export class Intake {
         { error: String(error) },
         now
       );
-      this.failed.set(`${workspaceId}:${owner.id}`, now);
+      this.fail(trace, now);
+      this.morningFailures.set(
+        trace,
+        (this.morningFailures.get(trace) ?? 0) + 1
+      );
     }
   }
 
@@ -1264,6 +1221,11 @@ export class Intake {
     if (cached) {
       return cached;
     }
+    if ((this.morningFailures.get(trace) ?? 0) >= 2) {
+      const plan = validateMorningPlan(fallbackPlan(input), input);
+      this.record(planTrace, "morning.plan", workspaceId, owner.id, plan, now);
+      return plan;
+    }
     this.record(planTrace, "morning.input", workspaceId, owner.id, input, now);
     const plan = await planMorning(async (system, text) => {
       const result = await this.llm.complete(
@@ -1312,21 +1274,56 @@ export class Intake {
         now
       );
     }
-    const lines: string[] = [];
+    // The lines of earlier tries this morning stay, so the one summary lists every topic.
+    const lines = [
+      ...(this.morningLines(trace, workspaceId, owner)?.lines ?? []),
+    ];
     for (const topic of plan.topics) {
-      lines.push(await this.postTopic(topic, deliveries, owner, input, now));
+      const line = await this.postTopic(topic, deliveries, owner, input, now);
+      if (line) {
+        lines.push(line);
+        this.record(
+          trace,
+          "morning.lines",
+          workspaceId,
+          owner.id,
+          { summary: plan.summary, lines },
+          now
+        );
+      }
     }
-    if (lines.length === 0) {
+  }
+
+  /** Sends the morning summary once, also when an earlier try posted the topics and then failed. */
+  private async sendSummary(
+    trace: string,
+    workspaceId: string,
+    owner: User
+  ): Promise<void> {
+    const posted = this.morningLines(trace, workspaceId, owner);
+    if (
+      !posted?.lines.length ||
+      this.audit.last(trace, "morning.summary", workspaceId, owner.id)
+    ) {
       return;
     }
     // The person asked for this summary to notify them.
     await this.threads.observe(
       await this.threads.orchestrator(workspaceId, owner),
-      `${plan.summary}\n\n${lines.join("\n")}`,
+      `${posted.summary}\n\n${posted.lines.join("\n")}`,
       `${trace}:summary`,
       owner,
       true
     );
+    this.record(trace, "morning.summary", workspaceId, owner.id, {
+      lines: posted.lines.length,
+    });
+  }
+
+  private morningLines(trace: string, workspaceId: string, owner: User) {
+    return this.audit.last(trace, "morning.lines", workspaceId, owner.id) as
+      | { summary: string; lines: string[] }
+      | undefined;
   }
 
   /** Puts one topic of the morning plan into its thread and gives its line for the morning summary. */
@@ -1336,11 +1333,15 @@ export class Intake {
     owner: User,
     input: MorningInput,
     now: number
-  ): Promise<string> {
+  ): Promise<string | null> {
     const workspaceId = deliveries[0]!.workspace_id;
-    const group = topic.updates.map(
-      (id) => deliveries.find((delivery) => delivery.id === id)!
-    );
+    // An update that reached its thread meanwhile, such as with the person's own message, is not posted again.
+    const group = topic.updates
+      .map((id) => deliveries.find((delivery) => delivery.id === id)!)
+      .filter((delivery) => this.deliveryAllowed(delivery));
+    if (group.length === 0) {
+      return null;
+    }
     for (const [index, delivery] of group.entries()) {
       const threadId = index === 0 ? topic.threadId : group[0]!.thread_id;
       await this.destinations.bind(
@@ -1449,7 +1450,7 @@ export class Intake {
           { error: String(error) },
           now
         );
-        this.failed.set(`${first.workspace_id}:${owner.id}`, now);
+        this.fail(`${first.workspace_id}:${owner.id}`, now);
       }
     }
     return prepared;
@@ -1462,7 +1463,7 @@ export class Intake {
     briefReady: boolean
   ): Promise<boolean> {
     const trace = `destination:${delivery.id}`;
-    if (now - (this.failed.get(trace) ?? 0) < POLL_MS) {
+    if (this.waiting(trace, now)) {
       return false;
     }
     try {
@@ -1525,7 +1526,7 @@ export class Intake {
         { error: String(error) },
         now
       );
-      this.failed.set(trace, now);
+      this.fail(trace, now);
       return false;
     }
   }
@@ -1533,7 +1534,7 @@ export class Intake {
   private deliveryAllowed(delivery: Delivery): boolean {
     const pending = this.database
       .query(
-        "SELECT 1 FROM intake_delivery WHERE id=? AND cancelled_at IS NULL"
+        "SELECT 1 FROM intake_delivery WHERE id=? AND cancelled_at IS NULL AND delivered_at IS NULL"
       )
       .get(delivery.id);
     if (!pending) {
@@ -1884,7 +1885,6 @@ Read the attached sources in the context of this discussion. Explain what change
     for (const credential of credentials) {
       await this.collect(credential, now, true);
     }
-    await this.captureThreads(workspaceId, owner, now);
     if (!deliveries.every((delivery) => this.deliveryAllowed(delivery))) {
       return null;
     }
@@ -1992,12 +1992,10 @@ Read the attached sources in the context of this discussion. Explain what change
     if (!decision.summary) {
       return;
     }
+    // Silent filing stays private: a matching thread in a channel that others see gets the files only with a visible update.
     const candidates = this.workspaces
       .channelsIn(workspaceId, owner.id)
-      .filter(
-        (candidate) =>
-          candidate.ownerId === owner.id || candidate.ownerId === null
-      );
+      .filter((candidate) => candidate.ownerId === owner.id);
     const matching = decision.threadId
       ? this.workspaces
           .threadsIn(workspaceId, owner.id)
@@ -2048,7 +2046,21 @@ Read the attached sources in the context of this discussion. Explain what change
     ownerId: string,
     now: number
   ): boolean {
-    return now - (this.failed.get(`${workspaceId}:${ownerId}`) ?? 0) < POLL_MS;
+    return this.waiting(`${workspaceId}:${ownerId}`, now);
+  }
+
+  /** Records a failure of `key`; failures in a row wait twice as long each time, up to a day. */
+  private fail(key: string, now: number): void {
+    const last = this.failures.get(key);
+    const count =
+      last && now - last.at <= 2 * retryAfter(last.count) ? last.count + 1 : 1;
+    this.failures.set(key, { at: now, count });
+  }
+
+  /** Whether `key` failed recently enough that its next try waits. */
+  private waiting(key: string, now: number): boolean {
+    const last = this.failures.get(key);
+    return last !== undefined && now - last.at < retryAfter(last.count);
   }
 
   private owner(workspaceId: string, ownerId: string): User | null {
@@ -2267,6 +2279,11 @@ Read the attached sources in the context of this discussion. Explain what change
       }),
     ];
   }
+}
+
+/** How long the next try waits after `count` failures in a row: 15 minutes, doubling up to a day. */
+function retryAfter(count: number): number {
+  return Math.min(POLL_MS * 2 ** (count - 1), DAY);
 }
 
 function hash(text: string): string {

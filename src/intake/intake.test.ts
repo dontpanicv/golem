@@ -56,6 +56,8 @@ async function setup(
     reviewRead?: WatchedItem[];
     failAfterThreadStart?: boolean;
     plan?: (input: MorningInput) => MorningPlan;
+    /** Fails a post to a thread, as when the conversation is not reachable. */
+    postFails?: (threadId: string) => boolean;
   } = {}
 ) {
   app = await startTestApp();
@@ -131,13 +133,15 @@ async function setup(
   let interruptCreation = options.failAfterThreadStart ?? false;
   const threads: IntakeThreads = {
     ...app.app.threads,
-    version: async () => options.version ?? "1",
     messages: async () => ({
       messages: options.dialogue ?? [],
       running: false,
       approvals: [],
     }),
     observe: async (thread, text, _requestId, _owner, notify, files = []) => {
+      if (options.postFails?.(thread.id)) {
+        throw new Error("The thread is not reachable");
+      }
       posts.push({ threadId: thread.id, text, notify, files });
     },
     instruct: async (
@@ -337,9 +341,7 @@ async function setup(
           }
           if (answer.attention !== "none" && answer.threadId === null) {
             answer.startThread = true;
-            answer.channelId = input.channels.find(
-              (channel) => channel.name === "general"
-            )!.id;
+            Object.assign(answer, newThreadPlace(input));
           }
           return JSON.stringify({ decisions: [answer] });
         },
@@ -380,6 +382,14 @@ async function setup(
   };
 }
 
+/** Where the scripted judge starts a new thread: a given private channel, or a new private one when there is none. */
+function newThreadPlace(input: { channels: { id: string }[] }) {
+  const [channel] = input.channels;
+  return channel
+    ? { channelId: channel.id, newChannel: null }
+    : { channelId: null, newChannel: { name: "sources", summary: "Sources" } };
+}
+
 /** The person's subject threads, without their own Golem thread that the morning summary starts. */
 function subjectThreads(run: { workspaceId: string; owner: { id: string } }) {
   return app.app.workspaces
@@ -407,7 +417,7 @@ function morningPlan(input: MorningInput): MorningPlan {
       })),
     };
   }
-  const general = input.channels.find((channel) => channel.name === "general");
+  const place = newThreadPlace(input);
   return {
     summary: "Good morning",
     topics: [
@@ -422,8 +432,11 @@ function morningPlan(input: MorningInput): MorningPlan {
       channelId:
         updates[0]!.threadId || updates[0]!.proposedNewChannel
           ? null
-          : (updates[0]!.proposedChannelId ?? general!.id),
-      newChannel: updates[0]!.threadId ? null : updates[0]!.proposedNewChannel,
+          : (updates[0]!.proposedChannelId ?? place.channelId),
+      newChannel: updates[0]!.threadId
+        ? null
+        : (updates[0]!.proposedNewChannel ??
+          (updates[0]!.proposedChannelId ? null : place.newChannel)),
       message: updates.map((update) => update.message).join(" "),
       work: null,
       line: updates[0]!.proposedTitle ?? "An update",
@@ -873,7 +886,7 @@ test("a source outage after review postpones the push; restart retries without a
 });
 
 test.each(["private", "shared", "new", "hidden-name", "shared-name"] as const)(
-  "a new conference gets a subject thread and source files in its channel (%s)",
+  "a new conference gets a subject thread and source files in a private channel of the owner (%s)",
   async (destination) => {
     const run = await setup({
       actualReview: true,
@@ -978,19 +991,16 @@ test.each(["private", "shared", "new", "hidden-name", "shared-name"] as const)(
       thread.channelId,
       run.owner
     );
-    if (destination === "private" || destination === "shared") {
+    if (destination === "private") {
       expect(channel.id).toBe(previous!.id);
     } else {
+      // A channel that others see is never offered for a new matter of the owner's sources.
       expect(channel.ownerId).toBe(run.owner.id);
-      expect(channel.name).toBe(
-        destination === "hidden-name" || destination === "shared-name"
-          ? "events-2"
-          : "events"
-      );
+      expect(channel.name).toBe(destination === "new" ? "events" : "events-2");
       expect(channel.summary).toBe("Events, programmes, and tickets");
       expect(
         run.snapshots[0]!.channels.some((each) => each.id === previous?.id)
-      ).toBe(destination === "shared-name");
+      ).toBe(false);
     }
     const source = (await app.app.threads.messages(thread)).messages.find(
       (message) => message.observation
@@ -1011,16 +1021,9 @@ test.each(["private", "shared", "new", "hidden-name", "shared-name"] as const)(
     expect(await Bun.file(path).text()).toContain(
       "Your ticket is in an earlier email"
     );
-    if (destination === "shared") {
-      expect(
-        (await app.app.threads.file(run.workspaceId, bob, source.files[0]!.id))
-          .path
-      ).toBe(path);
-    } else {
-      await expect(
-        app.app.threads.file(run.workspaceId, bob, source.files[0]!.id)
-      ).rejects.toThrow();
-    }
+    await expect(
+      app.app.threads.file(run.workspaceId, bob, source.files[0]!.id)
+    ).rejects.toThrow();
     expect(
       app.app.notifications.inbox(run.workspaceId, run.owner).notifications
     ).toEqual([expect.objectContaining({ threadId: thread.id })]);
@@ -1321,8 +1324,7 @@ test("the morning review puts the updates of one matter into one new thread, and
           updates: input.updates.map((update) => update.id),
           threadId: null,
           title: "OpenSearch incident",
-          channelId: input.channels[0]!.id,
-          newChannel: null,
+          ...newThreadPlace(input),
           message: "Francisco sent the logs and the memory peaks [1][2].",
           work: "Draft a reply to Francisco.",
           line: "Francisco sent the OpenSearch diagnostics",
@@ -1363,10 +1365,9 @@ test("a morning plan that leaves an update out changes nothing and is tried agai
               updates: [input.updates[0]!.id],
               threadId: input.updates[0]!.threadId,
               title: input.updates[0]!.proposedTitle ?? "Balcony claim",
-              channelId: input.updates[0]!.threadId
-                ? null
-                : input.channels[0]!.id,
-              newChannel: null,
+              ...(input.updates[0]!.threadId
+                ? { channelId: null, newChannel: null }
+                : newThreadPlace(input)),
               message: "The claim waits.",
               work: null,
               line: "The claim waits",
@@ -1384,6 +1385,46 @@ test("a morning plan that leaves an update out changes nothing and is tried agai
   ).toMatchObject({ delivered_at: null });
   complete = true;
   await intake.tick(Date.parse("2026-10-02T08:16:00+02:00"));
+  expect(run.posts).toHaveLength(2);
+});
+
+test("after two failed morning plans, each update is posted alone", async () => {
+  const run = await setup({
+    initialNotice: "brief",
+    plan: () => ({ summary: "Broken", topics: [], dropped: [] }),
+  });
+  await intake.tick(START + 1000);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  await intake.tick(Date.parse("2026-10-02T08:16:00+02:00"));
+  expect(run.posts).toHaveLength(0);
+  // The second failure waits twice as long.
+  await intake.tick(Date.parse("2026-10-02T08:32:00+02:00"));
+  expect(run.posts).toHaveLength(0);
+  await intake.tick(Date.parse("2026-10-02T08:47:00+02:00"));
+  expect(run.plans).toHaveLength(2);
+  const [post, summary] = run.posts;
+  expect(post!.text).toContain("repair claim");
+  expect(summary!.notify).toBe(true);
+});
+
+test("a morning summary that failed is sent at the next try, once", async () => {
+  let reachable = false;
+  const run = await setup({
+    initialNotice: "brief",
+    postFails: (threadId) =>
+      !reachable &&
+      app.app.workspaces
+        .threadsIn(run.workspaceId, run.owner.id)
+        .some((thread) => thread.id === threadId && thread.ownerId !== null),
+  });
+  await intake.tick(START + 1000);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  expect(run.posts.map((post) => post.notify)).toEqual([false]);
+  reachable = true;
+  await intake.tick(Date.parse("2026-10-02T08:16:00+02:00"));
+  expect(run.posts.map((post) => post.notify)).toEqual([false, true]);
+  expect(run.posts[1]!.text).toContain(`(thread:${run.posts[0]!.threadId})`);
+  await intake.tick(Date.parse("2026-10-02T08:32:00+02:00"));
   expect(run.posts).toHaveLength(2);
 });
 
@@ -2129,50 +2170,6 @@ test("a pinned review retains its subject even when search returns other threads
   ).toHaveLength(0);
 });
 
-test("a thread change reads only messages after its saved entry, without reviving older dialogue", async () => {
-  const options: {
-    dialogue: ThreadMessages["messages"];
-    version: string;
-    target: "private";
-    decide: () => Assessment[];
-  } = { dialogue: [], version: "8", target: "private", decide: () => [] };
-  const run = await setup(options);
-  run.items([]);
-  const message = (id: number, agent = false) => ({
-    id: String(id),
-    text: `Message ${id}`,
-    author: agent ? "Golem" : "Alice",
-    authorId: agent ? "golem" : run.owner.id,
-    agent,
-    failed: false,
-    files: [],
-    streaming: false,
-    work: null,
-    time: START + id,
-  });
-  options.dialogue = Array.from({ length: 8 }, (_, i) => message(i + 1));
-  await intake.tick(START + 1000);
-  expect(
-    app.app.database.query("SELECT count(*) n FROM intake_item").get()
-  ).toMatchObject({ n: 6 });
-  options.dialogue = [...options.dialogue, message(9, true)];
-  options.version = "9";
-  await intake.tick(START + 2000);
-  expect(
-    app.app.database.query("SELECT count(*) n FROM intake_item").get()
-  ).toMatchObject({ n: 6 });
-  options.dialogue = [...options.dialogue, message(10)];
-  options.version = "10";
-  await intake.tick(START + 3000);
-  expect(
-    app.app.database
-      .query(
-        "SELECT source_id FROM intake_item ORDER BY CAST(source_id AS INTEGER)"
-      )
-      .all()
-  ).toEqual([3, 4, 5, 6, 7, 8, 10].map((id) => ({ source_id: String(id) })));
-});
-
 test("bounded recall keeps the latest thread message before older summaries", async () => {
   const run = await setup({ target: "private", decide: () => [] });
   const recall = new IntakeRecall(
@@ -2346,8 +2343,7 @@ function proposedSubject(
   return {
     threadId: null,
     startThread: true,
-    channelId: input.channels.find((channel) => channel.name === "general")!.id,
-    newChannel: null,
+    ...newThreadPlace(input),
     title,
     summary: "A repair matter needs review",
     attention,
@@ -2541,7 +2537,9 @@ test("two proposals for the same matter reuse the first destination and produce 
             ...proposedSubject(input, "Identity review", "now"),
             threadId: existing?.id ?? null,
             startThread: !existing,
-            channelId: existing ? null : input.channels[0]!.id,
+            ...(existing
+              ? { channelId: null, newChannel: null }
+              : newThreadPlace(input)),
           },
         ];
       }
