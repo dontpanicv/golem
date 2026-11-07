@@ -1387,6 +1387,35 @@ test("a morning plan that leaves an update out changes nothing and is tried agai
   expect(run.posts).toHaveLength(2);
 });
 
+test("intake_read gives every waiting update whatever the query, and reading leaves it waiting", async () => {
+  const run = await setup({ initialNotice: "brief" });
+  await intake.tick(START + 1000);
+  const read = intake
+    .tools(run.workspaceId)
+    .find((tool) => tool.name === "intake_read")!;
+  const result = await read.execute(
+    { query: "something unrelated" } as never,
+    { conversationId: 1 } as never,
+    undefined as never
+  );
+  const { waiting } = JSON.parse(
+    (result.output![0] as { text: string }).text
+  ) as { waiting: { id: string; posts: string; message: string }[] };
+  const [update] = intake.following
+    .overview(run.workspaceId, run.owner)
+    .updates.filter((each) => each.deliveredAt === null);
+  expect(waiting).toMatchObject([
+    { id: update!.id, posts: "at the 08:00 review", message: update!.body },
+  ]);
+  expect(
+    app.app.database
+      .query(
+        "SELECT delivered_at, cancelled_at FROM intake_delivery WHERE id=?"
+      )
+      .get(update!.id)
+  ).toEqual({ delivered_at: null, cancelled_at: null });
+});
+
 test("the overview shows a waiting update, takes feedback for the judge, and can post the update now", async () => {
   const run = await setup({ initialNotice: "brief" });
   await intake.tick(START + 1000);

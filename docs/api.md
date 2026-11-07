@@ -598,7 +598,7 @@ thread, including connected accounts, with the same person, access rules, and ap
 results, and errors remain in the private audit log. Source inputs and files use the existing message endpoints and
 event streams on web and iOS.
 
-A turn uses the script tools for the person it answers, in any thread: `intake_read({ query })` and `intake_update({ id, action, revision, quote })`. The latter
+A turn uses the script tools for the person it answers, in any thread: `intake_read({ query })` and `intake_update({ id, action, revision, quote })`. `intake_read` gives the observations that match the query, every waiting update with its destination, time, and source names, and the checks; reading it changes nothing. The latter
 requires an exact quote from the person's latest message. Source text is untrusted data. See [process](proactive.md).
 
 #### Following

@@ -410,6 +410,28 @@ export class Following {
     );
   }
 
+  /**
+   * Every update that waits to be posted, newest first, for the agents to read beside what intake keeps; reading
+   * changes nothing, so each still goes to its thread at the 08:00 review or when the person writes there.
+   */
+  waiting(workspaceId: string, owner: User) {
+    return this.updates(workspaceId, owner)
+      .filter(
+        (update) => update.deliveredAt === null && update.cancelledAt === null
+      )
+      .map((update) => ({
+        id: update.id,
+        threadId: update.threadId,
+        thread: update.threadTitle,
+        newThread: update.newThread,
+        message: update.body,
+        posts:
+          update.attention === "now" ? "within minutes" : "at the 08:00 review",
+        waitingSince: new Date(update.createdAt).toISOString(),
+        sources: update.evidence.map((evidence) => evidence.source),
+      }));
+  }
+
   /** Posts a waiting update at the next minute, or cancels it. */
   changeUpdate(
     workspaceId: string,
