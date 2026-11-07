@@ -110,6 +110,10 @@ Bun.serve({
     if (input.includes("fail")) {
       return Response.json({ error: { message: "bad input" } }, { status: 400 });
     }
+    const long = input.find((each) => typeof each === "string" && each.length > 2048);
+    if (long) {
+      return Response.json({ error: { code: 500, message: "input (" + long.length + " tokens) is too large to process" } }, { status: 500 });
+    }
     return Response.json({ data: input.map((_, index) => ({ embedding: [index, input.length] })) });
   },
 });
@@ -219,6 +223,20 @@ describe.skipIf(!platforms.includes(`${process.platform}-${process.arch}`))(
         ],
       });
       expect(first![2]).toBe("caption");
+    });
+
+    test("a text with more tokens than the server takes is cut to fit, and the others keep their vectors", async () => {
+      const long = "x".repeat(3000);
+      const vectors = await embedder.embed(["short", long]);
+      expect(vectors.map((vector) => [...vector])).toEqual([
+        [0, 1],
+        [0, 1],
+      ]);
+      const [batch, first, refused, cut] = (await inputs()).slice(-4);
+      expect(batch).toEqual(["short", long]);
+      expect(first).toEqual(["short"]);
+      expect(refused).toEqual([long]);
+      expect((cut![0] as string).length).toBe(Math.floor(2048 * 0.9));
     });
 
     test("an error from the server rejects the whole call", async () => {

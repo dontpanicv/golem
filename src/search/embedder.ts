@@ -39,7 +39,7 @@ const PROJECTOR = {
   url: `${HUGGING_FACE}/mmproj-embeddinggemma-2-Q8_0.gguf`,
   sha256: "c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f",
 };
-/** Every input must fit one micro-batch; chunks stay far below it. */
+/** Every input must fit one micro-batch; a chunk with more tokens than that is cut to fit. */
 const MAX_TOKENS = 2048;
 const TEXT_BATCH = 16;
 const MEDIA_BATCH = 8;
@@ -95,28 +95,18 @@ export class LlamaEmbedder implements Embedder {
       ? MEDIA_BATCH
       : TEXT_BATCH;
     for (let start = 0; start < inputs.length; start += batch) {
-      const { base } = this.server;
-      if (!base) {
-        throw new Error("The embedding model is not running");
+      const part = inputs.slice(start, start + batch);
+      const answer = await this.request(part);
+      if (Array.isArray(answer)) {
+        vectors.push(...answer);
+        continue;
       }
-      const response = await fetch(`${base}/v1/embeddings`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          input: inputs.slice(start, start + batch).map(serverInput),
-        }),
-      });
-      const body = (await response.json()) as {
-        data?: { embedding: number[] }[];
-        error?: unknown;
-      };
-      if (!(response.ok && body.data)) {
-        throw new Error(
-          `Embedding failed: ${JSON.stringify(body.error ?? body)}`
-        );
+      if (!part.some((input) => tokensOver(answer, input))) {
+        throw answer;
       }
-      for (const item of body.data) {
-        vectors.push(Float32Array.from(item.embedding));
+      // Some text has more tokens than characters, such as links and codes: each input goes alone, cut to fit.
+      for (const input of part) {
+        vectors.push(await this.embedOne(input));
       }
     }
     return vectors;
@@ -125,6 +115,57 @@ export class LlamaEmbedder implements Embedder {
   stop(): void {
     this.server.stop();
   }
+
+  private async embedOne(input: EmbedInput): Promise<Float32Array> {
+    const answer = await this.request([input]);
+    if (Array.isArray(answer)) {
+      return answer[0]!;
+    }
+    const tokens = tokensOver(answer, input);
+    if (!tokens || typeof input !== "string") {
+      throw answer;
+    }
+    const cut = input.slice(
+      0,
+      Math.floor((input.length * MAX_TOKENS * 0.9) / tokens)
+    );
+    const again = await this.request([cut]);
+    if (!Array.isArray(again)) {
+      throw again;
+    }
+    return again[0]!;
+  }
+
+  /** The vectors of the inputs, or the server's error. */
+  private async request(
+    inputs: readonly EmbedInput[]
+  ): Promise<Float32Array[] | Error> {
+    const { base } = this.server;
+    if (!base) {
+      throw new Error("The embedding model is not running");
+    }
+    const response = await fetch(`${base}/v1/embeddings`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input: inputs.map(serverInput) }),
+    });
+    const body = (await response.json()) as {
+      data?: { embedding: number[] }[];
+      error?: unknown;
+    };
+    if (!(response.ok && body.data)) {
+      return new Error(
+        `Embedding failed: ${JSON.stringify(body.error ?? body)}`
+      );
+    }
+    return body.data.map((item) => Float32Array.from(item.embedding));
+  }
+}
+
+/** The tokens of a text input that the server refused as too large to process, or null for another error. */
+function tokensOver(error: Error, input: EmbedInput): number | null {
+  const tokens = /input \((\d+) tokens\) is too large/.exec(error.message)?.[1];
+  return tokens && typeof input === "string" ? Number(tokens) : null;
 }
 
 /** llama-server's input: text as is, media as OpenAI-style content parts. */
