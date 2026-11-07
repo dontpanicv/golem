@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import Observation
 import os
+import UIKit
 
 /// Dictation in every composer, on the iPhone itself.
 ///
@@ -25,7 +26,10 @@ final class Listener {
         case failed(String)
     }
 
-    private(set) var state: State = .off
+    private(set) var state: State = .off {
+        // The screen stays on while it listens, in dictation and in a conversation: a locked phone can stop them.
+        didSet { UIApplication.shared.isIdleTimerDisabled = state == .on || state == .preparing }
+    }
     /// Whose composer is listening: a thread id, or a channel id for a new thread.
     private(set) var owner: String?
     /// What the user has said.
