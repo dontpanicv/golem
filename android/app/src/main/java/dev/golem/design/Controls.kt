@@ -59,6 +59,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -80,6 +82,8 @@ fun GolemTextField(
     singleLine: Boolean = true,
     minLines: Int = 1,
     autofocus: Boolean = false,
+    /** Hides what the person types, as for a password. */
+    secure: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
@@ -100,6 +104,7 @@ fun GolemTextField(
             interactionSource = interaction,
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
+            visualTransformation = if (secure) PasswordVisualTransformation() else VisualTransformation.None,
             textStyle = golemText(if (large) Tokens.Mobile.FontSize.body else Tokens.Mobile.FontSize.row).copy(color = Golem.mobile.text),
             cursorBrush = SolidColor(Golem.colors.accent),
             modifier = Modifier.fillMaxWidth().focusRequester(focus).semantics { contentDescription = label ?: placeholder },
