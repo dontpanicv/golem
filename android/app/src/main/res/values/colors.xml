@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page background of design/tokens.json (`mobile.background`), shown before Compose draws. -->
+    <color name="background">#ffffff</color>
+    <color name="ink">#09090a</color>
+</resources>

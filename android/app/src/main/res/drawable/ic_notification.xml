@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golem's face glyph, the status bar's icon for its notifications. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="10" android:viewportHeight="10">
+    <group android:translateX="1" android:translateY="1">
+        <path android:fillColor="#ffffff" android:fillType="evenOdd"
+            android:pathData="M0 0H8V7H7V8H1V7H0ZM3 1H5V2H3ZM2 5H6V6H2ZM1 2H3V3H1ZM5 2H7V3H5Z" />
+    </group>
+</vector>

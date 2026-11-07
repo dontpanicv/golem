@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the app gives other apps to open: the files it downloaded, and the photos the camera takes. -->
+<paths>
+    <cache-path name="files" path="." />
+</paths>
