@@ -52,6 +52,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -107,7 +108,8 @@ enum class AgendaPage { Following, Upcoming }
 fun PhoneShell() {
     val session = LocalSession.current
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
-    var agendaPage by rememberSaveable { mutableStateOf(AgendaPage.Following) }
+    // A state, not its value: a tab's first screen keeps what it first got, so it reads the page itself.
+    val agendaPage = rememberSaveable { mutableStateOf(AgendaPage.Following) }
     // One set of stacks for the shell's life: the screens keep the `open` they first got.
     val stacks = remember { Tab.entries.associateWith { mutableStateListOf<Any>(TabRoot(it)) } }
     var sheet by remember { mutableStateOf<Destination?>(null) }
@@ -122,7 +124,7 @@ fun PhoneShell() {
             destination == Destination.Search -> tab = Tab.Search
             destination == Destination.Upcoming || destination == Destination.Following -> {
                 stacks.getValue(Tab.Agenda).reset()
-                agendaPage = if (destination == Destination.Upcoming) AgendaPage.Upcoming else AgendaPage.Following
+                agendaPage.value = if (destination == Destination.Upcoming) AgendaPage.Upcoming else AgendaPage.Following
                 tab = Tab.Agenda
             }
             destination == Destination.Inbox -> tab = Tab.Activity
@@ -158,7 +160,7 @@ fun PhoneShell() {
                 val saved = rememberSaveableStateHolder()
                 Crossfade(tab, animationSpec = tween(Tokens.Duration.normal), label = "tab") { shown ->
                     saved.SaveableStateProvider(shown.name) {
-                        TabStack(shown, stacks.getValue(shown), agendaPage, { agendaPage = it })
+                        TabStack(shown, stacks.getValue(shown), agendaPage)
                     }
                 }
             }
@@ -191,7 +193,7 @@ private fun SnapshotStateList<Any>.reset() {
 }
 
 @Composable
-private fun TabStack(tab: Tab, stack: SnapshotStateList<Any>, agendaPage: AgendaPage, setAgendaPage: (AgendaPage) -> Unit) {
+private fun TabStack(tab: Tab, stack: SnapshotStateList<Any>, agendaPage: MutableState<AgendaPage>) {
     val session = LocalSession.current
     NavDisplay(
         backStack = stack,
@@ -205,7 +207,7 @@ private fun TabStack(tab: Tab, stack: SnapshotStateList<Any>, agendaPage: Agenda
                             Tab.Search -> SearchView()
                             Tab.Golem -> session.orchestrator?.let { ConversationView(it.id) }
                             Tab.Activity -> InboxView()
-                            Tab.Agenda -> AgendaView(agendaPage, setAgendaPage)
+                            Tab.Agenda -> AgendaView(agendaPage.value) { agendaPage.value = it }
                         }
                         is Destination -> Screen(key)
                     }
