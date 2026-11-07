@@ -33,11 +33,21 @@ struct UpcomingTests {
         )
     }
 
-    private func reminder(_ id: String, at due: Double, place: ReminderPlace? = nil) -> Reminder {
+    private func reminder(
+        _ id: String, at due: Double, place: ReminderPlace? = nil, from: Double? = nil, until: Double? = nil
+    ) -> Reminder {
         Reminder(
             id: id, threadId: "thread", recipientId: "me", createdBy: "me", text: id, dueAt: due, timeZone: "UTC",
-            place: place, triggeredAt: nil, deliveredAt: nil, cancelledAt: nil
+            place: place, triggeredAt: nil, notBefore: from, notAfter: until, deliveredAt: nil, cancelledAt: nil
         )
+    }
+
+    @Test func aPlaceReminderShowsItsWindow() {
+        let office = ReminderPlace(id: "office", name: "Office", latitude: 0, longitude: 0, radius: 100, event: .arrive)
+        #expect(reminder("plain", at: 0, place: office).placeWindow == "Arrive at Office")
+        let window = reminder("monday", at: 0, place: office, from: hours(30), until: hours(36)).placeWindow ?? ""
+        #expect(window.hasPrefix("Arrive at Office · from "))
+        #expect(window.contains(" · until "))
     }
 
     private func names(_ groups: [UpcomingGroup]) -> [String: [String]] {

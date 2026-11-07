@@ -48,11 +48,27 @@ struct Reminder: Codable, Hashable, Identifiable {
     let place: ReminderPlace?
     /// When the iPhone reported the event of a reminder at a place.
     let triggeredAt: Double?
+    /// For a reminder at a place: it fires only from this time.
+    let notBefore: Double?
+    /// For a reminder at a place: it fires at this time anyway when its event has not come.
+    let notAfter: Double?
     let deliveredAt: Double?
     let cancelledAt: Double?
 
     /// A reminder at a place that waits for the iPhone to report its event.
     var waitsForPlace: Bool { place != nil && triggeredAt == nil }
+
+    /// "Arrive at Office · from Mon 9 Nov 6:00 · until Mon 9 Nov 12:00"
+    var placeWindow: String? {
+        guard let place else { return nil }
+        let time = { (milliseconds: Double) in
+            Date(milliseconds: milliseconds).formatted(
+                .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()
+            )
+        }
+        return ([place.summary] + [notBefore.map { "from \(time($0))" }, notAfter.map { "until \(time($0))" }]
+            .compactMap { $0 }).joined(separator: " · ")
+    }
 }
 
 /// The place that a reminder waits for, and whether for an arrival or a departure.

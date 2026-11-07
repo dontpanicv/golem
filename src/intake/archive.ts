@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { WatchedItem } from "../integrations/integrations.ts";
 import type { User } from "../platform/auth.ts";
-import { setSetting, setting } from "../platform/database.ts";
 import type { FileRef } from "../threads/threads.ts";
 import type { Audit } from "./audit.ts";
 import type {
@@ -55,7 +54,7 @@ export class IntakeArchives {
   ): Promise<FileRef[]> {
     this.workspaces.requireMember(workspaceId, owner);
     this.threads.place(workspaceId, channelId, owner);
-    const groups = this.stage(workspaceId, channelId, owner, rows, {});
+    const groups = this.stage(workspaceId, channelId, owner, rows);
     const files: FileRef[] = [];
     for (const id of groups) {
       files.push(...(await this.flush(id, owner)));
@@ -87,11 +86,16 @@ export class IntakeArchives {
           )
         )
       );
+      // A file that the person or an agent edited is their work: it stays.
+      const whole =
+        left.length === 0 &&
+        group.file_id !== null &&
+        !(await this.edited(group, owner));
       const gone = [
         ...Object.entries(saved)
           .filter(([key]) => !kept.has(key))
           .map(([, file]) => file.id),
-        ...(left.length === 0 && group.file_id ? [group.file_id] : []),
+        ...(whole ? [group.file_id!] : []),
       ];
       for (const fileId of gone) {
         // A file that the person deleted already is gone too.
@@ -129,79 +133,34 @@ export class IntakeArchives {
     }
   }
 
-  /** Repairs interrupted writes, then folds old per-message files without a model or new source reads. */
+  /** Whether the conversation file changed since Golem wrote it, as when the person added notes. */
+  private async edited(group: ArchiveRow, owner: User): Promise<boolean> {
+    if (group.file_id === null || group.content_hash === null) {
+      return false;
+    }
+    try {
+      const { path } = await this.threads.file(
+        group.workspace_id,
+        owner,
+        group.file_id
+      );
+      return hash(await Bun.file(path).text()) !== group.content_hash;
+    } catch {
+      // A file that is already gone has no edits to keep.
+      return false;
+    }
+  }
+
+  /** Repairs interrupted writes. */
   async maintain(workspaceId: string, owner: User): Promise<void> {
     this.workspaces.requireMember(workspaceId, owner);
     const pending = this.database
       .query(
-        "SELECT id FROM intake_archive WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL AND (pending=1 OR obsolete_ids!='[]')"
+        "SELECT id FROM intake_archive WHERE workspace_id=? AND owner_id=? AND deleted_at IS NULL AND pending=1"
       )
       .all(workspaceId, owner.id) as { id: string }[];
     for (const group of pending) {
       await this.resume(group.id, workspaceId, owner);
-    }
-    const watched = new Set(
-      this.integrations
-        .watched()
-        .filter(
-          (each) =>
-            each.workspaceId === workspaceId && each.ownerId === owner.id
-        )
-        .map((each) => each.id)
-    );
-    const progressKey = `intake.conversation-archives:${workspaceId}:${owner.id}`;
-    const accounts = hash(
-      [...watched].sort((left, right) => left.localeCompare(right)).join(":")
-    );
-    if (setting(this.database, progressKey) === accounts) {
-      return;
-    }
-    let complete = true;
-    const rows = this.database
-      .query(
-        "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND archived_id IS NOT NULL AND deleted_at IS NULL"
-      )
-      .all(workspaceId, owner.id) as ItemRow[];
-    if (!rows.length) {
-      setSetting(this.database, progressKey, accounts);
-      return;
-    }
-    const remaining = rows.filter((row) => watched.has(row.credential_id));
-    for (const channel of this.workspaces.channelsIn(workspaceId, owner.id)) {
-      const files = await this.threads.files(
-        this.threads.place(workspaceId, channel.id, owner)
-      );
-      const selected: ItemRow[] = [];
-      const obsolete: Record<string, string> = {};
-      for (const row of remaining) {
-        const file = files.find((each) =>
-          each.name.endsWith(`-${row.id.slice(0, 12)}.md`)
-        );
-        if (!file) {
-          continue;
-        }
-        const item = JSON.parse(row.payload) as WatchedItem;
-        const original = `# ${item.chatName}\n\n${item.url ?? ""}\n\nWritten: ${new Date(item.at).toISOString()}\nFrom: ${item.sender}\n\n${item.text}`;
-        const { path } = await this.threads.file(workspaceId, owner, file.id);
-        // A file the person or agent edited is their work, not an old generated copy.
-        if ((await Bun.file(path).text()) !== original) {
-          continue;
-        }
-        selected.push(row);
-        obsolete[row.id] = file.id;
-      }
-      for (const id of this.stage(
-        workspaceId,
-        channel.id,
-        owner,
-        selected,
-        obsolete
-      )) {
-        complete = (await this.resume(id, workspaceId, owner)) && complete;
-      }
-    }
-    if (complete) {
-      setSetting(this.database, progressKey, accounts);
     }
   }
 
@@ -225,8 +184,7 @@ export class IntakeArchives {
     workspaceId: string,
     channelId: string,
     owner: User,
-    rows: ItemRow[],
-    obsolete: Record<string, string>
+    rows: ItemRow[]
   ): string[] {
     const credentials = this.integrations.watched();
     const grouped = new Map<
@@ -326,25 +284,9 @@ export class IntakeArchives {
           }
         }
         const ids = [...members.values()].map((each) => each.row.id);
-        const retired = [
-          ...new Set([
-            ...(JSON.parse(row.obsolete_ids) as string[]),
-            ...rows
-              .filter((each) =>
-                observations.some(
-                  (observation) =>
-                    observation.row.source_id === each.source_id &&
-                    observation.row.credential_id === each.credential_id
-                )
-              )
-              .flatMap((each) =>
-                obsolete[each.id] ? [obsolete[each.id]!] : []
-              ),
-          ]),
-        ];
         this.database
           .query(
-            "INSERT INTO intake_archive(id,workspace_id,owner_id,channel_id,credential_id,integration,conversation,period,item_ids,obsolete_ids) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET item_ids=excluded.item_ids,obsolete_ids=excluded.obsolete_ids,pending=CASE WHEN item_ids!=excluded.item_ids OR deleted_at IS NOT NULL THEN 1 ELSE pending END,file_id=CASE WHEN deleted_at IS NULL THEN file_id END,content_hash=CASE WHEN deleted_at IS NULL THEN content_hash END,attachment_ids=CASE WHEN deleted_at IS NULL THEN attachment_ids ELSE '{}' END,deleted_at=NULL"
+            "INSERT INTO intake_archive(id,workspace_id,owner_id,channel_id,credential_id,integration,conversation,period,item_ids) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET item_ids=excluded.item_ids,pending=CASE WHEN item_ids!=excluded.item_ids OR deleted_at IS NOT NULL THEN 1 ELSE pending END,file_id=CASE WHEN deleted_at IS NULL THEN file_id END,content_hash=CASE WHEN deleted_at IS NULL THEN content_hash END,attachment_ids=CASE WHEN deleted_at IS NULL THEN attachment_ids ELSE '{}' END,deleted_at=NULL"
           )
           .run(
             row.id,
@@ -355,8 +297,7 @@ export class IntakeArchives {
             row.integration,
             row.conversation,
             row.period,
-            JSON.stringify(ids),
-            JSON.stringify(retired)
+            JSON.stringify(ids)
           );
       }
     })();
@@ -411,13 +352,9 @@ export class IntakeArchives {
     const name = `${safeName(title).slice(0, 80)}${group.period ? `-${group.period}` : ""}-${group.id.slice(0, 12)}.md`;
     const text = render(group, observations, attachments);
     const digest = hash(text);
-    const retired = JSON.parse(group.obsolete_ids) as string[];
     let source =
       stored.find((file) => file.id === group.file_id) ??
-      stored.find((file) =>
-        file.name.endsWith(`-${group.id.slice(0, 12)}.md`)
-      ) ??
-      stored.find((file) => retired.includes(file.id));
+      stored.find((file) => file.name.endsWith(`-${group.id.slice(0, 12)}.md`));
     let currentHash: string | null = null;
     if (source) {
       const storedFile = await this.threads.file(
@@ -476,22 +413,6 @@ export class IntakeArchives {
       itemIds: observations.map((each) => each.row.id),
       contentHash: digest,
     });
-    for (const old of retired.filter(
-      (fileId) =>
-        fileId !== sourceFile.id && stored.some((each) => each.id === fileId)
-    )) {
-      await this.threads.deleteFile(group.workspace_id, owner, old);
-      this.audit.record(
-        group.id,
-        "archive.consolidated",
-        group.workspace_id,
-        owner.id,
-        { retired: old, file: sourceFile }
-      );
-    }
-    this.database
-      .query("UPDATE intake_archive SET obsolete_ids='[]' WHERE id=?")
-      .run(group.id);
     return [sourceFile, ...Object.values(attachments)];
   }
 

@@ -12,7 +12,12 @@ import {
   SettingsRow,
   Switch,
 } from "../ui/components.tsx";
-import { clockTime, placeWords, weekdayTime } from "../ui/format.ts";
+import {
+  clockTime,
+  placeWindow,
+  placeWords,
+  weekdayTime,
+} from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { channelsOf } from "../workspaces/data.ts";
 import { PanelHeader } from "../workspaces/shell.tsx";
@@ -147,7 +152,11 @@ function AgendaRow({
           reminder={item.reminder}
           when={
             item.reminder.place && item.reminder.triggeredAt === null
-              ? placeWords(item.reminder.place)
+              ? placeWindow(
+                  item.reminder.place,
+                  item.reminder.notBefore,
+                  item.reminder.notAfter
+                )
               : when(item.reminder.dueAt)
           }
           workspaceId={workspaceId}

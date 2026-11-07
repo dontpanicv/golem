@@ -48,6 +48,21 @@ export function placeWords(place: {
   return `${place.event === "arrive" ? "Arrive at" : "Leave"} ${place.name}`;
 }
 
+/** Arrive at Office · from Mon, 9 Nov, 06:00 · until Mon, 9 Nov, 12:00 */
+export function placeWindow(
+  place: { readonly name: string; readonly event: "arrive" | "leave" },
+  notBefore: number | null,
+  notAfter: number | null
+): string {
+  return [
+    placeWords(place),
+    notBefore === null ? null : `from ${weekdayTime(notBefore)}`,
+    notAfter === null ? null : `until ${weekdayTime(notAfter)}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 /** 26 Oct */
 export function day(milliseconds: number): string {
   return new Date(milliseconds).toLocaleDateString("en-GB", {

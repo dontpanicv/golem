@@ -349,7 +349,13 @@ async function watchSlack(
       ],
       source.signal
     )) as { matches?: SlackMessage[]; pages?: number };
-    source.record?.("raw", { query, page, response });
+    // A search gives every channel's messages; only the selected ones, which intake records, belong in the audit.
+    source.record?.("raw", {
+      query,
+      page,
+      matches: response.matches?.length ?? 0,
+      pages: response.pages ?? 1,
+    });
     await readSlackMessages(
       slack,
       session,

@@ -555,6 +555,8 @@ const migrations = [
   `ALTER TABLE reminder ADD COLUMN not_before INTEGER;
   ALTER TABLE reminder ADD COLUMN not_after INTEGER;
   ALTER TABLE intake_check ADD COLUMN nudge_at INTEGER;`,
+  // routines: a finished run keeps no copy of its routine or its script result; only a run that a stop cut off needs them.
+  "UPDATE routine_run SET input = NULL, result = NULL WHERE outcome != 'running';",
 ];
 
 export function openDatabase(path: string): Database {

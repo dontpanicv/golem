@@ -334,84 +334,6 @@ test("an interrupted source write resumes without an extra file", async () => {
   expect((await run.files()).map((each) => each.id)).toEqual([file!.id]);
 });
 
-test("old message files combine while edited files and source originals remain", async () => {
-  const run = await setup();
-  const first = run.put("one", "thread", START, "Question");
-  const second = run.put("two", "thread", START + 1000, "Answer");
-  const edited = run.put(
-    "three",
-    "different-thread",
-    START + 2000,
-    "Source text"
-  );
-  const legacy = async (
-    row: ItemRow,
-    change = false,
-    channelId = run.channel.id
-  ) => {
-    const item = JSON.parse(row.payload) as WatchedItem;
-    const text = change
-      ? "User's own notes"
-      : `# ${item.chatName}\n\n${item.url ?? ""}\n\nWritten: ${new Date(item.at).toISOString()}\nFrom: ${item.sender}\n\n${item.text}`;
-    const file = await app.app.threads.writeFile(
-      run.workspace.id,
-      channelId,
-      run.owner,
-      new File([text], `Conversation-${row.id.slice(0, 12)}.md`)
-    );
-    app.app.database
-      .query("UPDATE intake_item SET archived_id=? WHERE id=?")
-      .run(file.id, row.id);
-    return file;
-  };
-  const original = await legacy(first);
-  await legacy(second);
-  const notes = await legacy(edited, true);
-  const shared = app.app.workspaces.createChannel(
-    run.workspace.id,
-    run.owner,
-    "shared",
-    false
-  );
-  const sharedCopy = await legacy(second, false, shared.id);
-  await run.archives.maintain(run.workspace.id, run.owner);
-  expect(await run.files()).toHaveLength(2);
-  expect(await run.text(original.id)).toContain("Question");
-  expect(await run.text(original.id)).toContain("Answer");
-  expect(await run.text(notes.id)).toBe("User's own notes");
-  const sharedFiles = await app.app.threads.files(
-    app.app.threads.place(run.workspace.id, shared.id, run.owner)
-  );
-  expect(sharedFiles.map((file) => file.id)).toEqual([sharedCopy.id]);
-  expect(await run.text(sharedCopy.id)).toContain("Answer");
-  expect(await run.text(sharedCopy.id)).not.toContain("Question");
-  expect(
-    app.app.database.query("SELECT count(*) AS count FROM intake_item").get()
-  ).toEqual({ count: 3 });
-  await run.archives.maintain(run.workspace.id, run.owner);
-  expect(await run.files()).toHaveLength(2);
-});
-
-test("consolidation does not share an unassessed edit in place of the selected source", async () => {
-  const run = await setup();
-  const row = run.put("mail", "thread", START, "Selected repair details");
-  const item = JSON.parse(row.payload) as WatchedItem;
-  const original = `# ${item.chatName}\n\n${item.url ?? ""}\n\nWritten: ${new Date(item.at).toISOString()}\nFrom: ${item.sender}\n\n${item.text}`;
-  const file = await app.app.threads.writeFile(
-    run.workspace.id,
-    run.channel.id,
-    run.owner,
-    new File([original], `Conversation-${row.id.slice(0, 12)}.md`)
-  );
-  app.app.database
-    .query("UPDATE intake_item SET archived_id=? WHERE id=?")
-    .run(file.id, row.id);
-  run.put("mail", "thread", START, "Unrelated private edit");
-  await run.archives.maintain(run.workspace.id, run.owner);
-  expect(await run.text(file.id)).toContain("Selected repair details");
-  expect(await run.text(file.id)).not.toContain("Unrelated private edit");
-});
-
 test("later messages preserve notes added to a generated conversation file", async () => {
   const run = await setup();
   const first = run.put("one", "thread", START, "Original message");
@@ -533,4 +455,30 @@ test("an attachment that the source no longer gives is skipped, and the conversa
   expect(await run.text(saved[0]!.id)).toContain("See the attached ticket");
   expect(saved[1]!.name.endsWith(".pdf")).toBe(true);
   expect(Buffer.byteLength(saved[1]!.name)).toBeLessThan(200);
+});
+
+test("a deleted conversation keeps its file when the person edited it", async () => {
+  const run = await setup();
+  const spam = run.put("spam", "prizes", START, "You won a prize");
+  const [file] = await run.archives.save(
+    run.workspace.id,
+    run.channel.id,
+    run.owner,
+    [spam]
+  );
+  const { path } = await app.app.threads.file(
+    run.workspace.id,
+    run.owner,
+    file!.id
+  );
+  await Bun.write(
+    path,
+    `${await Bun.file(path).text()}\n\nMy note: report this sender.`
+  );
+  app.app.database
+    .query("UPDATE intake_item SET deleted_at=? WHERE id=?")
+    .run(Date.now(), spam.id);
+  await run.archives.forget(run.workspace.id, run.owner, [spam.id]);
+  expect((await run.files()).map((each) => each.id)).toContain(file!.id);
+  expect(await run.text(file!.id)).toContain("My note: report this sender.");
 });

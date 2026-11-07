@@ -58,15 +58,16 @@ They do not need to maintain a task list or set a routine for each expected repl
    source accounts again and checks the proposed reason against the latest evidence. A later reply can suppress the
    notice while the useful answer stays in the thread. A source outage leaves the notice pending for retry. A confirmed
    notice opens the same thread. A `QUIET` answer stays quiet. Stable request ids prevent duplicate inputs, runs,
-   files, or notifications on retry. There is no separate worker thread or result handoff. A draft, if useful, stays
-   in the original discussion. Automatic reviews use the thread's normal tools, access rules, and approvals.
-8. **Return source findings.** Successful connector reads in a normal or automatic thread can add original source
+   files, or notifications on retry. There is no separate worker thread or result handoff. No source starts an agent, so no
+   draft or other work is made unless the person asks in the thread.
+8. **Return source findings.** Successful connector reads in a thread can add original source
    records to intake. Gmail thread reads decode MIME bodies and exclude drafts; WhatsApp message and search reads keep
    incoming and outgoing text; Slack reads keep the personal selection rule; Plaud note reads keep summaries only.
    The connector, not the agent, supplies the account and returned records. Only the owner of a still-enabled account
    can feed its reads back. Intake stores the evidence and a durable pending read in `intake_source_read`.
-   After an automatic review, a bounded judge call updates or resolves the related open checks before a notification
-   can proceed. Reads in person-started threads are assessed on the next intake tick. This call cannot create checks,
+   A message that intake has not judged yet also gets the normal assessment, so a reply that an agent reads first
+   still gets its follow-up. Each read is assessed on the next intake tick: a bounded judge call updates or resolves
+   the related open checks. This call cannot create checks,
    start threads, run another review, or notify. A partial answer leaves the remaining question open. Failed judgments
    retain their pending read and retry with backoff; a failed thread cannot block unrelated source-read assessments.
    Repeated reads reuse the evidence and assessment. These targeted reads do not advance polling coverage.
@@ -98,8 +99,7 @@ library. On macOS, Bun still selects Apple's SQLite. FTS5 is enabled; this imple
 
 Each record belongs to one member. A shared integration credential still produces private evidence for its owner.
 An existing shared family thread may receive source material that matches its subject, as explicitly permitted.
-Other people's private threads remain inaccessible. The source review and its answer are visible in the matching
-thread. Any confirmed notification goes only to the account owner. Turning an account off stops its reads, checks,
+Other people's private threads remain inaccessible. The posted update is visible in the matching thread. Any confirmed notification goes only to the account owner. Turning an account off stops its reads, checks,
 and queued reviews. It keeps historical audit data. Deleted Golem threads are hidden from source recall.
 
 An intake message starts a normal turn in its destination thread. Its agent has the same tools as a turn started by
@@ -135,7 +135,8 @@ another machine. This raw log supports later evaluation and training; it does no
 A turn reads intake as the person it answers, in any thread they see, also in a channel that others see: it can use
 `intake_read` to explain what Golem is following, with every update that still waits for its thread or the morning
 review; reading it delivers nothing. When the person writes in a thread, the updates that wait for it
-from their accounts join that turn in its observed context, and the morning review skips them. Another member's
+from their accounts join that turn in its observed context, and count as delivered once that turn answers: a turn
+that fails takes them again, and no delivery posts them meanwhile. Another member's
 message never takes them. Ordinary-language corrections use
 `intake_update` with the person's latest exact words. The same services have authenticated JSON endpoints for both
 clients. The web and iOS account settings expose the same opt-in.
@@ -218,4 +219,4 @@ Source files represent conversations, rather than individual messages:
 
 New messages update the same file ID. Message edits replace their earlier text in that file. Each entry keeps its original source ID, date, sender, and source link. Attachments remain separate files and appear as links in the conversation file. Overlapping polls and retries do not add duplicate entries or files. The archive is scoped to the owner, account, and destination channel: a shared family review receives only messages selected for that channel. It does not receive the rest of a private conversation.
 
-Existing generated message files are combined during intake maintenance. Original evidence and audit records stay intact. One original file ID is retained, while redundant copies are moved aside through normal soft deletion. Edited source files remain unchanged. This does not create an agent, a thread, or a notification. Existing file views in both apps show the grouped files through their normal updates.
+Older per-message source files stay as they are, so the links to them in earlier messages keep working. A Slack search records only its counts in the audit; the messages that intake keeps are recorded with the collection result.

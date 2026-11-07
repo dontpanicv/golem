@@ -119,6 +119,8 @@ export class Intake {
   private readonly stopping = new AbortController();
   /** The latest failure of each piece of work and how many came in a row, so retries wait longer and longer. */
   private readonly failures = new Map<string, { at: number; count: number }>();
+  /** The waiting updates that a person's running turn took, by workspace, person, and thread, until it answers. */
+  private readonly claims = new Map<string, string[]>();
   /** Failed morning reviews by day and person; after two, the review posts each update without a plan. */
   private readonly morningFailures = new Map<string, number>();
   private readonly recall: IntakeRecall;
@@ -166,7 +168,7 @@ export class Intake {
       workspaces,
       integrations,
       audit,
-      (credential, item, now) => this.keep(credential, item, now)
+      (credential, item) => this.keep(credential, item)
     );
   }
 
@@ -999,8 +1001,10 @@ export class Intake {
         hourCycle: "h23",
       }).format(now)
     );
+    const claimed = new Set([...this.claims.values()].flat());
     const allowed = pending.filter(
       (delivery) =>
+        !claimed.has(delivery.id) &&
         enabled.has(`${delivery.workspace_id}:${delivery.owner_id}`) &&
         this.deliveryAllowed(delivery) &&
         !this.backingOff(delivery.workspace_id, delivery.owner_id, now)
@@ -1515,8 +1519,13 @@ export class Intake {
     briefReady: boolean
   ): Promise<Set<string>> {
     const prepared = new Set<string>();
+    // A delivery whose destination check failed waits out its back-off before the accounts are read again for it.
     const people = Map.groupBy(
-      deliveries.filter((delivery) => delivery.thread_id === null),
+      deliveries.filter(
+        (delivery) =>
+          delivery.thread_id === null &&
+          !this.waiting(`destination:${delivery.id}`, now)
+      ),
       (delivery) => `${delivery.workspace_id}:${delivery.owner_id}`
     );
     for (const pending of people.values()) {
@@ -2266,24 +2275,45 @@ export class Intake {
           text: evidence.text.slice(0, 8000),
         })),
     }));
-    this.database.transaction(() => {
-      for (const delivery of waiting) {
-        this.database
-          .query(
-            "UPDATE intake_delivery SET delivered_at=? WHERE id=? AND delivered_at IS NULL"
-          )
-          .run(now, delivery.id);
-      }
-    })();
+    // Delivered only when the turn has answered (`finishClaims`): a turn that fails or starts again takes them again.
+    const key = `${workspaceId}:${owner.id}:${threadId}`;
+    const ids = waiting.map((delivery) => delivery.id);
+    if (JSON.stringify(this.claims.get(key)) !== JSON.stringify(ids)) {
+      this.claims.set(key, ids);
+      this.record(
+        `claim:${threadId}:${now}`,
+        "attention.claimed",
+        workspaceId,
+        owner.id,
+        { threadId, deliveries: ids },
+        now
+      );
+    }
+    return claimed;
+  }
+
+  /** Marks the updates that the person's answered turn in a thread took as delivered. */
+  finishClaims(workspaceId: string, threadId: string, ownerId: string): void {
+    const key = `${workspaceId}:${ownerId}:${threadId}`;
+    const ids = this.claims.get(key);
+    if (!ids) {
+      return;
+    }
+    this.claims.delete(key);
+    const now = Date.now();
+    this.database
+      .query(
+        "UPDATE intake_delivery SET delivered_at=? WHERE id IN (SELECT value FROM json_each(?)) AND delivered_at IS NULL AND cancelled_at IS NULL"
+      )
+      .run(now, JSON.stringify(ids));
     this.record(
       `claim:${threadId}:${now}`,
-      "attention.claimed",
+      "attention.delivered",
       workspaceId,
-      owner.id,
-      { threadId, deliveries: waiting.map((delivery) => delivery.id) },
+      ownerId,
+      { threadId, claimed: ids },
       now
     );
-    return claimed;
   }
 
   /** Private source search and ordinary-language corrections are available to the existing agents. */

@@ -1126,13 +1126,6 @@ export class Integrations {
   }
 
   /** The codemode namespace of each connector. */
-  /** The integrations that Golem can read as sources for a person, such as mail and chats. */
-  sources(): string[] {
-    return this.catalog.flatMap((connector) =>
-      connector.watch ? [connector.id] : []
-    );
-  }
-
   namespaces(): ConnectorNamespace[] {
     return this.catalog.map((connector) => ({
       name: connector.id,

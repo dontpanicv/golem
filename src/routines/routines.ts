@@ -203,7 +203,7 @@ export class Routines {
       } else {
         this.database
           .query(
-            "UPDATE routine_run SET outcome = 'failed', finished_at = ?, error = 'Golem stopped during the run' WHERE id = ?"
+            "UPDATE routine_run SET outcome = 'failed', finished_at = ?, error = 'Golem stopped during the run', input = NULL, result = NULL WHERE id = ?"
           )
           .run(Date.now(), run.id);
       }
@@ -547,7 +547,8 @@ export class Routines {
     const finishedAt = Date.now();
     this.database
       .query(
-        "UPDATE routine_run SET outcome = ?, error = ?, finished_at = ? WHERE id = ?"
+        // The run's copy of the routine and its script result serve only a run that a stop cut off.
+        "UPDATE routine_run SET outcome = ?, error = ?, finished_at = ?, input = NULL, result = NULL WHERE id = ?"
       )
       .run(outcome, error, finishedAt, id);
     return {

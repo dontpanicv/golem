@@ -15,12 +15,16 @@ struct ShareView: View {
     @State private var orchestrator: ThreadSummary?
     @State private var failure: String?
     @State private var sending = false
+    /// What was shared is still being read, such as a long video.
+    @State private var reading = true
+    /// The share of the upload sent so far, from 0 to 1.
+    @State private var sent = 0.0
     @AppStorage("workspaceID") private var workspaceID = ""
     /// A channel's id, or empty for the Golem thread.
     @AppStorage("channelID") private var channelID = ""
 
     private var canSend: Bool {
-        !sending && (orchestrator != nil || !channelID.isEmpty)
+        !sending && !reading && (orchestrator != nil || !channelID.isEmpty)
             && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !files.isEmpty)
     }
 
@@ -33,6 +37,22 @@ struct ShareView: View {
                     ForEach(files, id: \.self) { file in
                         Label(file.lastPathComponent, systemImage: "doc")
                             .lineLimit(1)
+                    }
+                    if reading {
+                        HStack {
+                            ProgressView()
+                            Text("Preparing")
+                                .foregroundStyle(Tokens.Colors.textSecondary)
+                        }
+                    }
+                }
+                if sending {
+                    Section {
+                        ProgressView(value: sent) {
+                            Text(sent < 1 ? "Uploading" : "Sending")
+                        } currentValueLabel: {
+                            Text(sent.formatted(.percent.precision(.fractionLength(0))))
+                        }
                     }
                 }
                 Section {
@@ -77,6 +97,7 @@ struct ShareView: View {
         let shared = await Self.read(providers)
         text = shared.text.joined(separator: "\n")
         files = shared.files
+        reading = false
         guard api.token != nil else { return failure = "Sign in to Golem first." }
         do {
             workspaces = try await api.me().workspaces
@@ -102,14 +123,21 @@ struct ShareView: View {
     private func send() {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         sending = true
+        sent = 0
         failure = nil
+        let progress: UploadShare = { share in
+            Task { @MainActor in sent = share }
+        }
         Task {
             do {
                 if channelID.isEmpty, let orchestrator {
-                    try await api.sendMessage(threadID: orchestrator.id, text: message, files: files)
+                    try await api.sendMessage(
+                        threadID: orchestrator.id, text: message, files: files, progress: progress
+                    )
                 } else {
                     _ = try await api.createThread(
-                        workspaceID: workspaceID, channelID: channelID, text: message, files: files
+                        workspaceID: workspaceID, channelID: channelID, text: message, files: files,
+                        progress: progress
                     )
                 }
                 done(true)

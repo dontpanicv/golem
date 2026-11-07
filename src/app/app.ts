@@ -159,6 +159,8 @@ export async function createApp(
       changed: (workspaceId) => indexer.touch(workspaceId),
       observedContext: (workspaceId, threadId, ownerId, claim) =>
         intake.contextFor(workspaceId, threadId, ownerId, claim),
+      answered: (workspaceId, threadId, personId) =>
+        intake.finishClaims(workspaceId, threadId, personId),
       sourceRead: (thread, ownerId, read) =>
         intake.recordSourceRead(thread, ownerId, read),
       moved: (threadId, channelId) => {

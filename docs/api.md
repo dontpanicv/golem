@@ -287,7 +287,7 @@ Every delete is soft: Golem keeps what was deleted, hidden, and no route, page, 
 | `PUT /api/v1/workspaces/:workspaceId` | `{ name }` | `Workspace`; `403` for a member who is not an owner |
 | `POST /api/v1/workspaces/:workspaceId/channels` | `{ name, private? }` | `Channel`; a `private` one is the person's own. `409` if the name exists, also as another person's private channel |
 | `PUT /api/v1/workspaces/:workspaceId/channels/:channelId` | `{ name }` | `Channel`, with the name as Golem keeps it: lowercase letters, also with diacritics, and numbers, with `-` between words. `409` if the name exists |
-| `POST /api/v1/workspaces/:workspaceId/channels/:channelId/merge` | `{ into }` | `204`; its threads, files, artifacts, routines, suggestions, and source archives move to channel `into`, then the empty channel goes and the orchestrators move to the next channel that every member sees. Nobody deletes a channel otherwise. `403` when a channel that every member sees would merge into a private one; `409` while an agent of the channel works. Agents merge with `merge_channel` when a person asks |
+| `POST /api/v1/workspaces/:workspaceId/channels/:channelId/merge` | `{ into }` | `204`; its threads, files, artifacts, routines, suggestions, and source archives move to channel `into`, then the empty channel goes and the orchestrators move to the next channel that every member sees. Nobody deletes a channel otherwise. `403` when a channel that every member sees would merge into a private one; `409` while an agent of the channel works. Agents merge with `merge_channel` when a person asks; a private channel merges into one that every member sees only after its owner allows it |
 | `GET /api/v1/workspaces/:workspaceId/facts` | | `{ text }`: facts that the family writes by hand, such as names, birthdays, and places; every agent of the workspace reads them; `""` until someone writes them |
 | `PUT /api/v1/workspaces/:workspaceId/facts` | `{ text }` | `{ text }`; every member can write them; `400` over 20,000 characters |
 | `GET /api/v1/workspaces/:workspaceId/members` | | `Member[]` |
@@ -567,7 +567,7 @@ All workspace access requires membership. Turning off an account stops its sourc
 notices. Existing audit records remain private. Deleted Golem threads are excluded from source recall.
 
 "Read for me" is off by default and only its credential owner can change it. It permits automatic private context,
-future checks, and useful source reviews in the existing subject thread. Matching shared family threads may receive
+future checks, and useful updates posted in the existing subject thread. Matching shared family threads may receive
 the source material. External messages still need the person's request and normal tool approval. Collection runs every 15 minutes, starts one day back, and uses saved cursors with an overlap. A bounded
 poll can retain a backlog checkpoint without claiming complete source coverage.
 
@@ -595,10 +595,8 @@ Only a proposed notification triggers a fresh read of its source accounts and a 
 answers. A later owner reply can suppress the notice while the useful answer remains visible. Source failures keep
 the notification pending for retry. Silent turns cannot promote themselves with `notify` or a useful answer. A morning
 review cannot promote a silent update either; its one summary notification is the person's. Only confirmed notifications mark their related due checks as notified.
-Automatic reviews use the normal tools of the
-thread, including connected accounts, with the same person, access rules, and approvals as a normal turn. Tool calls,
-results, and errors remain in the private audit log. Source inputs and files use the existing message endpoints and
-event streams on web and iOS.
+No source starts an agent: an update is a Golem message with its files, and the thread's agent works only when a
+person asks there. Source messages and files use the existing message endpoints and event streams on web and iOS.
 
 A turn uses the script tools for the person it answers, in any thread: `intake_read({ query })` and `intake_update({ id, action, revision, quote })`. `intake_read` gives the observations that match the query, every waiting update with its destination, time, and source names, and the checks; reading it changes nothing. The latter
 requires an exact quote from the person's latest message. Source text is untrusted data. See [process](proactive.md).

@@ -607,10 +607,11 @@ test("a script run that a stop cut off goes on with what the script found, and o
 
   const afterStart = restart();
   try {
+    // A finished run keeps no copy of its script result.
     expect(await outcomeOf(withResult)).toEqual({
       outcome: "posted",
       error: null,
-      result: JSON.stringify(found),
+      result: null,
     });
     expect(await outcomeOf(ofDeleted)).toEqual({
       outcome: "failed",
@@ -728,14 +729,10 @@ test("the agent reads this run's pending records before its scan state commits, 
         .get(routine.id)
     ).toEqual({ store: JSON.stringify({ pending: { current: "video-url" } }) });
     expect(
-      JSON.parse(
-        (
-          golem.app.database
-            .query("SELECT result FROM routine_run WHERE id = ?")
-            .get(run.id) as { result: string }
-        ).result
-      ).store.pending.current
-    ).toBe("video-url");
+      golem.app.database
+        .query("SELECT input, result FROM routine_run WHERE id = ?")
+        .get(run.id)
+    ).toEqual({ input: null, result: null });
   } finally {
     routines.delete(routine.id, alice);
     golem.faux.setResponses(Array.from({ length: 200 }, () => agent));

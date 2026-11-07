@@ -72,7 +72,7 @@ struct UpcomingView: View {
             actionRow { open(.thread(reminder.threadId)) } label: {
                 ListRow(
                     reminder.text, systemImage: reminder.place == nil ? "bell" : "mappin.and.ellipse",
-                    subtitle: reminder.waitsForPlace ? reminder.place?.summary : when(reminder.dueAt, kind)
+                    subtitle: reminder.waitsForPlace ? reminder.placeWindow : when(reminder.dueAt, kind)
                 )
             } actions: {
                 MenuItem("Cancel reminder", systemImage: "xmark", role: .destructive) { cancel(reminder) }

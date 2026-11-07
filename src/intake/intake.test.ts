@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { HttpRouter } from "effect/http";
-import { startTestApp, type TestApp } from "../../test/harness.ts";
+import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import { routes } from "../app/http.ts";
 import type { WatchedItem } from "../integrations/integrations.ts";
 import type { ThreadMessages } from "../threads/threads.ts";
@@ -374,6 +374,39 @@ function newThreadPlace(input: { channels: { id: string }[] }) {
     : { channelId: null, newChannel: { name: "sources", summary: "Sources" } };
 }
 
+/**
+ * A judge for the tests of what a thread's agent read: the new reply's normal assessment does nothing, and the read's
+ * own check resolves every check from the reply.
+ */
+function resolvesOnlyRead(input: AssessmentInput): Assessment[] {
+  if (input.trigger !== "source_read") {
+    return [];
+  }
+  const reply = input.evidence.find((each) =>
+    each.text.startsWith("Here is the substantive response")
+  )!;
+  return [
+    {
+      threadId: input.threads[0]!.id,
+      startThread: false,
+      channelId: null,
+      newChannel: null,
+      title: input.threads[0]!.title,
+      summary: "",
+      attention: "none",
+      notification: null,
+      message: "",
+      evidence: [reply.id],
+      checks: [],
+      resolved: input.checks.map((check) => ({
+        id: check.id,
+        evidence: reply.id,
+        quote: reply.text,
+      })),
+    },
+  ];
+}
+
 /** The person's subject threads, without their own Golem thread that the morning summary starts. */
 function subjectThreads(run: { workspaceId: string; owner: { id: string } }) {
   return app.app.workspaces
@@ -552,7 +585,8 @@ test("a failed source-read assessment stays pending with backoff and resumes aft
   };
   await intake.tick(START + 60_000);
   await intake.tick(START + 120_000);
-  expect(attempts).toBe(1);
+  // The new reply's normal assessment and the read's own check each failed once, then wait.
+  expect(attempts).toBe(2);
   expect(intake.openChecks(run.workspaceId, run.owner)).toHaveLength(1);
   expect(
     app.app.database
@@ -1561,12 +1595,19 @@ test("the owner's own message in a shared thread takes its waiting update once; 
   );
   expect(context).toContain("newFromWatchedAccounts");
   expect(context).toContain("within 30 days");
+  // Taken, but delivered only once the turn answers: a turn that fails or starts again takes it again.
+  expect(waiting().n).toBe(1);
+  expect(
+    intake.contextFor(run.workspaceId, threadId, run.owner.id, true)
+  ).toContain("newFromWatchedAccounts");
+  // No delivery posts it while the turn runs.
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  expect(run.deliveries).toHaveLength(0);
+  intake.finishClaims(run.workspaceId, threadId, run.owner.id);
   expect(waiting().n).toBe(0);
   expect(
     intake.contextFor(run.workspaceId, threadId, run.owner.id, true)
   ).not.toContain("newFromWatchedAccounts");
-  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
-  expect(run.deliveries).toHaveLength(0);
 });
 
 test("the JSON API scopes source reads and validates corrections", async () => {
@@ -2097,8 +2138,10 @@ test("bounded recall keeps the latest thread message before older summaries", as
 });
 
 test("source-read reassessment visits every check in a busy thread in bounded calls", async () => {
-  const run = await setup({ target: "private" });
+  const options: Parameters<typeof setup>[0] = { target: "private" };
+  const run = await setup(options);
   await intake.tick(START);
+  options.decide = resolvesOnlyRead;
   const original = intake.openChecks(run.workspaceId, run.owner)[0]!;
   for (let index = 0; index < 13; index += 1) {
     saveCheck(
@@ -2146,6 +2189,7 @@ test("rereading the same source reassesses a later revised check without duplica
   const options: Parameters<typeof setup>[0] = { target: "private" };
   const run = await setup(options);
   await intake.tick(START);
+  options.decide = resolvesOnlyRead;
   const original = intake.openChecks(run.workspaceId, run.owner)[0]!;
   const reply = item(
     "same-answer",
@@ -2642,4 +2686,94 @@ test("an invalid model correction leaves the check unchanged", async () => {
   expect(
     intake.following.detail(run.workspaceId, run.owner, check!.id).check
   ).toEqual(check!);
+});
+
+test("the person's answered turn marks the update that it took as delivered", async () => {
+  app = await startTestApp();
+  const token = await app.signIn("Alice", "alice@example.com");
+  const { user } = (await (await app.call("/api/v1/me", { token })).json()) as {
+    user: { id: string; name: string; email: string };
+  };
+  const owner = { id: user.id, name: user.name, email: user.email };
+  const home =
+    app.app.workspaces.list(owner)[0] ??
+    (await app.app.workspaces.create(owner, "Home"));
+  const [general] = app.app.workspaces.channels(home.id, owner);
+  app.faux.setResponses(
+    Array.from({ length: 40 }, () => fauxAssistantMessage("Ok."))
+  );
+  const { id: threadId } = await app.app.threads.create(
+    home.id,
+    owner,
+    general!.id,
+    "The balcony claim"
+  );
+  const thread = app.app.workspaces.thread(threadId, owner);
+  const settled = () =>
+    until(
+      () => app.app.threads.messages(thread),
+      (state) => !state.running && state.messages.at(-1)?.agent === true
+    );
+  await settled();
+  const now = Date.now();
+  app.app.database
+    .query(
+      "INSERT INTO credential (id, workspace_id, integration, owner_id, label, shared, secret, created_at, watched) VALUES ('mail', ?, 'google', ?, 'alice@example.com', 0, x'00', ?, 1)"
+    )
+    .run(home.id, owner.id, now);
+  app.app.database
+    .query(
+      "INSERT INTO intake_item(id,credential_id,workspace_id,owner_id,source_id,version,payload,at) VALUES('reply','mail',?,?,'reply','1',?,?)"
+    )
+    .run(
+      home.id,
+      owner.id,
+      JSON.stringify(item("reply", "The developer answered.", false, now)),
+      now
+    );
+  app.app.database
+    .query(
+      "INSERT INTO intake_delivery(id,workspace_id,owner_id,thread_id,body,attention,check_ids,evidence_ids,created_at) VALUES('update',?,?,?,'The developer answered.','brief','[]','[\"reply\"]',?)"
+    )
+    .run(home.id, owner.id, threadId, now);
+  const delivered = () =>
+    (
+      app.app.database
+        .query("SELECT delivered_at FROM intake_delivery WHERE id='update'")
+        .get() as { delivered_at: number | null }
+    ).delivered_at;
+  await app.app.threads.send(threadId, owner, "What did the developer say?");
+  await until(
+    async () => delivered(),
+    (at) => at !== null
+  );
+  expect(delivered()).toBeNumber();
+});
+
+test("a message that a thread's agent reads before intake polls it still gets the normal assessment", async () => {
+  const run = await setup({ target: "private" });
+  await intake.tick(START);
+  const invoice = item(
+    "invoice",
+    "Please send the signed invoice by Friday.",
+    false,
+    START + 1000
+  );
+  intake.recordSourceRead(run.target!, run.owner.id, {
+    credential: run.credential,
+    tool: "google_mail_thread",
+    result: {},
+    items: [invoice],
+  });
+  await intake.tick(START + 60_000);
+  expect(
+    run.snapshots.some(
+      (input) =>
+        input.trigger === "evidence" &&
+        input.evidence.some(
+          (each) =>
+            input.newEvidenceIds.includes(each.id) && each.text === invoice.text
+        )
+    )
+  ).toBe(true);
 });

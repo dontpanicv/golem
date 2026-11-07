@@ -87,10 +87,11 @@ final class APIClient {
     }
 
     func createThread(
-        workspaceID: String, channelID: String, text: String, files: [URL]
+        workspaceID: String, channelID: String, text: String, files: [URL], progress: UploadShare? = nil
     ) async throws -> ThreadSummary {
         let fields = ["channelId": channelID, "text": text]
-        return try decode(try await sendForm("/api/v1/workspaces/\(workspaceID)/threads", fields, files).data)
+        let path = "/api/v1/workspaces/\(workspaceID)/threads"
+        return try decode(try await sendForm(path, fields, files, progress: progress).data)
     }
 
     func setThreadSettled(workspaceID: String, threadID: String, settled: Bool) async throws {
@@ -156,9 +157,11 @@ final class APIClient {
     func thread(_ id: String) async throws -> ThreadState { try await get("/api/v1/threads/\(id)") }
 
     /// `voice`: spoken in a conversation, so the answer is written to be read aloud.
-    func sendMessage(threadID: String, text: String, files: [URL], voice: Bool = false) async throws {
+    func sendMessage(
+        threadID: String, text: String, files: [URL], voice: Bool = false, progress: UploadShare? = nil
+    ) async throws {
         let fields = voice ? ["text": text, "voice": "true"] : ["text": text]
-        _ = try await sendForm("/api/v1/threads/\(threadID)/messages", fields, files)
+        _ = try await sendForm("/api/v1/threads/\(threadID)/messages", fields, files, progress: progress)
     }
 
     // MARK: Files
@@ -284,8 +287,9 @@ final class APIClient {
     }
 
     /// A `multipart/form-data` post: the text fields, then one `files` part per file.
+    /// Sends a form with files; `progress` gets the share of the body sent so far, from 0 to 1.
     private func sendForm(
-        _ path: String, _ fields: [String: String], _ files: [URL]
+        _ path: String, _ fields: [String: String], _ files: [URL], progress: UploadShare? = nil
     ) async throws -> (data: Data, response: HTTPURLResponse) {
         var request = try makeRequest("POST", path)
         let boundary = "golem-\(UUID().uuidString)"
@@ -306,7 +310,9 @@ final class APIClient {
             part("\(disposition)\r\nContent-Type: application/octet-stream", try Data(contentsOf: file))
         }
         body.append(Data("--\(boundary)--\r\n".utf8))
-        let (data, response) = try await session.upload(for: request, from: body)
+        let (data, response) = try await session.upload(
+            for: request, from: body, delegate: progress.map(UploadProgress.init)
+        )
         return (data, try check(response, data: data))
     }
 
@@ -406,5 +412,25 @@ extension APIClient {
     /// Answers a call with the error that its tool fails with.
     func answerPhoneCall(_ id: String, error: String) async throws {
         _ = try await send("POST", "/api/v1/phone/calls/\(id)", ["error": error])
+    }
+}
+
+/// Gets the share of an upload's body sent so far, from 0 to 1.
+typealias UploadShare = @Sendable (Double) -> Void
+
+/// Tells how much of an upload's body was sent, as the share from 0 to 1.
+nonisolated private final class UploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
+    let report: @Sendable (Double) -> Void
+
+    init(_ report: @escaping @Sendable (Double) -> Void) {
+        self.report = report
+    }
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64, totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        report(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }
 }

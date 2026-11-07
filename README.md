@@ -341,8 +341,8 @@ when none fits, Golem creates a private channel and its first thread. The thread
 can find older related mail and tickets. No separate worker thread is made.
 Nonurgent developments wait for the morning review in the 08:00 Europe/Prague hour: one plan groups them by matter,
 posts one message to each thread, and sends you one summary with a notification.
-Silent context updates and filing send no push. Automatic reviews use the thread's normal tools, access rules, and
-approvals. External messages still need a person's request and approval.
+Silent context updates and filing send no push. No source starts an agent, so nothing is researched or drafted for
+you unless you ask. External messages still need a person's request and approval.
 
 Source data, model calls, searches, state changes, agent work, and corrections go to a separate private `audit.sqlite`.
 Source files stay grouped: one per Gmail or Slack thread, one per Plaud meeting, and one per conversation per day for WhatsApp and Slack DMs. New messages update the same file.
