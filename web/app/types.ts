@@ -413,6 +413,8 @@ export interface Reminder {
       })
     | null;
   readonly triggeredAt: number | null;
+  readonly notBefore: number | null;
+  readonly notAfter: number | null;
 }
 
 /** A place that the person's iPhone watches; the web app does not watch places. */

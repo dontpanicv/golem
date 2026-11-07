@@ -26,6 +26,18 @@ export function reminderTools(
         "The name of a place from reminders_places, in place of a time",
     })
   );
+  const from = Type.Optional(
+    Type.String({
+      description:
+        "For a place: not before this local date and time with its UTC offset, such as when the person arrives at work on Monday; if they are already there then, it fires at once",
+    })
+  );
+  const until = Type.Optional(
+    Type.String({
+      description:
+        "For a place: the latest local date and time with its UTC offset; if the person has not arrived or left by then, it fires then anyway",
+    })
+  );
   const event = Type.Optional(
     Type.Union([Type.Literal("arrive"), Type.Literal("leave")], {
       description: "For a place: remind when the person arrives or leaves",
@@ -79,11 +91,20 @@ export function reminderTools(
   };
   /** The time or the place of a reminder. */
   const whenOf = (
-    args: { at?: string; place?: string; event?: "arrive" | "leave" },
+    args: {
+      at?: string;
+      place?: string;
+      event?: "arrive" | "leave";
+      from?: string;
+      until?: string;
+    },
     recipientId: string,
     askerId: string | null
   ): Pick<ReminderInput, "at" | "place"> => {
     if (args.place === undefined) {
+      if (args.from !== undefined || args.until !== undefined) {
+        throw new Error("from and until go with a place; a time is exact.");
+      }
       return { at: args.at };
     }
     const known = placesFor(recipientId, askerId);
@@ -97,18 +118,27 @@ export function reminderTools(
           : "There is no place for this reminder. A person adds places in Settings and shares one, so other members use it."
       );
     }
-    return { place: { id: found.id, event: args.event ?? "arrive" } };
+    return {
+      place: {
+        id: found.id,
+        event: args.event ?? "arrive",
+        ...(args.from ? { from: args.from } : {}),
+        ...(args.until ? { until: args.until } : {}),
+      },
+    };
   };
 
   return [
     defineTool({
       name: "reminders_create",
       description:
-        "Schedule one reminder for one exact future date and time, or for when the recipient arrives at or leaves a place; their iPhone tells Golem. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time or place in your answer.",
+        "Schedule one reminder for one exact future date and time, or for when the recipient arrives at or leaves a place; their iPhone tells Golem. A place reminder can have a window: from, such as 'when I get to work on Monday', and until, when it fires anyway, such as 'next time I am at the shop this week'. 'At 18:00 if I am home, else when I get home' is arrive home from 18:00. Make one reminder for one request, with no helper reminders or threads. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time or place in your answer.",
       parameters: Type.Object({
         text,
         at,
         place,
+        from,
+        until,
         event,
         timeZone,
         recipient,
@@ -191,8 +221,17 @@ export function reminderTools(
     defineTool({
       name: "reminders_update",
       description:
-        "Change a pending one-time reminder: its text, and its time or place.",
-      parameters: Type.Object({ reminder, text, at, place, event, timeZone }),
+        "Change a pending one-time reminder: its text, and its time or place with its window.",
+      parameters: Type.Object({
+        reminder,
+        text,
+        at,
+        place,
+        event,
+        from,
+        until,
+        timeZone,
+      }),
       replay: "safe",
       execute: async ({ reminder: id, ...input }, api) => {
         const { actor, asker, realm } = await actorFor(api.conversationId);
@@ -247,20 +286,23 @@ function describe(reminder: Reminder): string {
   return [
     `${reminder.text} (reminder ${reminder.id})`,
     place
-      ? `When: the recipient ${place.event === "arrive" ? "arrives at" : "leaves"} ${place.name}`
-      : `Due: ${new Intl.DateTimeFormat("en-GB", {
-          timeZone: reminder.timeZone,
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hourCycle: "h23",
-        }).format(
-          reminder.dueAt
-        )} ${reminder.timeZone} (${new Date(reminder.dueAt).toISOString()})`,
+      ? `When: the recipient ${place.event === "arrive" ? "arrives at" : "leaves"} ${place.name}${reminder.notBefore === null ? "" : `, not before ${local(reminder.notBefore, reminder.timeZone)}`}${reminder.notAfter === null ? "" : `, at ${local(reminder.notAfter, reminder.timeZone)} at the latest`}`
+      : `Due: ${local(reminder.dueAt, reminder.timeZone)} ${reminder.timeZone} (${new Date(reminder.dueAt).toISOString()})`,
     `Recipient: ${reminder.recipientId}`,
     `Thread: ${reminder.threadId}`,
     `Status: ${status}`,
   ].join("\n");
+}
+
+/** A time as the recipient reads it in their time zone. */
+function local(time: number, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(time);
 }

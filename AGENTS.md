@@ -48,10 +48,12 @@ addresses, or code and data from employers or clients.
   suggestion. "Read for me" (`credential.watched`) is standing consent for `src/intake/` to read that account,
   retain useful context and infer future checks. A useful development adds a visible source message and files to the
   existing subject thread, including an existing matching shared family thread; a new matter and silent filing stay in
-  the person's private channels. An urgent one gets that thread's agent review at
-  once, and the answer stays in that thread. The others wait for the person's one morning review in the 08:00 hour,
-  which groups them by matter, posts one message to each thread, starts an agent only for work the plan names, and
-  sends the person one summary with a notification. Another notification needs a separate supported reason and a fresh
+  the person's private channels. Golem is the
+  person's second brain, not their worker: no source starts an agent, and an agent does research, analysis, or a draft
+  only when a person asks. An urgent development is posted at once. The others wait for the person's one morning
+  review in the 08:00 hour, which groups them by matter, posts one message to each thread with what it asks of the
+  person, keeps a check of each ask that the morning summary nudges every 2 days until it is handled or the person
+  says it is done, rejected, or someone else's, and sends the person one summary with a notification. Another notification needs a separate supported reason and a fresh
   source check; useful answers alone never notify. No separate worker thread is made. Code selects personally relevant Slack
   conversations and keeps incoming and outgoing context. Bounded batches and subject-scoped recall reach the
   configured model provider. Silent filing starts no agent turn and sends no push.

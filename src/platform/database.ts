@@ -550,6 +550,11 @@ const migrations = [
     kind TEXT NOT NULL, value TEXT NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL, deleted_at INTEGER
   );
   CREATE INDEX intake_block_owner ON intake_block(workspace_id,owner_id,deleted_at);`,
+  // reminders: a reminder at a place fires only within its window, not before `not_before`, and at `not_after` at the
+  // latest. intake: a check of what the owner must do is nudged in the morning summary from `nudge_at`, every 2 days.
+  `ALTER TABLE reminder ADD COLUMN not_before INTEGER;
+  ALTER TABLE reminder ADD COLUMN not_after INTEGER;
+  ALTER TABLE intake_check ADD COLUMN nudge_at INTEGER;`,
 ];
 
 export function openDatabase(path: string): Database {

@@ -21,6 +21,10 @@ export interface Reminder {
   readonly place: ReminderPlace | null;
   /** When the person arrived at or left the place of a reminder at a place, as their iPhone reported. */
   readonly triggeredAt: number | null;
+  /** For a reminder at a place: it fires only from this time; null for at once. */
+  readonly notBefore: number | null;
+  /** For a reminder at a place: if the event has not come by this time, it fires then anyway; null for never. */
+  readonly notAfter: number | null;
   readonly attempts: number;
   readonly nextAttemptAt: number;
   readonly lastError: string | null;
@@ -37,8 +41,16 @@ export interface ReminderInput {
   readonly text: string;
   /** A local ISO date and time with its UTC offset, such as 2026-11-01T09:00:00+01:00; or give `place`. */
   readonly at?: string;
-  /** The place, which the recipient and the asker use, and the event that the reminder waits for. */
-  readonly place?: { readonly id: string; readonly event: PlaceEvent };
+  /**
+   * The place, which the recipient and the asker use, and the event that the reminder waits for, within an optional
+   * window: not before `from`, and at `until` at the latest, both local ISO times with their UTC offset.
+   */
+  readonly place?: {
+    readonly id: string;
+    readonly event: PlaceEvent;
+    readonly from?: string;
+    readonly until?: string;
+  };
   readonly timeZone: string;
   /** The person who asks, or null for the agent alone. */
   readonly createdBy: string | null;
@@ -119,7 +131,7 @@ export class Reminders {
     const when = this.when(workspaceId, recipientId, input, now);
     this.database
       .query(
-        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, place_id, place_event, triggered_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, place_id, place_event, triggered_at, not_before, not_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         input.id,
@@ -134,6 +146,8 @@ export class Reminders {
         when.placeId,
         when.placeEvent,
         when.triggeredAt,
+        when.notBefore,
+        when.notAfter,
         now,
         now
       );
@@ -198,7 +212,7 @@ export class Reminders {
     const when = this.when(workspaceId, reminder.recipientId, input, now);
     this.database
       .query(
-        "UPDATE reminder SET text = ?, created_by = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, place_id = ?, place_event = ?, triggered_at = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
+        "UPDATE reminder SET text = ?, created_by = ?, due_at = ?, time_zone = ?, next_attempt_at = ?, place_id = ?, place_event = ?, triggered_at = ?, not_before = ?, not_after = ?, attempts = 0, last_error = NULL, updated_at = ? WHERE id = ? AND workspace_id = ?"
       )
       .run(
         required(input.text, "Reminder"),
@@ -209,6 +223,8 @@ export class Reminders {
         when.placeId,
         when.placeEvent,
         when.triggeredAt,
+        when.notBefore,
+        when.notAfter,
         now,
         id,
         workspaceId
@@ -234,7 +250,7 @@ export class Reminders {
 
   /**
    * Makes the person's pending reminders at a place that wait for this event due, when their iPhone reports that they
-   * arrived or left at `at`; a reminder made after that time waits for the next one.
+   * arrived or left at `at`; a reminder made after that time, or whose window has not opened, waits for the next one.
    */
   atPlace(
     workspaceId: string,
@@ -245,7 +261,7 @@ export class Reminders {
   ): Promise<void>[] {
     const { changes } = this.database
       .query(
-        "UPDATE reminder SET triggered_at = $at, due_at = $at, next_attempt_at = $at, updated_at = $now WHERE workspace_id = $workspaceId AND recipient_id = $personId AND place_id = $placeId AND place_event = $event AND created_at <= $at AND triggered_at IS NULL AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL"
+        "UPDATE reminder SET triggered_at = $at, due_at = $at, next_attempt_at = $at, updated_at = $now WHERE workspace_id = $workspaceId AND recipient_id = $personId AND place_id = $placeId AND place_event = $event AND created_at <= $at AND (not_before IS NULL OR not_before <= $at) AND (not_after IS NULL OR $at <= not_after) AND triggered_at IS NULL AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL"
       )
       .run({ at, now: Date.now(), workspaceId, personId, placeId, event });
     return changes > 0 ? this.tick() : [];
@@ -253,6 +269,7 @@ export class Reminders {
 
   /** Runs due reminders, also after the machine was off at their due time. */
   tick(now = Date.now()): Promise<void>[] {
+    this.openWindows(now);
     const due = (
       this.database
         .query(
@@ -281,6 +298,32 @@ export class Reminders {
       .map((reminder) => this.run(reminder, now));
   }
 
+  /**
+   * Makes due a reminder for an arrival whose window opened while its person is already at the place, and one whose
+   * window ended before its event came: it fires then anyway, so a reminder is never lost.
+   */
+  private openWindows(now: number): void {
+    const opened = this.database
+      .query(
+        "SELECT id, recipient_id AS recipientId, place_id AS placeId FROM reminder WHERE place_event = 'arrive' AND not_before IS NOT NULL AND not_before <= ? AND triggered_at IS NULL AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL"
+      )
+      .all(now) as { id: string; recipientId: string; placeId: string }[];
+    for (const reminder of opened) {
+      if (this.places.inside(reminder.placeId, reminder.recipientId) === true) {
+        this.database
+          .query(
+            "UPDATE reminder SET triggered_at = ?, due_at = ?, next_attempt_at = ?, updated_at = ? WHERE id = ? AND triggered_at IS NULL"
+          )
+          .run(now, now, now, now, reminder.id);
+      }
+    }
+    this.database
+      .query(
+        "UPDATE reminder SET triggered_at = not_after, due_at = not_after, next_attempt_at = not_after, updated_at = ? WHERE place_id IS NOT NULL AND not_after IS NOT NULL AND not_after <= ? AND triggered_at IS NULL AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL"
+      )
+      .run(now, now);
+  }
+
   private async run(reminder: Reminder, now: number): Promise<void> {
     this.running.add(reminder.id);
     try {
@@ -297,13 +340,9 @@ export class Reminders {
       if (!member) {
         throw new Error("The reminder recipient is no longer a member.");
       }
-      const { place } = reminder;
-      const when = place
-        ? `Place reminder ${reminder.id}: ${member.name} ${place.event === "arrive" ? "arrived at" : "left"} ${place.name} at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}).`
-        : `One-time reminder ${reminder.id} was due at ${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone}).`;
       const answer = await this.threads.instruct(
         thread,
-        `${when} It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. Answer in this thread.`,
+        `${occasion(reminder, member.name)} It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. When it names matters that Golem follows, read intake_read first and leave out what is already handled. Answer in this thread.`,
         `reminder:${reminder.id}:${reminder.attempts}`,
         [reminder.recipientId],
         // The turn is the asker's, with their own integrations: the text is theirs, not the recipient's.
@@ -347,6 +386,8 @@ export class Reminders {
     placeId: string | null;
     placeEvent: PlaceEvent | null;
     triggeredAt: number | null;
+    notBefore: number | null;
+    notAfter: number | null;
   } {
     if ((input.at === undefined) === (input.place === undefined)) {
       throw new HttpError(400, "Give a reminder a time or a place.");
@@ -357,9 +398,16 @@ export class Reminders {
         placeId: null,
         placeEvent: null,
         triggeredAt: null,
+        notBefore: null,
+        notAfter: null,
       };
     }
-    const { id, event } = input.place!;
+    const { id, event, from, until } = input.place!;
+    const notBefore = from ? dueTime(from, input.timeZone, now) : null;
+    const notAfter = until ? dueTime(until, input.timeZone, now) : null;
+    if (notBefore !== null && notAfter !== null && notAfter <= notBefore) {
+      throw new HttpError(400, "A reminder's time must end after it starts.");
+    }
     const people = [recipientId, input.createdBy ?? recipientId];
     if (
       !(
@@ -376,14 +424,18 @@ export class Reminders {
         "Give a place that the recipient and the asker use, and arrive or leave."
       );
     }
-    // A new reminder starts as outside: one for an arrival where the person is now is due at once.
+    // A new reminder starts as outside: one for an arrival where the person is now is due at once, or when its time starts.
     const inside =
-      event === "arrive" && this.places.inside(id, recipientId) === true;
+      event === "arrive" &&
+      notBefore === null &&
+      this.places.inside(id, recipientId) === true;
     return {
       dueAt: now,
       placeId: id,
       placeEvent: event,
       triggeredAt: inside ? now : null,
+      notBefore,
+      notAfter,
     };
   }
 
@@ -419,8 +471,25 @@ export class Reminders {
   }
 }
 
+/** Why a reminder runs now: its time came, its person arrived or left, or its window ended before that. */
+function occasion(reminder: Reminder, name: string): string {
+  const at = `${new Date(reminder.dueAt).toISOString()} (${reminder.timeZone})`;
+  const { place } = reminder;
+  if (!place) {
+    return `One-time reminder ${reminder.id} was due at ${at}.`;
+  }
+  const event = `${place.event === "arrive" ? "arrived at" : "left"} ${place.name}`;
+  if (
+    reminder.notAfter !== null &&
+    reminder.triggeredAt === reminder.notAfter
+  ) {
+    return `Place reminder ${reminder.id}: its time ended at ${at} before ${name} ${event}; say so as you remind.`;
+  }
+  return `Place reminder ${reminder.id}: ${name} ${event} at ${at}.`;
+}
+
 const COLUMNS =
-  "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, place_id AS placeId, place_event AS placeEvent, triggered_at AS triggeredAt, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
+  "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, place_id AS placeId, place_event AS placeEvent, triggered_at AS triggeredAt, not_before AS notBefore, not_after AS notAfter, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
 
 /** The UTC time of `at`, a local time with its offset in `timeZone`; throws when it is wrong or not in the future. */
 export function dueTime(at: string, timeZone: string, now: number): number {

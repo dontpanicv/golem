@@ -329,8 +329,10 @@ The clock also starts work. A stated response period gets a durable check. When 
 evidence before it decides whether you need to know. An acknowledgement does not count as a substantive answer.
 An undated promise gets an internal review, with no claim that a deadline was missed.
 
-Useful developments add a visible message and source files to the existing subject thread. That thread's normal
-agent reads them, explains what changed, and proposes next actions. Its answer stays in the thread silently. A separate
+Useful developments add a visible message and source files to the existing subject thread, saying what changed and
+what it asks of you. Golem is your second brain, not your worker: it remembers and reminds, and it does research or
+drafts only when you ask. What a message asks of you is nudged in the morning summary every 2 days until you deal
+with it, or tell Golem it is done, rejected, or someone else's. A separate
 notification decision needs exact source evidence: the owner asked, an awaited reply needs attention, a stated time
 arrived, or time-sensitive preparation helps now. Golem checks the latest source before a permitted notification.
 Normal messages, mentions, and an hour without a reply do not qualify alone. An existing matching shared family thread can

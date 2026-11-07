@@ -1,10 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import type { Context } from "@earendil-works/pi-ai";
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { HttpRouter } from "effect/http";
 import { startTestApp, type TestApp } from "../../test/harness.ts";
 import { routes } from "../app/http.ts";
@@ -34,7 +30,10 @@ const DAY = 86_400_000;
 const START = Date.parse("2026-10-01T10:00:00+02:00");
 let app: TestApp;
 let intake: Intake;
+/** Runs right after an update is posted to a subject thread, as when the owner answers or a source fails then. */
+let postHook: (() => void) | undefined;
 afterEach(async () => {
+  postHook = undefined;
   await intake?.close();
   intake?.audit.close();
   await app?.close();
@@ -53,7 +52,6 @@ async function setup(
     decide?: (input: AssessmentInput) => Assessment[];
     source?: "google" | "slack" | "whatsapp";
     silent?: boolean;
-    reviewRead?: WatchedItem[];
     failAfterThreadStart?: boolean;
     plan?: (input: MorningInput) => MorningPlan;
     /** Fails a post to a thread, as when the conversation is not reachable. */
@@ -138,45 +136,31 @@ async function setup(
       running: false,
       approvals: [],
     }),
-    observe: async (thread, text, _requestId, _owner, notify, files = []) => {
+    observe: async (thread, text, requestId, observer, notify, files = []) => {
       if (options.postFails?.(thread.id)) {
         throw new Error("The thread is not reachable");
       }
       posts.push({ threadId: thread.id, text, notify, files });
-    },
-    instruct: async (
-      _thread,
-      text,
-      key,
-      notify,
-      personId,
-      source,
-      files = []
-    ) => {
-      reviews.push({ threadId: _thread.id, requestId: key, text, files });
-      if (options.reviewRead) {
-        intake.recordSourceRead(_thread, owner.id, {
-          credential,
-          tool: "google_mail_thread",
-          result: { messages: options.reviewRead },
-          items: options.reviewRead,
-        });
+      // A post to a subject thread, not to the person's own Golem thread.
+      if (thread.ownerId === null) {
+        reviews.push({ threadId: thread.id, requestId, text, files });
+        if (!deliveries.some((each) => each.startsWith(requestId))) {
+          deliveries.push(`${requestId} ${text}`);
+        }
       }
       if (options.actualReview) {
-        return app.app.threads.instruct(
-          _thread,
+        await app.app.threads.observe(
+          thread,
           text,
-          key,
+          requestId,
+          observer,
           notify,
-          personId,
-          source,
           files
         );
       }
-      if (!deliveries.some((each) => each.startsWith(key))) {
-        deliveries.push(`${key} ${text}`);
+      if (thread.ownerId === null) {
+        postHook?.();
       }
-      return "Reviewed";
     },
     file: app.app.threads.file.bind(app.app.threads),
     orchestrator: app.app.threads.orchestrator.bind(app.app.threads),
@@ -438,7 +422,8 @@ function morningPlan(input: MorningInput): MorningPlan {
         : (updates[0]!.proposedNewChannel ??
           (updates[0]!.proposedChannelId ? null : place.newChannel)),
       message: updates.map((update) => update.message).join(" "),
-      work: null,
+      ask: null,
+      due: null,
       line: updates[0]!.proposedTitle ?? "An update",
     })),
     dropped: [],
@@ -483,66 +468,6 @@ function threadUpdate(input: AssessmentInput): Assessment {
     resolved: [],
   };
 }
-
-test("an older source found during review resolves the check before review completion and survives retry", async () => {
-  const reply = item(
-    "older-reply",
-    "Here is the substantive response. Repairs start Monday.",
-    false,
-    START - DAY
-  );
-  const run = await setup({
-    target: "private",
-    initialNotice: "now",
-    reviewRead: [reply],
-  });
-  run.items([
-    item(
-      "request",
-      "Please give a substantive response to the balcony claim within 30 days.",
-      true,
-      START - 2 * DAY
-    ),
-  ]);
-  await intake.tick(START);
-  expect(run.reviews).toHaveLength(1);
-  expect(intake.openChecks(run.workspaceId, run.owner)).toEqual([]);
-  const assessment = run.snapshots.find(
-    (input) => input.trigger === "source_read"
-  )!;
-  expect(assessment.newEvidenceIds).toEqual([]);
-  expect(assessment.evidence).toContainEqual(
-    expect.objectContaining({ text: reply.text, at: START - DAY })
-  );
-  const before = run.assessments();
-  intake.recordSourceRead(run.target!, run.owner.id, {
-    credential: run.credential,
-    tool: "google_mail_thread",
-    result: {},
-    items: [reply],
-  });
-  await run.restart();
-  await intake.tick(START + 60_000);
-  expect(run.assessments()).toBe(before);
-  expect(
-    app.app.database.query("SELECT count(*) n FROM intake_source_read").get()
-  ).toEqual({ n: 1 });
-  expect(
-    app.app.database
-      .query(
-        "SELECT count(*) n FROM intake_source_read WHERE assessed_at IS NULL"
-      )
-      .get()
-  ).toEqual({ n: 0 });
-  expect(
-    app.app.notifications.inbox(run.workspaceId, run.owner).notifications
-  ).toHaveLength(0);
-  expect(
-    intake.audit.database
-      .query("SELECT count(*) n FROM event WHERE stage='source.read'")
-      .get()
-  ).toEqual({ n: 2 });
-});
 
 test("a queued source read survives restart and a partial answer revises only the unresolved question", async () => {
   const options: Parameters<typeof setup>[0] = { target: "private" };
@@ -689,12 +614,6 @@ test.each(["slack", "whatsapp", "google"] as const)(
       actualReview: true,
       decide: (input) => [threadUpdate(input)],
     });
-    app.faux.setResponses(
-      Array.from(
-        { length: 40 },
-        () => () => fauxAssistantMessage("The draft discussion is saved here.")
-      )
-    );
     const incoming = {
       ...item("draft", "Can you review the draft?", false, START),
       chat: "draft-discussion",
@@ -702,9 +621,10 @@ test.each(["slack", "whatsapp", "google"] as const)(
     run.items([incoming]);
     await intake.tick(START + 1000);
     expect(run.reviews).toHaveLength(1);
-    expect(
-      (await app.app.threads.messages(run.target!)).messages.at(-1)!.text
-    ).toContain("saved here");
+    // The update is posted in the thread, and no agent starts on it.
+    const last = (await app.app.threads.messages(run.target!)).messages.at(-1)!;
+    expect(last).toMatchObject({ observation: true });
+    expect(last.text).toContain("Keep the useful context");
     expect(
       app.app.notifications.inbox(run.workspaceId, run.owner).notifications
     ).toHaveLength(0);
@@ -727,7 +647,7 @@ test.each(["slack", "whatsapp", "google"] as const)(
   }
 );
 
-test("an owner reply during the thread review suppresses a proposed push and keeps the useful answer", async () => {
+test("an owner reply after the update is posted suppresses a proposed push and keeps the update", async () => {
   const run = await setup({
     source: "slack",
     target: "private",
@@ -756,28 +676,12 @@ test("an owner reply during the thread review suppresses a proposed push and kee
     chat: "claim-discussion",
   };
   run.items([reply]);
-  app.faux.setResponses(
-    Array.from({ length: 40 }, () => (context: Context) => {
-      const last = context.messages.findLast(
-        (message) => message.role === "user"
-      );
-      if (
-        typeof last?.content === "string" &&
-        last.content.includes("New source development:")
-      ) {
-        run.items([
-          reply,
-          {
-            ...item("handled", "Handled", true, START + 1000),
-            chat: reply.chat,
-          },
-        ]);
-      }
-      return fauxAssistantMessage(
-        "The repair plan is saved in this discussion."
-      );
-    })
-  );
+  // The owner answers right after the update reaches the thread, before the push is checked.
+  postHook = () =>
+    run.items([
+      reply,
+      { ...item("handled", "Handled", true, START + 1000), chat: reply.chat },
+    ]);
   await intake.tick(START + 1000);
   const recheck = run.snapshots.find(
     (input) => input.trigger === "notification"
@@ -791,8 +695,8 @@ test("an owner reply during the thread review suppresses a proposed push and kee
     app.app.notifications.inbox(run.workspaceId, run.owner).notifications
   ).toHaveLength(0);
   expect(
-    (await app.app.threads.messages(run.target!)).messages.at(-1)!.text
-  ).toContain("repair plan is saved");
+    (await app.app.threads.messages(run.target!)).messages.at(-1)
+  ).toMatchObject({ observation: true });
   expect(
     intake.audit.database
       .query(
@@ -824,7 +728,7 @@ test("a silent useful due review leaves the later notification eligible", async 
   ).not.toBeNull();
 });
 
-test("a source outage after review postpones the push; restart retries without a second input or notice", async () => {
+test("a source outage after the update is posted postpones the push; restart retries without a second post or notice", async () => {
   const run = await setup({
     target: "private",
     actualReview: true,
@@ -843,20 +747,11 @@ test("a source outage after review postpones the push; restart retries without a
     },
   });
   run.items([item("plan", "Here is the repair plan.", false, START)]);
-  app.faux.setResponses(
-    Array.from({ length: 40 }, () => (context: Context) => {
-      const last = context.messages.findLast(
-        (message) => message.role === "user"
-      );
-      if (
-        typeof last?.content === "string" &&
-        last.content.includes("New source development:")
-      ) {
-        run.outage();
-      }
-      return fauxAssistantMessage("The repair plan is saved here.");
-    })
-  );
+  // One outage, right after the first post.
+  postHook = () => {
+    run.outage();
+    postHook = undefined;
+  };
   await intake.tick(START + 1000);
   expect(
     app.app.notifications.inbox(run.workspaceId, run.owner).notifications
@@ -876,9 +771,6 @@ test("a source outage after review postpones the push; restart retries without a
   ).toHaveLength(1);
   const { messages } = await app.app.threads.messages(run.target!);
   expect(messages.filter((message) => message.observation)).toHaveLength(1);
-  expect(
-    messages.filter((message) => message.agent && !message.observation)
-  ).toHaveLength(1);
   await intake.tick(START + 32 * 60_000);
   expect(
     app.app.notifications.inbox(run.workspaceId, run.owner).notifications
@@ -1286,7 +1178,8 @@ test("the morning review posts one message to the thread without an agent run, t
   const run = await setup({ initialNotice: "brief" });
   await intake.tick(START + 1000);
   await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
-  expect(run.reviews).toHaveLength(0);
+  // The one post to the thread; no agent runs.
+  expect(run.reviews).toHaveLength(1);
   expect(run.plans).toHaveLength(1);
   const [post, summary] = run.posts;
   expect(post).toMatchObject({ notify: false });
@@ -1307,7 +1200,7 @@ test("the morning review posts one message to the thread without an agent run, t
   expect(run.plans).toHaveLength(1);
 });
 
-test("the morning review puts the updates of one matter into one new thread, and runs its agent only for work", async () => {
+test("the morning review puts the updates of one matter into one new thread, starts no agent, and nudges what it asks every 2 days until it is handled", async () => {
   const run = await setup({
     decide: (input) =>
       input.newEvidenceIds.map((id, index) => ({
@@ -1326,7 +1219,8 @@ test("the morning review puts the updates of one matter into one new thread, and
           title: "OpenSearch incident",
           ...newThreadPlace(input),
           message: "Francisco sent the logs and the memory peaks [1][2].",
-          work: "Draft a reply to Francisco.",
+          ask: "Reply to Francisco about the diagnostics",
+          due: null,
           line: "Francisco sent the OpenSearch diagnostics",
         },
       ],
@@ -1346,11 +1240,40 @@ test("the morning review puts the updates of one matter into one new thread, and
   ]);
   expect(run.reviews).toHaveLength(1);
   expect(run.reviews[0]).toMatchObject({ threadId: threads[0]!.id });
-  expect(run.reviews[0]!.text).toContain("Draft a reply to Francisco.");
+  expect(run.reviews[0]!.text).toContain("Francisco sent the logs");
   expect(run.reviews[0]!.files).toHaveLength(2);
-  expect(run.posts).toHaveLength(1);
-  expect(run.posts[0]!.notify).toBe(true);
-  expect(run.posts[0]!.text).toContain("One matter today");
+  const summary = run.posts.at(-1)!;
+  expect(summary.notify).toBe(true);
+  expect(summary.text).toContain("One matter today");
+  expect(
+    intake.openChecks(run.workspaceId, run.owner).map((each) => each.text)
+  ).toContain("Reply to Francisco about the diagnostics");
+
+  // The next morning has nothing new; the second morning after nudges what the matter asks.
+  const posted = run.posts.length;
+  await intake.tick(Date.parse("2026-10-03T08:00:00+02:00"));
+  expect(run.posts).toHaveLength(posted);
+  await intake.tick(Date.parse("2026-10-04T08:00:00+02:00"));
+  expect(run.posts).toHaveLength(posted + 1);
+  expect(run.posts.at(-1)!.text).toContain(
+    `[OpenSearch incident](thread:${threads[0]!.id}): Reply to Francisco about the diagnostics`
+  );
+  expect(run.posts.at(-1)!.notify).toBe(true);
+
+  // Once the person says it is done, it is never nudged again.
+  const check = intake
+    .openChecks(run.workspaceId, run.owner)
+    .find((each) => each.text.startsWith("Reply to Francisco"))!;
+  const [listed] = intake.following
+    .list(run.workspaceId, run.owner)
+    .filter((each) => each.id === check.id);
+  await intake.following.change(run.workspaceId, run.owner, check.id, {
+    action: "handled",
+    revision: listed!.revision,
+    quote: "Done, I replied from my laptop",
+  });
+  await intake.tick(Date.parse("2026-10-06T08:00:00+02:00"));
+  expect(run.posts).toHaveLength(posted + 1);
 });
 
 test("a morning plan that leaves an update out changes nothing and is tried again", async () => {
@@ -1369,7 +1292,8 @@ test("a morning plan that leaves an update out changes nothing and is tried agai
                 ? { channelId: null, newChannel: null }
                 : newThreadPlace(input)),
               message: "The claim waits.",
-              work: null,
+              ask: null,
+              due: null,
               line: "The claim waits",
             },
           ]
@@ -1915,32 +1839,8 @@ test("retrieval keeps search rank instead of the workspace's thread order", asyn
 });
 
 for (const target of ["private", "shared"] as const) {
-  test(`a developer email is attached to the existing ${target} claim thread, reviewed there, and notifies its owner once`, async () => {
+  test(`a developer email is posted to the existing ${target} claim thread with its files, and notifies its owner once`, async () => {
     const run = await setup({ target, noticeReply: true, actualReview: true });
-    let sourceRead = false;
-    const answer = (context: Context) => {
-      const last = context.messages.at(-1)!;
-      const text =
-        typeof last.content === "string"
-          ? last.content
-          : last.content
-              .flatMap((block) => (block.type === "text" ? [block.text] : []))
-              .join("");
-      if (last.role === "user" && text.includes("New source development:")) {
-        const file = /\(file ([^)]+)\)/.exec(text)![1]!;
-        return fauxAssistantMessage([fauxToolCall("read_file", { file })], {
-          stopReason: "toolUse",
-        });
-      }
-      if (last.role === "toolResult") {
-        sourceRead = text.includes("Repairs start Monday");
-        return fauxAssistantMessage(
-          "The developer replied. Repairs start Monday. Next, confirm access for the repair crew."
-        );
-      }
-      return fauxAssistantMessage("{}");
-    };
-    app.faux.setResponses(Array.from({ length: 40 }, () => answer));
     await intake.tick(START + 1000);
     const count = app.app.workspaces.threadsIn(
       run.workspaceId,
@@ -1963,7 +1863,6 @@ for (const target of ["private", "shared"] as const) {
       ),
     ]);
     await intake.tick(START + DAY);
-    expect(sourceRead).toBe(true);
     expect(
       app.app.workspaces.threadsIn(run.workspaceId, run.owner.id)
     ).toHaveLength(count);
@@ -1972,7 +1871,7 @@ for (const target of ["private", "shared"] as const) {
     ]);
     const state = await app.app.threads.messages(run.target!);
     const prompt = state.messages.find((message) => message.observation)!;
-    expect(prompt.text).toContain("Read the attached sources");
+    expect(prompt.text).toContain("The developer replied");
     expect(prompt.files).toHaveLength(2);
     expect(prompt.files.some((file) => file.name.endsWith("repair.ics"))).toBe(
       true
@@ -1983,7 +1882,8 @@ for (const target of ["private", "shared"] as const) {
       prompt.files[0]!.id
     );
     expect(await Bun.file(path).text()).toContain("Repairs start Monday");
-    expect(state.messages.at(-1)!.text).toContain("confirm access");
+    // The update is the newest message: no agent works on it.
+    expect(state.messages.at(-1)).toMatchObject({ observation: true });
     await app.signIn("Bob", "bob@example.com");
     const { internalAdapter } = await app.app.auth.$context;
     const bob = (await internalAdapter.findUserByEmail("bob@example.com"))!
@@ -2015,15 +1915,6 @@ for (const target of ["private", "shared"] as const) {
     expect(
       app.app.notifications.inbox(run.workspaceId, run.owner).notifications
     ).toHaveLength(1);
-    await app.app.threads.instruct(
-      run.target!,
-      prompt.text,
-      run.reviews[0]!.requestId,
-      [run.owner.id],
-      run.owner.id,
-      "intake",
-      prompt.files
-    );
     expect(
       app.app.notifications.inbox(run.workspaceId, run.owner).notifications
     ).toHaveLength(1);
@@ -2034,28 +1925,6 @@ for (const target of ["private", "shared"] as const) {
     ).toHaveLength(1);
   });
 }
-
-test("a thread can review a due check quietly without consuming its future notice", async () => {
-  const run = await setup({ target: "private", actualReview: true });
-  app.faux.setResponses(
-    Array.from({ length: 20 }, () => fauxAssistantMessage("QUIET"))
-  );
-  await intake.tick(START + 1000);
-  const check = intake.openChecks(run.workspaceId, run.owner)[0]!;
-  await intake.tick(check.checkAt + 1000);
-  expect(run.reviews).toHaveLength(1);
-  expect(
-    app.app.notifications.inbox(run.workspaceId, run.owner).notifications
-  ).toHaveLength(0);
-  expect(
-    intake.openChecks(run.workspaceId, run.owner)[0]!.notifiedAt
-  ).toBeNull();
-  expect(
-    (await app.app.threads.messages(run.target!)).messages.some(
-      (message) => message.observation
-    )
-  ).toBe(true);
-});
 
 test("judge batches preserve whole email bodies, outgoing direction, and attachment metadata", async () => {
   const run = await setup({ decide: () => [] });
@@ -2502,7 +2371,8 @@ test("the morning review reuses a differently titled thread created after queuin
             channelId: null,
             newChannel: null,
             message: "The developer answered about the balcony.",
-            work: null,
+            ask: null,
+            due: null,
             line: "The developer answered",
           },
         ],

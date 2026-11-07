@@ -32,7 +32,8 @@ const topic = (change: Partial<MorningTopic> = {}): MorningTopic => ({
   channelId: null,
   newChannel: null,
   message: "Both logs arrived [1][2].",
-  work: null,
+  ask: null,
+  due: null,
   line: "Logs arrived",
   ...change,
 });

@@ -61,6 +61,8 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
         dueAt: NOW + 3 * 24 * HOUR,
         place: null,
         triggeredAt: null,
+        notBefore: null,
+        notAfter: null,
       },
       {
         id: "tomorrow",
@@ -71,6 +73,8 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
         dueAt: NOW + 20 * HOUR,
         place: null,
         triggeredAt: null,
+        notBefore: null,
+        notAfter: null,
       },
       {
         id: "soon",
@@ -81,6 +85,8 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
         dueAt: NOW + HOUR,
         place: null,
         triggeredAt: null,
+        notBefore: null,
+        notAfter: null,
       },
       {
         id: "cottage",
@@ -98,6 +104,8 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
           event: "arrive",
         },
         triggeredAt: null,
+        notBefore: null,
+        notAfter: null,
       },
     ],
     suggestions: [

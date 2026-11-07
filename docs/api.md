@@ -245,6 +245,8 @@ type Reminder = {
 	timeZone: string;
 	place: { id: string; name: string; latitude: number; longitude: number; radius: number; event: "arrive" | "leave" } | null; // what a reminder at a place waits for; null: a reminder at a time
 	triggeredAt: number | null; // when the person arrived at or left the place of a reminder at a place, as their iPhone reported
+	notBefore: number | null; // a reminder at a place fires only from this time; if the person is already there for an arrival, it fires then
+	notAfter: number | null; // a reminder at a place fires at this time anyway when its event has not come
 	deliveredAt: number | null;
 	cancelledAt: number | null;
 };
@@ -547,7 +549,9 @@ Agents make and change reminders; a person sees their pending ones in Upcoming a
 A reminder at a place has a place and `arrive` or `leave` in place of a time. The place must be one that its recipient
 and the person who asks both use. It is due once the recipient crosses the circle for its event after it was made, also
 when Golem hears of it late. A new reminder starts as outside: one for an arrival where the recipient is now is due at
-once.
+once. A reminder at a place can have a window: `from` (not before, such as "when I get to work on Monday"; for an
+arrival where the recipient already is then, it fires then) and `until` (when its event has not come by then, it fires
+then anyway, so a reminder is never lost). "At 18:00 if I am home, else when I get home" is arrive home from 18:00.
 
 ### Intake (`src/intake/`)
 
@@ -573,16 +577,16 @@ it changes state. Each subject gets its own decision. Current source versions ar
 as historical evidence. Full source and decision records live in the private audit database.
 
 Future checks run from durable times, even without new messages. Before a no-reply decision, Golem checks source
-coverage and related replies. Passive filing starts no thread turn. Useful thread reviews can run silently. A useful development starts a source review
-in its existing subject thread, with a visible input message and attached source files. Its existing Pi Durable agent
-explains the change and proposes next actions. Completion is silent by default, including useful written answers.
+coverage and related replies. Passive filing starts no thread turn. Useful thread reviews can run silently. A useful development is posted
+in its existing subject thread, as a visible Golem message with attached source files; no agent starts on it, and
+the thread's agent works only when a person asks there.
 When no thread matches a useful development, Golem starts a subject thread in one of the person's own private
 channels. If none fits, Golem creates a private channel and its first thread. Invitations and tickets can start these threads.
 Channel names cover lasting subjects; thread titles name specific matters. The normal agent can search connected
 accounts for older related sources. No background worker thread is made. Nonurgent developments wait for the person's morning
 review in the 08:00 Europe/Prague hour: one plan groups them by matter, drops what is handled or stale, posts one
-message to each thread, starts an agent only for work it names, and sends one summary to the person's own thread with
-a notification (see `docs/proactive.md`). One urgent delivery group belongs to one person and one subject thread. Stable request ids
+message to each thread with what it asks of the person, nudges each open ask every 2 days in the morning summary, and
+sends one summary to the person's own thread with a notification (see `docs/proactive.md`). One urgent delivery group belongs to one person and one subject thread. Stable request ids
 prevent duplicate review messages, runs, and notices. A resolved check cancels queued reviews. A `QUIET` answer sends
 no notice and does not mark an internal check as already notified. The judge separately proposes a notification with
 an exact source quote and one reason: the owner requested it, a substantive awaited reply needs attention, a stated

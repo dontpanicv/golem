@@ -54,6 +54,8 @@ import { SourceReads } from "./source-reads.ts";
 
 const POLL_MS = 15 * 60_000;
 const DAY = 24 * 60 * 60_000;
+/** The next nudge comes at the morning review of the second day after, whatever minute that review starts. */
+const NUDGE_AFTER = 2 * DAY - 12 * 60 * 60_000;
 const BATCH = 1000;
 const BATCH_TEXT = 24_000;
 const BATCH_CONVERSATIONS = 6;
@@ -67,7 +69,6 @@ export type IntakeThreads = Pick<
   Threads,
   | "messages"
   | "observe"
-  | "instruct"
   | "file"
   | "writeFile"
   | "deleteFile"
@@ -1087,8 +1088,13 @@ export class Intake {
     }
     try {
       if (deliveries.length === 0) {
-        // Nothing waits: only a summary that an earlier try left unsent; a later update still goes this morning.
+        // Nothing waits: the nudges and a summary that an earlier try left unsent; a later update still goes this
+        // morning unless nudges went out.
+        const nudged = this.nudge(trace, workspaceId, owner, now);
         await this.sendSummary(trace, workspaceId, owner);
+        if (nudged > 0) {
+          setSetting(this.database, doneKey, day);
+        }
         return;
       }
       const coverage = await this.refreshDeliverySources(
@@ -1116,6 +1122,7 @@ export class Intake {
         );
         await this.followPlan(trace, waiting, owner, input, plan, now);
       }
+      this.nudge(trace, workspaceId, owner, now);
       await this.sendSummary(trace, workspaceId, owner);
       setSetting(this.database, doneKey, day);
     } catch (error) {
@@ -1310,7 +1317,7 @@ export class Intake {
     // The person asked for this summary to notify them.
     await this.threads.observe(
       await this.threads.orchestrator(workspaceId, owner),
-      `${posted.summary}\n\n${posted.lines.join("\n")}`,
+      [posted.summary, posted.lines.join("\n")].filter(Boolean).join("\n\n"),
       `${trace}:summary`,
       owner,
       true
@@ -1380,20 +1387,12 @@ export class Intake {
     const text = links ? `${topic.message}\n\n${links}` : topic.message;
     const files = await this.reviewFiles(group, owner, thread.channelId);
     const requestId = `intake:morning:${hash(topic.updates.join(":"))}`;
-    if (topic.work) {
-      await this.threads.instruct(
-        thread,
-        `Morning review:\n${text}\n\n${topic.work}`,
-        requestId,
-        [],
-        owner.id,
-        "intake",
-        files
-      );
-    } else {
-      await this.threads.observe(thread, text, requestId, owner, false, files);
-    }
+    // Golem remembers and reminds; the person does the work, so no agent starts on it.
+    await this.threads.observe(thread, text, requestId, owner, false, files);
     this.finishDelivery(group, owner, [], now);
+    if (topic.ask) {
+      this.followAsk(workspaceId, owner, thread.id, topic, [...sourceIds], now);
+    }
     this.record(
       requestId,
       "morning.posted",
@@ -1402,12 +1401,112 @@ export class Intake {
       {
         threadId: thread.id,
         updates: topic.updates,
-        work: topic.work,
+        ask: topic.ask,
         files,
       },
       now
     );
     return `- [${thread.title}](thread:${thread.id}): ${topic.line}`;
+  }
+
+  /**
+   * Opens a check of what a morning topic asks the person to do. The morning summary nudges it every 2 days until
+   * intake sees it handled, or the person says it is done, rejected, or someone else's.
+   */
+  private followAsk(
+    workspaceId: string,
+    owner: User,
+    threadId: string,
+    topic: MorningTopic,
+    sourceIds: string[],
+    now: number
+  ): void {
+    const id = hash(
+      `ask:${workspaceId}:${owner.id}:${topic.updates.toSorted((a, b) => a.localeCompare(b)).join(":")}`
+    );
+    saveCheck(
+      this.database,
+      {
+        id,
+        text: topic.ask!,
+        evidence: sourceIds[0]!,
+        quote: "",
+        at: topic.due,
+        afterDays: null,
+      },
+      {
+        id,
+        workspaceId,
+        ownerId: owner.id,
+        threadId,
+        checkAt: topic.due ? Date.parse(topic.due) : now + 30 * DAY,
+        now,
+      }
+    );
+    this.database
+      .query("UPDATE intake_check SET nudge_at=? WHERE id=?")
+      .run(now + NUDGE_AFTER, id);
+  }
+
+  /**
+   * Adds a line to this morning's summary for each open check of what the person must do whose nudge is due, and
+   * nudges it again in 2 days; a check that is handled, stopped, or deleted is never nudged.
+   */
+  private nudge(
+    trace: string,
+    workspaceId: string,
+    owner: User,
+    now: number
+  ): number {
+    const due = this.database
+      .query(
+        "SELECT id FROM intake_check WHERE workspace_id=? AND owner_id=? AND state='open' AND deleted_at IS NULL AND nudge_at IS NOT NULL AND nudge_at<=?"
+      )
+      .all(workspaceId, owner.id, now) as { id: string }[];
+    const open = new Map(
+      this.openChecks(workspaceId, owner).map((check) => [check.id, check])
+    );
+    const titles = new Map(
+      this.workspaces
+        .threadsIn(workspaceId, owner.id)
+        .map((thread) => [thread.id, thread.title])
+    );
+    const nudged = due.flatMap(({ id }) => {
+      const check = open.get(id);
+      if (!check) {
+        return [];
+      }
+      const title = check.threadId ? titles.get(check.threadId) : undefined;
+      return [
+        {
+          id,
+          line: title
+            ? `- [${title}](thread:${check.threadId}): ${check.text}`
+            : `- ${check.text}`,
+        },
+      ];
+    });
+    if (nudged.length === 0) {
+      return 0;
+    }
+    const posted = this.morningLines(trace, workspaceId, owner);
+    this.record(
+      trace,
+      "morning.lines",
+      workspaceId,
+      owner.id,
+      {
+        summary: posted?.summary ?? "",
+        lines: [...(posted?.lines ?? []), ...nudged.map((each) => each.line)],
+      },
+      now
+    );
+    for (const { id } of nudged) {
+      this.database
+        .query("UPDATE intake_check SET nudge_at=? WHERE id=?")
+        .run(now + NUDGE_AFTER, id);
+    }
+    return nudged.length;
   }
 
   private async prepareDestinations(
@@ -1613,29 +1712,20 @@ export class Intake {
     const files = await this.reviewFiles(deliveries, owner, thread.channelId);
     let confirmed: IntakeNotification[] = [];
     if (body) {
-      const answer = await this.threads.instruct(
+      // Golem remembers and reminds; the person does the work, so the update is posted and no agent starts on it.
+      await this.threads.observe(
         thread,
-        `New source development:
-${body}
-
-Read the attached sources in the context of this discussion. Explain what changed and propose next actions. Prepare a draft here if it helps.`,
+        body,
         `intake:${id}`,
-        [],
-        owner.id,
-        "intake",
+        owner,
+        false,
         files
       );
-      await this.reconcileSourceReads(
-        workspaceId,
-        owner,
-        now + Date.now() - started,
-        thread.id
-      );
-      if (answer && proposed.length) {
+      if (proposed.length) {
         const checkedAt = now + Date.now() - started;
         confirmed = await this.confirmNotification(deliveries, owner, {
           id,
-          answer,
+          answer: body,
           proposed,
           now: checkedAt,
         });
@@ -1647,7 +1737,7 @@ Read the attached sources in the context of this discussion. Explain what change
             channelId: thread.channelId,
             threadId: thread.id,
             title: thread.title,
-            text: answer,
+            text: body,
           });
         }
       }

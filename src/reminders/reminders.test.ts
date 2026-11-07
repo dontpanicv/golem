@@ -428,3 +428,56 @@ test("a reminder for an arrival where its person is now is due at once", () => {
   expect(create("leave", "leave").triggeredAt).toBeNull();
   database.close();
 });
+
+test("a reminder at a place fires within its window: not before its start, at once if its person is there then, and at its end anyway", async () => {
+  const { database, places, reminders, calls } = setup();
+  const office = places.create("home", alice, {
+    name: "Office",
+    latitude: 50.1,
+    longitude: 14.4,
+    radius: 200,
+    shared: false,
+  });
+  const make = (
+    id: string,
+    place: { event: "arrive" | "leave"; from?: string; until?: string }
+  ) =>
+    reminders.create("home", alice, "thread", alice.id, {
+      id,
+      text: "The four work matters",
+      place: { id: office.id, ...place },
+      timeZone: "Europe/Prague",
+      createdBy: alice.id,
+    });
+  const monday = Date.parse("2090-11-06T08:00:00+01:00");
+  make("monday", { event: "arrive", from: "2090-11-06T08:00:00+01:00" });
+  // An arrival before the window opens does not count.
+  reminders.atPlace("home", alice.id, office.id, "arrive", monday - 60_000);
+  places.record(office.id, alice.id, {
+    event: "arrive",
+    at: monday - 60_000,
+    initial: true,
+  });
+  await Promise.all(reminders.tick(monday - 30_000));
+  expect(calls).toEqual([]);
+  // The person is already at the office when the window opens: it fires then.
+  await Promise.all(reminders.tick(monday + 1000));
+  expect(calls).toEqual(["reminder:monday:0"]);
+
+  // A window that ends before the event comes: it fires at its end, once.
+  make("shop", { event: "leave", until: "2090-11-07T18:00:00+01:00" });
+  await Promise.all(reminders.tick(Date.parse("2090-11-07T17:59:00+01:00")));
+  expect(calls).toEqual(["reminder:monday:0"]);
+  await Promise.all(reminders.tick(Date.parse("2090-11-07T18:00:30+01:00")));
+  await Promise.all(reminders.tick(Date.parse("2090-11-07T18:05:00+01:00")));
+  expect(calls).toEqual(["reminder:monday:0", "reminder:shop:0"]);
+
+  expect(() =>
+    make("backwards", {
+      event: "arrive",
+      from: "2090-11-08T10:00:00+01:00",
+      until: "2090-11-08T09:00:00+01:00",
+    })
+  ).toThrow("end after it starts");
+  database.close();
+});
