@@ -31,17 +31,19 @@ addresses, or code and data from employers or clients.
 - Inspect relevant existing patterns when the implementation is unfamiliar; match their structure and primitives.
 - Add guidance only for stable, non-obvious conventions not enforced or documented elsewhere.
 
-## Web and iOS
+## Web, iOS, and Android
 
-- The web app and the iOS app have the same functionality. Every feature is a JSON endpoint in `src/<module>/api.ts`,
-  documented in `docs/api.md`, that calls the module's service in `src/<module>/<module>.ts`; both apps use it. The web
-  app is a React single-page app in `web/`; the server sends it for every app path and has no other pages.
+- The web app, the iOS app, and the Android app have the same functionality. Every feature is a JSON endpoint in
+  `src/<module>/api.ts`, documented in `docs/api.md`, that calls the module's service in `src/<module>/<module>.ts`;
+  all apps use it. The web app is a React single-page app in `web/`; the server sends it for every app path and has no
+  other pages. The Android app in `android/` follows the iPhone app's screens; `docs/android.md` says how to build it.
 - Agents make and change reminders with tools; a person sees their pending ones in Upcoming and cancels one there.
-- The iPhone only reports what it sees at the places that Golem gives it (`src/agenda/`); Golem decides which reminders
+- The phone only reports what it sees at the places that Golem gives it (`src/agenda/`); Golem decides which reminders
   and routines are due. Golem keeps only each person's last state at a place, never where they are.
-- The `phone_*` tools (`src/phone/`, `ios/Golem/Phone/`) act on the iPhone of the turn's person only while the Golem app
-  is open on it: the app holds the call stream and answers each call; Golem never connects to the phone. A new tool
-  needs its entry in `src/phone/tools.ts` and in `PhoneLink.tools`.
+- The `phone_*` tools (`src/phone/`, `ios/Golem/Phone/`, `android/.../dev/golem/phone/`) act on the phone of the turn's
+  person only while the Golem app is open on it: the app holds the call stream and answers each call; Golem never
+  connects to the phone. A new tool needs its entry in `src/phone/tools.ts`, in `PhoneLink.tools` on iOS, and in
+  `PhoneLink.TOOLS` on Android, or an error there that says why Android cannot do it.
 - Golem stays quiet by default: background work notifies a person only when they must act or asked for it, and a
   routine or reminder answers `QUIET` when nothing needs anyone.
 - Consent first: explicit routines, reminders, and external messages still need a person's request or an accepted
@@ -118,10 +120,12 @@ addresses, or code and data from employers or clients.
 ## Design System
 
 - Change colors, type, spacing, radii, sizes, and shadows only in `design/tokens.json`, then run `bun run tokens`.
-  Never edit `public/tokens.css` or `ios/Golem/Design/Tokens.swift` by hand.
-- A component change on one platform needs the same change in function on the other: `public/styles.css` and
-  `web/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS. Each platform keeps the look of
-  Linear's app on it.
+  Never edit `public/tokens.css`, `ios/Golem/Design/Tokens.swift`, or `android/app/src/main/java/dev/golem/design/Tokens.kt`
+  by hand.
+- A component change on one platform needs the same change in function on the others: `public/styles.css` and
+  `web/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS, `android/app/src/main/java/dev/golem/design/`
+  and `.../views/` for Android. Each platform keeps the look of Linear's app on it; Android uses Material 3's own
+  structure (bottom bar, sheets, menus, switches) in Golem's tokens where iOS uses glass and iOS sheets.
 - `design/components.md` is the spec for every component, measured from Linear's web and iOS apps. The web never uses a
   native select, picker, menu, toggle, or alert; menus, selects, and tooltips are Radix primitives in `web/ui/`. iOS keeps the look of Linear's iOS app
   (native menus, the system glass, and the `mobile` tokens) in the navigation of Slack's iOS app.

@@ -376,8 +376,8 @@ Private replay data must stay outside this public repository.
 
 ## The apps
 
-The web app and the iOS app do the same things, with one design system modeled on Linear. Both talk to the JSON API
-in [docs/api.md](docs/api.md).
+The web app, the iOS app, and the Android app do the same things, with one design system modeled on Linear. All talk
+to the JSON API in [docs/api.md](docs/api.md).
 
 - **Web.** A React single-page app that keeps its data local, shows each change at once, and stays current over
   server-sent events. It opens on what it showed last, also before the server answers.
@@ -390,7 +390,12 @@ in [docs/api.md](docs/api.md).
   - **Voice, on the device:** dictation in every composer, and a hands-free conversation with Golem
     ([below](#voice-on-the-iphone)).
 
-You build the iOS app yourself with Xcode and install it on your family's iPhones. It is not in the App Store.
+- **Android.** A native Kotlin app with Jetpack Compose and Material 3, with the same screens as the iPhone app:
+  dictation, the share sheet, places with geofences, and the phone tools that Android allows. It shows notifications
+  while it runs; Golem has no pushes to Android yet.
+
+You build the iOS app yourself with Xcode and install it on your family's iPhones. It is not in the App Store. The
+Android app you build with Gradle ([docs/android.md](docs/android.md)); it is not in Google Play.
 
 ### Voice on the iPhone
 
@@ -519,6 +524,15 @@ Put your values in `ios/Config/Local.xcconfig`, which git ignores: `DEVELOPMENT_
 `GOLEM_SERVER_URL` (`https://golem.example.com`), and `GOLEM_ASSOCIATED_DOMAIN` (`golem.example.com`). On the server,
 set `ios_app_id = "<DEVELOPMENT_TEAM>.<GOLEM_BUNDLE_ID>"`, so that Google sign-in returns to the app. For push
 notifications, add an APNs key as `config/apns.p8` and its `[apns]` table (`key_id`, `team_id`, `topic`).
+
+### The Android app
+
+```sh
+cd android && ./gradlew :app:installDebug
+```
+
+[docs/android.md](docs/android.md) has the tools it needs, the release key, and the `[android]` table that lets Google
+sign-in return to the app.
 
 ### Let your agent set it up
 
