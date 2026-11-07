@@ -77,6 +77,8 @@ struct Composer: View {
     @FocusState private var focused: Bool
 
     private var listener: Listener { VoiceSession.shared.listener }
+    /// The composers on screen, by owner.
+    private static var shown: [String: Int] = [:]
     /// The listener listens for this composer.
     private var active: Bool {
         listener.owner == owner && (listener.state == .on || listener.state == .preparing)
@@ -140,8 +142,6 @@ struct Composer: View {
         .sensoryFeedback(.impact, trigger: gesture)
         .onChange(of: active) { _, active in
             if !active, gesture == .locked { gesture = nil }
-            // The screen stays on while dictating: a locked phone stops the dictation.
-            UIApplication.shared.isIdleTimerDisabled = active
         }
         .onChange(of: Dictation.shared.thread, initial: true) { _, thread in
             guard thread == owner else { return }
@@ -149,10 +149,17 @@ struct Composer: View {
             gesture = .locked
             startListening()
         }
+        .onAppear { Self.shown[owner, default: 0] += 1 }
         .onDisappear {
-            // A conversation keeps the listener when a composer goes away.
-            if listener.owner == owner, !VoiceSession.shared.talk.isOn { listener.shutDown() }
-            if active { UIApplication.shared.isIdleTimerDisabled = false }
+            Self.shown[owner, default: 0] -= 1
+            // When the phone turns, another composer of the same owner takes the dictation: the split view replaces
+            // the shell. A conversation keeps the listener too.
+            Task { [owner, listener] in
+                try? await Task.sleep(for: .seconds(1))
+                guard Self.shown[owner, default: 0] == 0, listener.owner == owner,
+                      !VoiceSession.shared.talk.isOn else { return }
+                listener.shutDown()
+            }
         }
     }
 

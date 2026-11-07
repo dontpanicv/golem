@@ -13,6 +13,8 @@ struct PhoneShell: View {
     @State private var bar = PhoneTabBar()
     @State private var paths: [Tab: [Destination]] = [:]
     @State private var sheet: Destination?
+    /// The screen on top, for the split view when the phone turns to landscape.
+    @AppStorage("openedDestination") private var opened = ""
 
     var body: some View {
         ZStack {
@@ -70,6 +72,11 @@ struct PhoneShell: View {
         }
         .onChange(of: Push.shared.tapped) { openTapped() }
         .onChange(of: Dictation.shared.requested) { openDictation() }
+        .onChange(of: onTop, initial: true) { if let key = onTop?.key { opened = key } }
+    }
+
+    private var onTop: Destination? {
+        paths[bar.tab]?.last ?? (bar.tab == .golem ? session.orchestrator.map { .thread($0.id) } : nil)
     }
 
     /// Opens the Golem thread, whose composer then starts dictating.
