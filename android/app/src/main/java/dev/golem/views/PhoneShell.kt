@@ -137,6 +137,9 @@ fun PhoneShell() {
     }
     LaunchedEffect(session.tapped, session.workspace?.id) { session.takeTapped()?.let(::open) }
 
+    // Back on the first screen of another tab goes to Home, as Android's apps with a bottom bar do.
+    BackHandler(enabled = tab != Tab.Home && stacks.getValue(tab).size == 1 && sheet == null) { tab = Tab.Home }
+
     CompositionLocalProvider(LocalOpen provides ::open) {
         Scaffold(
             containerColor = Golem.mobile.background,
