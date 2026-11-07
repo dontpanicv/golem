@@ -4000,6 +4000,19 @@ export class Threads {
         "Read a file of this workspace by its id, from list_files or recall: the text of a document, sheet, slides, or PDF, or a picture.",
       parameters: Type.Object({
         file: Type.String({ description: "The file id" }),
+        from: Type.Optional(
+          Type.Integer({
+            minimum: 0,
+            description:
+              "The character to start at, for the rest of a long file",
+          })
+        ),
+        source: Type.Optional(
+          Type.Boolean({
+            description:
+              "The exact text of a text file, such as HTML with its markup, instead of its readable text",
+          })
+        ),
       }),
       replay: "safe",
       execute: async (args, api) => {
@@ -4037,18 +4050,18 @@ export class Threads {
             ],
           };
         }
-        const text = await this.hooks.read(path);
+        const text = args.source
+          ? await sourceText(path, type)
+          : await this.hooks.read(path);
         if (text === null) {
           throw new Error(
-            `Golem cannot read ${name}: it is not a document, PDF, or picture.`
+            args.source
+              ? `${name} is not a text file.`
+              : `Golem cannot read ${name}: it is not a document, PDF, or picture.`
           );
         }
-        const cut =
-          text.length > MAX_READ_CHARACTERS
-            ? `${text.slice(0, MAX_READ_CHARACTERS)}\n[The rest of the ${text.length} characters is cut.]`
-            : text;
         return {
-          output: [{ type: "text", text: cut || "The file is empty." }],
+          output: [{ type: "text", text: readPart(text, args.from ?? 0) }],
         };
       },
     });
@@ -5051,4 +5064,24 @@ function threadDate(
 
 function day(time: number): string {
   return new Date(time).toISOString().slice(0, 10);
+}
+
+/** Up to `MAX_READ_CHARACTERS` of a file's text from `from`, with where to read on. */
+function readPart(text: string, from: number): string {
+  const end = from + MAX_READ_CHARACTERS;
+  const part = text.slice(from, end);
+  if (!part) {
+    return from ? "Nothing after that." : "The file is empty.";
+  }
+  return end < text.length
+    ? `${part}\n[Characters ${from}–${end} of ${text.length}. Read on with from: ${end}.]`
+    : part;
+}
+
+/** The text of a text file as it is, or null for another file. */
+async function sourceText(path: string, type: string): Promise<string | null> {
+  const text =
+    type.startsWith("text/") ||
+    /^application\/(json|xml|javascript|.*\+xml)$/.test(type);
+  return text ? await Bun.file(path).text() : null;
 }

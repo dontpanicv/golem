@@ -557,6 +557,8 @@ const migrations = [
   ALTER TABLE intake_check ADD COLUMN nudge_at INTEGER;`,
   // routines: a finished run keeps no copy of its routine or its script result; only a run that a stop cut off needs them.
   "UPDATE routine_run SET input = NULL, result = NULL WHERE outcome != 'running';",
+  // places: a person's last state at a place counts only while their phone watches the place and reports it.
+  "ALTER TABLE place_presence ADD COLUMN watched INTEGER NOT NULL DEFAULT 1;",
 ];
 
 export function openDatabase(path: string): Database {

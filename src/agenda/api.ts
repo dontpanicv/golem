@@ -34,7 +34,7 @@ export const agendaApiRoutes: readonly Route[] = [
     "GET",
     "/api/v1/workspaces/:workspace/watched-places",
     api(async ({ app, user, params }) =>
-      json({ places: app.agenda.watchedPlaces(params.workspace!, user) })
+      json({ places: app.agenda.watchPlaces(params.workspace!, user) })
     ),
   ],
   [

@@ -16,7 +16,7 @@ export function feedbackTools(
     defineTool({
       name: "feedback_report",
       description:
-        "Tell the developers of Golem about Golem itself: a tool that failed or answered wrong (error), a tool or capability you needed that does not exist (missing), or an easier or faster way to do the task (better). Describe Golem, not the person: no names, messages, or personal data. Report once, then continue the task.",
+        "Tell the developers of Golem about Golem itself: a tool that failed or answered wrong (error), a tool or capability you needed that does not exist (missing), or an easier or faster way to do the task (better). Describe Golem, not the person: no names, messages, or personal data. Report once, then continue the task. A website that blocks the browser with a bot check is no fault of Golem: do not report it.",
       parameters: Type.Object({
         kind: Type.Union(
           [

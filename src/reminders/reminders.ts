@@ -340,7 +340,8 @@ export class Reminders {
       if (!member) {
         throw new Error("The reminder recipient is no longer a member.");
       }
-      const answer = await this.threads.instruct(
+      // A QUIET answer is a reminder done: nothing needs the person now, and a retry would ask the agent again.
+      await this.threads.instruct(
         thread,
         `${occasion(reminder, member.name)} It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. When it names matters that Golem follows, read intake_read first and leave out what is already handled. Answer in this thread.`,
         `reminder:${reminder.id}:${reminder.attempts}`,
@@ -349,9 +350,6 @@ export class Reminders {
         reminder.createdBy,
         "reminder"
       );
-      if (!answer) {
-        throw new Error("The agent gave no reminder.");
-      }
       this.database
         .query(
           "UPDATE reminder SET delivered_at = ?, updated_at = ?, last_error = NULL WHERE id = ? AND delivered_at IS NULL AND cancelled_at IS NULL"

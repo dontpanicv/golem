@@ -124,14 +124,21 @@ test("one-time reminders run once, also when the machine starts after their due 
   database.close();
 });
 
-test("a failed reminder retries and a cancelled reminder stays quiet", async () => {
+test("a failed reminder retries, a quiet one is done, and a cancelled one stays quiet", async () => {
   let fail = true;
-  const { database, reminders, calls } = setup(() => {
+  const { database, reminders, calls } = setup((requestId) => {
     if (fail) {
       fail = false;
-      return null;
+      throw new Error("The model failed");
     }
-    return "Done";
+    return requestId.startsWith("reminder:quiet") ? null : "Done";
+  });
+  const quiet = reminders.create("home", alice, "thread", alice.id, {
+    id: "quiet",
+    createdBy: alice.id,
+    text: "Water the plants",
+    ...time,
+    at: "2090-11-01T10:00:00+01:00",
   });
   const first = reminders.create("home", alice, "thread", alice.id, {
     id: "retry",
@@ -152,7 +159,13 @@ test("a failed reminder retries and a cancelled reminder stays quiet", async () 
   expect(pending.deliveredAt).toBeNull();
   await Promise.all(reminders.tick(pending.nextAttemptAt));
   expect(reminders.get("home", alice, null, first.id).deliveredAt).toBeNumber();
-  expect(calls).toEqual(["reminder:retry:0", "reminder:retry:1"]);
+  await Promise.all(reminders.tick(quiet.dueAt));
+  expect(reminders.get("home", alice, null, quiet.id).deliveredAt).toBeNumber();
+  expect(calls).toEqual([
+    "reminder:retry:0",
+    "reminder:retry:1",
+    "reminder:quiet:0",
+  ]);
   database.close();
 });
 

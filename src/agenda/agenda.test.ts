@@ -211,7 +211,7 @@ test("the iPhone watches the places of its person's reminders and routines, and 
   expect(
     golem.app.reminders.get(home.id, alice, alice.id, reminder.id).triggeredAt
   ).toBe(now + 20);
-  expect(golem.app.agenda.watchedPlaces(home.id, alice)[0]!.reminders).toEqual(
+  expect(golem.app.agenda.watchPlaces(home.id, alice)[0]!.reminders).toEqual(
     []
   );
   // A report that waited for a connection, older than the last one, changes nothing.
@@ -223,4 +223,53 @@ test("the iPhone watches the places of its person's reminders and routines, and 
     async () => golem.app.routines.get(routine.id, alice).lastRun,
     (run) => run !== null && run.outcome !== "running"
   );
+});
+
+test("a state at a place that the phone stopped watching does not make a new reminder there due", async () => {
+  const home = await golem.app.workspaces.create(alice, "Stale");
+  const flat = golem.app.places.create(home.id, alice, {
+    name: "Flat",
+    latitude: 50.1,
+    longitude: 14.4,
+    radius: 200,
+    shared: false,
+  });
+  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  const remind = () =>
+    golem.app.reminders.create(home.id, alice, orchestrator.id, alice.id, {
+      id: crypto.randomUUID(),
+      text: "Send the invoice",
+      place: { id: flat.id, event: "arrive" },
+      timeZone: "Europe/Prague",
+      createdBy: alice.id,
+    });
+  // Days ago the phone saw Alice arrive, then it stopped watching the place, and she left.
+  golem.app.places.record(flat.id, alice.id, {
+    event: "arrive",
+    at: Date.now() - 86_400_000,
+    initial: false,
+  });
+  const token = await golem.signIn("Alice", "alice@example.com");
+  const base = `/api/v1/workspaces/${home.id}/watched-places`;
+  expect(await (await golem.call(base, { token })).json()).toEqual({
+    places: [],
+  });
+  const reminder = remind();
+  expect(reminder.triggeredAt).toBeNull();
+  // The phone watches the place again, and says that she is there.
+  await golem.call(base, { token });
+  const at = Date.now();
+  expect(
+    (
+      await golem.call(`${base}/${flat.id}/reports`, {
+        token,
+        body: { event: "arrive", at, initial: true },
+      })
+    ).status
+  ).toBe(204);
+  expect(
+    golem.app.reminders.get(home.id, alice, alice.id, reminder.id).triggeredAt
+  ).toBe(at);
+  // While the phone watches the place, its state there counts.
+  expect(remind().triggeredAt).toBeNumber();
 });

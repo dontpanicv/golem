@@ -21,7 +21,10 @@ const TOKEN = `x.${Buffer.from(
 ).toString("base64url")}.x`;
 const VIN = "LRW3E7FS0RC000001";
 
-function tesla(answer: (url: URL, init: RequestInit) => Response) {
+function tesla(
+  answer: (url: URL, init: RequestInit) => Response,
+  failure?: string
+) {
   const directory = mkdtempSync(join(tmpdir(), "golem-tesla-test-"));
   const store = join(directory, "credential-1");
   const calls: URL[] = [];
@@ -36,6 +39,9 @@ function tesla(answer: (url: URL, init: RequestInit) => Response) {
     }) as unknown as typeof fetch,
     run: async (command) => {
       commands.push(command);
+      if (failure) {
+        throw new Error(failure);
+      }
     },
     pause: async () => undefined,
   });
@@ -159,6 +165,16 @@ test("a command wakes a sleeping car, then tesla-control signs it", async () => 
   await expect(
     run("tesla_command", { command: "charge_limit", vin: VIN })
   ).rejects.toThrow("This command needs `percent`.");
+});
+
+test("a car without Golem's key says how to add it", async () => {
+  const { run } = tesla(
+    () => Response.json({ response: { vin: VIN, state: "online" } }),
+    "vehicle rejected request: your public key has not been paired with the vehicle"
+  );
+  await expect(
+    run("tesla_command", { command: "climate_on", vin: VIN })
+  ).rejects.toThrow("https://tesla.com/_ak/golem.example.com");
 });
 
 test("opening the car asks the person first", async () => {

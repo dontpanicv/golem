@@ -73,7 +73,7 @@ export type AgendaReminders = Pick<
   Reminders,
   "atPlace" | "cancel" | "create" | "get" | "list"
 >;
-export type AgendaPlaces = Pick<Places, "record">;
+export type AgendaPlaces = Pick<Places, "record" | "unwatch">;
 
 /** A person has at most this many suggestions waiting, so Golem asks little. */
 const MAX_OPEN = 3;
@@ -313,8 +313,22 @@ export class Agenda {
     }
   }
 
-  /** The places that the person's iPhone watches: those of their pending reminders and enabled routines at a place. */
-  watchedPlaces(workspaceId: string, user: User): WatchedPlace[] {
+  /**
+   * The places that the person's phone watches from now on, as it asks for them. Their last state at the other places
+   * no longer counts: nothing keeps it current, and a new reminder there waits for what the phone says.
+   */
+  watchPlaces(workspaceId: string, user: User): WatchedPlace[] {
+    const places = this.watchedPlaces(workspaceId, user);
+    this.places.unwatch(
+      workspaceId,
+      user.id,
+      places.map((place) => place.id)
+    );
+    return places;
+  }
+
+  /** The places that the person's phone watches: those of their pending reminders and enabled routines at a place. */
+  private watchedPlaces(workspaceId: string, user: User): WatchedPlace[] {
     this.workspaces.requireMember(workspaceId, user);
     const places = new Map<string, WatchedPlace>();
     const add = (

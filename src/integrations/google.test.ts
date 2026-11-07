@@ -334,6 +334,25 @@ test("an attachment goes to the thread's channel under its own name", async () =
   ).rejects.toThrow("Only an agent in a thread can save files.");
 });
 
+test("a Drive file goes to the thread's channel under its own name", async () => {
+  const saved = join(directory, "saved-drive");
+  expect(
+    await tools
+      .get("google_drive_save")!
+      .execute(
+        { file: "d1", name: "offer.xlsx" } as never,
+        "token-1",
+        undefined,
+        undefined,
+        undefined,
+        async (write) => ({ id: "f3", name: await write(saved) })
+      )
+  ).toEqual({ id: "f3", name: "offer.xlsx" });
+  expect(await Bun.file(saved).text()).toEndWith(
+    `drive download --out=${saved} -- d1\n`
+  );
+});
+
 test("a workspace file goes to Drive under its own name, and a share sends no invitation", async () => {
   const stored = join(directory, "0190-report.zip");
   await Bun.write(stored, "zip");

@@ -161,11 +161,13 @@ export function whatsAppConnector(binary: string): Connector {
       {
         name: "whatsapp_draft",
         description:
-          "A draft message to a person, as a wa.me link that opens WhatsApp with the text; give the link to the person, who sends it.",
+          "A draft message, as a wa.me link that opens WhatsApp with the text; give the link to the person, who sends it. Without a phone, the person chooses the chat, such as a group.",
         parameters: Type.Object({
-          phone: Type.String({
-            description: "The recipient's number with its country code.",
-          }),
+          phone: Type.Optional(
+            Type.String({
+              description: "The recipient's number with its country code.",
+            })
+          ),
           text: Type.String(),
         }),
         execute: async ({ phone, text }) => ({
@@ -248,7 +250,10 @@ export function whatsAppConnector(binary: string): Connector {
 }
 
 /** A wa.me link that opens a chat with `phone` and the text filled in. */
-export function draftLink(phone: string, text: string): string {
+export function draftLink(phone: string | undefined, text: string): string {
+  if (phone === undefined) {
+    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  }
   const digits = phone.replace(/\D/g, "");
   if (!digits) {
     throw new Error("Give the number with its country code");

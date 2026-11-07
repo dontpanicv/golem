@@ -150,7 +150,7 @@ export class Places {
   ): { readonly before: boolean | null } | "stale" {
     const last = this.database
       .query(
-        "SELECT inside, at FROM place_presence WHERE place_id = ? AND person_id = ?"
+        "SELECT inside, at FROM place_presence WHERE place_id = ? AND person_id = ? AND watched = 1"
       )
       .get(placeId, personId) as { inside: number; at: number } | null;
     if (last && last.at > report.at) {
@@ -158,7 +158,7 @@ export class Places {
     }
     this.database
       .query(
-        "INSERT INTO place_presence (place_id, person_id, inside, at) VALUES ($placeId, $personId, $inside, $at) ON CONFLICT (place_id, person_id) DO UPDATE SET inside = $inside, at = $at"
+        "INSERT INTO place_presence (place_id, person_id, inside, at) VALUES ($placeId, $personId, $inside, $at) ON CONFLICT (place_id, person_id) DO UPDATE SET inside = $inside, at = $at, watched = 1"
       )
       .run({
         placeId,
@@ -169,14 +169,30 @@ export class Places {
     return { before: last ? last.inside === 1 : null };
   }
 
-  /** Whether the person was in the place when their iPhone last said; null when it never said. */
+  /** Whether the person was in the place when their phone last said; null when it never said, or stopped watching it. */
   inside(placeId: string, personId: string): boolean | null {
     const last = this.database
       .query(
-        "SELECT inside FROM place_presence WHERE place_id = ? AND person_id = ?"
+        "SELECT inside FROM place_presence WHERE place_id = ? AND person_id = ? AND watched = 1"
       )
       .get(placeId, personId) as { inside: number } | null;
     return last ? last.inside === 1 : null;
+  }
+
+  /**
+   * The person's phone watches only the places of `watched` from now on, and reports nothing from the others: their
+   * last state there no longer counts, until the phone watches the place again and says.
+   */
+  unwatch(
+    workspaceId: string,
+    personId: string,
+    watched: readonly string[]
+  ): void {
+    this.database
+      .query(
+        "UPDATE place_presence SET watched = 0 WHERE person_id = ? AND watched = 1 AND place_id IN (SELECT id FROM place WHERE workspace_id = ?) AND place_id NOT IN (SELECT value FROM json_each(?))"
+      )
+      .run(personId, workspaceId, JSON.stringify(watched));
   }
 
   /** Removes the person's own place; its name gets `~<id>`, so it is free again. */

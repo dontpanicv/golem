@@ -2701,7 +2701,7 @@ test("a script saves a tool's long answer as a file and gives a file to a tool, 
       home.id,
       alice,
       general.id,
-      'Run code: const saved = await tools.save_file({ content: await tools.notes_transcript({}), name: "standup.md", channel: "work" }); const id = /file (\\S+) in/.exec(saved)[1]; text(await tools.notes_count({ text: await tools.read_file({ file: id }) })); return id;'
+      'Run code: const saved = await tools.save_file({ content: await tools.notes_transcript({}), name: "standup.md", channel: "work" }); const id = /file (\\S+) in/.exec(saved)[1]; text(await tools.notes_count({ text: await tools.read_file({ file: id }) })); await tools.notes_count({ text: await tools.read_file({ file: id, from: 65000 }) }); await tools.notes_count({ text: await tools.read_file({ file: id, source: true }) }); return id;'
     );
     await answeredIn(threads, home.id, summary.id);
     const [file] = await threads.files({
@@ -2710,7 +2710,7 @@ test("a script saves a tool's long answer as a file and gives a file to a tool, 
     });
     const { path } = await threads.file(home.id, alice, file!.id);
     expect(await Bun.file(path).text()).toStartWith("# Standup\n");
-    expect(counted).toEqual([10 + 13 * 5000]);
+    expect(counted).toEqual([10 + 13 * 5000, 10, 10 + 13 * 5000]);
     expect(toolResults.at(-1)).toContain("counted");
     expect(toolResults.at(-1)).toContain(file!.id);
     expect(toolResults.at(-1)).not.toContain("said a thing");

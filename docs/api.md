@@ -660,6 +660,7 @@ type IntakeFeedback = { id: string; target: string; about: string; quote: string
 
 The iPhone watches the places of `watched-places` with Core Location, and an Android phone with geofences; each tells
 Golem only what it sees there, never where the person is. Golem keeps only each person's last state at each place, and
+only while the phone watches it: a place that `watched-places` leaves out has no state until the phone says again. Golem
 decides what is due: a crossing makes due the reminders and runs the routines of its event. The first state after the
 iPhone starts to watch a place makes due only the reminders for an arrival, as a reminder starts as outside. The
 iPhone gets a new place when the app opens or goes to the background.

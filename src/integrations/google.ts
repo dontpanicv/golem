@@ -54,6 +54,7 @@ const COMMANDS = [
   "calendar.delete",
   "drive.search",
   "drive.get",
+  "drive.download",
   "drive.upload",
   "drive.share",
   "docs.cat",
@@ -557,6 +558,38 @@ export function googleConnector(binary: string): Connector {
         }),
         command: ({ file }) => ["drive", "get", "--", file],
       }),
+      {
+        name: "google_drive_save",
+        description:
+          "Saves a Drive file, such as a PDF or an Excel sheet, to this thread's channel, and returns its file id for read_file. Read a Google Doc or Sheet with google_docs_read or google_sheets_read instead.",
+        parameters: Type.Object({
+          file: Type.String({ description: "The file's ID." }),
+          name: Type.String({
+            description:
+              "The file's name from google_drive_search, with its extension.",
+          }),
+        }),
+        execute: async (
+          { file, name },
+          token,
+          signal,
+          _file,
+          _allowed,
+          save
+        ) => {
+          if (!save) {
+            throw new Error("Only an agent in a thread can save files.");
+          }
+          return save(async (path) => {
+            await gog.run(
+              token,
+              ["drive", "download", `--out=${path}`, "--", file],
+              signal
+            );
+            return name;
+          });
+        },
+      },
       {
         name: "google_drive_upload",
         description:

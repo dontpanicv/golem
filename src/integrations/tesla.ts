@@ -273,7 +273,14 @@ export function teslaConnector(options: TeslaOptions): Connector {
         ...command,
       ],
       signal
-    );
+    ).catch((error: Error) => {
+      if (!error.message.includes("not been paired")) {
+        throw error;
+      }
+      throw new Error(
+        `The car does not have Golem's key yet. The person opens https://tesla.com/_ak/${options.domain} on the phone with the Tesla app and adds the key to the car; then the command works.`
+      );
+    });
     return { done: true, vin: car.vin };
   }
 
