@@ -17,13 +17,16 @@ tokens; the web app uses better-auth's session cookie. The routes are in `src/ac
 | `GET /api/v1/sign-in/google/signed-in` | A page that asks a browser without the app to open the app |
 | `POST /api/v1/sign-in/google/token` | `{ code, verifier }` → `{ token }`; `400` when the code is unknown, used, older than 60 seconds, or not of that verifier |
 | `GET /.well-known/apple-app-site-association` | `{ webcredentials: { apps: [ios_app_id] } }`; `404` without `ios_app_id` in `config/golem.toml` |
+| `GET /.well-known/assetlinks.json` | Digital Asset Links that give the Android app (`[android]` `package` and `cert_sha256` in `config/golem.toml`) this server's https address; `404` without `[android]` |
 | `POST /api/auth/sign-in/social` | `{ provider: "google", callbackURL }` → `{ url }`: the web app opens `url`, and Google sends the person back to `callbackURL` with a session cookie. A failed sign-in comes back to `/login?error=…&error_description=…`. |
 | `POST /api/auth/sign-out` | `{ success }` |
 
 `done` gives a code only to a sign-in that `GET /api/v1/sign-in/google` started in the same browser session, and only
 for the session that the Google step of that sign-in made; Google always asks which account to use. The code gives the
 token once, only with the verifier of the sign-in's challenge. The web authentication session gives the `signed-in`
-address only to the app that the server's apple-app-site-association file names, so the iOS app needs https.
+address only to the app that the server's apple-app-site-association file names, so the iOS app needs https. The
+Android app opens the same sign-in in an Auth Tab, which Chrome gives the `signed-in` address only when the server's
+assetlinks.json names the app.
 
 Send `Authorization: Bearer <token>`, or the session cookie, on every `/api/v1` request. A `401` response means the
 token or the session is missing or expired. Golem checks `allowed_emails` on every request: after a restart without

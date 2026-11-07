@@ -4,7 +4,7 @@ const APP_SIGN_IN = "golem_app_sign_in";
 /** Where a sign-in of the iOS app ends, on this server's https address. */
 const SIGNED_IN = "/api/v1/sign-in/google/signed-in";
 
-/** better-auth itself, and Google sign-in for the iOS app. */
+/** better-auth itself, and Google sign-in for the iOS and Android apps. */
 export const accountApiRoutes: readonly Route[] = [
   [
     "*",
@@ -124,6 +124,24 @@ export const accountApiRoutes: readonly Route[] = [
     async ({ app }) =>
       app.config.iosAppId
         ? json({ webcredentials: { apps: [app.config.iosAppId] } })
+        : new Response("Not found", { status: 404 }),
+  ],
+  // Lets the Android app's Auth Tab return to this server's https address, as Digital Asset Links verify it.
+  [
+    "GET",
+    "/.well-known/assetlinks.json",
+    async ({ app }) =>
+      app.config.android
+        ? json([
+            {
+              relation: ["delegate_permission/common.handle_all_urls"],
+              target: {
+                namespace: "android_app",
+                package_name: app.config.android.package,
+                sha256_cert_fingerprints: app.config.android.certSha256,
+              },
+            },
+          ])
         : new Response("Not found", { status: 404 }),
   ],
 ];

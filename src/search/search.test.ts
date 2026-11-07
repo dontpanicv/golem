@@ -76,6 +76,7 @@ beforeAll(async () => {
         clientSecret: "test-secret",
       },
       iosAppId: null,
+      android: null,
       apns: null,
     },
     { provider: faux.provider, name: "Test model", defaultModel: model.id },

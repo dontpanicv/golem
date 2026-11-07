@@ -148,6 +148,18 @@ test("the iOS app gets a token only for a Google sign-in it started, with its ve
   expect(await association.json()).toEqual({
     webcredentials: { apps: ["ABCDE12345.dev.golem.test"] },
   });
+  const links = await call("/.well-known/assetlinks.json");
+  expect(links.headers.get("content-type")).toStartWith("application/json");
+  expect(await links.json()).toEqual([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "dev.golem.test",
+        sha256_cert_fingerprints: ["AB:CD"],
+      },
+    },
+  ]);
 });
 
 test("the first person to sign in starts the workspace, with a general channel", async () => {

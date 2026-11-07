@@ -52,6 +52,7 @@ export async function startTestApp() {
         clientSecret: "test-secret",
       },
       iosAppId: "ABCDE12345.dev.golem.test",
+      android: { package: "dev.golem.test", certSha256: ["AB:CD"] },
       apns: null,
     },
     { provider: faux.provider, name: "Test model", defaultModel: model.id },
