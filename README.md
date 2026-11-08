@@ -436,7 +436,7 @@ so they work without a connection and nothing is downloaded on the phone.
 
 - **A Mac with Apple silicon**, such as a Mac mini, that stays on. Linux on x86-64 or arm64 also works for the server.
 - **[Bun](https://bun.sh)**, and these tools, which Golem checks before it starts:
-  `brew install ffmpeg poppler tesseract dicklesworthstone/tap/dcg cloudflared`.
+  `brew install ffmpeg poppler tesseract whisper-cpp dicklesworthstone/tap/dcg cloudflared`.
 - **[Rust](https://rustup.rs)**, to build the `hands` binaries that Golem gives to the machines that pair:
   `rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl`,
   and for the Linux binaries on a Mac, `brew install zig && cargo install --locked cargo-zigbuild`.
@@ -543,7 +543,7 @@ Set up Golem (https://github.com/dontpanicv/golem) on this Mac as a self-hosted 
 
 1. Read README.md, google-sign-in.md, docs/artifacts-sharing.md, and docs/integrations.md first.
 2. Check that this is a Mac with Apple silicon. Install what is missing with Homebrew: bun, ffmpeg, poppler,
-   tesseract, dicklesworthstone/tap/dcg, cloudflared, rustup (then a stable Rust), zig, and cargo-zigbuild.
+   tesseract, whisper-cpp, dicklesworthstone/tap/dcg, cloudflared, rustup (then a stable Rust), zig, and cargo-zigbuild.
 3. Clone the repository to ~/golem, run `bun install`, `bunx --bun agent-browser install`, and
    `hands/scripts/build-release.sh`.
 4. Run `bun start` once, so Golem writes config/golem.toml, and stop it.
@@ -597,7 +597,7 @@ Golem stands on the work of these projects and people:
 - **Server:** [Bun](https://bun.sh), [TypeScript](https://www.typescriptlang.org), [Effect](https://effect.website),
   [SQLite](https://sqlite.org), [better-auth](https://www.better-auth.com), [llama.cpp](https://github.com/ggml-org/llama.cpp),
   [FFmpeg](https://ffmpeg.org), [Poppler](https://poppler.freedesktop.org),
-  [Tesseract](https://github.com/tesseract-ocr/tesseract), [unpdf](https://github.com/unjs/unpdf), and
+  [Tesseract](https://github.com/tesseract-ocr/tesseract), [whisper.cpp](https://github.com/ggml-org/whisper.cpp), [unpdf](https://github.com/unjs/unpdf), and
   [Cloudflare Tunnel](https://github.com/cloudflare/cloudflared).
 - **Web:** [React](https://react.dev), [TanStack Router, Query, and DB](https://tanstack.com),
   [Radix](https://www.radix-ui.com), [react-markdown](https://github.com/remarkjs/react-markdown),

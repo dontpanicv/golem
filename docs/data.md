@@ -58,8 +58,9 @@ data/
   `session.sqlite` keeps the messages. A deleted workspace (`organization.deletedAt`, from before Golem had one
   workspace) hides all of it, and its folder stays. Deleted
   channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
-  Artifact records that were deleted still count toward the artifact's limits, until a member clears the data, which
-  moves the records aside with `~<time>` after their scope.
+  Artifact records that a visitor or a member deleted still count toward the artifact's limits, until a member clears
+  the data, which moves the records aside with `~<time>` after their scope. A record that an agent deletes moves aside
+  at once.
 - **A thread moves with what it made.** A thread that moves to another channel takes its artifacts, its routine,
   and the files of its old channel that it mentions and no other thread there does, with their old versions. The
   index keeps their vectors. When the move takes the thread from people, the old channel's brief is written again

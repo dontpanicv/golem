@@ -108,6 +108,14 @@ describe("homeAssistantConnector", () => {
     expect(calls[1]!.url).toBe(
       "http://home.local:8123/api/history/period/2026-10-26T00%3A00%3A00Z?filter_entity_id=sensor.a%2Csensor.b&minimal_response&no_attributes"
     );
+    await run("home_assistant_history", {
+      entity_ids: ["climate.a"],
+      start: "2026-10-26T00:00:00Z",
+      attributes: true,
+    });
+    expect(calls[2]!.url).toBe(
+      "http://home.local:8123/api/history/period/2026-10-26T00%3A00%3A00Z?filter_entity_id=climate.a"
+    );
   });
 
   test("says what to do when the token is wrong", async () => {

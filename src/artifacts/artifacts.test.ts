@@ -364,6 +364,18 @@ test("an artifact keeps a limited number of visitors and bytes, and gets them ba
       )
       .get(id)
   ).toEqual({ count: 170 });
+
+  // What an agent deletes stops counting, so it can replace all of an artifact's data.
+  for (let key = 0; key < 169; key += 1) {
+    set(`next${key}`);
+  }
+  for (let key = 0; key < 169; key += 1) {
+    artifacts.moveSharedAside(id, `next${key}`);
+  }
+  for (let key = 0; key < 169; key += 1) {
+    set(`again${key}`);
+  }
+  expect(artifacts.dataFor(id, alice)).toHaveLength(170);
   artifacts.delete(id, alice);
 });
 

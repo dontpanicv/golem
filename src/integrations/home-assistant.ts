@@ -165,19 +165,24 @@ export function homeAssistantConnector(
       {
         name: "home_assistant_history",
         description:
-          "The states of entities from `start` until `end` or now, oldest first, one list for each entity.",
+          "The states of entities from `start` until `end` or now, oldest first, one list for each entity. Set `attributes` for values such as a climate entity's `hvac_action`; the answer is much larger, so ask for few entities.",
         parameters: Type.Object({
           entity_ids: Type.Array(Type.String(), { minItems: 1 }),
           start: Type.String({ description: "An ISO 8601 time." }),
           end: Type.Optional(Type.String({ description: "An ISO 8601 time." })),
+          attributes: Type.Optional(Type.Boolean()),
         }),
-        execute: async ({ entity_ids, start, end }, secret, signal) =>
+        execute: async (
+          { entity_ids, start, end, attributes },
+          secret,
+          signal
+        ) =>
           call(
             secret,
             `history/period/${encodeURIComponent(start)}?${new URLSearchParams({
               filter_entity_id: entity_ids.join(","),
               ...(end ? { end_time: end } : {}),
-            })}&minimal_response&no_attributes`,
+            })}${attributes ? "" : "&minimal_response&no_attributes"}`,
             signal
           ),
       },

@@ -32,6 +32,8 @@ const SCOPES = [
 ];
 /** How long one gog command may take. */
 const RUN_MS = 60 * 1000;
+/** How long Golem waits before it tries a command again that Google's quota per minute refused. */
+const QUOTA_WAITS_MS = [5000, 20_000];
 /** The gog commands that Golem runs; gog refuses every other one. */
 const COMMANDS = [
   "gmail.search",
@@ -113,8 +115,11 @@ const NOTIFY = Type.Optional(
  * one; they manage events, and email the guests about them when the person allows it; they read files, and upload
  * files, create Docs, and share them without sending invitations.
  */
-export function googleConnector(binary: string): Connector {
-  const gog = new Gog(binary);
+export function googleConnector(
+  binary: string,
+  quotaWaits: readonly number[] = QUOTA_WAITS_MS
+): Connector {
+  const gog = new Gog(binary, quotaWaits);
   return {
     id: "google",
     name: "Google",
@@ -753,7 +758,10 @@ export function googleConnector(binary: string): Connector {
 class Gog {
   private readonly home = join(tmpdir(), "golem-gog");
 
-  constructor(private readonly binary: string) {
+  constructor(
+    private readonly binary: string,
+    private readonly quotaWaits: readonly number[]
+  ) {
     mkdirSync(this.home, { recursive: true });
   }
 
@@ -794,7 +802,29 @@ class Gog {
     ).trim();
   }
 
+  /** Runs gog, and again after a wait when Google's quota refuses it, which means that Google did nothing. */
   private async spawn(
+    token: string,
+    flags: readonly string[],
+    command: readonly string[],
+    signal: AbortSignal | undefined
+  ): Promise<string> {
+    for (const wait of this.quotaWaits) {
+      try {
+        return await this.spawnOnce(token, flags, command, signal);
+      } catch (error) {
+        if (
+          !(error instanceof Error && /rateLimitExceeded/i.test(error.message))
+        ) {
+          throw error;
+        }
+        await Bun.sleep(wait);
+      }
+    }
+    return await this.spawnOnce(token, flags, command, signal);
+  }
+
+  private async spawnOnce(
     token: string,
     flags: readonly string[],
     command: readonly string[],

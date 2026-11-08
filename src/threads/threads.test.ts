@@ -253,8 +253,23 @@ function agent(context: Context, options?: SimpleStreamOptions) {
     return call("send_to_thread", { thread: relay[1]!, message: "Pasta" });
   }
   if (relay?.[2] === "Pasta") {
-    // A third pass would let two agents talk forever.
+    return call("send_to_thread", {
+      thread: relay[1]!,
+      message: "With cheese?",
+    });
+  }
+  if (relay?.[2] === "With cheese?") {
+    return call("send_to_thread", { thread: relay[1]!, message: "Yes" });
+  }
+  if (relay?.[2] === "Yes") {
+    // A fifth pass would let two agents talk forever.
     return call("send_to_thread", { thread: relay[1]!, message: "Thanks" });
+  }
+  if (relay?.[2] === "What's for lunch?") {
+    return call("send_to_thread", { thread: relay[1]!, message: "Soup" });
+  }
+  if (relay?.[2] === "Soup") {
+    return fauxAssistantMessage("Done.");
   }
   const file =
     /^\d{4}-\d\d-\d\d \d\d:\d\d UTC Alice: Read the file\nAttached: .* \(file ([\w-]+)\)$/.exec(
@@ -307,7 +322,7 @@ function agent(context: Context, options?: SimpleStreamOptions) {
   if (dinner) {
     return call("send_to_thread", {
       thread: dinner[1]!,
-      message: "What's for dinner?",
+      message: "What's for lunch?",
     });
   }
   const other = /Tell thread ([\w-]+) hi$/.exec(text);
@@ -377,11 +392,19 @@ test("an agent starts a thread in another channel, gets the answer back, and can
         .filter((step) => step.tool === "from_thread")
         .map((step) => [step.text, step.output])
     );
-  const answered = await idle(family.id, dinner.id);
-  expect(answered.messages.map((message) => message.text)).toEqual(["Done."]);
+  // The question, then a correction to the answer: the fourth pass still arrives.
+  const answered = await until(
+    () => idle(family.id, dinner.id),
+    (state) => state.messages.length === 2
+  );
+  expect(answered.messages.map((message) => message.text)).toEqual([
+    "Done.",
+    "Done.",
+  ]);
   expect(answered.messages[0]!.work!.steps[0]!.tool).toBe("from_thread");
   expect(fromThread(answered)).toEqual([
     [`[Ask #food what's for dinner](thread:${asked.id})`, "What's for dinner?"],
+    [`[Ask #food what's for dinner](thread:${asked.id})`, "With cheese?"],
   ]);
   await until(
     () => idle(family.id, asked.id),

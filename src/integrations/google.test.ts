@@ -496,3 +496,39 @@ if (args.includes("search")) {
   ]);
   // Each body after the first waits 1.5 s, as the real connector does.
 }, 15_000);
+
+test("a command that Google's quota per minute refuses runs again, and another error does not", async () => {
+  const count = join(directory, "quota-count");
+  const binary = join(directory, "quota-gog");
+  await Bun.write(
+    binary,
+    `#!/bin/sh
+echo x >> "${count}"
+if [ "$(wc -l < "${count}")" -lt 3 ]; then
+  echo "Google API error (403 rateLimitExceeded): Quota exceeded" >&2
+  exit 1
+fi
+echo '{"found":true}'
+`
+  );
+  await chmod(binary, 0o755);
+  const search = googleConnector(binary, [1, 1]).tools.find(
+    (tool) => tool.name === "google_mail_search"
+  )!;
+  expect(
+    await search.execute({ query: "from:anna" } as never, "token-1", undefined)
+  ).toEqual({ found: true });
+  expect((await Bun.file(count).text()).trim().split("\n")).toHaveLength(3);
+
+  await Bun.write(count, "");
+  await chmod(binary, 0o755);
+  await Bun.write(
+    binary,
+    `#!/bin/sh\necho x >> "${count}"\necho nope >&2\nexit 1\n`
+  );
+  await chmod(binary, 0o755);
+  await expect(
+    search.execute({ query: "from:anna" } as never, "token-1", undefined)
+  ).rejects.toThrow("nope");
+  expect((await Bun.file(count).text()).trim().split("\n")).toHaveLength(1);
+});

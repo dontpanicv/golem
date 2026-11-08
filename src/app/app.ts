@@ -10,6 +10,7 @@ import { Hands, handsRequirements } from "../hands/hands.ts";
 import { Intake } from "../intake/intake.ts";
 import { Integrations } from "../integrations/integrations.ts";
 import { Llm, type LlmProvider } from "../llm/llm.ts";
+import { transcribeRequirements } from "../llm/transcribe.ts";
 import { apnsPush } from "../notifications/apns.ts";
 import { Notifications } from "../notifications/notifications.ts";
 import { Phone } from "../phone/phone.ts";
@@ -61,6 +62,7 @@ export async function checkRequirements(): Promise<Requirement[]> {
     llamaRequirements(),
     handsRequirements(HANDS_BINARIES),
     browserRequirements(),
+    transcribeRequirements(),
   ]);
   return requirements.flat();
 }

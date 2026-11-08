@@ -10,7 +10,7 @@ import type { Browser } from "./browser.ts";
 const GUIDE = `Visit public websites in the headless Chrome of this thread and its person, with agent-browser commands. The browser keeps its tabs, page, and logins between calls until you close it or it stays idle for an hour.
 - Each command is a list of its words, run in order: [["open","https://example.com"],["snapshot","-i"]].
 - snapshot -i lists the elements you can use, with refs: click @e2, fill @e3 "text", select @e4 "value", check @e5, press Enter. Take a new snapshot after the page changes; old refs stop working.
-- read gives the text of the page that is open.
+- read gives the text of the page that is open. When menus or long lists fill it, use get text main.
 - To find something, use web_search and open its sources here. Search engine pages block this browser; when a page asks you to prove you are human, tell the people in the thread instead of trying again.
 - Also: back, forward, reload, scroll down, wait <ms|selector>, wait --load load, get text|url|title|value|attr <name> <selector>, find role|text|label|placeholder <value> click|fill <text>, tab list|new <url>|<n>|close, eval <js>, close.
 - Set screenshot to see the page as a picture after the commands.

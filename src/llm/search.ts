@@ -1,3 +1,5 @@
+import type { Usage } from "@earendil-works/pi-ai";
+
 /**
  * Web search by ChatGPT's own `web_search` tool, through the Codex backend that the ChatGPT login opens. The request
  * and its parsing follow pi-web-access (github.com/nicobailon/pi-web-access, MIT), `openai-search.ts`.
@@ -5,6 +7,8 @@
 export interface WebSearchResult {
   readonly answer: string;
   readonly sources: readonly WebSource[];
+  /** The tokens of the search's model request, with no cost yet; `null` when ChatGPT did not say. */
+  readonly usage: Usage | null;
 }
 
 export interface WebSource {
@@ -70,11 +74,11 @@ export async function searchWeb(
       `ChatGPT search failed with HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`
     );
   }
-  const items = outputItems(await response.text());
+  const { items, usage } = parsedStream(await response.text());
   if (!items.some((item) => item.type === "web_search_call")) {
     throw new Error("ChatGPT answered without searching the web.");
   }
-  return { answer: answerOf(items), sources: sourcesOf(items) };
+  return { answer: answerOf(items), sources: sourcesOf(items), usage };
 }
 
 interface OutputItem {
@@ -95,9 +99,21 @@ interface OutputItem {
   };
 }
 
-/** The finished output items of a Responses event stream; a failed stream throws its reason. */
-function outputItems(stream: string): OutputItem[] {
+interface ResponseUsage {
+  readonly input_tokens?: number;
+  readonly output_tokens?: number;
+  readonly total_tokens?: number;
+  readonly input_tokens_details?: { readonly cached_tokens?: number };
+  readonly output_tokens_details?: { readonly reasoning_tokens?: number };
+}
+
+/** The finished output items and the usage of a Responses event stream; a failed stream throws its reason. */
+function parsedStream(stream: string): {
+  items: OutputItem[];
+  usage: Usage | null;
+} {
   const items: OutputItem[] = [];
+  let usage: Usage | null = null;
   for (const line of stream.split("\n")) {
     const data = line.startsWith("data: ") ? line.slice(6).trim() : "";
     if (!data.startsWith("{")) {
@@ -107,7 +123,10 @@ function outputItems(stream: string): OutputItem[] {
       type?: string;
       item?: OutputItem;
       error?: { message?: string };
-      response?: { error?: { message?: string } | null };
+      response?: {
+        error?: { message?: string } | null;
+        usage?: ResponseUsage | null;
+      };
     };
     // The backend can fail mid-stream with HTTP 200, for example when the subscription's limit is reached.
     if (event.type === "error" || event.type === "response.failed") {
@@ -118,8 +137,25 @@ function outputItems(stream: string): OutputItem[] {
     if (event.type === "response.output_item.done" && event.item) {
       items.push(event.item);
     }
+    if (event.response?.usage) {
+      usage = tokens(event.response.usage);
+    }
   }
-  return items;
+  return { items, usage };
+}
+
+/** OpenAI's usage, whose input includes the cached tokens, as Golem counts it. */
+function tokens(usage: ResponseUsage): Usage {
+  const cached = usage.input_tokens_details?.cached_tokens ?? 0;
+  return {
+    input: Math.max(0, (usage.input_tokens ?? 0) - cached),
+    output: usage.output_tokens ?? 0,
+    cacheRead: cached,
+    cacheWrite: 0,
+    reasoning: usage.output_tokens_details?.reasoning_tokens ?? 0,
+    totalTokens: usage.total_tokens ?? 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
 }
 
 function answerOf(items: readonly OutputItem[]): string {

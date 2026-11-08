@@ -10,6 +10,7 @@ import type {
   Usage,
 } from "@earendil-works/pi-ai";
 import {
+  calculateCost,
   clampThinkingLevel,
   createModels,
   getSupportedThinkingLevels,
@@ -22,6 +23,7 @@ import { HttpError } from "../platform/errors.ts";
 import type { Secrets } from "../platform/secrets.ts";
 import { searchWeb, type WebSearchResult } from "./search.ts";
 import { llmTools } from "./tools.ts";
+import { transcribe } from "./transcribe.ts";
 
 export interface LlmProvider {
   readonly defaultModel: string;
@@ -283,6 +285,15 @@ export class Llm {
     return this.llmProvider.fastModel ? llmTools(this) : [];
   }
 
+  /** The speech of an audio or video file, transcribed on this machine. */
+  transcribe(
+    dataDirectory: string,
+    path: string,
+    signal: AbortSignal | undefined
+  ): Promise<string> {
+    return transcribe(dataDirectory, path, signal);
+  }
+
   /** Searches the web with ChatGPT's own search, over the stored login. */
   async search(query: string): Promise<WebSearchResult> {
     const model = this.find(this.llmProvider.fastModel ?? "");
@@ -290,7 +301,16 @@ export class Llm {
     if (!(model && token)) {
       throw new Error("Web search needs ChatGPT: connect it in Settings.");
     }
-    return searchWeb({ baseUrl: model.baseUrl, model: model.id, token, query });
+    const result = await searchWeb({
+      baseUrl: model.baseUrl,
+      model: model.id,
+      token,
+      query,
+    });
+    if (result.usage) {
+      calculateCost(model, result.usage);
+    }
+    return result;
   }
 
   /**

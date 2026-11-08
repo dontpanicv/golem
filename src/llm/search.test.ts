@@ -72,10 +72,28 @@ describe("searchWeb", () => {
     const fake = backend(
       stream({ type: "response.created" }, searched, answered, {
         type: "response.completed",
-        response: { output: [] },
+        response: {
+          output: [],
+          usage: {
+            input_tokens: 100,
+            output_tokens: 20,
+            total_tokens: 120,
+            input_tokens_details: { cached_tokens: 30 },
+            output_tokens_details: { reasoning_tokens: 5 },
+          },
+        },
       })
     );
     expect(await searchWeb(request(fake.fetch))).toEqual({
+      usage: {
+        input: 70,
+        output: 20,
+        cacheRead: 30,
+        cacheWrite: 0,
+        reasoning: 5,
+        totalTokens: 120,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
       answer: "Rabbi Loew made the Golem of Prague.",
       sources: [
         {

@@ -149,6 +149,8 @@ export function artifactTools(
       description: "The HTML of an artifact.",
       parameters: Type.Object({ id: idParameter }),
       replay: "safe",
+      // All of the largest page, at up to 3 bytes for each UTF-16 unit.
+      outputLimits: { maxBytes: 3 * artifacts.maxHtml },
       execute: async ({ id }, api) =>
         text(artifacts.html((await artifactOf(id, api.conversationId)).id)),
     }),
@@ -208,7 +210,7 @@ export function artifactTools(
     defineTool({
       name: "artifacts_set_data",
       description:
-        "Write or delete a shared record of an artifact, such as its settings, the levels of a game, or a flag that closes a poll.",
+        "Write or delete a shared record of an artifact, such as its settings, the levels of a game, or a flag that closes a poll. An artifact keeps at most 10 MB of records, up to 64 KB in each value; a record you delete stops counting.",
       parameters: Type.Object({
         id: idParameter,
         key: Type.String(),
@@ -220,7 +222,7 @@ export function artifactTools(
       execute: async ({ id, key, value }, api) => {
         const artifact = await artifactOf(id, api.conversationId);
         if (value === null || value === undefined) {
-          artifacts.deleteRecord(artifact.id, "shared", key);
+          artifacts.moveSharedAside(artifact.id, key);
           return text("Deleted the record.");
         }
         artifacts.write(artifact.id, "shared", key, value);

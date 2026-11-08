@@ -17,7 +17,7 @@ export function llmTools(llm: Llm) {
       }),
       replay: "safe",
       execute: async (args) => {
-        const { answer, sources } = await llm.search(args.query);
+        const { answer, sources, usage } = await llm.search(args.query);
         const list = sources.map((source) =>
           source.title ? `- ${source.title}: ${source.url}` : `- ${source.url}`
         );
@@ -30,6 +30,7 @@ export function llmTools(llm: Llm) {
                 : answer,
             },
           ],
+          ...(usage ? { usage } : {}),
         };
       },
     }),

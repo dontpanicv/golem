@@ -172,6 +172,9 @@ const ARTIFACT_COLUMNS =
  * and agents also write the shared ones. Everyone who may open an artifact may read all of its records.
  */
 export class Artifacts {
+  /** The longest HTML of an artifact, in UTF-16 units. */
+  readonly maxHtml = MAX_HTML;
+
   constructor(
     private readonly database: Database,
     private readonly workspaces: ArtifactWorkspaces,
@@ -510,7 +513,10 @@ export class Artifacts {
           (owner !== SHARED && mine >= MAX_KEYS_PER_VISITOR))) ||
       others + json.length > MAX_BYTES
     ) {
-      throw new HttpError(413, "This artifact keeps no more data");
+      throw new HttpError(
+        413,
+        `This artifact keeps no more data: at most ${MAX_BYTES / 1024 ** 2} MB and ${MAX_RECORDS} records`
+      );
     }
     this.database
       .query(
@@ -529,6 +535,19 @@ export class Artifacts {
         "UPDATE artifact_record SET deleted_at = ? WHERE artifact_id = ? AND scope = ? AND key = ? AND deleted_at IS NULL"
       )
       .run(Date.now(), id, owner, key);
+  }
+
+  /**
+   * Deletes a shared record for an agent. An agent can replace its data many times, and no visitor can do this, so the
+   * record moves aside, as in `clearData`, and no longer counts toward the limits.
+   */
+  moveSharedAside(id: string, key: string): void {
+    const now = Date.now();
+    this.database
+      .query(
+        "UPDATE artifact_record SET scope = scope || '~' || ?1, deleted_at = coalesce(deleted_at, ?1) WHERE artifact_id = ?2 AND scope = ?3 AND key = ?4"
+      )
+      .run(now, id, SHARED, key);
   }
 
   /** Deletes a record, by its `ArtifactRecord.id`, of an artifact of the person's workspace. */
