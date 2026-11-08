@@ -168,7 +168,7 @@ export class Intake {
       workspaces,
       integrations,
       audit,
-      (credential, item) => this.keep(credential, item)
+      (credential, item) => this.keepRead(credential, item)
     );
   }
 
@@ -250,9 +250,7 @@ export class Intake {
     if (!force && source && now - source.attempted_at < POLL_MS) {
       return;
     }
-    const since = source?.polled_at
-      ? source.polled_at - 60 * 60_000
-      : now - DAY;
+    const since = pollStart(source, now);
     const trace = `collect:${credential.id}:${now}`;
     this.record(
       trace,
@@ -413,6 +411,19 @@ export class Intake {
         version
       );
     return id;
+  }
+
+  /** An agent's read. What the polls will not reach is history that someone looked up, so it is never news. */
+  private keepRead(credential: WatchedCredential, item: WatchedItem): string {
+    const now = Date.now();
+    const source = this.database
+      .query("SELECT * FROM intake_source WHERE credential_id=?")
+      .get(credential.id) as SourceRow | null;
+    return this.keep(
+      credential,
+      item,
+      item.at < pollStart(source, now) ? now : null
+    );
   }
 
   /**
@@ -2402,6 +2413,11 @@ export class Intake {
 }
 
 /** How long the next try waits after `count` failures in a row: 15 minutes, doubling up to a day. */
+/** Where the next poll of a source starts reading; it goes back one hour for messages that arrive late. */
+function pollStart(source: SourceRow | null, now: number): number {
+  return source?.polled_at ? source.polled_at - 60 * 60_000 : now - DAY;
+}
+
 function retryAfter(count: number): number {
   return Math.min(POLL_MS * 2 ** (count - 1), DAY);
 }

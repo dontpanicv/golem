@@ -2777,3 +2777,31 @@ test("a message that a thread's agent reads before intake polls it still gets th
     )
   ).toBe(true);
 });
+
+test("old messages that a thread's agent looks up are not assessed as new", async () => {
+  const run = await setup({ target: "private" });
+  await intake.tick(START);
+  const march = item(
+    "march",
+    "The agency will return the deposit.",
+    false,
+    START - 30 * DAY
+  );
+  intake.recordSourceRead(run.target!, run.owner.id, {
+    credential: run.credential,
+    tool: "whatsapp_messages",
+    result: {},
+    items: [march],
+  });
+  await intake.tick(START + 60_000);
+  expect(
+    run.snapshots.some(
+      (input) =>
+        input.trigger === "evidence" &&
+        input.evidence.some(
+          (each) =>
+            input.newEvidenceIds.includes(each.id) && each.text === march.text
+        )
+    )
+  ).toBe(false);
+});

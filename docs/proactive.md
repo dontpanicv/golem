@@ -66,7 +66,8 @@ They do not need to maintain a task list or set a routine for each expected repl
    The connector, not the agent, supplies the account and returned records. Only the owner of a still-enabled account
    can feed its reads back. Intake stores the evidence and a durable pending read in `intake_source_read`.
    A message that intake has not judged yet also gets the normal assessment, so a reply that an agent reads first
-   still gets its follow-up. Each read is assessed on the next intake tick: a bounded judge call updates or resolves
+   still gets its follow-up. A message older than where the next poll starts is history that someone looked up: it stays
+   evidence for the read, but it is never assessed as new and makes no check. Each read is assessed on the next intake tick: a bounded judge call updates or resolves
    the related open checks. This call cannot create checks,
    start threads, run another review, or notify. A partial answer leaves the remaining question open. Failed judgments
    retain their pending read and retry with backoff; a failed thread cannot block unrelated source-read assessments.

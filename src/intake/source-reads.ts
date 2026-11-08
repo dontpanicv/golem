@@ -23,7 +23,7 @@ export class SourceReads {
     private readonly workspaces: IntakeWorkspaces,
     private readonly integrations: IntakeIntegrations,
     private readonly audit: Audit,
-    /** Keeps an observation; one that intake has not seen waits for the normal assessment, so it gets its follow-up. */
+    /** Keeps an observation; a new one that intake has not seen waits for the normal assessment, so it gets its follow-up. */
     private readonly keep: (
       credential: WatchedCredential,
       item: WatchedItem
