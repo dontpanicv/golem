@@ -20,6 +20,13 @@ struct ConversationView: View {
     @State private var linkedArtifact: String?
     /// The routines and reminders Golem suggests to the person, in their orchestrator only.
     @State private var suggestions: [Suggestion] = []
+    /// How many of the newest messages show. Every update measures each row, so showing a whole long thread makes it
+    /// stutter while the agent works; older messages join as the person scrolls up.
+    @State private var shown = Self.page
+    private static let page = 40
+    @State private var atStart = false
+    @State private var scrollIdle = true
+    @State private var position = ScrollPosition()
     @Environment(\.phoneTabBar) private var tabBar
     @Environment(\.youMenu) private var youMenu
     @Environment(\.scenePhase) private var scenePhase
@@ -39,7 +46,14 @@ struct ConversationView: View {
             // open work log, made it move the list several screens past the messages.
             VStack(alignment: .leading, spacing: 0) {
                 let messages = state?.messages ?? []
-                ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                let first = max(0, messages.count - shown)
+                if first > 0 {
+                    Color.clear.frame(height: 1).onScrollVisibilityChange { visible in
+                        atStart = visible
+                        showOlder()
+                    }
+                }
+                ForEach(Array(messages.enumerated().dropFirst(first)), id: \.element.id) { index, message in
                     let continued = index > 0 && MessageRow.continues(message, after: messages[index - 1])
                     MessageRow(
                         message: message, continued: continued,
@@ -57,6 +71,7 @@ struct ConversationView: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
+            .scrollTargetLayout()
             .padding(.horizontal, Tokens.Mobile.Size.margin)
             .padding(.bottom, Tokens.Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -77,7 +92,10 @@ struct ConversationView: View {
         .defaultScrollAnchor(.bottom)
         // New words and messages keep the newest in view.
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
-        .returnsToEnd()
+        .returnsToEnd(position: $position) { phase in
+            scrollIdle = phase == .idle
+            showOlder()
+        }
         .safeAreaBar(edge: .bottom) {
             bottomBar
         }
@@ -188,6 +206,14 @@ struct ConversationView: View {
         (state?.approvals ?? []).filter { $0.approverId == nil || $0.approverId == session.user?.id }
     }
 
+    /// Adds older messages only at rest: while the list moves, the rows added above it would make it jump.
+    private func showOlder() {
+        guard atStart, scrollIdle, let messages = state?.messages, shown < messages.count else { return }
+        let oldest = messages[messages.count - shown].id
+        shown += Self.page
+        position.scrollTo(id: oldest, anchor: .top)
+    }
+
     /// The answer that the agent writes now.
     private var working: Message? {
         state?.messages.last { $0.streaming || ($0.work != nil && $0.work?.endedAt == nil) }
@@ -245,7 +271,9 @@ struct ConversationView: View {
             delay = min(delay * 2, .seconds(16))
         }
     }
+}
 
+extension ConversationView {
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !files.isEmpty, !sending else { return }
