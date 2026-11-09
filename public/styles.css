@@ -901,10 +901,10 @@ span.avatar.large::after {
   background:
     repeating-linear-gradient(
       90deg,
-      var(--color-text) 0 2px,
+      var(--color-text-tertiary) 0 2px,
       transparent 2px 4px
     )
-    bottom / 100% 2px no-repeat;
+    bottom / 100% 1px no-repeat;
 }
 .panel-header::before {
   content: "";
@@ -2000,6 +2000,13 @@ span.avatar.large::after {
   mask: var(--dither-empty) center / 96px 96px no-repeat;
   image-rendering: pixelated;
 }
+/* An empty section of a page says so in words; only an empty pane shows the face. */
+.page-section .empty {
+  padding: var(--space-xl);
+}
+.page-section .empty::before {
+  display: none;
+}
 .empty strong {
   font-weight: var(--font-weight-medium);
   color: var(--color-text-secondary);
@@ -2304,6 +2311,11 @@ button.settings-row:focus-visible {
   gap: 1px;
   height: 10px;
   margin-right: var(--space-lg);
+}
+@media (max-width: 560px) {
+  .day-strip {
+    display: none;
+  }
 }
 .day-strip i {
   background: var(--color-border);

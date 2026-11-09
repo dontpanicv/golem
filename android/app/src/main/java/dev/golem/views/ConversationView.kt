@@ -188,8 +188,7 @@ fun ConversationView(chatId: String, artifactId: String? = null) {
             when {
                 current == null && failure != null -> EmptyState(failure!!)
                 current == null -> Loading()
-                current.messages.isEmpty() -> EmptyState("Ask Golem anything", { GolemGlyph(24.dp, Golem.colors.textQuaternary) },
-                    Modifier.padding(padding))
+                current.messages.isEmpty() -> EmptyState("Ask Golem anything", Modifier.padding(padding))
                 else -> Messages(current, approvals, working, chatId, padding, opener)
             }
         }

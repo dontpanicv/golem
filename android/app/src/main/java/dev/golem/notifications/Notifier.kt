@@ -44,7 +44,7 @@ class Notifier(private val context: Context) {
             val intent = Intent(context, MainActivity::class.java)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(MainActivity.WORKSPACE, workspaceId)
-                .putExtra(MainActivity.CHANNEL, notification.channelId)
+                .putExtra(MainActivity.TOPIC, notification.topicId)
                 .putExtra(MainActivity.CHAT, notification.chatId)
             val open = PendingIntent.getActivity(
                 context, notification.id.hashCode(), intent,
