@@ -119,7 +119,7 @@ struct HomeView: View {
                 }
                 if !open.isEmpty {
                     Text("\(open.count)")
-                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
+                        .font(.mono(Tokens.Mobile.FontSize.mono, Tokens.FontWeight.medium))
                         .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                         .contentTransition(.numericText(value: Double(open.count)))
                 }

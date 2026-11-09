@@ -35,6 +35,7 @@ import dev.golem.design.ListSeparator
 import dev.golem.design.LocalSession
 import dev.golem.design.MenuAction
 import dev.golem.design.Tokens
+import dev.golem.design.golemMono
 import dev.golem.design.golemText
 import kotlinx.coroutines.launch
 
@@ -169,7 +170,7 @@ private fun ChannelRow(channel: Channel) {
     ) {
         if (channel.ownerId != null) Icon(Pixel.Lock.vector, "Private", tint = Golem.mobile.textQuaternary)
         if (openThreads.isNotEmpty()) {
-            Text("${openThreads.size}", style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book),
+            Text("${openThreads.size}", style = golemMono(Tokens.Mobile.FontSize.mono, Tokens.FontWeight.medium),
                 color = Golem.mobile.textQuaternary)
         }
     }

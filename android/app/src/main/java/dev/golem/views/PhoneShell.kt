@@ -69,6 +69,7 @@ import dev.golem.design.LocalSession
 import dev.golem.design.MenuAction
 import dev.golem.design.PersonAvatar
 import dev.golem.design.Tokens
+import dev.golem.design.golemMono
 import dev.golem.design.golemText
 import dev.golem.design.mobileBackground
 
@@ -239,7 +240,9 @@ private fun TabBar(tab: Tab, unread: Int, select: (Tab) -> Unit) {
                 icon = {
                     BadgedBox(badge = {
                         if (item == Tab.Activity && unread > 0) {
-                            Badge(containerColor = Golem.colors.accent, contentColor = Golem.colors.onAccent) { Text("$unread") }
+                            Badge(containerColor = Golem.colors.accent, contentColor = Golem.colors.onAccent) {
+                                Text("$unread", style = golemMono(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.semibold))
+                            }
                         }
                     }) {
                         when (item) {
