@@ -4,14 +4,14 @@ import { DIMENSIONS, fromBlob, toBlob } from "./embedder.ts";
 
 /**
  * One workspace's search index: `data/workspaces/<workspace>/index.sqlite`. Derived data; deleting it re-indexes.
- * Sources (a thread, a file) are split into segments. Each segment has keywords in FTS5 and, when it reads as prose,
+ * Sources (a chat, a file) are split into segments. Each segment has keywords in FTS5 and, when it reads as prose,
  * a 768 × float16 L2-normalized EmbeddingGemma 2 vector compared by brute force. Ranking follows DigUp
  * (github.com/ARahim3/DigUp, MIT): a per-query z-score of meaning plus keyword coverage.
  */
 export interface SourceInput {
-  readonly channelId?: string;
+  readonly topicId?: string;
   readonly kind: SearchKind;
-  readonly threadId?: string;
+  readonly chatId?: string;
   readonly title: string;
   readonly updatedAt: number;
   readonly uri: string;
@@ -19,7 +19,7 @@ export interface SourceInput {
   readonly version: string;
 }
 
-export type SearchKind = "thread" | "artifact" | "note" | "file" | "capture";
+export type SearchKind = "chat" | "artifact" | "note" | "file" | "capture";
 export type Modality = "text" | "image" | "audio" | "none";
 export interface Segment {
   /** Identifies the content when `text` does not, as for media. */
@@ -36,19 +36,19 @@ export interface Segment {
 
 /** What decides whether a person may see a source. */
 export interface VisibleSource {
-  readonly channelId: string | null;
+  readonly topicId: string | null;
   readonly kind: SearchKind;
   readonly uri: string;
 }
 export interface SearchResult {
-  readonly channelId: string | null;
+  readonly topicId: string | null;
   readonly kind: SearchKind;
   readonly loc: number | null;
   /** What matched: text, a picture, a page scan, or a stretch of audio. */
   readonly modality: Modality;
   readonly score: number;
   readonly snippet: string;
-  readonly threadId: string | null;
+  readonly chatId: string | null;
   readonly title: string;
   readonly updatedAt: number;
   readonly uri: string;
@@ -58,11 +58,11 @@ const SCHEMA = `
 	CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 	CREATE TABLE IF NOT EXISTS sources (
 		id INTEGER PRIMARY KEY,
-		uri TEXT NOT NULL UNIQUE,      -- thread:<id>, artifact:<id>, or <folder>/<path> under the workspace folder
-		kind TEXT NOT NULL,            -- thread | artifact | note | file | capture
+		uri TEXT NOT NULL UNIQUE,      -- chat:<id>, artifact:<id>, or <folder>/<path> under the workspace folder
+		kind TEXT NOT NULL,            -- chat | artifact | note | file | capture
 		title TEXT NOT NULL,
-		thread_id TEXT,
-		channel_id TEXT,
+		chat_id TEXT,
+		topic_id TEXT,
 		version TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	);
@@ -230,14 +230,14 @@ export class WorkspaceIndex {
     this.database.transaction(() => {
       const { id } = this.database
         .query(
-          "INSERT INTO sources (uri, kind, title, thread_id, channel_id, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (uri) DO UPDATE SET kind = excluded.kind, title = excluded.title, thread_id = excluded.thread_id, channel_id = excluded.channel_id, version = excluded.version, updated_at = excluded.updated_at RETURNING id"
+          "INSERT INTO sources (uri, kind, title, chat_id, topic_id, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (uri) DO UPDATE SET kind = excluded.kind, title = excluded.title, chat_id = excluded.chat_id, topic_id = excluded.topic_id, version = excluded.version, updated_at = excluded.updated_at RETURNING id"
         )
         .get(
           source.uri,
           source.kind,
           title,
-          source.threadId ?? null,
-          source.channelId ?? null,
+          source.chatId ?? null,
+          source.topicId ?? null,
           version,
           source.updatedAt
         ) as { id: number };
@@ -261,19 +261,19 @@ export class WorkspaceIndex {
   }
 
   /**
-   * The source of a channel file that moved to another channel, such as with its thread, now under its new path and
-   * channel. The same id, name, and version show that it is the same file, so it keeps its segments and vectors.
+   * The source of a topic file that moved to another topic, such as with its chat, now under its new path and
+   * topic. The same id, name, and version show that it is the same file, so it keeps its segments and vectors.
    */
   private movedFile(
     source: SourceInput
   ): { id: number; version: string } | null {
-    const name = /^channels\/[^/]+\/files\/([^/]+)$/.exec(source.uri)?.[1];
+    const name = /^topics\/[^/]+\/files\/([^/]+)$/.exec(source.uri)?.[1];
     const moved =
       name &&
       (
         this.database
           .query(
-            "SELECT id, uri, version FROM sources WHERE kind = 'file' AND uri LIKE 'channels/%' AND version IN (?, ?)"
+            "SELECT id, uri, version FROM sources WHERE kind = 'file' AND uri LIKE 'topics/%' AND version IN (?, ?)"
           )
           .all(source.version, `waiting for the model: ${source.version}`) as {
           id: number;
@@ -285,8 +285,8 @@ export class WorkspaceIndex {
       return null;
     }
     this.database
-      .query("UPDATE sources SET uri = ?, channel_id = ? WHERE id = ?")
-      .run(source.uri, source.channelId ?? null, moved.id);
+      .query("UPDATE sources SET uri = ?, topic_id = ? WHERE id = ?")
+      .run(source.uri, source.topicId ?? null, moved.id);
     return moved;
   }
 
@@ -393,7 +393,7 @@ export class WorkspaceIndex {
     const allowed = new Set(
       (
         this.database
-          .query("SELECT id, uri, kind, channel_id AS channelId FROM sources")
+          .query("SELECT id, uri, kind, topic_id AS topicId FROM sources")
           .all() as (VisibleSource & { id: number })[]
       )
         .filter(visible)
@@ -437,7 +437,7 @@ export class WorkspaceIndex {
     return scored.slice(0, limit).map(({ source, score, segment }) => {
       const row = this.database
         .query(
-          "SELECT src.uri, src.kind, src.title, src.thread_id AS threadId, src.channel_id AS channelId, src.updated_at AS updatedAt, s.key, s.excerpt, s.modality, s.loc FROM sources src JOIN segments s ON s.id = ? WHERE src.id = ?"
+          "SELECT src.uri, src.kind, src.title, src.chat_id AS chatId, src.topic_id AS topicId, src.updated_at AS updatedAt, s.key, s.excerpt, s.modality, s.loc FROM sources src JOIN segments s ON s.id = ? WHERE src.id = ?"
         )
         .get(segment, source) as Omit<SearchResult, "snippet" | "score"> & {
         key: string;

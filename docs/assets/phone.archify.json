@@ -113,7 +113,7 @@
       "from": "app",
       "to": "golem",
       "y": 320,
-      "label": "message to the thread",
+      "label": "message to the chat",
       "note": "the agent's script calls phone_alarm_set"
     },
     {

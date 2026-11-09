@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import type { User } from "../platform/auth.ts";
-import type { ThreadSummary } from "../workspaces/workspaces.ts";
+import type { ChatSummary } from "../workspaces/workspaces.ts";
 
 let golem: TestApp;
 let alice: User;
@@ -32,10 +32,10 @@ function agent(context: Context) {
       : last.content
           .flatMap((block) => (block.type === "text" ? [block.text] : []))
           .join("");
-  const listing = /List threads (\{.*\})$/.exec(text);
+  const listing = /List chats (\{.*\})$/.exec(text);
   if (last.role === "user" && listing) {
     return fauxAssistantMessage(
-      [fauxToolCall("list_threads", JSON.parse(listing[1]!))],
+      [fauxToolCall("list_chats", JSON.parse(listing[1]!))],
       { stopReason: "toolUse" }
     );
   }
@@ -45,33 +45,30 @@ function agent(context: Context) {
   return fauxAssistantMessage("Done.");
 }
 
-test("thread listing filters last activity, sorts across channels, includes settled threads, and enforces access", async () => {
-  const home = await golem.app.workspaces.create(alice, "Thread lists");
+test("chat listing filters last activity, sorts across topics, includes settled chats, and enforces access", async () => {
+  const home = await golem.app.workspaces.create(alice, "Chat lists");
   await golem.app.workspaces.addMember(home.id, alice, bob.email);
-  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
-  const food = golem.app.workspaces.createChannel(home.id, alice, "food");
-  const privateChannel = golem.app.workspaces.createChannel(
+  const general = golem.app.workspaces.topics(home.id, alice)[0]!;
+  const food = golem.app.workspaces.createTopic(home.id, alice, "food");
+  const privateTopic = golem.app.workspaces.createTopic(
     home.id,
     alice,
     "private",
     true
   );
-  const summaries: ThreadSummary[] = [];
-  for (const channel of [general, food, food, privateChannel]) {
-    const thread = await golem.app.threads.create(
+  const summaries: ChatSummary[] = [];
+  for (const topic of [general, food, food, privateTopic]) {
+    const chat = await golem.app.chats.create(
       home.id,
       alice,
-      channel.id,
+      topic.id,
       "Hello"
     );
     await until(
-      () =>
-        golem.app.threads.messages(
-          golem.app.workspaces.thread(thread.id, alice)
-        ),
+      () => golem.app.chats.messages(golem.app.workspaces.chat(chat.id, alice)),
       (state) => !state.running && state.messages.length === 2
     );
-    summaries.push(thread);
+    summaries.push(chat);
   }
   const [old, recent, newest, hidden] = summaries;
   const times = [
@@ -80,23 +77,28 @@ test("thread listing filters last activity, sorts across channels, includes sett
     "2026-11-06T00:00:00Z",
     "2026-11-05T00:00:00Z",
   ];
-  for (const [index, thread] of summaries.entries()) {
+  for (const [index, chat] of summaries.entries()) {
     golem.app.database
-      .query("UPDATE thread SET updated_at = ? WHERE id = ?")
-      .run(Date.parse(times[index]!), thread.id);
+      .query("UPDATE chat SET updated_at = ? WHERE id = ?")
+      .run(Date.parse(times[index]!), chat.id);
   }
-  golem.app.workspaces.setThreadSettled(home.id, recent!.id, alice, true);
-  await golem.app.threads.orchestrator(home.id, alice);
-  await golem.app.threads.orchestrator(home.id, bob);
+  golem.app.workspaces.setChatSettled(home.id, recent!.id, alice, true);
+  await golem.app.chats.orchestrator(home.id, alice);
+  await golem.app.chats.orchestrator(home.id, bob);
 
-  expect(
-    golem.app.threads.list(home.id, alice).map((thread) => thread.id)
-  ).toEqual([newest!.id, hidden!.id, recent!.id, old!.id]);
-  expect(
-    golem.app.threads.list(home.id, bob).map((thread) => thread.id)
-  ).toEqual([newest!.id, recent!.id, old!.id]);
-  const filtered = golem.app.threads.list(home.id, alice, {
-    channel: "#food",
+  expect(golem.app.chats.list(home.id, alice).map((chat) => chat.id)).toEqual([
+    newest!.id,
+    hidden!.id,
+    recent!.id,
+    old!.id,
+  ]);
+  expect(golem.app.chats.list(home.id, bob).map((chat) => chat.id)).toEqual([
+    newest!.id,
+    recent!.id,
+    old!.id,
+  ]);
+  const filtered = golem.app.chats.list(home.id, alice, {
+    topic: "#food",
     since: "2026-11-04",
     before: "2026-11-06",
     order: "oldest",
@@ -104,36 +106,33 @@ test("thread listing filters last activity, sorts across channels, includes sett
   expect(filtered).toEqual([
     expect.objectContaining({
       id: recent!.id,
-      channel: "food",
-      channelId: food.id,
+      topic: "food",
+      topicId: food.id,
       settledAt: expect.any(Number),
     }),
   ]);
   expect(
-    golem.app.threads
+    golem.app.chats
       .list(home.id, bob, {
         since: "2026-11-04T02:00:00+02:00",
         order: "oldest",
       })
-      .map((thread) => thread.id)
+      .map((chat) => chat.id)
   ).toEqual([recent!.id, newest!.id]);
 
   const token = await golem.signIn("Bob", bob.email);
-  const base = `/api/v1/workspaces/${home.id}/threads`;
+  const base = `/api/v1/workspaces/${home.id}/chats`;
   const response = await golem.call(
-    `${base}?channel=food&since=2026-11-04&order=oldest`,
+    `${base}?topic=food&since=2026-11-04&order=oldest`,
     { token }
   );
   expect(response.status).toBe(200);
-  const body = (await response.json()) as { threads: ThreadSummary[] };
-  expect(body.threads.map((thread) => thread.id)).toEqual([
-    recent!.id,
-    newest!.id,
-  ]);
-  expect((await golem.call(`${base}?channel=private`, { token })).status).toBe(
+  const body = (await response.json()) as { chats: ChatSummary[] };
+  expect(body.chats.map((chat) => chat.id)).toEqual([recent!.id, newest!.id]);
+  expect((await golem.call(`${base}?topic=private`, { token })).status).toBe(
     404
   );
-  expect((await golem.call(`${base}?channel=missing`, { token })).status).toBe(
+  expect((await golem.call(`${base}?topic=missing`, { token })).status).toBe(
     404
   );
   expect((await golem.call(`${base}?since=invalid`, { token })).status).toBe(
@@ -154,62 +153,54 @@ test("thread listing filters last activity, sorts across channels, includes sett
   expect((await golem.call(base, { token: outsider })).status).toBe(404);
 });
 
-test("list_threads uses the person of the turn, including in a shared channel", async () => {
-  const home = await golem.app.workspaces.create(alice, "Thread tool");
+test("list_chats uses the person of the turn, including in a shared topic", async () => {
+  const home = await golem.app.workspaces.create(alice, "Chat tool");
   await golem.app.workspaces.addMember(home.id, alice, bob.email);
-  const general = golem.app.workspaces.channels(home.id, alice)[0]!;
-  const privateChannel = golem.app.workspaces.createChannel(
+  const general = golem.app.workspaces.topics(home.id, alice)[0]!;
+  const privateTopic = golem.app.workspaces.createTopic(
     home.id,
     alice,
     "private",
     true
   );
-  const hidden = await golem.app.threads.create(
+  const hidden = await golem.app.chats.create(
     home.id,
     alice,
-    privateChannel.id,
+    privateTopic.id,
     "Hello"
   );
   await until(
-    () =>
-      golem.app.threads.messages(golem.app.workspaces.thread(hidden.id, alice)),
+    () => golem.app.chats.messages(golem.app.workspaces.chat(hidden.id, alice)),
     (state) => !state.running && state.messages.length === 2
   );
-  const listed = await golem.app.threads.create(
+  const listed = await golem.app.chats.create(
     home.id,
     bob,
     general.id,
-    'List threads {"order":"oldest"}'
+    'List chats {"order":"oldest"}'
   );
   await until(
-    () =>
-      golem.app.threads.messages(golem.app.workspaces.thread(listed.id, alice)),
+    () => golem.app.chats.messages(golem.app.workspaces.chat(listed.id, alice)),
     (state) => !state.running && state.messages.at(-1)?.text === "Done."
   );
   const result = toolResults.at(-1)!;
-  expect(result).toContain(`(thread:${listed.id}) in #general (`);
+  expect(result).toContain(`(chat:${listed.id}) in #general (`);
   expect(result).toContain(", open)");
   expect(result).not.toContain(hidden.id);
-  await golem.app.threads.send(
-    listed.id,
-    bob,
-    'List threads {"channel":"private"}'
-  );
+  await golem.app.chats.send(listed.id, bob, 'List chats {"topic":"private"}');
   await until(
-    () =>
-      golem.app.threads.messages(golem.app.workspaces.thread(listed.id, alice)),
+    () => golem.app.chats.messages(golem.app.workspaces.chat(listed.id, alice)),
     (state) => !state.running && state.messages.length === 4
   );
   expect(toolResults.at(-1)).toContain("Not found");
-  await golem.app.threads.send(
+  await golem.app.chats.send(
     listed.id,
     alice,
-    'List threads {"channel":"private"}'
+    'List chats {"topic":"private"}'
   );
   await until(
-    () =>
-      golem.app.threads.messages(golem.app.workspaces.thread(listed.id, alice)),
+    () => golem.app.chats.messages(golem.app.workspaces.chat(listed.id, alice)),
     (state) => !state.running && state.messages.length === 6
   );
-  expect(toolResults.at(-1)).toContain(`(thread:${hidden.id}) in #private (`);
+  expect(toolResults.at(-1)).toContain(`(chat:${hidden.id}) in #private (`);
 });

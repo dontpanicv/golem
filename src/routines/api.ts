@@ -1,13 +1,13 @@
 import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 
-/** The routines of a channel. Agents create and change them; people pause, run, and delete them. */
+/** The routines of a topic. Agents create and change them; people pause, run, and delete them. */
 export const routineApiRoutes: readonly Route[] = [
   [
     "GET",
-    "/api/v1/workspaces/:workspace/channels/:channel/routines",
+    "/api/v1/workspaces/:workspace/topics/:topic/routines",
     api(async ({ app, user, params }) =>
-      json(app.routines.inChannel(params.workspace!, params.channel!, user))
+      json(app.routines.inTopic(params.workspace!, params.topic!, user))
     ),
   ],
   [

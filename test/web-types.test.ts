@@ -5,6 +5,14 @@ import type {
   WatchedPlace,
 } from "../src/agenda/agenda.ts";
 import type * as Server from "../src/artifacts/artifacts.ts";
+import type {
+  Brief,
+  ChatMessages,
+  LearnedItem,
+  ListedChat,
+  Message,
+  SavedFile,
+} from "../src/chats/chats.ts";
 import type { Feedback } from "../src/feedback/feedback.ts";
 import type { MachineSummary, Pairing } from "../src/hands/hands.ts";
 import type {
@@ -19,17 +27,9 @@ import type { User } from "../src/platform/auth.ts";
 import type { Routine, RoutineRun } from "../src/routines/routines.ts";
 import type { RecentSearch, SearchResponse } from "../src/search/search.ts";
 import type {
-  Brief,
-  LearnedItem,
-  ListedThread,
-  Message,
-  SavedFile,
-  ThreadMessages,
-} from "../src/threads/threads.ts";
-import type {
-  Channel,
+  ChatSummary,
   Member,
-  ThreadSummary,
+  Topic,
   Workspace,
 } from "../src/workspaces/workspaces.ts";
 import type * as Web from "../web/app/types.ts";
@@ -43,17 +43,14 @@ const checks: true[] = [
   true satisfies Fits<FollowingOverview, Web.FollowingOverview>,
   true satisfies Fits<User & { picture: string | null }, Web.User>,
   true satisfies Fits<Workspace, Web.Workspace>,
-  true satisfies Fits<ThreadSummary, Web.ThreadSummary>,
-  true satisfies Fits<ListedThread, Web.ListedThread>,
-  true satisfies Fits<Channel, Web.Channel>,
+  true satisfies Fits<ChatSummary, Web.ChatSummary>,
+  true satisfies Fits<ListedChat, Web.ListedChat>,
+  true satisfies Fits<Topic, Web.Topic>,
   true satisfies Fits<Member, Web.Member>,
   true satisfies Fits<Brief, Web.Brief>,
   true satisfies Fits<Message, Web.Message>,
   true satisfies Fits<SavedFile, Web.SavedFile>,
-  true satisfies Fits<
-    ThreadMessages & { thread: ThreadSummary },
-    Web.ThreadState
-  >,
+  true satisfies Fits<ChatMessages & { chat: ChatSummary }, Web.ChatState>,
   true satisfies Fits<SearchResponse, Web.SearchResponse>,
   true satisfies Fits<RecentSearch, Web.RecentSearch>,
   true satisfies Fits<Integration, Web.Integration>,
@@ -68,8 +65,8 @@ const checks: true[] = [
   true satisfies Fits<LlmStatus, Web.LlmStatus>,
   true satisfies Fits<Feedback, Web.Feedback>,
   true satisfies Fits<
-    Omit<UsageReport, "threads" | "people"> & {
-      threads: (UsageReport["threads"][number] & { title: string })[];
+    Omit<UsageReport, "chats" | "people"> & {
+      chats: (UsageReport["chats"][number] & { title: string })[];
       people:
         | (NonNullable<UsageReport["people"]>[number] & { name: string })[]
         | null;

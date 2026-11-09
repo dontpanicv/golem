@@ -17,7 +17,7 @@ const base: AssessmentInput = {
   trigger: "evidence",
   newEvidenceIds: ["request"],
   evidence: [request],
-  channels: [
+  topics: [
     { id: "work", name: "work", summary: "Work discussions", private: true },
     {
       id: "calendar",
@@ -26,10 +26,10 @@ const base: AssessmentInput = {
       private: false,
     },
   ],
-  threads: [
+  chats: [
     {
       id: "discussion",
-      channelId: "work",
+      topicId: "work",
       title: "Draft review",
       context:
         "Alex and a colleague are discussing a draft. No deadline has been agreed.",
@@ -51,10 +51,10 @@ const due: AssessmentInput = {
   trigger: "time",
   newEvidenceIds: [],
   evidence: [period],
-  threads: [
+  chats: [
     {
       id: "discussion",
-      channelId: "work",
+      topicId: "work",
       title: "Repair claim",
       context:
         "Alex is waiting for a substantive repair plan. No response has arrived.",
@@ -63,7 +63,7 @@ const due: AssessmentInput = {
   checks: [
     {
       id: "period-check",
-      threadId: "discussion",
+      chatId: "discussion",
       text: "Substantive response to repair claim",
       sourceIds: [period.id],
       checkAt: now,
@@ -145,7 +145,7 @@ export const notificationCases: {
     expectedNotification: true,
     input: {
       ...base,
-      threads: [],
+      chats: [],
       evidence: [
         {
           ...request,
@@ -162,10 +162,10 @@ export const notificationCases: {
     expectedNotification: true,
     input: {
       ...base,
-      threads: [
+      chats: [
         {
           id: "discussion",
-          channelId: "work",
+          topicId: "work",
           title: "Permit application",
           context:
             "Alex is waiting for the permit decision and asked Golem to report it.",
@@ -202,10 +202,10 @@ export const notificationCases: {
           text: "Only some window handles have been replaced; we are waiting for the rest to be made. The other defects still have no written answer. Please send our request for a written response.",
         },
       ],
-      threads: [
+      chats: [
         {
           id: "discussion",
-          channelId: "work",
+          topicId: "work",
           title: "Repair claim",
           context:
             "Latest messages first: Golem: I sent the approved follow-up email. The remaining defects have no written answer. The first notice and delivery dates are not established.",
@@ -251,10 +251,10 @@ export const notificationCases: {
                 ]
               : []),
           ],
-          threads: [
+          chats: [
             {
               id: "discussion",
-              channelId: "calendar",
+              topicId: "calendar",
               title: "Conference today",
               context:
                 "Golem prepared the ticket, programme, and arrival details silently.",
@@ -262,7 +262,7 @@ export const notificationCases: {
           ],
           coverage: [{ source: "Gmail", through: now, error: null }],
           pendingNotice:
-            "Your conference is confirmed for 12:00 today in building Q. Registration opens at 11:30. The ticket and programme are ready in this thread.",
+            "Your conference is confirmed for 12:00 today in building Q. Registration opens at 11:30. The ticket and programme are ready in this chat.",
           pendingNotifications: [
             {
               kind: "time_sensitive",

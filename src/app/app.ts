@@ -5,6 +5,7 @@ import { AppSignIns, ProfilePictures } from "../accounts/accounts.ts";
 import { Agenda } from "../agenda/agenda.ts";
 import { Artifacts } from "../artifacts/artifacts.ts";
 import { Browser, browserRequirements } from "../browser/browser.ts";
+import { Chats } from "../chats/chats.ts";
 import { FeedbackReports } from "../feedback/feedback.ts";
 import { Hands, handsRequirements } from "../hands/hands.ts";
 import { Intake } from "../intake/intake.ts";
@@ -26,7 +27,6 @@ import { Routines } from "../routines/routines.ts";
 import type { Embedder } from "../search/embedder.ts";
 import { extractRequirements, jpeg, readText } from "../search/extract.ts";
 import { Indexer, RecentSearches } from "../search/search.ts";
-import { Threads } from "../threads/threads.ts";
 import { Workspaces } from "../workspaces/workspaces.ts";
 
 export interface App {
@@ -37,7 +37,7 @@ export interface App {
   readonly pictures: ProfilePictures;
   readonly llm: Llm;
   readonly hands: Hands;
-  readonly threads: Threads;
+  readonly chats: Chats;
   readonly workspaces: Workspaces;
   readonly integrations: Integrations;
   readonly artifacts: Artifacts;
@@ -95,7 +95,7 @@ export async function createApp(
     config.allowedEmails[0] ?? null,
     (spend, data) =>
       audit.record(
-        `model:${spend?.source ?? "background"}:${spend?.threadId ?? ""}`,
+        `model:${spend?.source ?? "background"}:${spend?.chatId ?? ""}`,
         "model.call",
         spend?.workspaceId ?? "",
         spend?.userId ?? "",
@@ -104,7 +104,7 @@ export async function createApp(
   );
   // New connector tools reach the agents' next runs.
   const reloadTools = (workspaceId: string) => {
-    threads
+    chats
       .reloadTools(workspaceId)
       .catch((error: unknown) =>
         console.error("reloading the tools failed", error)
@@ -122,7 +122,7 @@ export async function createApp(
     baseUrl: config.baseUrl,
     binaryDirectory: HANDS_BINARIES,
   });
-  // The change hooks point at the indexer, which reads the threads and the artifacts.
+  // The change hooks point at the indexer, which reads the chats and the artifacts.
   const artifacts = new Artifacts(database, workspaces, config, (workspaceId) =>
     indexer.touch(workspaceId)
   );
@@ -143,8 +143,8 @@ export async function createApp(
     apns?.activityPush ?? null
   );
   // The recall port points at the indexer too; files read as search reads them.
-  // The routine tools come from routines, which runs its work in threads.
-  const threads: Threads = new Threads(
+  // The routine tools come from routines, which runs its work in chats.
+  const chats: Chats = new Chats(
     config.dataDirectory,
     llm,
     workspaces,
@@ -159,20 +159,20 @@ export async function createApp(
       recall: (workspaceId, query, limit, personId) =>
         indexer.search(workspaceId, query, limit, personId),
       changed: (workspaceId) => indexer.touch(workspaceId),
-      observedContext: (workspaceId, threadId, ownerId, claim) =>
-        intake.contextFor(workspaceId, threadId, ownerId, claim),
-      answered: (workspaceId, threadId, personId) =>
-        intake.finishClaims(workspaceId, threadId, personId),
-      sourceRead: (thread, ownerId, read) =>
-        intake.recordSourceRead(thread, ownerId, read),
-      moved: (threadId, channelId) => {
-        routines.moveWithThread(threadId, channelId);
-        agenda.moveWithThread(threadId, channelId);
+      observedContext: (workspaceId, chatId, ownerId, claim) =>
+        intake.contextFor(workspaceId, chatId, ownerId, claim),
+      answered: (workspaceId, chatId, personId) =>
+        intake.finishClaims(workspaceId, chatId, personId),
+      sourceRead: (chat, ownerId, read) =>
+        intake.recordSourceRead(chat, ownerId, read),
+      moved: (chatId, topicId) => {
+        routines.moveWithChat(chatId, topicId);
+        agenda.moveWithChat(chatId, topicId);
       },
       merged: (from, to) => {
-        routines.moveChannel(from, to);
-        agenda.moveChannel(from, to);
-        intake.moveChannel(from, to);
+        routines.moveTopic(from, to);
+        agenda.moveTopic(from, to);
+        intake.moveTopic(from, to);
       },
       tools: async (workspaceId) => [
         ...(await routines.tools(workspaceId)),
@@ -183,8 +183,8 @@ export async function createApp(
       ],
       automations: (workspaceId, personId) =>
         agenda.automations(workspaceId, personId),
-      suggest: (workspaceId, threadId, channelId, suggestion) =>
-        agenda.offer(workspaceId, threadId, channelId, suggestion),
+      suggest: (workspaceId, chatId, topicId, suggestion) =>
+        agenda.offer(workspaceId, chatId, topicId, suggestion),
       read: readText,
       picture: jpeg,
     }
@@ -192,7 +192,7 @@ export async function createApp(
   const indexer = new Indexer(
     config.dataDirectory,
     workspaces,
-    threads,
+    chats,
     artifacts,
     embedder
   );
@@ -201,15 +201,15 @@ export async function createApp(
     database,
     workspaces,
     integrations,
-    threads,
+    chats,
     indexer,
     places
   );
-  const reminders = new Reminders(database, workspaces, threads, places);
+  const reminders = new Reminders(database, workspaces, chats, places);
   const agenda = new Agenda(
     database,
     workspaces,
-    threads,
+    chats,
     routines,
     reminders,
     places
@@ -218,17 +218,17 @@ export async function createApp(
     database,
     workspaces,
     integrations,
-    threads,
+    chats,
     indexer,
     llm,
     audit,
     notifications
   );
-  const phone = new Phone(threads);
+  const phone = new Phone(chats);
   const feedback = new FeedbackReports(
     database,
     workspaces,
-    threads,
+    chats,
     config.allowedEmails[0] ?? null
   );
   return {
@@ -239,7 +239,7 @@ export async function createApp(
     pictures,
     llm,
     hands,
-    threads,
+    chats,
     workspaces,
     integrations,
     artifacts,
@@ -261,7 +261,7 @@ export async function closeApp(app: App): Promise<void> {
   app.reminders.close();
   app.routines.close();
   await app.indexer.close();
-  await app.threads.closeAll();
+  await app.chats.closeAll();
   await app.integrations.close();
   await app.hands.close();
   app.intake.audit.close();

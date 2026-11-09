@@ -2,9 +2,9 @@ import type { Database } from "bun:sqlite";
 import { type FSWatcher, mkdirSync, statSync, watch } from "node:fs";
 import { basename, join } from "node:path";
 import type { Artifacts } from "../artifacts/artifacts.ts";
+import type { Chats } from "../chats/chats.ts";
 import { HttpError } from "../platform/errors.ts";
 import { htmlText } from "../platform/html.ts";
-import type { Threads } from "../threads/threads.ts";
 import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { documentPrompt, type Embedder, queryPrompt } from "./embedder.ts";
 import {
@@ -21,7 +21,7 @@ import {
   WorkspaceIndex,
 } from "./workspace-index.ts";
 
-/** Folders of a workspace that are indexed, and what their files are. Channel files are found per channel. */
+/** Folders of a workspace that are indexed, and what their files are. Topic files are found per topic. */
 const FOLDERS: readonly { folder: string; kind: SearchKind }[] = [
   { folder: "notes", kind: "note" },
   { folder: "files", kind: "file" },
@@ -75,16 +75,16 @@ export class RecentSearches {
 }
 
 /**
- * Keeps each workspace's index in step with its threads and folders, and embeds in the background.
+ * Keeps each workspace's index in step with its chats and folders, and embeds in the background.
  * Every index belongs to one workspace and reads only that workspace's folder; searches never cross workspaces.
  */
-/** What the indexer reads from the directory in `golem.sqlite`: every workspace, and the channels and threads in one. */
+/** What the indexer reads from the directory in `golem.sqlite`: every workspace, and the topics and chats in one. */
 export type WorkspaceDirectory = Pick<
   Workspaces,
-  "ids" | "allChannelsIn" | "allThreadsIn" | "channelsIn" | "threadsIn"
+  "ids" | "allTopicsIn" | "allChatsIn" | "topicsIn" | "chatsIn"
 >;
-/** The indexer reads thread messages; it never writes to a thread. */
-export type ThreadReader = Pick<Threads, "messages" | "version">;
+/** The indexer reads chat messages; it never writes to a chat. */
+export type ChatReader = Pick<Chats, "messages" | "version">;
 /** The indexer reads the live artifacts and their HTML. */
 export type ArtifactReader = Pick<
   Artifacts,
@@ -102,7 +102,7 @@ export class Indexer {
   constructor(
     private readonly dataDirectory: string,
     private readonly directory: WorkspaceDirectory,
-    private readonly threads: ThreadReader,
+    private readonly chats: ChatReader,
     private readonly artifacts: ArtifactReader,
     private readonly embedder: Embedder | null
   ) {}
@@ -159,9 +159,9 @@ export class Indexer {
   }
 
   /**
-   * Searches one workspace for what `realm` sees: the channels every member sees, and the person's own thread with
-   * Golem and private channels; no other person's. The caller has checked that the person is a member. Results of a
-   * deleted channel or artifact stay out at once, before the next scan takes them from the index.
+   * Searches one workspace for what `realm` sees: the topics every member sees, and the person's own chat with
+   * Golem and private topics; no other person's. The caller has checked that the person is a member. Results of a
+   * deleted topic or artifact stay out at once, before the next scan takes them from the index.
    */
   async search(
     workspaceId: string,
@@ -178,14 +178,14 @@ export class Indexer {
           await this.embedder.embed([queryPrompt(query)]).catch(() => [null])
         )[0] ?? null;
     }
-    const channels = new Set(
-      this.directory.channelsIn(workspaceId, realm).map((channel) => channel.id)
+    const topics = new Set(
+      this.directory.topicsIn(workspaceId, realm).map((topic) => topic.id)
     );
-    // Threads as the person sees them now: a thread that moved leaves search at once, before the next scan.
-    const threads = new Set(
+    // Chats as the person sees them now: a chat that moved leaves search at once, before the next scan.
+    const chats = new Set(
       this.directory
-        .threadsIn(workspaceId, realm)
-        .map((thread) => `thread:${thread.id}`)
+        .chatsIn(workspaceId, realm)
+        .map((chat) => `chat:${chat.id}`)
     );
     const artifacts = new Set(
       this.artifacts
@@ -199,9 +199,9 @@ export class Indexer {
         limit,
         (source) =>
           (kind === undefined || source.kind === kind) &&
-          (source.channelId === null || channels.has(source.channelId)) &&
+          (source.topicId === null || topics.has(source.topicId)) &&
           (source.kind !== "artifact" || artifacts.has(source.uri)) &&
-          (source.kind !== "thread" || threads.has(source.uri))
+          (source.kind !== "chat" || chats.has(source.uri))
       ),
       semantic: vector !== null,
     };
@@ -235,7 +235,7 @@ export class Indexer {
   private watchFolders(workspaceId: string): void {
     for (const folder of [
       ...FOLDERS.map((indexed) => indexed.folder),
-      "channels",
+      "topics",
     ]) {
       const directory = join(this.workspaceDirectory(workspaceId), folder);
       mkdirSync(directory, { recursive: true });
@@ -253,29 +253,29 @@ export class Indexer {
     const index = this.index(workspaceId);
     const root = this.workspaceDirectory(workspaceId);
     const seen = new Set<string>();
-    for (const thread of this.directory.allThreadsIn(workspaceId)) {
-      const uri = `thread:${thread.id}`;
+    for (const chat of this.directory.allChatsIn(workspaceId)) {
+      const uri = `chat:${chat.id}`;
       seen.add(uri);
       await index.sync(
         {
           uri,
-          kind: "thread",
-          title: thread.title,
-          threadId: thread.id,
-          channelId: thread.channelId,
-          // A new name or channel also indexes the thread again; unchanged messages keep their vectors.
-          version: `${await this.threads.version(thread)}:${thread.title}:${thread.channelId}:tools`,
-          updatedAt: thread.updatedAt,
+          kind: "chat",
+          title: chat.title,
+          chatId: chat.id,
+          topicId: chat.topicId,
+          // A new name or topic also indexes the chat again; unchanged messages keep their vectors.
+          version: `${await this.chats.version(chat)}:${chat.title}:${chat.topicId}:tools`,
+          updatedAt: chat.updatedAt,
         },
         async () => {
-          const { messages } = await this.threads.messages(thread);
+          const { messages } = await this.chats.messages(chat);
           const segments = messages
             .filter((message) => !(message.streaming || message.failed))
             .flatMap((message) => [
               ...chunk(`${message.author}: ${cardWords(message.text)}`).map(
                 (text, part) => ({ key: `${message.id}:${part}`, text })
               ),
-              // A tool call's arguments find a thread by whom it wrote to, and what it saved or looked up.
+              // A tool call's arguments find a chat by whom it wrote to, and what it saved or looked up.
               ...(message.work?.steps ?? []).flatMap((step, stepIndex) =>
                 step.kind === "tool" && step.input
                   ? chunk(`${step.tool}: ${step.input}`).map((text, part) => ({
@@ -297,9 +297,9 @@ export class Indexer {
           uri,
           kind: "artifact",
           title: artifact.title,
-          threadId: artifact.threadId,
-          channelId: artifact.channelId ?? undefined,
-          version: `${artifact.updatedAt}:${artifact.channelId}`,
+          chatId: artifact.chatId,
+          topicId: artifact.topicId ?? undefined,
+          version: `${artifact.updatedAt}:${artifact.topicId}`,
           updatedAt: artifact.updatedAt,
         },
         async () => ({
@@ -309,14 +309,14 @@ export class Indexer {
         })
       );
     }
-    for (const channel of this.directory.allChannelsIn(workspaceId)) {
+    for (const topic of this.directory.allTopicsIn(workspaceId)) {
       await this.syncFolder(
         index,
         seen,
         root,
-        join("channels", channel.id, "files"),
+        join("topics", topic.id, "files"),
         "file",
-        channel.id
+        topic.id
       );
     }
     for (const { folder, kind } of FOLDERS) {
@@ -332,7 +332,7 @@ export class Indexer {
     root: string,
     folder: string,
     kind: SearchKind,
-    channelId?: string
+    topicId?: string
   ): Promise<void> {
     const directory = join(root, folder);
     let paths: string[];
@@ -359,7 +359,7 @@ export class Indexer {
       const uri = `${folder}/${relative}`;
       const version = `${stats.mtimeMs}:${stats.size}`;
       seen.add(uri);
-      // Channel files start with their UUIDv7, which is no part of their name.
+      // Topic files start with their UUIDv7, which is no part of their name.
       const title = basename(relative)
         .replace(
           /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}-/,
@@ -371,7 +371,7 @@ export class Indexer {
           uri,
           kind,
           title,
-          channelId,
+          topicId,
           version,
           updatedAt: Math.round(stats.mtimeMs),
         },

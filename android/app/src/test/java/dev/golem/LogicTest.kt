@@ -39,10 +39,10 @@ class LogicTest {
     }
 
     @Test
-    fun threadLinksShowTheirTitleAndWhetherTheyWork() {
-        val text = "See [Trip](thread:abc-1) and [Home](thread:def)."
+    fun chatLinksShowTheirTitleAndWhetherTheyWork() {
+        val text = "See [Trip](chat:abc-1) and [Home](chat:def)."
         assertEquals("See Trip and Home.", linkedText(text))
-        assertEquals("See [Trip](thread:abc-1) *· working* and [Home](thread:def).", withWorkingNotes(text, setOf("abc-1")))
+        assertEquals("See [Trip](chat:abc-1) *· working* and [Home](chat:def).", withWorkingNotes(text, setOf("abc-1")))
         assertEquals(text, withWorkingNotes(text, emptySet()))
     }
 

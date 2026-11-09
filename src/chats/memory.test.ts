@@ -8,10 +8,10 @@ import { Memory, type Said, type Summarizer } from "./memory.ts";
 const directory = await mkdtemp(join(tmpdir(), "golem-memory-"));
 afterAll(() => rm(directory, { recursive: true, force: true }));
 
-/** A message of the orchestrator thread: from Alice, or an answer of the agent. */
+/** A message of the orchestrator chat: from Alice, or an answer of the agent. */
 function message(id: number, role: "user" | "assistant", text: string): Said {
   return {
-    threadId: "orchestrator",
+    chatId: "orchestrator",
     messageId: id,
     text: role === "user" ? `Alice: ${text}` : `Golem: ${text}`,
   };
@@ -31,10 +31,10 @@ async function memoryOf(
   const path = join(directory, `${name}.sqlite`);
   const memory = new Memory(
     path,
-    async (threadId, messageId) => {
+    async (chatId, messageId) => {
       const found = said.find(
         (candidate) =>
-          candidate.threadId === threadId && candidate.messageId === messageId
+          candidate.chatId === chatId && candidate.messageId === messageId
       );
       return (
         found && {
@@ -98,11 +98,11 @@ test("a message that fits is its own line, and lines that fit together join with
   memory.close();
 });
 
-test("the messages of all threads come in the order they came, and each thread adds only what is after its last line", async () => {
+test("the messages of all chats come in the order they came, and each chat adds only what is after its last line", async () => {
   const dinner = (id: number, text: string): Said => ({
-    threadId: "dinner",
+    chatId: "dinner",
     messageId: id,
-    text: `[Dinner](thread:dinner) Bob: ${text}`,
+    text: `[Dinner](chat:dinner) Bob: ${text}`,
   });
   const said = [
     message(3, "user", "Hello"),
@@ -119,11 +119,11 @@ test("the messages of all threads come in the order they came, and each thread a
 
   expect(memory.view(memory.count())).toEndWith(
     [
-      "0+1|[Dinner](thread:dinner) Bob: Pasta?",
-      "1+1|[Dinner](thread:dinner) Bob: Yes",
+      "0+1|[Dinner](chat:dinner) Bob: Pasta?",
+      "1+1|[Dinner](chat:dinner) Bob: Yes",
       "2+1|Alice: Hello",
       "3+1|Alice: Thanks",
-      "4+1|[Dinner](thread:dinner) Bob: With salad",
+      "4+1|[Dinner](chat:dinner) Bob: With salad",
     ].join("\n")
   );
   memory.close();

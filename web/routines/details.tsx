@@ -6,8 +6,8 @@ import { request } from "../app/api.ts";
 import { keyed } from "../app/collections.ts";
 import { queryClient } from "../app/query.ts";
 import type { Routine, RoutineOutcome, RoutineRun } from "../app/types.ts";
-import { briefQuery } from "../threads/data.ts";
-import { AgentText } from "../threads/message.tsx";
+import { briefQuery } from "../chats/data.ts";
+import { AgentText } from "../chats/message.tsx";
 import {
   Badge,
   Button,
@@ -21,7 +21,7 @@ import {
 import { placeWords, weekdayTime } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { showError, showToast } from "../ui/toast.tsx";
-import { channelsOf } from "../workspaces/data.ts";
+import { topicsOf } from "../workspaces/data.ts";
 
 const OUTCOMES: Record<
   RoutineOutcome,
@@ -44,14 +44,14 @@ function routinesKey(key: string) {
 }
 
 function routinesRequest(key: string, signal?: AbortSignal) {
-  const [workspaceId, channelId] = key.split("/");
+  const [workspaceId, topicId] = key.split("/");
   return request<RoutineList>(
-    `/workspaces/${workspaceId}/channels/${channelId}/routines`,
+    `/workspaces/${workspaceId}/topics/${topicId}/routines`,
     { signal }
   );
 }
 
-/** The routines of a channel, `<workspace id>/<channel id>`. Pausing or deleting one shows at once. */
+/** The routines of a topic, `<workspace id>/<topic id>`. Pausing or deleting one shows at once. */
 const routinesOf = keyed((key: string) =>
   createCollection(
     queryCollectionOptions({
@@ -78,24 +78,24 @@ const routinesOf = keyed((key: string) =>
   )
 );
 
-const route = getRouteApi("/signed-in/w/$workspaceId/c/$channelId");
+const route = getRouteApi("/signed-in/w/$workspaceId/topic/$topicId");
 
 /**
- * A channel's name, its summary, its routines, their newest runs, and its brief, which can be long, under its threads. People
- * create routines by asking an agent; the model writes the summary and the brief from the channel's threads.
+ * A topic's name, its summary, its routines, their newest runs, and its brief, which can be long, under its chats. People
+ * create routines by asking an agent; the model writes the summary and the brief from the topic's chats.
  */
-export function ChannelDetails() {
-  const { workspaceId, channelId } = route.useParams();
-  const key = `${workspaceId}/${channelId}`;
+export function TopicDetails() {
+  const { workspaceId, topicId } = route.useParams();
+  const key = `${workspaceId}/${topicId}`;
   const navigate = useNavigate();
-  const { data: channel } = useLiveQuery({
+  const { data: topic } = useLiveQuery({
     query: (q) =>
       q
-        .from({ channel: channelsOf(workspaceId) })
-        .where(({ channel: row }) => eq(row.id, channelId))
+        .from({ topic: topicsOf(workspaceId) })
+        .where(({ topic: row }) => eq(row.id, topicId))
         .findOne(),
   });
-  const brief = useQuery(briefQuery(workspaceId, channelId)).data?.brief;
+  const brief = useQuery(briefQuery(workspaceId, topicId)).data?.brief;
   const routines = routinesOf(key);
   const { data: rows = [] } = useLiveQuery({
     query: (q) => q.from({ routine: routines }),
@@ -118,8 +118,8 @@ export function ChannelDetails() {
   };
   return (
     <>
-      {channel ? (
-        <PageSection title="Channel">
+      {topic ? (
+        <PageSection title="Topic">
           <SettingsCard>
             <form
               onSubmit={(event) => {
@@ -127,11 +127,11 @@ export function ChannelDetails() {
                 const name = String(
                   new FormData(event.currentTarget).get("name")
                 ).trim();
-                if (name === channel.name) {
+                if (name === topic.name) {
                   return;
                 }
-                channelsOf(workspaceId)
-                  .update(channelId, (draft) => {
+                topicsOf(workspaceId)
+                  .update(topicId, (draft) => {
                     draft.name = name;
                   })
                   .isPersisted.promise.then(() => showToast("success", "Saved"))
@@ -142,8 +142,8 @@ export function ChannelDetails() {
                 <input
                   aria-label="Name"
                   className="input"
-                  defaultValue={channel.name}
-                  key={channel.name}
+                  defaultValue={topic.name}
+                  key={topic.name}
                   name="name"
                   required
                 />
@@ -153,9 +153,9 @@ export function ChannelDetails() {
           </SettingsCard>
         </PageSection>
       ) : null}
-      {channel?.summary ? (
+      {topic?.summary ? (
         <PageSection title="Summary">
-          <p className="page-text">{channel.summary}</p>
+          <p className="page-text">{topic.summary}</p>
         </PageSection>
       ) : null}
       <PageSection title="Routines">
@@ -181,18 +181,18 @@ export function ChannelDetails() {
                 />
                 <Menu
                   entries={[
-                    ...(routine.threadId
+                    ...(routine.chatId
                       ? [
                           {
                             kind: "action" as const,
-                            label: "Open thread",
+                            label: "Open chat",
                             icon: "compose" as const,
                             onSelect: () =>
                               navigate({
-                                to: "/w/$workspaceId/t/$threadId",
+                                to: "/w/$workspaceId/chat/$chatId",
                                 params: {
                                   workspaceId,
-                                  threadId: routine.threadId!,
+                                  chatId: routine.chatId!,
                                 },
                               }),
                           },

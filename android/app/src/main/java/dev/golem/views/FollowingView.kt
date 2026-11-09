@@ -78,7 +78,7 @@ sealed interface Selected {
 private const val KEPT_ROWS = 15
 
 /**
- * All that Golem holds for the person from the accounts it reads: the thread updates that wait, the matters it
+ * All that Golem holds for the person from the accounts it reads: the chat updates that wait, the matters it
  * follows, its sources, what it keeps, and what it did. Each row opens its detail, where the person gives feedback.
  * It loads again every 30 seconds while it shows, as no stream sends these changes.
  */

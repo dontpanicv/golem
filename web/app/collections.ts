@@ -3,8 +3,8 @@
  * runs, so every page that shows the same rows shares them.
  *
  * @example
- * const threadsOf = keyed((workspaceId: string) => createCollection(...));
- * threadsOf(workspaceId).update(threadId, (draft) => { draft.settledAt = Date.now(); });
+ * const chatsOf = keyed((workspaceId: string) => createCollection(...));
+ * chatsOf(workspaceId).update(chatId, (draft) => { draft.settledAt = Date.now(); });
  */
 export function keyed<Value>(
   make: (key: string) => Value

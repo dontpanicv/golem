@@ -2,16 +2,16 @@ import { api, eventStream } from "../app/api.ts";
 import { fileResponse, json, type Route } from "../app/http.ts";
 import { HttpError } from "../platform/errors.ts";
 
-/** Threads, and the files of channels and of the workspace, for the iOS app. Messages and files post as JSON, or as a multipart form with files. */
-export const threadApiRoutes: readonly Route[] = [
+/** Chats, and the files of topics and of the workspace, for the iOS app. Messages and files post as JSON, or as a multipart form with files. */
+export const chatApiRoutes: readonly Route[] = [
   [
     "GET",
-    "/api/v1/workspaces/:workspace/threads",
+    "/api/v1/workspaces/:workspace/chats",
     api(async ({ app, user, params, request }) => {
       const query = new URL(request.url).searchParams;
       return json({
-        threads: app.threads.list(params.workspace!, user, {
-          channel: query.get("channel") ?? undefined,
+        chats: app.chats.list(params.workspace!, user, {
+          topic: query.get("topic") ?? undefined,
           since: query.get("since") ?? undefined,
           before: query.get("before") ?? undefined,
           order: (query.get("order") ?? undefined) as
@@ -24,13 +24,13 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/threads",
+    "/api/v1/workspaces/:workspace/chats",
     api(async ({ app, user, params, body, files }) =>
       json(
-        await app.threads.create(
+        await app.chats.create(
           params.workspace!,
           user,
-          body.channelId as string,
+          body.topicId as string,
           body.text as string | undefined,
           files
         )
@@ -41,31 +41,31 @@ export const threadApiRoutes: readonly Route[] = [
     "GET",
     "/api/v1/workspaces/:workspace/orchestrator",
     api(async ({ app, user, params }) =>
-      json(summary(await app.threads.orchestrator(params.workspace!, user)))
+      json(summary(await app.chats.orchestrator(params.workspace!, user)))
     ),
   ],
   [
     "GET",
-    "/api/v1/threads/:thread",
+    "/api/v1/chats/:chat",
     api(async ({ app, user, params }) => {
-      const thread = app.workspaces.thread(params.thread!, user);
+      const chat = app.workspaces.chat(params.chat!, user);
       return json({
-        thread: summary(thread),
-        ...(await app.threads.messages(thread)),
+        chat: summary(chat),
+        ...(await app.chats.messages(chat)),
       });
     }),
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/threads/:thread/settled",
+    "/api/v1/workspaces/:workspace/chats/:chat/settled",
     api(async ({ app, user, params, body }) => {
       if (typeof body.settled !== "boolean") {
         throw new HttpError(400, "Settled must be true or false");
       }
       return json(
-        app.workspaces.setThreadSettled(
+        app.workspaces.setChatSettled(
           params.workspace!,
-          params.thread!,
+          params.chat!,
           user,
           body.settled
         )
@@ -74,18 +74,18 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/threads/:thread/channel",
+    "/api/v1/workspaces/:workspace/chats/:chat/topic",
     api(async ({ app, user, params, body }) => {
-      if (typeof body.channelId !== "string") {
-        throw new HttpError(400, "Choose a channel");
+      if (typeof body.topicId !== "string") {
+        throw new HttpError(400, "Choose a topic");
       }
       return json(
         summary(
-          await app.threads.move(
+          await app.chats.move(
             params.workspace!,
             user,
-            params.thread!,
-            body.channelId
+            params.chat!,
+            body.topicId
           )
         )
       );
@@ -93,28 +93,28 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "GET",
-    "/api/v1/threads/:thread/events",
+    "/api/v1/chats/:chat/events",
     api(async ({ app, user, params }) => {
-      const thread = app.workspaces.thread(params.thread!, user);
+      const chat = app.workspaces.chat(params.chat!, user);
       return eventStream(
         async (send) => {
-          const stop = await app.threads.watch(thread, (state) => {
-            // The thread as it is now, such as in the channel it moved to; nothing once the person no longer sees it.
+          const stop = await app.chats.watch(chat, (state) => {
+            // The chat as it is now, such as in the topic it moved to; nothing once the person no longer sees it.
             const current = app.workspaces
-              .threadsIn(thread.workspaceId, user.id)
-              .find((candidate) => candidate.id === thread.id);
+              .chatsIn(chat.workspaceId, user.id)
+              .find((candidate) => candidate.id === chat.id);
             if (current) {
-              send("thread", { thread: summary(current), ...state });
+              send("chat", { chat: summary(current), ...state });
             }
           });
-          // While a screen follows the thread, its person sees what happens there and gets no notification for it.
-          const unwatch = app.notifications.watch(user, thread.id);
+          // While a screen follows the chat, its person sees what happens there and gets no notification for it.
+          const unwatch = app.notifications.watch(user, chat.id);
           return async () => {
             unwatch();
             await stop();
           };
         },
-        () => app.workspaces.thread(params.thread!, user)
+        () => app.workspaces.chat(params.chat!, user)
       );
     }),
   ],
@@ -126,8 +126,8 @@ export const threadApiRoutes: readonly Route[] = [
       app.workspaces.requireMember(params.workspace!, user);
       return eventStream(
         (send) =>
-          app.threads.watchWorking(params.workspace!, user, (threadIds) =>
-            send("working", { threadIds })
+          app.chats.watchWorking(params.workspace!, user, (chatIds) =>
+            send("working", { chatIds })
           ),
         () => app.workspaces.requireMember(params.workspace!, user)
       );
@@ -135,15 +135,15 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
-    "/api/v1/threads/:thread/stop",
+    "/api/v1/chats/:chat/stop",
     api(async ({ app, user, params }) => {
-      await app.threads.stop(params.thread!, user);
+      await app.chats.stop(params.chat!, user);
       return new Response(null, { status: 204 });
     }),
   ],
   [
     "POST",
-    "/api/v1/threads/:thread/approvals/:approval",
+    "/api/v1/chats/:chat/approvals/:approval",
     api(async ({ app, user, params, body }) => {
       if (
         typeof body.allow !== "boolean" ||
@@ -154,8 +154,8 @@ export const threadApiRoutes: readonly Route[] = [
           'Allow must be true or false, and scope "once" or "turn"'
         );
       }
-      app.threads.answerApproval(
-        params.thread!,
+      app.chats.answerApproval(
+        params.chat!,
         params.approval!,
         user,
         body.allow,
@@ -166,10 +166,10 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
-    "/api/v1/threads/:thread/messages",
+    "/api/v1/chats/:chat/messages",
     api(async ({ app, user, params, body, files }) => {
-      await app.threads.send(
-        params.thread!,
+      await app.chats.send(
+        params.chat!,
         user,
         body.text as string | undefined,
         files,
@@ -181,52 +181,43 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "GET",
-    "/api/v1/workspaces/:workspace/channels/:channel/files",
+    "/api/v1/workspaces/:workspace/topics/:topic/files",
     api(async ({ app, user, params }) =>
       json({
-        files: await app.threads.files(
-          app.threads.place(params.workspace!, params.channel!, user)
+        files: await app.chats.files(
+          app.chats.place(params.workspace!, params.topic!, user)
         ),
       })
     ),
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/channels/:channel/merge",
+    "/api/v1/workspaces/:workspace/topics/:topic/merge",
     api(async ({ app, user, params, body }) => {
       if (typeof body.into !== "string") {
-        throw new HttpError(400, "Choose a channel");
+        throw new HttpError(400, "Choose a topic");
       }
-      await app.threads.merge(
-        params.workspace!,
-        user,
-        params.channel!,
-        body.into
-      );
+      await app.chats.merge(params.workspace!, user, params.topic!, body.into);
       return new Response(null, { status: 204 });
     }),
   ],
   [
     "GET",
-    "/api/v1/workspaces/:workspace/channels/:channel/brief",
+    "/api/v1/workspaces/:workspace/topics/:topic/brief",
     api(async ({ app, user, params }) =>
       json({
-        brief: await app.threads.brief(
-          params.workspace!,
-          params.channel!,
-          user
-        ),
+        brief: await app.chats.brief(params.workspace!, params.topic!, user),
       })
     ),
   ],
   [
     "POST",
-    "/api/v1/workspaces/:workspace/channels/:channel/files",
+    "/api/v1/workspaces/:workspace/topics/:topic/files",
     api(async ({ app, user, params, files }) =>
       json({
-        files: await app.threads.upload(
+        files: await app.chats.upload(
           params.workspace!,
-          params.channel!,
+          params.topic!,
           user,
           files
         ),
@@ -238,8 +229,8 @@ export const threadApiRoutes: readonly Route[] = [
     "/api/v1/workspaces/:workspace/files",
     api(async ({ app, user, params }) =>
       json({
-        files: await app.threads.files(
-          app.threads.place(params.workspace!, null, user)
+        files: await app.chats.files(
+          app.chats.place(params.workspace!, null, user)
         ),
       })
     ),
@@ -249,7 +240,7 @@ export const threadApiRoutes: readonly Route[] = [
     "/api/v1/workspaces/:workspace/files",
     api(async ({ app, user, params, files }) =>
       json({
-        files: await app.threads.upload(params.workspace!, null, user, files),
+        files: await app.chats.upload(params.workspace!, null, user, files),
       })
     ),
   ],
@@ -257,7 +248,7 @@ export const threadApiRoutes: readonly Route[] = [
     "GET",
     "/api/v1/workspaces/:workspace/files/:file",
     api(async ({ app, user, params }) => {
-      const { path, name } = await app.threads.file(
+      const { path, name } = await app.chats.file(
         params.workspace!,
         user,
         params.file!
@@ -269,7 +260,7 @@ export const threadApiRoutes: readonly Route[] = [
     "GET",
     "/api/v1/workspaces/:workspace/files/:file/picture",
     api(async ({ app, user, params }) => {
-      const jpeg = await app.threads.picture(
+      const jpeg = await app.chats.picture(
         params.workspace!,
         user,
         params.file!
@@ -290,7 +281,7 @@ export const threadApiRoutes: readonly Route[] = [
     "DELETE",
     "/api/v1/workspaces/:workspace/files/:file",
     api(async ({ app, user, params }) => {
-      const { files } = await app.threads.deleteFile(
+      const { files } = await app.chats.deleteFile(
         params.workspace!,
         user,
         params.file!
@@ -300,10 +291,10 @@ export const threadApiRoutes: readonly Route[] = [
   ],
   [
     "POST",
-    "/api/v1/threads/:thread/live-activity",
+    "/api/v1/chats/:chat/live-activity",
     api(async ({ app, user, params, body }) => {
-      app.threads.followActivity(
-        params.thread!,
+      app.chats.followActivity(
+        params.chat!,
         user,
         body.token,
         body.environment
@@ -315,7 +306,7 @@ export const threadApiRoutes: readonly Route[] = [
     "GET",
     "/api/v1/workspaces/:workspace/learned",
     api(async ({ app, user, params }) =>
-      json({ learned: app.threads.learnedFor(params.workspace!, user) })
+      json({ learned: app.chats.learnedFor(params.workspace!, user) })
     ),
   ],
   [
@@ -323,7 +314,7 @@ export const threadApiRoutes: readonly Route[] = [
     "/api/v1/workspaces/:workspace/learned/:id",
     api(async ({ app, user, params, body }) =>
       json(
-        app.threads.changeLearned(
+        app.chats.changeLearned(
           params.workspace!,
           user,
           Number(params.id),
@@ -336,24 +327,24 @@ export const threadApiRoutes: readonly Route[] = [
     "DELETE",
     "/api/v1/workspaces/:workspace/learned/:id",
     api(async ({ app, user, params }) => {
-      app.threads.removeLearned(params.workspace!, user, Number(params.id));
+      app.chats.removeLearned(params.workspace!, user, Number(params.id));
       return new Response(null, { status: 204 });
     }),
   ],
 ];
 
-function summary(thread: {
+function summary(chat: {
   id: string;
-  channelId: string;
+  topicId: string;
   title: string;
   updatedAt: number;
   settledAt: number | null;
 }) {
   return {
-    id: thread.id,
-    channelId: thread.channelId,
-    title: thread.title,
-    updatedAt: thread.updatedAt,
-    settledAt: thread.settledAt,
+    id: chat.id,
+    topicId: chat.topicId,
+    title: chat.title,
+    updatedAt: chat.updatedAt,
+    settledAt: chat.settledAt,
   };
 }

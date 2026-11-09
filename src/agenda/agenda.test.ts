@@ -38,18 +38,18 @@ function tomorrow(): string {
 
 test("Golem keeps few suggestions per person, drops ones that cannot run, and never asks again what a person declined", async () => {
   const home = await golem.app.workspaces.create(alice, "Agenda");
-  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const [general] = golem.app.workspaces.topics(home.id, alice);
   const offer = (name: string, schedule = "0 7 * * *") =>
-    golem.app.agenda.offer(home.id, "thread", general!.id, {
+    golem.app.agenda.offer(home.id, "chat", general!.id, {
       kind: "routine",
       personId: alice.id,
       name,
       schedule,
       instructions: "Do it",
-      channel: null,
+      topic: null,
     });
   offer("Broken", "not cron");
-  golem.app.agenda.offer(home.id, "thread", general!.id, {
+  golem.app.agenda.offer(home.id, "chat", general!.id, {
     kind: "reminder",
     personId: alice.id,
     text: "Too late",
@@ -93,8 +93,8 @@ test("Golem keeps few suggestions per person, drops ones that cannot run, and ne
 
 test("an accepted reminder waits in the person's orchestrator, shows in Upcoming, and the person cancels it there", async () => {
   const home = await golem.app.workspaces.create(alice, "Reminders");
-  const [general] = golem.app.workspaces.channels(home.id, alice);
-  golem.app.agenda.offer(home.id, "thread", general!.id, {
+  const [general] = golem.app.workspaces.topics(home.id, alice);
+  golem.app.agenda.offer(home.id, "chat", general!.id, {
     kind: "reminder",
     personId: alice.id,
     text: "Call the dentist",
@@ -108,15 +108,15 @@ test("an accepted reminder waits in the person's orchestrator, shows in Upcoming
   const upcoming = (await (
     await golem.call(`/api/v1/workspaces/${home.id}/upcoming`, { token })
   ).json()) as {
-    reminders: { id: string; text: string; threadId: string }[];
+    reminders: { id: string; text: string; chatId: string }[];
     suggestions: unknown[];
     routines: unknown[];
     approvals: unknown[];
   };
-  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  const orchestrator = await golem.app.chats.orchestrator(home.id, alice);
   expect(upcoming.suggestions).toEqual([]);
   expect(upcoming.approvals).toEqual([]);
-  expect(upcoming.reminders.map((item) => [item.text, item.threadId])).toEqual([
+  expect(upcoming.reminders.map((item) => [item.text, item.chatId])).toEqual([
     ["Call the dentist", orchestrator.id],
   ]);
 
@@ -134,7 +134,7 @@ test("an accepted reminder waits in the person's orchestrator, shows in Upcoming
 
 test("the iPhone watches the places of its person's reminders and routines, and Golem decides what a report makes due", async () => {
   const home = await golem.app.workspaces.create(alice, "Places");
-  const [general] = golem.app.workspaces.channels(home.id, alice);
+  const [general] = golem.app.workspaces.topics(home.id, alice);
   const cottage = golem.app.places.create(home.id, alice, {
     name: "Cottage",
     latitude: 49.1,
@@ -142,7 +142,7 @@ test("the iPhone watches the places of its person's reminders and routines, and 
     radius: 300,
     shared: false,
   });
-  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  const orchestrator = await golem.app.chats.orchestrator(home.id, alice);
   const reminder = golem.app.reminders.create(
     home.id,
     alice,
@@ -234,7 +234,7 @@ test("a state at a place that the phone stopped watching does not make a new rem
     radius: 200,
     shared: false,
   });
-  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  const orchestrator = await golem.app.chats.orchestrator(home.id, alice);
   const remind = () =>
     golem.app.reminders.create(home.id, alice, orchestrator.id, alice.id, {
       id: crypto.randomUUID(),

@@ -49,24 +49,24 @@ addresses, or code and data from employers or clients.
 - Consent first: explicit routines, reminders, and external messages still need a person's request or an accepted
   suggestion. "Read for me" (`credential.watched`) is standing consent for `src/intake/` to read that account,
   retain useful context and infer future checks. A useful development adds a visible source message and files to the
-  existing subject thread, including an existing matching shared family thread; a new matter and silent filing stay in
-  the person's private channels. Golem is the
+  existing subject chat, including an existing matching shared family chat; a new matter and silent filing stay in
+  the person's private topics. Golem is the
   person's second brain, not their worker: no source starts an agent, and an agent does research, analysis, or a draft
   only when a person asks. An urgent development is posted at once. The others wait for the person's one morning
-  review in the 08:00 hour, which groups them by matter, posts one message to each thread with what it asks of the
+  review in the 08:00 hour, which groups them by matter, posts one message to each chat with what it asks of the
   person, keeps a check of each ask that the morning summary nudges every 2 days until it is handled or the person
   says it is done, rejected, or someone else's, and sends the person one summary with a notification. Another notification needs a separate supported reason and a fresh
-  source check; useful answers alone never notify. No separate worker thread is made. Code selects personally relevant Slack
+  source check; useful answers alone never notify. No separate worker chat is made. Code selects personally relevant Slack
   conversations and keeps incoming and outgoing context. Bounded batches and subject-scoped recall reach the
   configured model provider. Silent filing starts no agent turn and sends no push.
 - Every workspace read and write goes through `Workspaces.requireMember`; answer `404` to non-members.
-- Golem has one workspace, the family's; nobody makes or deletes one. A private channel (`channel.owner_id`) and all
-  of it belong to one member. Every read of channels, threads, files, artifacts, routines, reminders, search, or memory
-  names the `Realm` it serves: the person, or for an agent's turn `Threads.realm`, which is its thread's realm, or in a
-  channel every member sees the person whose message the turn answers. Only background work that acts for no person
+- Golem has one workspace, the family's; nobody makes or deletes one. A private topic (`topic.owner_id`) and all
+  of it belong to one member. Every read of topics, chats, files, artifacts, routines, reminders, search, or memory
+  names the `Realm` it serves: the person, or for an agent's turn `Chats.realm`, which is its chat's realm, or in a
+  topic every member sees the person whose message the turn answers. Only background work that acts for no person
   uses the `all…` reads.
-- An orchestrator (`ThreadRef.ownerId` set) belongs to one member: every route, tool, search, and memory that reads
-  threads leaves out the orchestrators of other people.
+- An orchestrator (`ChatRef.ownerId` set) belongs to one member: every route, tool, search, and memory that reads
+  chats leaves out the orchestrators of other people.
 - Serve HTML that an agent or a person wrote only from `/a/:id/content`, with its `sandbox` content policy; never run
   it on Golem's origin.
 
@@ -75,8 +75,8 @@ addresses, or code and data from employers or clients.
 - Data that changes keeps its rows in a TanStack DB collection (`web/<module>/data.ts`), whose `onInsert`, `onUpdate`,
   and `onDelete` call the API, so a change shows at once and rolls back if the server refuses it. Other data uses
   TanStack Query. The Query cache is saved in IndexedDB, so the app opens on what it showed last.
-- The event streams of `docs/api.md` keep open threads and the working threads current; do not poll what they send.
-- Text messages go through the outbox (`web/threads/outbox.ts`), which keeps them in localStorage and sends them with a
+- The event streams of `docs/api.md` keep open chats and the working chats current; do not poll what they send.
+- Text messages go through the outbox (`web/chats/outbox.ts`), which keeps them in localStorage and sends them with a
   `requestId` once Golem answers; a message with files needs a connection.
 - The saved cache and the outbox belong to one person (`confirmPerson` in `web/app/query.ts`): after a `401` or the
   start of a sign-in they wait; the same person gets both back, and the browser forgets both for another person.
@@ -87,7 +87,7 @@ addresses, or code and data from employers or clients.
 ## Modules
 
 - `src/` is a modular monolith. A module (`accounts`, `workspaces`, `llm`, `hands`, `integrations`, `places`, `artifacts`,
-  `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`, `intake`, `phone`, `feedback`) holds one domain: its service, routes, and tests. `src/platform/`
+  `browser`, `notifications`, `chats`, `search`, `routines`, `reminders`, `agenda`, `intake`, `phone`, `feedback`) holds one domain: its service, routes, and tests. `src/platform/`
   is shared code that knows no domain; `src/app/` composes the services and holds the route helpers.
 - A module uses only the modules before it in that list, through their `<module>.ts` file, or their `pages.ts` from
   routes. A module reads only the tables it owns. `test/architecture.test.ts` enforces these rules;
@@ -97,22 +97,22 @@ addresses, or code and data from employers or clients.
   against the server's.
 - Register new route tables in `src/app/routes.ts` and new services in `createApp` in `src/app/app.ts`.
 - A person adds machines, integration credentials, and places only in their own Settings, never in Workspace settings.
-  Like a private channel, each one belongs to one member (`machine.paired_by`, `credential.owner_id`,
+  Like a private topic, each one belongs to one member (`machine.paired_by`, `credential.owner_id`,
   `place.owner_id`) and is private to their
   turns until they set `shared`, which gives it to the turns of every member; only its owner changes or removes it. A
   tool call uses the credential of its turn's person first, else a shared one (`src/integrations/integrations.ts`). A
   person can connect several accounts of one integration; each tool takes an `account`.
 - A connector tool that acts as a person, such as one that sends mail or a message, has an `approval`: the owner of
-  its credential allows each call in the thread, and a routine's script cannot call it. An MCP server's tool cannot
+  its credential allows each call in the chat, and a routine's script cannot call it. An MCP server's tool cannot
   have one, so a connector hides such tools with `hiddenTools`.
-- The model calls only the core tools of channels, threads, files, and web search directly. Every other tool is
+- The model calls only the core tools of topics, chats, files, and web search directly. Every other tool is
   script-only (`callers: ["tools"]`) and its name starts with its codemode namespace: `NAMESPACES` in
-  `src/threads/threads.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.
+  `src/chats/chats.ts`, or `<integration>_` for a connector, whose MCP server gives its tools.
 - A prompt section of the agents renders the same text until its content changes: no times and no order by time. Pi
   Durable adds each changed section to the conversation again, so a section that changes often repeats itself.
-- How Golem talks (voice, length, humor) is only in `SOUL` in `src/threads/threads.ts`, the first section of every
+- How Golem talks (voice, length, humor) is only in `SOUL` in `src/chats/chats.ts`, the first section of every
   agent's prompt; `INSTRUCTIONS` and the task texts say how it works and never set a tone.
-- In `src/threads/threads.ts`, a tool that runs a shell command on a machine is in `RUNS_COMMAND`, so `approved` asks a
+- In `src/chats/chats.ts`, a tool that runs a shell command on a machine is in `RUNS_COMMAND`, so `approved` asks a
   person before a command that dcg (destructive_command_guard) flags; besides connector tools with an `approval`,
   nothing else waits for one. All web traffic of agents
   goes through `Egress` (`src/platform/egress.ts`), never a plain `fetch`.

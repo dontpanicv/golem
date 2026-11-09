@@ -79,7 +79,7 @@ fun RootView(openSignIn: (Uri, String, String) -> Unit) {
             Toasts()
         }
         LaunchedEffect(session.signedIn) { if (session.signedIn) session.load() }
-        // Threads read on screen read their notifications, so the inbox loads again when the app comes back.
+        // Chats read on screen read their notifications, so the inbox loads again when the app comes back.
         LaunchedEffect(session.signedIn) {
             if (!session.signedIn) return@LaunchedEffect
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { runCatching { session.loadInbox() } }

@@ -15,27 +15,27 @@ export interface Workspace {
 }
 
 /** Times are Unix milliseconds. */
-export interface ThreadSummary {
+export interface ChatSummary {
   readonly id: string;
-  readonly channelId: string;
+  readonly topicId: string;
   readonly title: string;
   readonly updatedAt: number;
   readonly settledAt: number | null;
 }
 
-export interface ListedThread extends ThreadSummary {
-  readonly channel: string;
+export interface ListedChat extends ChatSummary {
+  readonly topic: string;
 }
 
-export interface Channel {
+export interface Topic {
   readonly id: string;
   readonly name: string;
-  /** The person a private channel belongs to; null for one every member sees. */
+  /** The person a private topic belongs to; null for one every member sees. */
   readonly ownerId: string | null;
   readonly summary: string | null;
   readonly icon: string | null;
   /** Newest first. */
-  readonly threads: readonly ThreadSummary[];
+  readonly chats: readonly ChatSummary[];
 }
 
 export interface Facts {
@@ -51,7 +51,7 @@ export interface Member {
 }
 
 export interface Brief {
-  /** Markdown with thread links, `[title](thread:<threadId>)`. */
+  /** Markdown with chat links, `[title](chat:<chatId>)`. */
   readonly text: string;
   readonly updatedAt: number;
 }
@@ -105,8 +105,8 @@ export interface SavedFile {
   readonly time: number;
 }
 
-export interface ThreadState {
-  readonly thread: ThreadSummary;
+export interface ChatState {
+  readonly chat: ChatSummary;
   readonly messages: readonly Message[];
   readonly running: boolean;
   readonly approvals: readonly Approval[];
@@ -123,17 +123,17 @@ export interface Approval {
   readonly expiresAt: number;
 }
 
-export type SearchKind = "thread" | "artifact" | "note" | "file" | "capture";
+export type SearchKind = "chat" | "artifact" | "note" | "file" | "capture";
 export type Modality = "text" | "image" | "audio" | "none";
 
 export interface SearchResult {
-  /** `thread:<id>`, `artifact:<id>`, or a path under the workspace folder. */
+  /** `chat:<id>`, `artifact:<id>`, or a path under the workspace folder. */
   readonly uri: string;
   readonly kind: SearchKind;
   readonly modality: Modality;
   readonly title: string;
-  readonly threadId: string | null;
-  readonly channelId: string | null;
+  readonly chatId: string | null;
+  readonly topicId: string | null;
   readonly snippet: string;
   readonly score: number;
   readonly updatedAt: number;
@@ -201,7 +201,7 @@ export interface RoutineRun {
 
 export interface Routine {
   readonly id: string;
-  readonly channelId: string;
+  readonly topicId: string;
   readonly name: string;
   /** A cron expression in the server's time zone; null for a routine at a place. */
   readonly schedule: string | null;
@@ -215,15 +215,15 @@ export interface Routine {
   readonly enabled: boolean;
   /** Null while paused. */
   readonly nextRunAt: number | null;
-  readonly threadId: string | null;
+  readonly chatId: string | null;
   readonly lastRun: RoutineRun | null;
 }
 
 export interface Artifact {
   /** Four words, such as "amber-fox-lake-moss"; names from before have two. */
   readonly id: string;
-  readonly channelId: string | null;
-  readonly threadId: string;
+  readonly topicId: string | null;
+  readonly chatId: string;
   readonly title: string;
   readonly visibility: "public" | "members";
   readonly url: string;
@@ -290,8 +290,8 @@ export interface Feedback {
   readonly tool: string | null;
   readonly summary: string;
   readonly detail: string;
-  /** The thread of the turn; null when the owner does not see it. */
-  readonly threadId: string | null;
+  /** The chat of the turn; null when the owner does not see it. */
+  readonly chatId: string | null;
   readonly createdAt: number;
 }
 
@@ -315,12 +315,12 @@ export interface LlmStatus {
   readonly error: string | null;
 }
 
-/** Something that needs the person: it opens its thread, or its channel without one. */
+/** Something that needs the person: it opens its chat, or its topic without one. */
 export interface Notification {
   readonly id: string;
   readonly workspaceId: string;
-  readonly channelId: string;
-  readonly threadId: string | null;
+  readonly topicId: string;
+  readonly chatId: string | null;
   readonly title: string;
   readonly text: string;
   readonly createdAt: number;
@@ -344,7 +344,7 @@ export interface UsageTotals {
 }
 
 export type UsageSource =
-  | "thread"
+  | "chat"
   | "orchestrator"
   | "routine"
   | "reminder"
@@ -357,8 +357,8 @@ export interface Usage {
   readonly total: UsageTotals;
   readonly sources: readonly (UsageTotals & { readonly source: UsageSource })[];
   readonly models: readonly (UsageTotals & { readonly model: string })[];
-  readonly threads: readonly (UsageTotals & {
-    readonly threadId: string;
+  readonly chats: readonly (UsageTotals & {
+    readonly chatId: string;
     readonly title: string;
   })[];
   /** Only for the server's owner; userId "" is work for nobody. */
@@ -370,17 +370,17 @@ export interface Usage {
     | null;
 }
 
-/** What Golem learned: a fact about a person, or a how-to of a channel. */
+/** What Golem learned: a fact about a person, or a how-to of a topic. */
 export interface Learned {
   readonly id: number;
   readonly kind: "about" | "howto";
   readonly personId: string | null;
   /** Null for a fact, and for a how-to of the person's own orchestrator. */
-  readonly channelId: string | null;
+  readonly topicId: string | null;
   /** The person who alone sees it; null for every member. */
   readonly realm: string | null;
   readonly text: string;
-  readonly threadId: string | null;
+  readonly chatId: string | null;
   readonly updatedAt: number;
 }
 
@@ -393,14 +393,14 @@ export interface Suggestion {
   readonly schedule: string | null;
   /** When the reminder is due, or the routine's first run. */
   readonly at: number | null;
-  readonly channelId: string;
-  readonly threadId: string;
+  readonly topicId: string;
+  readonly chatId: string;
   readonly createdAt: number;
 }
 
 export interface Reminder {
   readonly id: string;
-  readonly threadId: string;
+  readonly chatId: string;
   readonly recipientId: string;
   readonly createdBy: string | null;
   readonly text: string;
@@ -432,7 +432,7 @@ export interface Upcoming {
   readonly reminders: readonly Reminder[];
   readonly suggestions: readonly Suggestion[];
   readonly approvals: readonly {
-    readonly threadId: string;
+    readonly chatId: string;
     readonly approval: Approval;
   }[];
 }
@@ -441,7 +441,7 @@ export interface CheckSnapshot {
   text: string;
   state: "open" | "resolved" | "stopped";
   sourceIds: string[];
-  threadId: string | null;
+  chatId: string | null;
   checkAt: number;
   reviewAt: number;
   explicitTime: number;
@@ -495,9 +495,9 @@ export interface IntakeBlock {
 }
 export interface IntakeUpdate {
   id: string;
-  threadId: string | null;
-  threadTitle: string | null;
-  newThread: string | null;
+  chatId: string | null;
+  chatTitle: string | null;
+  newChat: string | null;
   body: string;
   attention: "now" | "brief";
   notice: string | null;
@@ -507,8 +507,8 @@ export interface IntakeUpdate {
   evidence: IntakeEvidence[];
 }
 export interface IntakeKept extends IntakeEvidence {
-  outcome: "thread" | "filed" | "context";
-  threadId: string | null;
+  outcome: "chat" | "filed" | "context";
+  chatId: string | null;
   place: string | null;
 }
 export interface IntakeFeedback {

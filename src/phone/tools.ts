@@ -1,6 +1,6 @@
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
-import type { Threads } from "../threads/threads.ts";
+import type { Chats } from "../chats/chats.ts";
 import type { Phone } from "./phone.ts";
 
 const optional = Type.Optional;
@@ -446,7 +446,7 @@ const TOOLS: readonly PhoneTool[] = [
 /** The tools that run on the iPhone of a turn's person, while the Golem app is open on it. */
 export function phoneTools(
   phone: Phone,
-  threads: Pick<Threads, "requester">,
+  chats: Pick<Chats, "requester">,
   workspaceId: string
 ) {
   return TOOLS.map((tool) =>
@@ -456,7 +456,7 @@ export function phoneTools(
       parameters: Type.Object(tool.parameters),
       replay: tool.reads ? "safe" : "unsafe",
       execute: async (args, api, context) => {
-        const person = await threads.requester(workspaceId, api.conversationId);
+        const person = await chats.requester(workspaceId, api.conversationId);
         if (!person) {
           throw new Error(
             "Phone tools act only on the phone of the person who asked in this turn."

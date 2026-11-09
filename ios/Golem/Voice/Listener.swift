@@ -6,7 +6,7 @@ import UIKit
 
 /// Dictation in every composer, on the iPhone itself.
 ///
-/// One listener, for one thread's composer at a time, with Parakeet (bundled, Czech or English): the words so far are
+/// One listener, for one chat's composer at a time, with Parakeet (bundled, Czech or English): the words so far are
 /// transcribed again every second and at every pause, so the text arrives in short steps, and the final text is always
 /// one pass over everything said. Audio heard before the model has loaded is kept and transcribed once it has.
 ///
@@ -30,7 +30,7 @@ final class Listener {
         // The screen stays on while it listens, in dictation and in a conversation: a locked phone can stop them.
         didSet { UIApplication.shared.isIdleTimerDisabled = state == .on || state == .preparing }
     }
-    /// Whose composer is listening: a thread id, or a channel id for a new thread.
+    /// Whose composer is listening: a chat id, or a topic id for a new chat.
     private(set) var owner: String?
     /// What the user has said.
     private(set) var text = ""
@@ -163,7 +163,7 @@ final class Listener {
         microphone.tone(frequency: 587)
     }
 
-    /// The thread's screen went away, or the app was closed.
+    /// The chat's screen went away, or the app was closed.
     func shutDown() {
         close()
         owner = nil

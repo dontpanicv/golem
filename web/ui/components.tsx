@@ -546,12 +546,12 @@ export function PageSection({
   );
 }
 
-/** The threads whose agent works now, which the workspace's working stream reports. */
+/** The chats whose agent works now, which the workspace's working stream reports. */
 export const WorkingContext = createContext<ReadonlySet<string>>(new Set());
 
-/** A spinner that shows while the agent of a thread works. */
-export function WorkingSpinner({ threadId }: { threadId: string }) {
-  return useContext(WorkingContext).has(threadId) ? <PixelSpinner /> : null;
+/** A spinner that shows while the agent of a chat works. */
+export function WorkingSpinner({ chatId }: { chatId: string }) {
+  return useContext(WorkingContext).has(chatId) ? <PixelSpinner /> : null;
 }
 
 /** Four pixels in a square that light in turn, as the icon's pixels do: Golem works. */

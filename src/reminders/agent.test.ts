@@ -42,7 +42,7 @@ function agent(context: Context) {
   }
   if (textOf(last).endsWith("Delegate reminder")) {
     return fauxAssistantMessage(
-      [fauxToolCall("start_thread", { message: "Remind me next year" })],
+      [fauxToolCall("start_chat", { message: "Remind me next year" })],
       { stopReason: "toolUse" }
     );
   }
@@ -61,36 +61,32 @@ function agent(context: Context) {
   return fauxAssistantMessage("Ok.");
 }
 
-test("the orchestrator and a channel thread can both schedule reminders in their workspace", async () => {
+test("the orchestrator and a topic chat can both schedule reminders in their workspace", async () => {
   const workspace = await golem.app.workspaces.create(alice, "Family");
-  const orchestrator = await golem.app.threads.orchestrator(
-    workspace.id,
-    alice
-  );
-  const channel = golem.app.workspaces.channels(workspace.id, alice)[0]!;
-  const thread = await golem.app.threads.create(
+  const orchestrator = await golem.app.chats.orchestrator(workspace.id, alice);
+  const topic = golem.app.workspaces.topics(workspace.id, alice)[0]!;
+  const chat = await golem.app.chats.create(
     workspace.id,
     alice,
-    channel.id,
+    topic.id,
     "Remind me next year"
   );
-  await golem.app.threads.send(orchestrator.id, alice, "Remind me next year");
+  await golem.app.chats.send(orchestrator.id, alice, "Remind me next year");
   await until(
-    () => golem.app.threads.messages(orchestrator),
+    () => golem.app.chats.messages(orchestrator),
     (state) => !state.running && state.messages.at(-1)?.text === "Scheduled."
   );
   await until(
-    () =>
-      golem.app.threads.messages(golem.app.workspaces.thread(thread.id, alice)),
+    () => golem.app.chats.messages(golem.app.workspaces.chat(chat.id, alice)),
     (state) => !state.running && state.messages.at(-1)?.text === "Scheduled."
   );
   expect(
     golem.app.reminders
       .list(workspace.id, alice, alice.id)
-      .map((reminder) => reminder.threadId)
+      .map((reminder) => reminder.chatId)
       .sort()
-  ).toEqual([orchestrator.id, thread.id].sort());
-  await golem.app.threads.send(orchestrator.id, alice, "Delegate reminder");
+  ).toEqual([orchestrator.id, chat.id].sort());
+  await golem.app.chats.send(orchestrator.id, alice, "Delegate reminder");
   const delegated = await until(
     async () => golem.app.reminders.list(workspace.id, alice, alice.id),
     (reminders) => reminders.length === 3

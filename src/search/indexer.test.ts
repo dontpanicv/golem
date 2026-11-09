@@ -4,14 +4,14 @@ import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Artifact } from "../artifacts/artifacts.ts";
-import type { Message } from "../threads/threads.ts";
-import type { ThreadRef, ThreadSummary } from "../workspaces/workspaces.ts";
+import type { Message } from "../chats/chats.ts";
+import type { ChatRef, ChatSummary } from "../workspaces/workspaces.ts";
 import type { Embedder, EmbedInput } from "./embedder.ts";
 import { tools } from "./extract.ts";
 import {
   type ArtifactReader,
+  type ChatReader,
   Indexer,
-  type ThreadReader,
   type WorkspaceDirectory,
 } from "./search.ts";
 
@@ -21,29 +21,27 @@ beforeAll(async () => {
 });
 afterAll(() => rm(dataDirectory, { recursive: true, force: true }));
 
-/** The directory the indexer reads: workspace ids, and the threads of each workspace and the channels they are in. */
+/** The directory the indexer reads: workspace ids, and the chats of each workspace and the topics they are in. */
 function directory(
   ids: readonly string[] = [],
-  threads: readonly (ThreadSummary & ThreadRef)[] = []
+  chats: readonly (ChatSummary & ChatRef)[] = []
 ): WorkspaceDirectory {
   return {
     ids: () => [...ids],
-    threadsIn: () => [...threads],
-    allThreadsIn: () => [...threads],
-    channelsIn: () => channels(),
-    allChannelsIn: () => channels(),
+    chatsIn: () => [...chats],
+    allChatsIn: () => [...chats],
+    topicsIn: () => topics(),
+    allTopicsIn: () => topics(),
   };
-  function channels() {
-    return [...new Set(threads.map((thread) => thread.channelId))].map(
-      (id) => ({
-        id,
-        name: id,
-        ownerId: null,
-        summary: null,
-        icon: null,
-        threads: [],
-      })
-    );
+  function topics() {
+    return [...new Set(chats.map((chat) => chat.topicId))].map((id) => ({
+      id,
+      name: id,
+      ownerId: null,
+      summary: null,
+      icon: null,
+      chats: [],
+    }));
   }
 }
 
@@ -78,17 +76,17 @@ function message(
   };
 }
 
-/** Thread messages come from lists by thread id instead of a session file. */
-function threadsWith(
+/** Chat messages come from lists by chat id instead of a session file. */
+function chatsWith(
   messages: Readonly<Record<string, readonly Message[]>>
-): ThreadReader {
+): ChatReader {
   return {
-    messages: async (thread) => ({
-      messages: messages[thread.id] ?? [],
+    messages: async (chat) => ({
+      messages: messages[chat.id] ?? [],
       running: false,
       approvals: [],
     }),
-    version: async (thread) => String(messages[thread.id]?.length ?? 0),
+    version: async (chat) => String(messages[chat.id]?.length ?? 0),
   };
 }
 
@@ -140,13 +138,13 @@ test("start creates each workspace's folders and indexes a new file soon after i
   const indexer = new Indexer(
     data,
     directory(["family"]),
-    threadsWith({}),
+    chatsWith({}),
     artifactsWith(),
     null
   );
   try {
     indexer.start();
-    for (const folder of ["notes", "files", "raw", "channels"]) {
+    for (const folder of ["notes", "files", "raw", "topics"]) {
       expect(
         statSync(join(data, "workspaces", "family", folder)).isDirectory()
       ).toBe(true);
@@ -180,16 +178,16 @@ test("start creates each workspace's folders and indexes a new file soon after i
   }
 });
 
-test("a scan indexes finished thread messages, artifacts, and channel files, and skips what it cannot use", async () => {
-  const data = join(dataDirectory, "threads");
-  const threads = directory(
+test("a scan indexes finished chat messages, artifacts, and topic files, and skips what it cannot use", async () => {
+  const data = join(dataDirectory, "chats");
+  const chats = directory(
     ["family"],
     [
       {
         id: "t1",
         workspaceId: "family",
         conversationId: 1,
-        channelId: "c1",
+        topicId: "c1",
         title: "Holiday",
         updatedAt: 5,
         settledAt: null,
@@ -200,7 +198,7 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
         id: "t2",
         workspaceId: "family",
         conversationId: 2,
-        channelId: "c1",
+        topicId: "c1",
         title: "Empty",
         updatedAt: 6,
         settledAt: null,
@@ -209,10 +207,10 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
       },
     ]
   );
-  const channel = join(data, "workspaces", "family", "channels", "c1");
-  await mkdir(join(channel, "files"), { recursive: true });
+  const topic = join(data, "workspaces", "family", "topics", "c1");
+  await mkdir(join(topic, "files"), { recursive: true });
   await Bun.write(
-    join(channel, "files", "tickets.txt"),
+    join(topic, "files", "tickets.txt"),
     "Ferry tickets for Saturday"
   );
   await Bun.write(
@@ -225,8 +223,8 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
   );
   const indexer = new Indexer(
     data,
-    threads,
-    threadsWith({
+    chats,
+    chatsWith({
       t1: [
         message("m1", "We take the ferry to the island"),
         message("m2", "ferry answer in progress", { streaming: true }),
@@ -257,8 +255,8 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
       {
         artifact: {
           id: "amber-fox",
-          channelId: "c1",
-          threadId: "t1",
+          topicId: "c1",
+          chatId: "t1",
           title: "Island trip",
           visibility: "members",
           url: "http://golem.test/a/amber-fox",
@@ -279,31 +277,31 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
         .map((result) => [
           result.kind,
           result.uri,
-          result.threadId,
-          result.channelId,
+          result.chatId,
+          result.topicId,
         ])
         .sort()
     ).toEqual([
       ["artifact", "artifact:amber-fox", "t1", "c1"],
-      ["file", "channels/c1/files/tickets.txt", null, "c1"],
-      ["thread", "thread:t1", "t1", "c1"],
+      ["chat", "chat:t1", "t1", "c1"],
+      ["file", "topics/c1/files/tickets.txt", null, "c1"],
     ]);
     // The artifact's heading repeats its title, so the snippet leaves it out.
     expect(results.find((result) => result.kind === "artifact")?.snippet).toBe(
       "Ferry at 9:00"
     );
-    expect(results.find((result) => result.kind === "thread")?.snippet).toBe(
+    expect(results.find((result) => result.kind === "chat")?.snippet).toBe(
       "Anna: We take the ferry to the island"
     );
     expect((await indexer.search("family", "draft", 20, null)).results).toEqual(
       []
     );
-    // A tool call's arguments find the thread by whom it wrote to.
+    // A tool call's arguments find the chat by whom it wrote to.
     expect(
       (await indexer.search("family", "quaybuilders", 20, null)).results.map(
         (result) => result.uri
       )
-    ).toEqual(["thread:t1"]);
+    ).toEqual(["chat:t1"]);
     // A file Golem cannot read is still found by its name, with no snippet of its stored path.
     expect(
       (await indexer.search("family", "broken report", 20, null)).results.map(
@@ -316,14 +314,14 @@ test("a scan indexes finished thread messages, artifacts, and channel files, and
   }
 });
 
-test("search leaves out a deleted channel and a deleted artifact at once, before the next scan", async () => {
+test("search leaves out a deleted topic and a deleted artifact at once, before the next scan", async () => {
   const data = join(dataDirectory, "deleted");
-  const live = { channels: ["c1"], artifacts: true };
-  const thread = {
+  const live = { topics: ["c1"], artifacts: true };
+  const chat = {
     id: "t1",
     workspaceId: "family",
     conversationId: 1,
-    channelId: "c1",
+    topicId: "c1",
     title: "Holiday",
     updatedAt: 5,
     settledAt: null,
@@ -332,8 +330,8 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
   };
   const artifact = {
     id: "amber-fox",
-    channelId: null,
-    threadId: "t1",
+    topicId: null,
+    chatId: "t1",
     title: "Island trip",
     visibility: "members" as const,
     url: "http://golem.test/a/amber-fox",
@@ -341,25 +339,25 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
     createdAt: 1,
     updatedAt: 1,
   };
-  const liveChannels = () =>
-    live.channels.map((id) => ({
+  const liveTopics = () =>
+    live.topics.map((id) => ({
       id,
       name: id,
       ownerId: null,
       summary: null,
       icon: null,
-      threads: [],
+      chats: [],
     }));
   const indexer = new Indexer(
     data,
     {
       ids: () => ["family"],
-      threadsIn: () => [thread],
-      allThreadsIn: () => [thread],
-      channelsIn: () => liveChannels(),
-      allChannelsIn: () => liveChannels(),
+      chatsIn: () => [chat],
+      allChatsIn: () => [chat],
+      topicsIn: () => liveTopics(),
+      allTopicsIn: () => liveTopics(),
     },
-    threadsWith({ t1: [message("m1", "We take the ferry to the island")] }),
+    chatsWith({ t1: [message("m1", "We take the ferry to the island")] }),
     {
       inWorkspace: () => (live.artifacts ? [artifact] : []),
       allInWorkspace: () => (live.artifacts ? [artifact] : []),
@@ -373,8 +371,8 @@ test("search leaves out a deleted channel and a deleted artifact at once, before
       .sort();
   try {
     await indexer.scan("family");
-    expect(await found()).toEqual(["artifact:amber-fox", "thread:t1"]);
-    live.channels = [];
+    expect(await found()).toEqual(["artifact:amber-fox", "chat:t1"]);
+    live.topics = [];
     expect(await found()).toEqual(["artifact:amber-fox"]);
     live.artifacts = false;
     expect(await found()).toEqual([]);
@@ -402,7 +400,7 @@ test("pictures read while the model is down are read again, and text waits for t
   const indexer = new Indexer(
     data,
     directory(),
-    threadsWith({}),
+    chatsWith({}),
     artifactsWith(),
     embedder
   );

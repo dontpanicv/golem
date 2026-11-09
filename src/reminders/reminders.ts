@@ -1,15 +1,15 @@
 import type { Database } from "bun:sqlite";
+import type { Chats } from "../chats/chats.ts";
 import type { Place, PlaceEvent, Places } from "../places/places.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound, required } from "../platform/errors.ts";
-import type { Threads } from "../threads/threads.ts";
 import type { Realm, Workspaces } from "../workspaces/workspaces.ts";
 import { reminderTools } from "./tools.ts";
 
 export interface Reminder {
   readonly id: string;
   readonly workspaceId: string;
-  readonly threadId: string;
+  readonly chatId: string;
   readonly recipientId: string;
   /** The person who asked for the reminder or last changed it; its turn runs as them. */
   readonly createdBy: string | null;
@@ -59,13 +59,13 @@ export interface ReminderInput {
 type ReminderWorkspaces = Pick<
   Workspaces,
   | "agentMember"
-  | "allThreadsIn"
+  | "allChatsIn"
   | "requireMember"
   | "members"
-  | "threadOf"
-  | "threadsIn"
+  | "chatOf"
+  | "chatsIn"
 >;
-type ReminderThreads = Pick<Threads, "instruct" | "realm" | "requester">;
+type ReminderChats = Pick<Chats, "instruct" | "realm" | "requester">;
 type ReminderPlaces = Pick<Places, "find" | "inside" | "usable">;
 
 interface ReminderRow extends Omit<Reminder, "place"> {
@@ -77,7 +77,7 @@ const TICK = 30_000;
 
 /**
  * One-time reminders of a workspace, at a time or at a place. The agent writes the reminder, and the due runner wakes
- * its thread; a reminder at a place is due when its person's iPhone reports that they arrived or left.
+ * its chat; a reminder at a place is due when its person's iPhone reports that they arrived or left.
  */
 export class Reminders {
   private readonly running = new Set<string>();
@@ -86,7 +86,7 @@ export class Reminders {
   constructor(
     private readonly database: Database,
     private readonly workspaces: ReminderWorkspaces,
-    private readonly threads: ReminderThreads,
+    private readonly chats: ReminderChats,
     private readonly places: ReminderPlaces
   ) {}
 
@@ -105,7 +105,7 @@ export class Reminders {
     return reminderTools(
       this,
       this.workspaces,
-      this.threads,
+      this.chats,
       this.places,
       workspaceId
     );
@@ -114,16 +114,16 @@ export class Reminders {
   create(
     workspaceId: string,
     actor: User,
-    threadId: string,
+    chatId: string,
     recipientId: string,
     input: ReminderInput & { readonly id: string }
   ): Reminder {
     this.workspaces.requireMember(workspaceId, actor);
-    const thread = this.workspaces
-      .allThreadsIn(workspaceId)
-      .find((candidate) => candidate.id === threadId);
-    // The reminder is in its thread, so its recipient must see the thread.
-    if (!thread || (thread.realm !== null && thread.realm !== recipientId)) {
+    const chat = this.workspaces
+      .allChatsIn(workspaceId)
+      .find((candidate) => candidate.id === chatId);
+    // The reminder is in its chat, so its recipient must see the chat.
+    if (!chat || (chat.realm !== null && chat.realm !== recipientId)) {
       throw notFound();
     }
     this.requireRecipient(workspaceId, actor, recipientId);
@@ -131,12 +131,12 @@ export class Reminders {
     const when = this.when(workspaceId, recipientId, input, now);
     this.database
       .query(
-        "INSERT OR IGNORE INTO reminder (id, workspace_id, thread_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, place_id, place_event, triggered_at, not_before, not_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO reminder (id, workspace_id, chat_id, recipient_id, created_by, text, due_at, time_zone, next_attempt_at, place_id, place_event, triggered_at, not_before, not_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         input.id,
         workspaceId,
-        threadId,
+        chatId,
         recipientId,
         input.createdBy,
         required(input.text, "Reminder"),
@@ -151,14 +151,14 @@ export class Reminders {
         now,
         now
       );
-    return this.get(workspaceId, actor, thread.realm, input.id);
+    return this.get(workspaceId, actor, chat.realm, input.id);
   }
 
-  /** The reminders in the threads that `realm` sees. */
+  /** The reminders in the chats that `realm` sees. */
   list(workspaceId: string, actor: User, realm: Realm): Reminder[] {
     this.workspaces.requireMember(workspaceId, actor);
-    const threads = new Set(
-      this.workspaces.threadsIn(workspaceId, realm).map((thread) => thread.id)
+    const chats = new Set(
+      this.workspaces.chatsIn(workspaceId, realm).map((chat) => chat.id)
     );
     return (
       this.database
@@ -167,7 +167,7 @@ export class Reminders {
         )
         .all(workspaceId) as ReminderRow[]
     )
-      .filter((reminder) => threads.has(reminder.threadId))
+      .filter((reminder) => chats.has(reminder.chatId))
       .map((row) => this.reminderOf(row));
   }
 
@@ -183,8 +183,8 @@ export class Reminders {
     }
     if (
       !this.workspaces
-        .threadsIn(workspaceId, realm)
-        .some((thread) => thread.id === reminder.threadId)
+        .chatsIn(workspaceId, realm)
+        .some((chat) => chat.id === reminder.chatId)
     ) {
       throw notFound();
     }
@@ -292,8 +292,8 @@ export class Reminders {
           return false;
         }
         return this.workspaces
-          .allThreadsIn(reminder.workspaceId)
-          .some((thread) => thread.id === reminder.threadId);
+          .allChatsIn(reminder.workspaceId)
+          .some((chat) => chat.id === reminder.chatId);
       })
       .map((reminder) => this.run(reminder, now));
   }
@@ -327,9 +327,9 @@ export class Reminders {
   private async run(reminder: Reminder, now: number): Promise<void> {
     this.running.add(reminder.id);
     try {
-      const thread = this.workspaces
-        .allThreadsIn(reminder.workspaceId)
-        .find((candidate) => candidate.id === reminder.threadId)!;
+      const chat = this.workspaces
+        .allChatsIn(reminder.workspaceId)
+        .find((candidate) => candidate.id === reminder.chatId)!;
       const member = this.workspaces
         .members(reminder.workspaceId, {
           id: reminder.recipientId,
@@ -341,9 +341,9 @@ export class Reminders {
         throw new Error("The reminder recipient is no longer a member.");
       }
       // A QUIET answer is a reminder done: nothing needs the person now, and a retry would ask the agent again.
-      await this.threads.instruct(
-        thread,
-        `${occasion(reminder, member.name)} It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. When it names matters that Golem follows, read intake_read first and leave out what is already handled. Answer in this thread.`,
+      await this.chats.instruct(
+        chat,
+        `${occasion(reminder, member.name)} It is now ${new Date(now).toISOString()}. Remind ${member.name} (member ${member.userId}): ${reminder.text}. When it names matters that Golem follows, read intake_read first and leave out what is already handled. Answer in this chat.`,
         `reminder:${reminder.id}:${reminder.attempts}`,
         [reminder.recipientId],
         // The turn is the asker's, with their own integrations: the text is theirs, not the recipient's.
@@ -487,7 +487,7 @@ function occasion(reminder: Reminder, name: string): string {
 }
 
 const COLUMNS =
-  "id, workspace_id AS workspaceId, thread_id AS threadId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, place_id AS placeId, place_event AS placeEvent, triggered_at AS triggeredAt, not_before AS notBefore, not_after AS notAfter, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
+  "id, workspace_id AS workspaceId, chat_id AS chatId, recipient_id AS recipientId, created_by AS createdBy, text, due_at AS dueAt, time_zone AS timeZone, place_id AS placeId, place_event AS placeEvent, triggered_at AS triggeredAt, not_before AS notBefore, not_after AS notAfter, attempts, next_attempt_at AS nextAttemptAt, last_error AS lastError, delivered_at AS deliveredAt, cancelled_at AS cancelledAt";
 
 /** The UTC time of `at`, a local time with its offset in `timeZone`; throws when it is wrong or not in the future. */
 export function dueTime(at: string, timeZone: string, now: number): number {

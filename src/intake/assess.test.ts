@@ -21,16 +21,16 @@ const input: AssessmentInput = {
   trigger: "evidence",
   newEvidenceIds: [evidence.id],
   evidence: [evidence],
-  channels: [],
-  threads: [],
+  topics: [],
+  chats: [],
   checks: [],
   coverage: [],
 };
 const decision = {
-  threadId: null,
-  startThread: false,
-  channelId: null,
-  newChannel: null,
+  chatId: null,
+  startChat: false,
+  topicId: null,
+  newTopic: null,
   title: "Repair claim",
   summary: "Response pending",
   message: "",
@@ -51,18 +51,18 @@ const decision = {
 
 test("assessment rejects invented quotes, destinations, dates and source ids", async () => {
   for (const change of [
-    { threadId: "another-persons-thread" },
+    { chatId: "another-persons-chat" },
     { attention: "now" },
-    { channelId: "another-persons-channel", startThread: true },
-    { startThread: true },
-    { startThread: true, channelId: "calendar", title: "x".repeat(61) },
-    { startThread: true, newChannel: { name: "", summary: "Events" } },
-    { startThread: true, newChannel: { name: "events-", summary: "Events" } },
+    { topicId: "another-persons-topic", startChat: true },
+    { startChat: true },
+    { startChat: true, topicId: "calendar", title: "x".repeat(61) },
+    { startChat: true, newTopic: { name: "", summary: "Events" } },
+    { startChat: true, newTopic: { name: "events-", summary: "Events" } },
     {
-      startThread: true,
-      newChannel: { name: "work--events", summary: "Events" },
+      startChat: true,
+      newTopic: { name: "work--events", summary: "Events" },
     },
-    { startThread: true, newChannel: { name: "events", summary: "" } },
+    { startChat: true, newTopic: { name: "events", summary: "" } },
     { evidence: ["invented"] },
     { checks: [{ ...decision.checks[0], quote: "fabricated words" }] },
     { checks: [{ ...decision.checks[0], afterDays: -1 }] },
@@ -86,29 +86,29 @@ test("assessment rejects invented quotes, destinations, dates and source ids", a
   expect(valid[0]!.checks[0]!.afterDays).toBe(30);
 });
 
-test("new subjects use a visible channel or propose a private channel with supporting evidence", async () => {
+test("new subjects use a visible topic or propose a private topic with supporting evidence", async () => {
   const calendar = {
     id: "calendar",
     name: "kalendar",
     summary: "Events",
     private: false,
   };
-  const destination = { ...input, channels: [calendar] };
+  const destination = { ...input, topics: [calendar] };
   for (const route of [
-    { channelId: calendar.id, newChannel: null },
+    { topicId: calendar.id, newTopic: null },
     {
-      channelId: null,
-      newChannel: { name: "events", summary: "Events and tickets" },
+      topicId: null,
+      newTopic: { name: "events", summary: "Events and tickets" },
     },
   ]) {
     const [valid] = await assess(
       async () =>
         JSON.stringify({
-          decisions: [{ ...decision, ...route, startThread: true }],
+          decisions: [{ ...decision, ...route, startChat: true }],
         }),
       destination
     );
-    expect(valid!.startThread).toBe(true);
+    expect(valid!.startChat).toBe(true);
     await expect(
       assess(
         async () =>
@@ -117,7 +117,7 @@ test("new subjects use a visible channel or propose a private channel with suppo
               {
                 ...decision,
                 ...route,
-                startThread: true,
+                startChat: true,
                 evidence: [],
                 checks: [],
                 summary: "",
@@ -135,9 +135,9 @@ test("new subjects use a visible channel or propose a private channel with suppo
           decisions: [
             {
               ...decision,
-              startThread: true,
-              channelId: calendar.id,
-              newChannel: { name: "events", summary: "Events" },
+              startChat: true,
+              topicId: calendar.id,
+              newTopic: { name: "events", summary: "Events" },
             },
           ],
         }),
@@ -155,7 +155,7 @@ test("a later context-only review cannot recreate an old resolved commitment", a
   ).rejects.toThrow();
 });
 
-test("a useful thread review is silent when the judge omits notification permission", async () => {
+test("a useful chat review is silent when the judge omits notification permission", async () => {
   const [review] = await assess(
     async () =>
       JSON.stringify({
@@ -163,7 +163,7 @@ test("a useful thread review is silent when the judge omits notification permiss
           {
             ...decision,
             checks: [],
-            threadId: "subject",
+            chatId: "subject",
             attention: "now",
             message: "The draft is available",
           },
@@ -171,9 +171,7 @@ test("a useful thread review is silent when the judge omits notification permiss
       }),
     {
       ...input,
-      threads: [
-        { id: "subject", channelId: "channel", title: "Draft", context: "" },
-      ],
+      chats: [{ id: "subject", topicId: "topic", title: "Draft", context: "" }],
     }
   );
   expect(review!.notification).toBeNull();
@@ -184,8 +182,8 @@ test("notification permission needs an allowed reason, exact evidence, and the o
   const context: AssessmentInput = {
     ...input,
     evidence: [{ ...evidence, text: "Tell me when the contract arrives." }],
-    threads: [
-      { id: "subject", channelId: "channel", title: "Contract", context: "" },
+    chats: [
+      { id: "subject", topicId: "topic", title: "Contract", context: "" },
     ],
   };
   const notice = {
@@ -196,7 +194,7 @@ test("notification permission needs an allowed reason, exact evidence, and the o
   };
   const review = {
     ...decision,
-    threadId: "subject",
+    chatId: "subject",
     checks: [],
     attention: "now",
     message: "The contract arrived",
@@ -243,7 +241,7 @@ test("a due notice requires an unresolved stated time, never an arbitrary intern
   const deadline = afterCalendarDays(evidence.at, 30);
   const check = {
     id: "check",
-    threadId: "subject",
+    chatId: "subject",
     text: "Response pending",
     sourceIds: ["source"],
     checkAt: deadline,
@@ -257,13 +255,11 @@ test("a due notice requires an unresolved stated time, never an arbitrary intern
     trigger: "time",
     newEvidenceIds: [],
     checks: [check],
-    threads: [
-      { id: "subject", channelId: "channel", title: "Claim", context: "" },
-    ],
+    chats: [{ id: "subject", topicId: "topic", title: "Claim", context: "" }],
   };
   const review = {
     ...decision,
-    threadId: "subject",
+    chatId: "subject",
     checks: [],
     attention: "now",
     message: "The stated response period passed",
@@ -297,15 +293,15 @@ test("calendar-day follow-ups preserve the local hour across a clock change", ()
 });
 
 test("source-read reassessment can change existing checks but cannot create work or use an observation time as a deadline", async () => {
-  const thread = {
+  const chat = {
     id: "claim",
-    channelId: "home",
+    topicId: "home",
     title: "Claim",
     context: "",
   };
   const check = {
     id: "pending",
-    threadId: thread.id,
+    chatId: chat.id,
     text: "Check the answer",
     sourceIds: [evidence.id],
     checkAt: input.now,
@@ -317,12 +313,12 @@ test("source-read reassessment can change existing checks but cannot create work
     ...input,
     trigger: "source_read",
     newEvidenceIds: [],
-    threads: [thread],
+    chats: [chat],
     checks: [check],
   };
   const revision = {
     ...decision,
-    threadId: thread.id,
+    chatId: chat.id,
     notification: null,
     checks: [{ ...decision.checks[0]!, id: check.id, afterDays: null }],
   };
@@ -335,7 +331,7 @@ test("source-read reassessment can change existing checks but cannot create work
     )[0]!.checks[0]!.id
   ).toBe(check.id);
   for (const change of [
-    { threadId: null },
+    { chatId: null },
     { attention: "now" },
     { checks: decision.checks },
     {
@@ -348,9 +344,9 @@ test("source-read reassessment can change existing checks but cannot create work
       ],
     },
     {
-      startThread: true,
-      threadId: null,
-      newChannel: { name: "claims", summary: "Claims" },
+      startChat: true,
+      chatId: null,
+      newTopic: { name: "claims", summary: "Claims" },
     },
   ]) {
     await expect(
@@ -386,14 +382,14 @@ test("a final destination assessment cannot split a proposal, invent checks, or 
     pendingSubject: {
       title: "Claim",
       summary: "Repair claim",
-      channelId: null,
-      newChannel: { name: "repairs", summary: "Repairs" },
+      topicId: null,
+      newTopic: { name: "repairs", summary: "Repairs" },
     },
   };
   const finalDecision = {
     ...decision,
-    startThread: true,
-    newChannel: { name: "repairs", summary: "Repairs" },
+    startChat: true,
+    newTopic: { name: "repairs", summary: "Repairs" },
     checks: [],
     attention: "now",
     message: "Review the repair claim",

@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// What was shared, as a message to a workspace's Golem thread or as a new thread in one of its channels. Links and
+/// What was shared, as a message to a workspace's Golem chat or as a new chat in one of its topics. Links and
 /// text go in the message, to edit; anything else is a file. It remembers the last workspace and place.
 struct ShareView: View {
     let providers: [NSItemProvider]
@@ -11,8 +11,8 @@ struct ShareView: View {
     @State private var text = ""
     @State private var files: [URL] = []
     @State private var workspaces: [Workspace] = []
-    @State private var channels: [Channel] = []
-    @State private var orchestrator: ThreadSummary?
+    @State private var topics: [Topic] = []
+    @State private var orchestrator: ChatSummary?
     @State private var failure: String?
     @State private var sending = false
     /// What was shared is still being read, such as a long video.
@@ -20,11 +20,11 @@ struct ShareView: View {
     /// The share of the upload sent so far, from 0 to 1.
     @State private var sent = 0.0
     @AppStorage("workspaceID") private var workspaceID = ""
-    /// A channel's id, or empty for the Golem thread.
-    @AppStorage("channelID") private var channelID = ""
+    /// A topic's id, or empty for the Golem chat.
+    @AppStorage("topicID") private var topicID = ""
 
     private var canSend: Bool {
-        !sending && !reading && (orchestrator != nil || !channelID.isEmpty)
+        !sending && !reading && (orchestrator != nil || !topicID.isEmpty)
             && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !files.isEmpty)
     }
 
@@ -61,10 +61,10 @@ struct ShareView: View {
                             ForEach(workspaces) { Text($0.name).tag($0.id) }
                         }
                     }
-                    Picker("Send to", selection: $channelID) {
+                    Picker("Send to", selection: $topicID) {
                         Text("Golem").tag("")
-                        ForEach(channels) { channel in
-                            Text("\(channel.icon ?? "#") \(channel.name)").tag(channel.id)
+                        ForEach(topics) { topic in
+                            Text("\(topic.icon ?? "#") \(topic.name)").tag(topic.id)
                         }
                     }
                 }
@@ -112,8 +112,8 @@ struct ShareView: View {
         do {
             async let detail = api.workspace(workspaceID)
             async let golem = api.orchestrator(workspaceID: workspaceID)
-            (channels, orchestrator) = try await (detail.channels, golem)
-            if !channels.contains(where: { $0.id == channelID }) { channelID = "" }
+            (topics, orchestrator) = try await (detail.topics, golem)
+            if !topics.contains(where: { $0.id == topicID }) { topicID = "" }
             failure = nil
         } catch {
             failure = error.localizedDescription
@@ -130,13 +130,13 @@ struct ShareView: View {
         }
         Task {
             do {
-                if channelID.isEmpty, let orchestrator {
+                if topicID.isEmpty, let orchestrator {
                     try await api.sendMessage(
-                        threadID: orchestrator.id, text: message, files: files, progress: progress
+                        chatID: orchestrator.id, text: message, files: files, progress: progress
                     )
                 } else {
-                    _ = try await api.createThread(
-                        workspaceID: workspaceID, channelID: channelID, text: message, files: files,
+                    _ = try await api.createChat(
+                        workspaceID: workspaceID, topicID: topicID, text: message, files: files,
                         progress: progress
                     )
                 }

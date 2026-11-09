@@ -8,7 +8,7 @@ import Testing
 struct MarkdownTextTests {
     private let text = """
         ## Plan
-        Read [the notes](thread:t1) first.
+        Read [the notes](chat:t1) first.
 
         - one
           - nested

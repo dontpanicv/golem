@@ -72,7 +72,7 @@ The app accepts only an https server, or `localhost`, as the iPhone app does.
 ## Notifications
 
 Golem sends pushes only through APNs, so the Android app has no pushes yet. While the app runs, it follows the event
-streams and shows each new unread notification as a notification of the phone; a tap opens its thread. When Android
+streams and shows each new unread notification as a notification of the phone; a tap opens its chat. When Android
 stops the app in the background, notifications wait in Activity.
 
 ## Phone tools
@@ -93,7 +93,7 @@ use Android's own providers.
 ## Try it on an emulator
 
 `test/harness.ts` gives a signed-in Golem with invented data. A script outside the repository can start it, add
-channels and threads, and serve `golem.handler` with `Bun.serve` on port 3100, with the request's `Origin` header
+topics and chats, and serve `golem.handler` with `Bun.serve` on port 3100, with the request's `Origin` header
 changed to `http://golem.test` and `idleTimeout: 0` for the event streams. Then:
 
 ```sh

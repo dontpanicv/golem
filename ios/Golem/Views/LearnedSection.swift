@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// What Golem learned from quiet threads that the person sees: facts about each member, then the how-tos of each
-/// channel and of the person's own Golem. A lock marks an entry only the person sees. A change shows at once and
+/// What Golem learned from quiet chats that the person sees: facts about each member, then the how-tos of each
+/// topic and of the person's own Golem. A lock marks an entry only the person sees. A change shows at once and
 /// goes back when the server refuses it.
 struct LearnedSection: View {
     let workspaceID: String
@@ -46,8 +46,8 @@ struct LearnedSection: View {
             let name = members.first { $0.userId == entry.personId }?.name ?? "a former member"
             return "About \(name)"
         case .howto:
-            guard let channelID = entry.channelId else { return "Your Golem" }
-            return "#\(session.channels.first { $0.id == channelID }?.name ?? "deleted channel")"
+            guard let topicID = entry.topicId else { return "Your Golem" }
+            return "#\(session.topics.first { $0.id == topicID }?.name ?? "deleted topic")"
         }
     }
 

@@ -4,7 +4,7 @@ import UIKit
 
 /// The person's integrations, what Golem learned, machines, the use of the model, the voice, shortcuts, the LLM
 /// provider, which the whole server shares and only its owner changes, and the account, most used first. `open` opens
-/// a thread of the usage.
+/// a chat of the usage.
 struct SettingsView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session

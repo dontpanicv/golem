@@ -3,7 +3,7 @@
 People connect integrations in Settings. A new account is private, for the person's own turns; the **Private** switch
 on it shares it with the turns of every member. A person can connect more than one account of an integration, such as a work and a personal
 Google account. Agents name the account with the `account` argument of each tool, and `<integration>_accounts` lists
-the accounts. Agents draft mail and messages, and send them as you only after you allow each one: the thread shows
+the accounts. Agents draft mail and messages, and send them as you only after you allow each one: the chat shows
 what they send, and you get a notification. The person who added the account allows it, also for the turn of another
 member. A routine's script cannot send.
 
@@ -27,7 +27,7 @@ Golem calls Google's APIs through [gog](https://github.com/openclaw/gogcli), wit
 which Golem renews with its refresh token. One client serves all accounts: personal and Google Workspace ones, of every
 person. Google shows that it has not verified the app; an app that is not verified can have up to 100 users.
 
-Agents search and read mail, save its attachments to the thread's channel, make drafts, and send mail or one of your drafts after you allow it, with files of the
+Agents search and read mail, save its attachments to the chat's topic, make drafts, and send mail or one of your drafts after you allow it, with files of the
 workspace attached; gog blocks sending in every other tool. For a draft, the approval shows the draft as it is in
 Gmail, and Golem sends nothing when the draft changed after you allowed it. Agents use only these tools for mail, never a mail app on a machine. They read calendars, find free time, and create, change, and delete events; the guests get an email about it only when the agent asks for it and you allow it.
 They search Drive, read Docs and Sheets, create Docs, and change only the Docs that they created. They upload files of
@@ -42,7 +42,7 @@ in Golem: slackcli checks the session with Slack, and Golem keeps it encrypted a
 workspace. Add each Slack workspace on its own. The session gives the same access as your login, and it ends when you
 sign out of Slack in that browser.
 
-Agents search and read messages, channels, threads, unread messages, and canvases, find people, make drafts that you
+Agents search and read messages, topics, chats, unread messages, and canvases, find people, make drafts that you
 send from Slack, and send messages after you allow each one. Each command runs in a home of its own, which Golem
 removes after it.
 
@@ -53,8 +53,8 @@ not WhatsApp's own API, and WhatsApp can ban a number that uses it.
 
 Your phone sends Golem the newest messages of each chat, often only some days, and Golem keeps a copy of every new
 message while it runs. The copy and the device's keys are in `data/integrations/<credential-id>/`. Agents read chats and
-messages, search them, find contacts, and save the picture, video, audio, or document of a message to the thread's
-channel; when WhatsApp no longer keeps it, your phone sends it again if it is online. For older messages, ask an agent to load them: it asks your phone, which must
+messages, search them, find contacts, and save the picture, video, audio, or document of a message to the chat's
+topic; when WhatsApp no longer keeps it, your phone sends it again if it is online. For older messages, ask an agent to load them: it asks your phone, which must
 be online, for up to 5000 older messages of a chat at a time. They send a text message or a file of the workspace after you allow it, or make a
 `wa.me` link that opens WhatsApp with the text, which you send. Deleting the credential removes the device from your number.
 
@@ -65,7 +65,7 @@ cookies of your X session. This is not X's paid API, and X can limit or ban an a
 same access as your login, so keep it secret, as Golem does. It works for about five years, or until you sign out of
 that session or change your password.
 
-Agents read your bookmarks, newest first, and posts with their replies and threads. They do not post, like, or change
+Agents read your bookmarks, newest first, and posts with their replies and chats. They do not post, like, or change
 bookmarks.
 
 ## Instagram
@@ -91,7 +91,7 @@ call services, such as turning on a light or setting a thermostat. They do not c
 ## T3 Code
 
 Agents use the MCP server of the person's own T3 Code: they list its projects, start a thread in a project, or in a new
-worktree of it, with a task, and read, answer, wait for, or stop its threads. Golem gets only these tools; the others
+worktree of it, with a task, and read, answer, wait for, or stop its chats. Golem gets only these tools; the others
 serve an agent inside a T3 Code thread.
 
 In Settings, **Connect** asks for the address of the T3 Code server, such as `http://my-mac:3774`. Golem and the

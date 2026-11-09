@@ -152,7 +152,7 @@ struct LevelWave: View {
     }
 }
 
-/// Conversation mode in a thread: takes the composer's place while the user talks with Golem. The conversation itself
+/// Conversation mode in a chat: takes the composer's place while the user talks with Golem. The conversation itself
 /// is ``VoiceChat``, so it goes on with the screen locked; this shows it. A tap on the orb stops Golem speaking, or
 /// sends what the user said without waiting for the pause.
 struct TalkDock: View {

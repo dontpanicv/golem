@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A waiting or done thread update: what Golem will post, its sources, and Send now or Don't send.
+/// A waiting or done chat update: what Golem will post, its sources, and Send now or Don't send.
 struct UpdateDetailView: View {
     let update: IntakeUpdate
     let earlier: [IntakeFeedback]
@@ -34,8 +34,8 @@ struct UpdateDetailView: View {
                         .buttonStyle(.row)
                         .disabled(busy)
                 }
-                if let threadID = update.threadId {
-                    Button { open(.thread(threadID)) } label: { ListRow("Open thread", pixel: .chat) }
+                if let chatID = update.chatId {
+                    Button { open(.chat(chatID)) } label: { ListRow("Open chat", pixel: .chat) }
                         .buttonStyle(.row)
                 }
             }
@@ -233,8 +233,8 @@ struct FollowingDetailView: View {
             if detail.history.first?.previous != nil {
                 action("Undo last change", pixel: .undo, change: "undo")
             }
-            if let threadID = detail.check.threadId {
-                Button { open(.thread(threadID)) } label: { ListRow("Open thread", pixel: .chat) }
+            if let chatID = detail.check.chatId {
+                Button { open(.chat(chatID)) } label: { ListRow("Open chat", pixel: .chat) }
                     .buttonStyle(.row)
             }
         }

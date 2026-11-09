@@ -30,15 +30,15 @@ struct Upcoming: Codable, Hashable {
 }
 
 struct WaitingApproval: Codable, Hashable {
-    let threadId: String
+    let chatId: String
     let approval: Approval
 }
 
-/// A one-time reminder that an agent made; its agent reminds in `threadId` at `dueAt`, or when its recipient arrives at
+/// A one-time reminder that an agent made; its agent reminds in `chatId` at `dueAt`, or when its recipient arrives at
 /// or leaves its `place`.
 struct Reminder: Codable, Hashable, Identifiable {
     let id: String
-    let threadId: String
+    let chatId: String
     let recipientId: String
     let createdBy: String?
     let text: String
@@ -84,7 +84,7 @@ struct ReminderPlace: Codable, Hashable {
     var summary: String { event == .arrive ? "Arrive at \(name)" : "Leave \(name)" }
 }
 
-/// A routine or a reminder that Golem suggests from a thread; nothing happens until the person accepts it.
+/// A routine or a reminder that Golem suggests from a chat; nothing happens until the person accepts it.
 struct Suggestion: Codable, Hashable, Identifiable {
     enum Kind: String, Codable { case routine, reminder }
 
@@ -97,12 +97,12 @@ struct Suggestion: Codable, Hashable, Identifiable {
     let schedule: String?
     /// When the reminder is due, or the routine's first run.
     let time: Double?
-    let channelId: String
-    let threadId: String
+    let topicId: String
+    let chatId: String
     let createdAt: Double
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, name, text, schedule, channelId, threadId, createdAt
+        case id, kind, name, text, schedule, topicId, chatId, createdAt
         case time = "at"
     }
 }

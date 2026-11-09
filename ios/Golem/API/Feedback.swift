@@ -26,7 +26,7 @@ struct Feedback: Codable, Hashable, Identifiable {
     let tool: String?
     let summary: String
     let detail: String
-    /// Nil when the owner does not see the thread, such as another person's private channel.
-    let threadId: String?
+    /// Nil when the owner does not see the chat, such as another person's private topic.
+    let chatId: String?
     let createdAt: Double
 }

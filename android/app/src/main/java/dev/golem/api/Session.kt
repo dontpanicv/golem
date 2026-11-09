@@ -19,16 +19,16 @@ import java.io.File
 import java.security.MessageDigest
 import java.security.SecureRandom
 
-/** A screen of the app; `key` is what the app remembers, so it opens on the last channel or thread. */
+/** A screen of the app; `key` is what the app remembers, so it opens on the last topic or chat. */
 sealed interface Destination {
     data object Search : Destination
-    data class Channel(val id: String) : Destination
-    /** A channel with its composer focused, to start a thread. */
-    data class NewThread(val id: String) : Destination
-    /** A channel with one of its artifacts open, or the orchestrator with one of the workspace's own for a null channel. */
-    data class Artifact(val channel: String?, val artifact: String) : Destination
-    data class ChannelDetails(val id: String) : Destination
-    data class Thread(val id: String) : Destination
+    data class Topic(val id: String) : Destination
+    /** A topic with its composer focused, to start a chat. */
+    data class NewChat(val id: String) : Destination
+    /** A topic with one of its artifacts open, or the orchestrator with one of the workspace's own for a null topic. */
+    data class Artifact(val topic: String?, val artifact: String) : Destination
+    data class TopicDetails(val id: String) : Destination
+    data class Chat(val id: String) : Destination
     data object Inbox : Destination
     data object Upcoming : Destination
     data object Following : Destination
@@ -46,7 +46,7 @@ data class Toast(val message: String, val tone: Tone = Tone.Neutral, val id: Lon
 data class Tapped(val workspaceId: String, val destination: Destination)
 
 /**
- * The signed-in person, their workspaces, and the open workspace with its channels. Every screen reads the server
+ * The signed-in person, their workspaces, and the open workspace with its topics. Every screen reads the server
  * through it; its state is Compose state, so screens redraw when it changes.
  */
 class Session(private val context: Context, val scope: CoroutineScope) {
@@ -69,14 +69,14 @@ class Session(private val context: Context, val scope: CoroutineScope) {
         private set
     var workspace by mutableStateOf<Workspace?>(null)
         private set
-    var channels by mutableStateOf<List<Channel>>(emptyList())
+    var topics by mutableStateOf<List<Topic>>(emptyList())
         private set
     var members by mutableStateOf<List<Member>>(emptyList())
         private set
-    /** The open workspace's thread that never ends, which channel lists leave out. */
-    var orchestrator by mutableStateOf<ThreadSummary?>(null)
+    /** The open workspace's chat that never ends, which topic lists leave out. */
+    var orchestrator by mutableStateOf<ChatSummary?>(null)
         private set
-    /** The threads of the open workspace whose agent works. */
+    /** The chats of the open workspace whose agent works. */
     var working by mutableStateOf<Set<String>>(emptySet())
         private set
     var inbox by mutableStateOf<Inbox?>(null)
@@ -90,8 +90,8 @@ class Session(private val context: Context, val scope: CoroutineScope) {
     /** Changes when the workspace loads again, so lists that depend on it load again too. */
     var revision by mutableIntStateOf(0)
         private set
-    /** The thread on screen, whose notifications the app does not show. */
-    var threadOnScreen: String? = null
+    /** The chat on screen, whose notifications the app does not show. */
+    var chatOnScreen: String? = null
 
     /** The path of each member's profile picture in the open workspace, by person. */
     val pictures: Map<String, String> get() = members.mapNotNull { m -> m.picture?.let { m.userId to it } }.toMap()
@@ -177,7 +177,7 @@ class Session(private val context: Context, val scope: CoroutineScope) {
         val opened = this.workspace?.id != detail.workspace.id
         this.workspace = detail.workspace
         this.members = members
-        channels = detail.channels
+        topics = detail.topics
         this.orchestrator = orchestrator
         preferences.edit().putString(WORKSPACE, workspace.id).apply()
         revision++
@@ -213,7 +213,7 @@ class Session(private val context: Context, val scope: CoroutineScope) {
     private fun update(inbox: Inbox) {
         val first = this.inbox == null
         this.inbox = inbox
-        notifier.show(inbox, workspace?.id ?: return, silently = first, onScreen = threadOnScreen)
+        notifier.show(inbox, workspace?.id ?: return, silently = first, onScreen = chatOnScreen)
     }
 
     /** The screen of the notification the person tapped, once its workspace is open; it opens that workspace first. */
@@ -230,16 +230,16 @@ class Session(private val context: Context, val scope: CoroutineScope) {
     }
 
     /**
-     * Follows which threads of the open workspace work, reading the stream again after each error, until cancelled.
-     * The channels, threads, and notifications load again when work starts or ends, or a thread settles.
+     * Follows which chats of the open workspace work, reading the stream again after each error, until cancelled.
+     * The topics, chats, and notifications load again when work starts or ends, or a chat settles.
      */
     suspend fun followWorking() {
         working = emptySet()
         val workspace = workspace ?: return
         while (scope.isActive) {
             runCatching {
-                api.workingEvents(workspace.id) { threadIds ->
-                    working = threadIds.toSet()
+                api.workingEvents(workspace.id) { chatIds ->
+                    working = chatIds.toSet()
                     scope.launch { runCatching { reloadWorkspace() } }
                 }
             }.onFailure { if (it is CancellationException) throw it }
@@ -263,43 +263,43 @@ class Session(private val context: Context, val scope: CoroutineScope) {
         reloadWorkspace()
     }
 
-    /** Adds a channel; a private one only the person sees. */
-    suspend fun createChannel(name: String, private: Boolean): Channel? {
+    /** Adds a topic; a private one only the person sees. */
+    suspend fun createTopic(name: String, private: Boolean): Topic? {
         val workspace = workspace ?: return null
-        val channel = api.createChannel(workspace.id, name, private)
+        val topic = api.createTopic(workspace.id, name, private)
         reloadWorkspace()
-        return channel
+        return topic
     }
 
-    suspend fun renameChannel(channelId: String, name: String) {
+    suspend fun renameTopic(topicId: String, name: String) {
         val workspace = workspace ?: return
-        api.renameChannel(workspace.id, channelId, name)
+        api.renameTopic(workspace.id, topicId, name)
         reloadWorkspace()
     }
 
-    /** Merges a channel into another; channels are never deleted. */
-    suspend fun mergeChannel(channelId: String, into: String) {
+    /** Merges a topic into another; topics are never deleted. */
+    suspend fun mergeTopic(topicId: String, into: String) {
         val workspace = workspace ?: return
-        api.mergeChannel(workspace.id, channelId, into)
+        api.mergeTopic(workspace.id, topicId, into)
         reloadWorkspace()
     }
 
-    suspend fun createThread(channelId: String, text: String, files: List<File>): ThreadSummary? {
+    suspend fun createChat(topicId: String, text: String, files: List<File>): ChatSummary? {
         val workspace = workspace ?: return null
-        val thread = api.createThread(workspace.id, channelId, text, files)
+        val chat = api.createChat(workspace.id, topicId, text, files)
         reloadWorkspace()
-        return thread
+        return chat
     }
 
-    suspend fun setThreadSettled(threadId: String, settled: Boolean) {
+    suspend fun setChatSettled(chatId: String, settled: Boolean) {
         val workspace = workspace ?: return
-        api.setThreadSettled(workspace.id, threadId, settled)
+        api.setChatSettled(workspace.id, chatId, settled)
         reloadWorkspace()
     }
 
-    suspend fun moveThread(threadId: String, channelId: String) {
+    suspend fun moveChat(chatId: String, topicId: String) {
         val workspace = workspace ?: return
-        api.moveThread(workspace.id, threadId, channelId)
+        api.moveChat(workspace.id, chatId, topicId)
         reloadWorkspace()
     }
 
@@ -330,7 +330,7 @@ class Session(private val context: Context, val scope: CoroutineScope) {
         user = null
         workspaces = emptyList()
         workspace = null
-        channels = emptyList()
+        topics = emptyList()
         members = emptyList()
         orchestrator = null
         inbox = null

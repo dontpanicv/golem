@@ -110,7 +110,7 @@ private struct ScreenTitle: ViewModifier {
 }
 
 /// The title of a pushed screen at the top of its content, as Linear's issue title: an optional small caption
-/// above, such as the channel of a thread.
+/// above, such as the topic of a chat.
 struct DetailTitle: View {
     let title: String
     var caption: String?

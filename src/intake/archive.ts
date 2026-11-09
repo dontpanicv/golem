@@ -1,11 +1,11 @@
 import type { Database } from "bun:sqlite";
+import type { FileRef } from "../chats/chats.ts";
 import type { WatchedItem } from "../integrations/integrations.ts";
 import type { User } from "../platform/auth.ts";
-import type { FileRef } from "../threads/threads.ts";
 import type { Audit } from "./audit.ts";
 import type {
+  IntakeChats,
   IntakeIntegrations,
-  IntakeThreads,
   IntakeWorkspaces,
 } from "./intake.ts";
 import type { ItemRow } from "./recall.ts";
@@ -14,7 +14,7 @@ interface ArchiveRow {
   id: string;
   workspace_id: string;
   owner_id: string;
-  channel_id: string;
+  topic_id: string;
   credential_id: string;
   integration: string;
   conversation: string;
@@ -38,8 +38,8 @@ export class IntakeArchives {
     private readonly database: Database,
     private readonly workspaces: IntakeWorkspaces,
     private readonly integrations: IntakeIntegrations,
-    private readonly threads: Pick<
-      IntakeThreads,
+    private readonly chats: Pick<
+      IntakeChats,
       "files" | "file" | "place" | "writeFile" | "deleteFile"
     >,
     private readonly audit: Audit,
@@ -48,13 +48,13 @@ export class IntakeArchives {
 
   async save(
     workspaceId: string,
-    channelId: string,
+    topicId: string,
     owner: User,
     rows: ItemRow[]
   ): Promise<FileRef[]> {
     this.workspaces.requireMember(workspaceId, owner);
-    this.threads.place(workspaceId, channelId, owner);
-    const groups = this.stage(workspaceId, channelId, owner, rows);
+    this.chats.place(workspaceId, topicId, owner);
+    const groups = this.stage(workspaceId, topicId, owner, rows);
     const files: FileRef[] = [];
     for (const id of groups) {
       files.push(...(await this.flush(id, owner)));
@@ -99,7 +99,7 @@ export class IntakeArchives {
       ];
       for (const fileId of gone) {
         // A file that the person deleted already is gone too.
-        await this.threads
+        await this.chats
           .deleteFile(workspaceId, owner, fileId)
           .catch(() => undefined);
       }
@@ -139,7 +139,7 @@ export class IntakeArchives {
       return false;
     }
     try {
-      const { path } = await this.threads.file(
+      const { path } = await this.chats.file(
         group.workspace_id,
         owner,
         group.file_id
@@ -182,7 +182,7 @@ export class IntakeArchives {
 
   private stage(
     workspaceId: string,
-    channelId: string,
+    topicId: string,
     owner: User,
     rows: ItemRow[]
   ): string[] {
@@ -227,7 +227,7 @@ export class IntakeArchives {
         JSON.stringify([
           workspaceId,
           owner.id,
-          channelId,
+          topicId,
           credential.id,
           item.chat,
           period,
@@ -245,7 +245,7 @@ export class IntakeArchives {
             id,
             workspace_id: workspaceId,
             owner_id: owner.id,
-            channel_id: channelId,
+            topic_id: topicId,
             credential_id: credential.id,
             integration: credential.integration,
             conversation: item.chat,
@@ -286,13 +286,13 @@ export class IntakeArchives {
         const ids = [...members.values()].map((each) => each.row.id);
         this.database
           .query(
-            "INSERT INTO intake_archive(id,workspace_id,owner_id,channel_id,credential_id,integration,conversation,period,item_ids) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET item_ids=excluded.item_ids,pending=CASE WHEN item_ids!=excluded.item_ids OR deleted_at IS NOT NULL THEN 1 ELSE pending END,file_id=CASE WHEN deleted_at IS NULL THEN file_id END,content_hash=CASE WHEN deleted_at IS NULL THEN content_hash END,attachment_ids=CASE WHEN deleted_at IS NULL THEN attachment_ids ELSE '{}' END,deleted_at=NULL"
+            "INSERT INTO intake_archive(id,workspace_id,owner_id,topic_id,credential_id,integration,conversation,period,item_ids) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET item_ids=excluded.item_ids,pending=CASE WHEN item_ids!=excluded.item_ids OR deleted_at IS NOT NULL THEN 1 ELSE pending END,file_id=CASE WHEN deleted_at IS NULL THEN file_id END,content_hash=CASE WHEN deleted_at IS NULL THEN content_hash END,attachment_ids=CASE WHEN deleted_at IS NULL THEN attachment_ids ELSE '{}' END,deleted_at=NULL"
           )
           .run(
             row.id,
             workspaceId,
             owner.id,
-            channelId,
+            topicId,
             row.credential_id,
             row.integration,
             row.conversation,
@@ -336,12 +336,8 @@ export class IntakeArchives {
     if (!observations.length) {
       return [];
     }
-    const place = this.threads.place(
-      group.workspace_id,
-      group.channel_id,
-      owner
-    );
-    const stored = await this.threads.files(place);
+    const place = this.chats.place(group.workspace_id, group.topic_id, owner);
+    const stored = await this.chats.files(place);
     const attachments = await this.attachments(
       group,
       owner,
@@ -357,7 +353,7 @@ export class IntakeArchives {
       stored.find((file) => file.name.endsWith(`-${group.id.slice(0, 12)}.md`));
     let currentHash: string | null = null;
     if (source) {
-      const storedFile = await this.threads.file(
+      const storedFile = await this.chats.file(
         group.workspace_id,
         owner,
         source.id
@@ -379,9 +375,9 @@ export class IntakeArchives {
       }
     }
     if (!source || currentHash !== digest) {
-      const saved = await this.threads.writeFile(
+      const saved = await this.chats.writeFile(
         group.workspace_id,
-        group.channel_id,
+        group.topic_id,
         owner,
         new File([text], name, { type: "text/markdown" }),
         source?.id
@@ -408,7 +404,7 @@ export class IntakeArchives {
         );
     })();
     this.audit.record(group.id, "archive.saved", group.workspace_id, owner.id, {
-      channel: group.channel_id,
+      topic: group.topic_id,
       file: sourceFile,
       itemIds: observations.map((each) => each.row.id),
       contentHash: digest,
@@ -517,9 +513,9 @@ export class IntakeArchives {
       owner.id,
       { attachment, hash: blob }
     );
-    return this.threads.writeFile(
+    return this.chats.writeFile(
       group.workspace_id,
-      group.channel_id,
+      group.topic_id,
       owner,
       new File([bytes], name, { type: attachment.type })
     );

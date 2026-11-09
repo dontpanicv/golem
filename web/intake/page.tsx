@@ -46,7 +46,7 @@ type Selected =
   | { kind: "source"; id: string };
 
 /**
- * All that Golem holds for the person from the accounts it reads: the thread updates that wait, the matters it follows,
+ * All that Golem holds for the person from the accounts it reads: the chat updates that wait, the matters it follows,
  * its sources, what it keeps, and what it did. Each row opens its detail, where the person gives feedback.
  */
 export function FollowingPage() {
@@ -328,9 +328,7 @@ function KeptRow({ item, onOpen }: { item: IntakeKept; onOpen: () => void }) {
     >
       <Badge
         label={
-          { thread: "In thread", filed: "Filed", context: "Context" }[
-            item.outcome
-          ]
+          { chat: "In chat", filed: "Filed", context: "Context" }[item.outcome]
         }
         tone={item.outcome === "context" ? undefined : "success"}
       />
@@ -408,10 +406,7 @@ function UpdateDialog({
             workspaceId={props.workspaceId}
           />
         ) : null}
-        <OpenThread
-          threadId={update.threadId}
-          workspaceId={props.workspaceId}
-        />
+        <OpenChat chatId={update.chatId} workspaceId={props.workspaceId} />
       </div>
       <Sources evidence={update.evidence} />
     </FeedbackDialog>
@@ -431,7 +426,7 @@ function KeptDialog({ item, ...props }: DialogProps & { item: IntakeKept }) {
       <p className="following-text">{item.text}</p>
       <Attachments evidence={item} />
       <div className="following-actions">
-        <OpenThread threadId={item.threadId} workspaceId={props.workspaceId} />
+        <OpenChat chatId={item.chatId} workspaceId={props.workspaceId} />
         <OpenSource url={item.url} />
       </div>
     </FeedbackDialog>
@@ -667,7 +662,7 @@ function CheckDialog({
             onClick={() => act("undo", "Undo the last change")}
           />
         ) : null}
-        <OpenThread threadId={current.threadId} workspaceId={workspaceId} />
+        <OpenChat chatId={current.chatId} workspaceId={workspaceId} />
       </div>
       {query.error ? <p role="alert">{query.error.message}</p> : null}
       {detail ? <Sources evidence={detail.evidence} /> : null}
@@ -710,20 +705,20 @@ function Attachments({ evidence }: { evidence: IntakeEvidence }) {
   ) : null;
 }
 
-function OpenThread({
+function OpenChat({
   workspaceId,
-  threadId,
+  chatId,
 }: {
   workspaceId: string;
-  threadId: string | null;
+  chatId: string | null;
 }) {
-  return threadId ? (
+  return chatId ? (
     <Link
       className="button"
-      params={{ workspaceId, threadId }}
-      to="/w/$workspaceId/t/$threadId"
+      params={{ workspaceId, chatId }}
+      to="/w/$workspaceId/chat/$chatId"
     >
-      Open thread
+      Open chat
     </Link>
   ) : null;
 }
@@ -741,7 +736,7 @@ function sourceState(source: FollowingOverview["sources"][number]): string {
 }
 
 function updateTitle(update: IntakeUpdate): string {
-  return update.threadTitle ?? `New thread: ${update.newThread ?? "untitled"}`;
+  return update.chatTitle ?? `New chat: ${update.newChat ?? "untitled"}`;
 }
 
 function updateState(update: IntakeUpdate): string {
@@ -770,7 +765,7 @@ function stateLabel(state: FollowingCheck["state"]): string {
 }
 
 function keptWhere(item: IntakeKept): string {
-  if (item.outcome === "thread") {
+  if (item.outcome === "chat") {
     return `In ${item.place}`;
   }
   return item.outcome === "filed" ? `Filed in ${item.place}` : "Context";

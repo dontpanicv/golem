@@ -41,10 +41,10 @@ struct MessageRow: View {
                 }
                 if let work = message.work { WorkLog(work: work) }
                 if !message.text.isEmpty {
-                    // Only a message with a thread link redraws when a thread starts or stops working.
+                    // Only a message with a chat link redraws when a chat starts or stops working.
                     MarkdownText(
                         text: message.text, size: Tokens.Mobile.FontSize.body,
-                        working: message.text.contains("thread:") ? session.working : []
+                        working: message.text.contains("chat:") ? session.working : []
                     )
                         .foregroundStyle(message.failed ? Tokens.Mobile.Colors.danger : Tokens.Mobile.Colors.text)
                         .copyable(message.text)
@@ -72,31 +72,31 @@ struct MessageRow: View {
     }
 
     /// The message follows one of the same author within five minutes, and has no work log to head; or it is a turn of
-    /// Golem that the answer of another thread started, such as the result of work that the message before asked for.
+    /// Golem that the answer of another chat started, such as the result of work that the message before asked for.
     static func continues(_ message: Message, after previous: Message) -> Bool {
         if message.agent, previous.agent, relayedFrom(message) != nil { return true }
         return message.author == previous.author && message.agent == previous.agent && message.work == nil
             && message.time - previous.time < 5 * 60 * 1000
     }
 
-    /// The title of the thread whose message started this turn, or nil for a turn that a person started.
+    /// The title of the chat whose message started this turn, or nil for a turn that a person started.
     static func relayedFrom(_ message: Message) -> String? {
         guard let first = message.work?.steps.first, first.tool == relay else { return nil }
         return String(linked(first.text).characters)
     }
 
-    /// The step of a turn that another thread's message started.
-    static let relay = "from_thread"
+    /// The step of a turn that another chat's message started.
+    static let relay = "from_chat"
 
-    /// One line of text with its inline Markdown (bold, italics, code, links) and each thread link the agent wrote,
-    /// `[title](thread:<id>)`, as a link to `thread:<id>`, followed by "working" while the agent of that thread works.
+    /// One line of text with its inline Markdown (bold, italics, code, links) and each chat link the agent wrote,
+    /// `[title](chat:<id>)`, as a link to `chat:<id>`, followed by "working" while the agent of that chat works.
     static func linked(_ text: String, working: Set<String> = []) -> AttributedString {
         var result = AttributedString()
         var rest = text[...]
-        while let match = rest.firstMatch(of: /\[([^\]\n]+)\]\(thread:([\w-]+)\)/) {
+        while let match = rest.firstMatch(of: /\[([^\]\n]+)\]\(chat:([\w-]+)\)/) {
             result += markdown(rest[..<match.range.lowerBound])
             var link = AttributedString(match.1)
-            link.link = URL(string: "thread:\(match.2)")
+            link.link = URL(string: "chat:\(match.2)")
             link.foregroundColor = Tokens.Colors.accent
             result += link
             if working.contains(String(match.2)) {
@@ -168,7 +168,7 @@ private struct FilePicture: View {
     }
 }
 
-/// A row draws again only when its message or place changes: every row of a thread is alive, and a thread changes with
+/// A row draws again only when its message or place changes: every row of a chat is alive, and a chat changes with
 /// each word of an answer. `openFile` is the same action each time.
 extension MessageRow: Equatable {
     static func == (left: MessageRow, right: MessageRow) -> Bool {

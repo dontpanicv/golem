@@ -8,10 +8,10 @@ import { localPath } from "../accounts/login.tsx";
 import { fileHref } from "../app/api.ts";
 import { previewLink } from "../ui/file-preview.tsx";
 import { Cards, parseCards } from "./cards.tsx";
-import { ThreadLink } from "./thread-link.tsx";
+import { ChatLink } from "./chat-link.tsx";
 
-/** Where the addresses that agents write go: `thread:<id>`, `file:<id>`, and `artifact:<id>`. */
-const SCHEME = /^(thread|file|artifact):([\w-]+)$/;
+/** Where the addresses that agents write go: `chat:<id>`, `file:<id>`, and `artifact:<id>`. */
+const SCHEME = /^(chat|file|artifact):([\w-]+)$/;
 
 /**
  * What an agent writes can hold simple HTML. The sanitizer keeps what cannot run or restyle the page, and Golem's own
@@ -25,7 +25,7 @@ const SCHEMA = {
     ...defaultSchema.protocols,
     href: [
       ...(defaultSchema.protocols?.href ?? []),
-      "thread",
+      "chat",
       "file",
       "artifact",
     ],
@@ -41,7 +41,7 @@ function urlTransform(url: string, key: string): string {
 }
 
 /**
- * An agent's Markdown. A link to `thread:<id>` opens the thread, to `file:<id>` the file, and to `artifact:<id>` the
+ * An agent's Markdown. A link to `chat:<id>` opens the chat, to `file:<id>` the file, and to `artifact:<id>` the
  * artifact in the side panel; a picture of `file:<id>` shows the file, and of `artifact:<id>` the artifact itself. A
  * fenced `card` block shows its cards.
  *
@@ -104,11 +104,11 @@ function MarkdownLink({
   children: ReactNode;
 }) {
   const [, scheme, id] = href?.match(SCHEME) ?? [];
-  if (scheme === "thread") {
+  if (scheme === "chat") {
     return (
-      <ThreadLink threadId={id!} workspaceId={workspaceId}>
+      <ChatLink chatId={id!} workspaceId={workspaceId}>
         {children}
-      </ThreadLink>
+      </ChatLink>
     );
   }
   if (scheme === "file") {

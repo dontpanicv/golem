@@ -18,7 +18,7 @@ export function upcomingQuery(workspaceId: string) {
   });
 }
 
-/** Loads the agenda again, and the routines of the channels, which an accepted suggestion or a pause changes. */
+/** Loads the agenda again, and the routines of the topics, which an accepted suggestion or a pause changes. */
 function refresh(workspaceId: string) {
   return Promise.all([
     queryClient.invalidateQueries({
@@ -64,7 +64,7 @@ export function useRoutineEnabled(workspaceId: string) {
 export type AgendaItem =
   | {
       readonly kind: "approval";
-      readonly threadId: string;
+      readonly chatId: string;
       readonly approval: Approval;
     }
   | { readonly kind: "failed"; readonly routine: Routine }
@@ -135,8 +135,8 @@ export function agendaGroups(upcoming: Upcoming, now: number): AgendaGroup[] {
       title: "Needs you",
       items: [
         ...upcoming.approvals.map(
-          ({ threadId, approval }) =>
-            ({ kind: "approval", threadId, approval }) as const
+          ({ chatId, approval }) =>
+            ({ kind: "approval", chatId, approval }) as const
         ),
         ...failed.map((routine) => ({ kind: "failed", routine }) as const),
       ],

@@ -20,7 +20,7 @@ function systemOf(context: Context): string {
   ].join("\n");
 }
 
-test("daily settling settles channel threads quiet for more than 14 days, without a model, and new activity opens them again", async () => {
+test("daily settling settles topic chats quiet for more than 14 days, without a model, and new activity opens them again", async () => {
   const golem = await startTestApp();
   let release: (() => void) | undefined;
   const reviews: string[] = [];
@@ -30,7 +30,7 @@ test("daily settling settles channel threads quiet for more than 14 days, withou
     const alice = (await internalAdapter.findUserByEmail("alice@example.com"))!
       .user;
     const home = await golem.app.workspaces.create(alice, "Daily settling");
-    const general = golem.app.workspaces.channels(home.id, alice)[0]!;
+    const general = golem.app.workspaces.topics(home.id, alice)[0]!;
     const agent = async (context: Context, options?: SimpleStreamOptions) => {
       const last = context.messages.at(-1)!;
       const text =
@@ -39,7 +39,7 @@ test("daily settling settles channel threads quiet for more than 14 days, withou
           : last.content
               .flatMap((block) => (block.type === "text" ? [block.text] : []))
               .join("");
-      if (systemOf(context).includes("inactive thread")) {
+      if (systemOf(context).includes("inactive chat")) {
         reviews.push(text);
       }
       if (last.role === "user" && text.endsWith("Still running")) {
@@ -56,7 +56,7 @@ test("daily settling settles channel threads quiet for more than 14 days, withou
     };
     golem.faux.setResponses(Array.from({ length: 300 }, () => agent));
     const create = async (text: string) => {
-      const thread = await golem.app.threads.create(
+      const chat = await golem.app.chats.create(
         home.id,
         alice,
         general.id,
@@ -64,18 +64,16 @@ test("daily settling settles channel threads quiet for more than 14 days, withou
       );
       await until(
         () =>
-          golem.app.threads.messages(
-            golem.app.workspaces.thread(thread.id, alice)
-          ),
+          golem.app.chats.messages(golem.app.workspaces.chat(chat.id, alice)),
         (state) => !state.running && state.messages.length === 2
       );
-      return thread;
+      return chat;
     };
     const quiet = await create("Recipe completed");
     const recent = await create("Recent discussion");
     const boundary = await create("Exactly fourteen days");
-    const own = await golem.app.threads.orchestrator(home.id, alice);
-    const running = await golem.app.threads.create(
+    const own = await golem.app.chats.orchestrator(home.id, alice);
+    const running = await golem.app.chats.create(
       home.id,
       alice,
       general.id,
@@ -85,53 +83,51 @@ test("daily settling settles channel threads quiet for more than 14 days, withou
 
     const now = Date.now() + 15 * DAY_MS;
     golem.app.database
-      .query("UPDATE thread SET updated_at = ? WHERE id = ?")
+      .query("UPDATE chat SET updated_at = ? WHERE id = ?")
       .run(now - DAY_MS, recent.id);
     golem.app.database
-      .query("UPDATE thread SET updated_at = ? WHERE id = ?")
+      .query("UPDATE chat SET updated_at = ? WHERE id = ?")
       .run(now - 14 * DAY_MS, boundary.id);
     const states: (number | null)[] = [];
-    const stopThread = await golem.app.threads.watch(
-      golem.app.workspaces.thread(quiet.id, alice),
+    const stopChat = await golem.app.chats.watch(
+      golem.app.workspaces.chat(quiet.id, alice),
       () => {
-        states.push(golem.app.workspaces.thread(quiet.id, alice).settledAt);
+        states.push(golem.app.workspaces.chat(quiet.id, alice).settledAt);
       }
     );
     try {
-      const first = golem.app.threads.settleInactive(home.id, now);
-      expect(golem.app.threads.settleInactive(home.id, now)).toBe(first);
+      const first = golem.app.chats.settleInactive(home.id, now);
+      expect(golem.app.chats.settleInactive(home.id, now)).toBe(first);
       await first;
     } finally {
-      await stopThread();
+      await stopChat();
     }
-    expect(golem.app.workspaces.thread(quiet.id, alice).settledAt).toEqual(
+    expect(golem.app.workspaces.chat(quiet.id, alice).settledAt).toEqual(
       expect.any(Number)
     );
     expect(states.at(-1)).toEqual(expect.any(Number));
-    for (const thread of [recent, boundary, running, own]) {
-      expect(
-        golem.app.workspaces.thread(thread.id, alice).settledAt
-      ).toBeNull();
+    for (const chat of [recent, boundary, running, own]) {
+      expect(golem.app.workspaces.chat(chat.id, alice).settledAt).toBeNull();
     }
     expect(reviews).toEqual([]);
 
     // One check a day.
     golem.app.database
-      .query("UPDATE thread SET updated_at = ? WHERE id = ?")
+      .query("UPDATE chat SET updated_at = ? WHERE id = ?")
       .run(now - 20 * DAY_MS, recent.id);
-    await golem.app.threads.settleInactive(home.id, now + DAY_MS - 1);
-    expect(golem.app.workspaces.thread(recent.id, alice).settledAt).toBeNull();
+    await golem.app.chats.settleInactive(home.id, now + DAY_MS - 1);
+    expect(golem.app.workspaces.chat(recent.id, alice).settledAt).toBeNull();
 
-    // A new message, such as a routine's answer, opens the settled thread again.
-    await golem.app.threads.send(quiet.id, alice, "One more question");
-    expect(golem.app.workspaces.thread(quiet.id, alice).settledAt).toBeNull();
+    // A new message, such as a routine's answer, opens the settled chat again.
+    await golem.app.chats.send(quiet.id, alice, "One more question");
+    expect(golem.app.workspaces.chat(quiet.id, alice).settledAt).toBeNull();
   } finally {
     release?.();
     await golem.close();
   }
 });
 
-test("private threads settle without sending workspace events to another member", async () => {
+test("private chats settle without sending workspace events to another member", async () => {
   const golem = await startTestApp();
   try {
     await golem.signIn("Alice", "alice@example.com");
@@ -143,7 +139,7 @@ test("private threads settle without sending workspace events to another member"
       .user;
     const home = await golem.app.workspaces.create(alice, "Private settling");
     await golem.app.workspaces.addMember(home.id, alice, bob.email);
-    const privateChannel = golem.app.workspaces.createChannel(
+    const privateTopic = golem.app.workspaces.createTopic(
       home.id,
       alice,
       "private",
@@ -152,39 +148,33 @@ test("private threads settle without sending workspace events to another member"
     golem.faux.setResponses(
       Array.from({ length: 100 }, () => () => fauxAssistantMessage("Done."))
     );
-    const recipe = await golem.app.threads.create(
+    const recipe = await golem.app.chats.create(
       home.id,
       alice,
-      privateChannel.id,
+      privateTopic.id,
       "Recipe completed"
     );
     await until(
       () =>
-        golem.app.threads.messages(
-          golem.app.workspaces.thread(recipe.id, alice)
-        ),
+        golem.app.chats.messages(golem.app.workspaces.chat(recipe.id, alice)),
       (state) => !state.running && state.messages.length === 2
     );
     let alices = 0;
     let bobs = 0;
-    const stopAlice = await golem.app.threads.watchWorking(
-      home.id,
-      alice,
-      () => {
-        alices += 1;
-      }
-    );
-    const stopBob = await golem.app.threads.watchWorking(home.id, bob, () => {
+    const stopAlice = await golem.app.chats.watchWorking(home.id, alice, () => {
+      alices += 1;
+    });
+    const stopBob = await golem.app.chats.watchWorking(home.id, bob, () => {
       bobs += 1;
     });
     try {
-      await golem.app.threads.settleInactive(home.id, Date.now() + 15 * DAY_MS);
-      expect(golem.app.workspaces.thread(recipe.id, alice).settledAt).toEqual(
+      await golem.app.chats.settleInactive(home.id, Date.now() + 15 * DAY_MS);
+      expect(golem.app.workspaces.chat(recipe.id, alice).settledAt).toEqual(
         expect.any(Number)
       );
       expect(alices).toBe(2);
       expect(bobs).toBe(1);
-      expect(() => golem.app.workspaces.thread(recipe.id, bob)).toThrow(
+      expect(() => golem.app.workspaces.chat(recipe.id, bob)).toThrow(
         "Not found"
       );
     } finally {

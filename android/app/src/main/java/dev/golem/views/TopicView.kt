@@ -34,9 +34,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.text.format.DateUtils
-import dev.golem.api.Channel
+import dev.golem.api.Topic
 import dev.golem.api.Destination
-import dev.golem.api.ThreadSummary
+import dev.golem.api.ChatSummary
 import dev.golem.design.Pixel
 import dev.golem.design.vector
 import dev.golem.design.EmptyState
@@ -55,26 +55,26 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * One channel, as a Slack channel: its threads as messages, the newest at the bottom over the composer, and the
- * settled ones folded above them. Sending from the composer starts a new thread. The title holds the channel's menu.
+ * One topic, as a Slack channel: its chats as messages, the newest at the bottom over the composer, and the
+ * settled ones folded above them. Sending from the composer starts a new chat. The title holds the topic's menu.
  */
 @Composable
-fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String? = null) {
+fun TopicView(topicId: String, compose: Boolean = false, artifactId: String? = null) {
     val session = LocalSession.current
     val open = LocalOpen.current
     val back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     val scope = rememberCoroutineScope()
-    val channel = session.channels.firstOrNull { it.id == channelId }
-    var draft by rememberSaveable(channelId) { mutableStateOf("") }
+    val topic = session.topics.firstOrNull { it.id == topicId }
+    var draft by rememberSaveable(topicId) { mutableStateOf("") }
     var files by remember { mutableStateOf<List<File>>(emptyList()) }
     var sending by remember { mutableStateOf(false) }
     var settledFolded by rememberSaveable { mutableStateOf(true) }
     var panel by remember { mutableStateOf(artifactId != null) }
-    var mergeInto by remember { mutableStateOf<Channel?>(null) }
-    val active = channel?.threads.orEmpty().filter { it.settledAt == null }.sortedBy { it.updatedAt }
-    val settled = channel?.threads.orEmpty().filter { it.settledAt != null }.sortedByDescending { it.settledAt }
-    // A channel that every member sees merges only into another such channel.
-    val mergeTargets = session.channels.filter { it.id != channelId && (channel?.ownerId != null || it.ownerId == null) }
+    var mergeInto by remember { mutableStateOf<Topic?>(null) }
+    val active = topic?.chats.orEmpty().filter { it.settledAt == null }.sortedBy { it.updatedAt }
+    val settled = topic?.chats.orEmpty().filter { it.settledAt != null }.sortedByDescending { it.settledAt }
+    // A topic that every member sees merges only into another such topic.
+    val mergeTargets = session.topics.filter { it.id != topicId && (topic?.ownerId != null || it.ownerId == null) }
 
     LaunchedEffect(Unit) { session.run { session.reloadWorkspace() } }
 
@@ -84,10 +84,10 @@ fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String?
         sending = true
         scope.launch {
             session.run {
-                session.createThread(channelId, text, files)?.let { thread ->
+                session.createChat(topicId, text, files)?.let { chat ->
                     draft = ""
                     files = emptyList()
-                    open(Destination.Thread(thread.id))
+                    open(Destination.Chat(chat.id))
                 }
             }
             sending = false
@@ -98,10 +98,10 @@ fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String?
         containerColor = Golem.mobile.background,
         topBar = {
             ScreenBar(
-                "# ${channel?.name ?: ""}", caption = if (active.size == 1) "1 open thread" else "${active.size} open threads",
+                "# ${topic?.name ?: ""}", caption = if (active.size == 1) "1 open chat" else "${active.size} open chats",
                 menu = buildList {
                     add(MenuAction("Files and artifacts", Pixel.Folder.vector) { panel = true })
-                    add(MenuAction("Channel details", Pixel.Info.vector) { open(Destination.ChannelDetails(channelId)) })
+                    add(MenuAction("Topic details", Pixel.Info.vector) { open(Destination.TopicDetails(topicId)) })
                     if (mergeTargets.isNotEmpty()) {
                         add(MenuAction("Merge into", Pixel.Merge.vector, children = mergeTargets.map { target ->
                             MenuAction("# ${target.name}") { mergeInto = target }
@@ -113,16 +113,16 @@ fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String?
         bottomBar = {
             ComposerRow {
                 Composer(
-                    owner = channelId, placeholder = "Message #${channel?.name ?: ""}", draft = draft, onDraft = { draft = it },
+                    owner = topicId, placeholder = "Message #${topic?.name ?: ""}", draft = draft, onDraft = { draft = it },
                     files = files, onFiles = { files = it }, sending = sending, send = ::send, autofocus = compose,
                 )
             }
         },
     ) { padding ->
-        if (channel?.threads.isNullOrEmpty()) {
+        if (topic?.chats.isNullOrEmpty()) {
             EmptyState("Ask Golem anything", Modifier.padding(padding))
         } else {
-            // The newest thread sits at the bottom over the composer.
+            // The newest chat sits at the bottom over the composer.
             val list = rememberLazyListState()
             val focus = LocalFocusManager.current
             LaunchedEffect(active.size) { if (list.firstVisibleItemIndex <= 2) list.animateScrollToItem(0) }
@@ -131,12 +131,12 @@ fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String?
                 contentPadding = PaddingValues(top = padding.calculateTopPadding() + Tokens.Space.md,
                     bottom = padding.calculateBottomPadding() + Tokens.Space.md),
             ) {
-                items(active.reversed(), key = { it.id }) { ThreadRow(it, Modifier.animateItem()) }
+                items(active.reversed(), key = { it.id }) { ChatRow(it, Modifier.animateItem()) }
                 if (settled.isNotEmpty()) {
                     item(key = "settled") {
                         Column {
                             FoldingSection("Settled · ${settled.size}", settledFolded, { settledFolded = it }) {
-                                settled.forEach { ThreadRow(it) }
+                                settled.forEach { ChatRow(it) }
                             }
                             ListSeparator()
                         }
@@ -145,30 +145,30 @@ fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String?
             }
         }
     }
-    if (panel) ArtifactsPanel(channelId, 0, artifactId) { panel = false }
+    if (panel) ArtifactsPanel(topicId, 0, artifactId) { panel = false }
     mergeInto?.let { target ->
         ConfirmDialog(
-            "Merge #${channel?.name ?: ""} into #${target.name}?", "Its threads, files, artifacts, and routines move there.",
+            "Merge #${topic?.name ?: ""} into #${target.name}?", "Its chats, files, artifacts, and routines move there.",
             "Merge", onDismiss = { mergeInto = null },
         ) {
-            session.mergeChannel(channelId, target.id)
-            // The merged channel is gone: it leaves the tab's stack, and the other channel opens.
+            session.mergeTopic(topicId, target.id)
+            // The merged topic is gone: it leaves the tab's stack, and the other topic opens.
             back?.onBackPressed()
-            open(Destination.Channel(target.id))
+            open(Destination.Topic(target.id))
         }
     }
 }
 
-/** A thread as Slack shows a message with replies: its title, then a link to it in the accent, or Golem at work. */
+/** A chat as Slack shows a message with replies: its title, then a link to it in the accent, or Golem at work. */
 @Composable
-private fun ThreadRow(thread: ThreadSummary, modifier: Modifier = Modifier) {
+private fun ChatRow(chat: ChatSummary, modifier: Modifier = Modifier) {
     val session = LocalSession.current
     val open = LocalOpen.current
     var menu by remember { mutableStateOf(false) }
-    val isSettled = thread.settledAt != null
+    val isSettled = chat.settledAt != null
     Box(modifier) {
         Row(
-            Modifier.fillMaxWidth().pressable({ open(Destination.Thread(thread.id)) }, { menu = true })
+            Modifier.fillMaxWidth().pressable({ open(Destination.Chat(chat.id)) }, { menu = true })
                 .padding(horizontal = Tokens.Mobile.Size.margin, vertical = Tokens.Space.md),
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.lg),
         ) {
@@ -180,21 +180,21 @@ private fun ThreadRow(thread: ThreadSummary, modifier: Modifier = Modifier) {
                     tint = Golem.mobile.textSecondary)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Tokens.Space.xs)) {
-                Text(thread.title, style = golemText(Tokens.Mobile.FontSize.body), color = Golem.mobile.text, maxLines = 3,
+                Text(chat.title, style = golemText(Tokens.Mobile.FontSize.body), color = Golem.mobile.text, maxLines = 3,
                     overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.sm), verticalAlignment = Alignment.CenterVertically) {
-                    if (thread.id in session.working) {
+                    if (chat.id in session.working) {
                         WorkingLabel()
                     } else {
-                        Text("View thread", style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium), color = Golem.colors.accent)
+                        Text("View chat", style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium), color = Golem.colors.accent)
                     }
-                    Text(relative(thread.updatedAt), style = golemText(Tokens.Mobile.FontSize.small), color = Golem.mobile.textQuaternary)
+                    Text(relative(chat.updatedAt), style = golemText(Tokens.Mobile.FontSize.small), color = Golem.mobile.textQuaternary)
                 }
             }
         }
         GolemMenu(menu, { menu = false }, listOf(
-            MenuAction(if (isSettled) "Un-settle thread" else "Settle thread", if (isSettled) Pixel.Inbox.vector else Pixel.Check.vector) {
-                session.launch { session.setThreadSettled(thread.id, !isSettled) }
+            MenuAction(if (isSettled) "Un-settle chat" else "Settle chat", if (isSettled) Pixel.Inbox.vector else Pixel.Check.vector) {
+                session.launch { session.setChatSettled(chat.id, !isSettled) }
             },
         ))
     }

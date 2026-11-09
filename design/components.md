@@ -145,17 +145,17 @@ Used by the workspace switcher and action menus.
   the same glyph for the Golem tab, the Golem row of Search, and "Ask Golem anything".
 - Item: 28 high, 1 px apart, padding 0 × 9 × 0 × 8, `radius.md`, a 14 px icon 6 px before the label,
   `fontSize.md` `medium` `textTertiary`. Hover: `fillHover` at once and `text` in 150 ms. Current: `fillActive`, `text`.
-  Count: `fontSize.xs` `book`. A channel with an emoji shows it in place of the `#` icon, `fontSize.sm`, centered in
+  Count: `fontSize.xs` `book`. A topic with an emoji shows it in place of the `#` icon, `fontSize.sm`, centered in
   the 14 px slot (iOS: in the icon's frame).
-- Private channels are in their own group, Private, after Channels, each with a 14 px lock after its name in
-  `textTertiary` (iOS too). The group shows only when the person has a private channel.
+- Private topics are in their own group, Private, after Topics, each with a 14 px lock after its name in
+  `textTertiary` (iOS too). The group shows only when the person has a private topic.
 - Groups are 16 px apart. Section header: 28 high, the label 9 px in, `fontSize.sm` `medium` `textTertiary`; its action
   button shows on hover or focus (always on touch screens).
-- Threads sit under their channel, indented 19 px with 6 px inner padding; each shows its settle button on hover or
-  focus (always on touch screens). A channel with active threads has a disclosure arrow at its right, which shows on
-  hover or focus (always on touch screens, and while folded) and turns 90° in 150 ms when open; it folds the channel's
-  threads away, and the device remembers it. Settled threads leave the active lists and appear in a collapsed Settled shelf at
-  the bottom, newest settlement first; its disclosure arrow turns 90° in 150 ms. A settled thread remains readable
+- Chats sit under their topic, indented 19 px with 6 px inner padding; each shows its settle button on hover or
+  focus (always on touch screens). A topic with active chats has a disclosure arrow at its right, which shows on
+  hover or focus (always on touch screens, and while folded) and turns 90° in 150 ms when open; it folds the topic's
+  chats away, and the device remembers it. Settled chats leave the active lists and appear in a collapsed Settled shelf at
+  the bottom, newest settlement first; its disclosure arrow turns 90° in 150 ms. A settled chat remains readable
   and can receive messages.
 
 ## Panel and header
@@ -195,7 +195,7 @@ Used by the workspace switcher and action menus.
   "© OpenStreetMap"; iOS shows MapKit with the location button.
 - A text field for long text, such as the workspace's facts, fills the card with 16 px padding, min 160 high, a 1.5
   line height, and its Save button at the bottom right.
-- Text in a section, such as a channel summary: `fontSize.md` `textSecondary` on a 22 px line, with its line breaks.
+- Text in a section, such as a topic summary: `fontSize.md` `textSecondary` on a 22 px line, with its line breaks.
 
 ## Badge, keycap, and avatar
 
@@ -220,8 +220,8 @@ Used by the workspace switcher and action menus.
 ## Inbox
 
 - The sidebar's Inbox item, after Golem, shows the unread count. The page lists notifications newest first as search
-  rows: an icon (the thread's, or `hash` for a channel), the title, the text in `textTertiary`, the day, and a
-  `size.dot` `accent` dot while unread. A click reads it and opens its thread or channel. The header's check button
+  rows: an icon (the chat's, or `hash` for a topic), the title, the text in `textTertiary`, the day, and a
+  `size.dot` `accent` dot while unread. A click reads it and opens its chat or topic. The header's check button
   reads them all. iOS has the same screen in the More menu and the sidebar, with the count at the right of its row.
 
 ## Upcoming
@@ -229,9 +229,9 @@ Used by the workspace switcher and action menus.
 - The sidebar's Upcoming item, after Inbox, has the `clock` icon. The page is the Settings column; its groups, each
   only with items, are Needs you, Suggested, Today, Tomorrow, This week (the next 7 days), Later, At a place, Routines at a place, and Paused,
   each a section title over a card of compact rows. A routine row has the `play` icon, its name, its schedule in words and its
-  channel, a failed badge after a failed run, and its switch; a reminder row has the `clock` icon, its text, its time,
+  topic, a failed badge after a failed run, and its switch; a reminder row has the `clock` icon, its text, its time,
   and a secondary Cancel button; a reminder at a place has the `place` icon and "Arrive at Cottage" or "Leave Office"
-  in place of the time; so does a routine at a place, in place of its schedule, also in a channel's Routines. iOS has the
+  in place of the time; so does a routine at a place, in place of its schedule, also in a topic's Routines. iOS has the
   same screen from a row at the top of Home and in the sidebar.
 - Suggestion: a compact row with its kind's icon, the name, when it runs, and secondary Decline and primary Accept
   buttons. In the person's orchestrator the waiting suggestions sit in one card over the composer, as wide as it.
@@ -239,18 +239,18 @@ Used by the workspace switcher and action menus.
 ## What Golem learned and Usage
 
 - What Golem learned is a Settings section: a sub-heading (`fontSize.sm` `medium` `textTertiary`, 16 px in) per person
-  ("About Anna") and per channel, each over a card of compact rows with the text, a 14 px `lock` for a private entry,
+  ("About Anna") and per topic, each over a card of compact rows with the text, a 14 px `lock` for a private entry,
   and edit and delete icon buttons at the right. Edit turns the text into a field in place: Enter saves, Escape stops.
 - Usage is a Settings section: rows for tokens, cost at API prices, and cache rate, then a bar for each of the last 30
-  days, 80 px high, in `accent`, each with a tooltip; then cards by source, by model, the top threads as links, and,
+  days, 80 px high, in `accent`, each with a tooltip; then cards by source, by model, the top chats as links, and,
   for the server's owner, by person with avatars.
 
 ## Conversation
 
 - Message: avatar, then the author in `medium` `text` and the time in `fontSize.sm` `textQuaternary`; the text in
   `fontSize.lg` `book` `textSecondary` on a 1.6 line with −0.1 px letter spacing and its line breaks. A turn of Golem
-  that the answer of another thread started, such as the result of work that Golem asked that thread for, continues
-  Golem's message before it: no avatar, author, or time, 12 px under it, and its work summary says "From <thread>".
+  that the answer of another chat started, such as the result of work that Golem asked that chat for, continues
+  Golem's message before it: no avatar, author, or time, 12 px under it, and its work summary says "From <chat>".
 - Work log: between the meta and the text of an agent's answer, what the agent did before it. A summary in
   `fontSize.md` `textTertiary` with tabular numbers, "Working for 12s" counting up each second while it works, then
   "Worked for 14s", or "Stopped after 14s" when someone stopped it, with a disclosure arrow that turns 90° when open;
@@ -258,7 +258,7 @@ Used by the workspace switcher and action menus.
   `size.workLog` high, scrolling, and keeping the newest step in view until the person scrolls up: thoughts in
   `textQuaternary`, words in `textSecondary`, and each tool call as a 7 px step pixel (`gold` when it finished,
   `danger` when it failed, the `accent` blinking while it runs), then its name in `medium` `textTertiary` (`danger`
-  when it failed), then the thread it reached or its arguments on one truncated line in `textQuaternary`. A tool call
+  when it failed), then the chat it reached or its arguments on one truncated line in `textQuaternary`. A tool call
   opens to show its arguments and result in `fontSize.sm` monospace on `fillSubtle`, `radius.sm`. Calls of one tool in
   a row fold into one row, "Web search 4 times", open while one of them runs. The log is open while the agent works and
   folds when the answer comes; a person's choice to open or fold it stays until then. While it works, the working
@@ -268,18 +268,18 @@ Used by the workspace switcher and action menus.
 - Face: Golem's avatar on an answer is the icon's face with the mood of its work, drawn from the icon's 8 × 8 pixels:
   working (eyes glance aside and blink every 3.2 s), waiting for a person (mouth open), done (a smile), failed (eyes
   shut, a frown). An answer without work, or one that a person stopped, shows the icon itself.
-- Working spinner: four 4 px `accent` squares, 1 px apart, that light in turn clockwise each 0.25 s, after a thread in
-  the sidebar, in a channel's thread list, after each thread link while that thread's agent works, and in iOS rows.
-  iOS writes "· working" after a thread link.
+- Working spinner: four 4 px `accent` squares, 1 px apart, that light in turn clockwise each 0.25 s, after a chat in
+  the sidebar, in a topic's chat list, after each chat link while that chat's agent works, and in iOS rows.
+  iOS writes "· working" after a chat link.
 - Shimmer: the words Golem is at now, in `textTertiary` with a light of `text` running over them every 2.2 s.
 - Stop: while the agent works and the composer is empty, the composer's send button is Stop, with a stop icon. With
   text or files in the composer, it is Send again, with a steer icon (`arrow.turn.left.up`) and "Steer". Stop also
-  stops the threads the agent asked for something, which still work on that message.
+  stops the chats the agent asked for something, which still work on that message.
 - Approval: in the transcript after the messages, in line with their text, for the person it asks only, while the
   agent waits for them to allow an action. `surfaceRaised`, a 0.5 px `ringControl`, `radius.md`, padding 8 × 12, and a
   3 px `gold` edge at its start; the action in `fontSize.md` monospace `textSecondary`, wrapped; 8 px below, at the
   start, far from the composer's Send, small buttons: primary "Allow", secondary "Allow for this turn", danger
-  "Deny". A push says "Allow? <action>" and opens the thread. iOS has the same card, `radius.xl`, with 44 pt touch
+  "Deny". A push says "Allow? <action>" and opens the chat. iOS has the same card, `radius.xl`, with 44 pt touch
   targets.
 - Cards: an agent writes a fenced `card` block with a JSON object, or a list of them (`value`, and optionally `title`,
   `detail`, and `icon`). Each shows as a card: `surfaceRaised`, a 0.5 px `ringControl`, shadow `low`, `radius.md`,
@@ -287,20 +287,20 @@ Used by the workspace switcher and action menus.
   battery, bolt, car, home, lock) in `accent` on a black tile, the title in `fontSize.xs` `medium` capitals
   `textTertiary`, the value in `fontSize.lg` `semibold` `text` with tabular numbers, and the detail in `fontSize.sm`
   `textTertiary`. A block that is not valid shows as code. iOS shows one card in a row on a phone.
-- The sidebar shows the threads and channels that agents start while they work, without a reload.
+- The sidebar shows the chats and topics that agents start while they work, without a reload.
 - Composer: `surfaceComposer`, `radius.lg`, padding 12, shadow `low`, no focus ring. The text is `fontSize.lg` on a
   24 px line with padding 2 × 6; placeholder `textQuaternary`. Actions sit 8 px below: a tiny ghost attach button and a
   tiny primary send button.
 
-## Thread link
+## Chat link
 
-- Agents write a thread as `[title](thread:<id>)` in a message. It shows as the title in `accent`, no underline;
-  hover (web) turns it `accentHover` and underlined. Clicking or tapping opens the thread in the app.
+- Agents write a chat as `[title](chat:<id>)` in a message. It shows as the title in `accent`, no underline;
+  hover (web) turns it `accentHover` and underlined. Clicking or tapping opens the chat in the app.
 
-## Channel threads
+## Topic chats
 
-- Active threads appear newest first under their channels in the sidebar and on the channel page, each with its
-  settle button. Settled threads leave the active lists; a settled thread can be un-settled.
+- Active chats appear newest first under their topics in the sidebar and on the topic page, each with its
+  settle button. Settled chats leave the active lists; a settled chat can be un-settled.
 
 ## File chip
 
@@ -334,7 +334,7 @@ Used by the workspace switcher and action menus.
 ## Artifact preview
 
 - The panel has two tabs, Files and then Artifacts, and opens on Files.
-- The Artifacts tab lists the thread's artifacts as list rows: artifact icon, title, and the number of people who
+- The Artifacts tab lists the chat's artifacts as list rows: artifact icon, title, and the number of people who
   opened it as meta. A row opens the artifact in the panel, with a close button that returns to the Artifacts list.
 - The artifact has a bar (padding 4 16, 0.5 px `border` below): the title in `medium`, cut with an ellipsis, a
   badge (`accent` "Public" or plain "Members"), a small ghost "Data" button that is pressed while the data shows, and
@@ -345,7 +345,7 @@ Used by the workspace switcher and action menus.
 ## iOS
 
 The look is measured from Linear's iOS app on an iPhone 17 Pro Max in both themes; colors and sizes are the `mobile`
-tokens. The layout and navigation follow Slack's iOS app, as Golem's channels and threads are Slack's. The phone's text
+tokens. The layout and navigation follow Slack's iOS app, as Golem's topics and chats work as Slack's channels and threads do. The phone's text
 was one step below the default size, so the font sizes are the measured ones × 17/16; Inter scales with Dynamic Type.
 iPad keeps the sidebar with the same screens.
 
@@ -362,29 +362,29 @@ iPad keeps the sidebar with the same screens.
   list without its own title. A link to
   Upcoming or Following opens Agenda on that pill.
 - Tabs keep their own stacks and fade into each other in 200 ms. Golem, Activity, Search, and Agenda open in their tabs; a
-  channel or a thread opens on the open tab's stack. Settings and Workspace settings open as sheets with a close
+  topic or a chat opens on the open tab's stack. Settings and Workspace settings open as sheets with a close
   button.
-- Home: as Slack's, with the workspace's name as its title. The three newest open threads with their channel under the title, and
-  Show more for the rest, then the channels with their count of open threads, then the private
-  channels, each with a lock, in sections whose title folds them. A 48 pt accent glass square over the bar opens a
-  native menu: New thread in a channel, or New channel.
+- Home: as Slack's, with the workspace's name as its title. The three newest open chats with their topic under the title, and
+  Show more for the rest, then the topics with their count of open chats, then the private
+  topics, each with a lock, in sections whose title folds them. A 48 pt accent glass square over the bar opens a
+  native menu: New chat in a topic, or New topic.
 - Screen title: top-level screens put it in the navigation bar at its leading edge, 12 pt from the screen edge, level
-  with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Channels and threads show the square
+  with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Topics and chats show the square
   glass back button and a title capsule beside it, as Slack's: the title in `fontSize.row` `semibold` over a `caption`
-  (the count of open threads, or the thread's channel). The capsule opens the screen's native menu.
+  (the count of open chats, or the chat's topic). The capsule opens the screen's native menu.
 - Pills: 34 high, padding 12, 7 apart, from 12 pt; the selected one is glass with `text`, the others plain
   `textSecondary`; a count in `textQuaternary` 8 pt after the title.
 - Lists: rows 46 pt apart, 10 pt in from the screen with their content 10 pt further in, a 21 pt wide icon, the title in
   `fontSize.row` `book`. A row lights up on a `fill` rectangle under a finger at once and fades in 150 ms. A
   folding section title is `fontSize.small` `medium` `textSecondary` 20 pt in, with a chevron that turns.
-- Channel: as a Slack channel. Its open threads read as messages, the newest at the bottom over the composer: a 36 pt
-  `fill` tile with an icon, the title in `fontSize.body`, then "View thread" in the accent, or the working line (the
-  working spinner and "Golem is working"), and the time. Settled threads fold above them. Sending from the composer
-  starts a thread.
+- Topic: as a Slack channel. Its open chats read as messages, the newest at the bottom over the composer: a 36 pt
+  `fill` tile with an icon, the title in `fontSize.body`, then "View chat" in the accent, or the working line (the
+  working spinner and "Golem is working"), and the time. Settled chats fold above them. Sending from the composer
+  starts a chat.
 - Conversation: as a Slack thread. Each message has the author's 36 pt avatar at the side, the name in `fontSize.row`
   `semibold` and the time in `caption` over the text; a message of the same author within five minutes, or a turn of
-  Golem that another thread's answer started, shows only its text. Text is `fontSize.body` with inline Markdown; links take the accent. A long press on the text shows Copy, which copies its Markdown; the
-  text is not selectable, so its links answer every tap. A work step and a channel's brief do the same. A list that
+  Golem that another chat's answer started, shows only its text. Text is `fontSize.body` with inline Markdown; links take the accent. A long press on the text shows Copy, which copies its Markdown; the
+  text is not selectable, so its links answer every tap. A work step and a topic's brief do the same. A list that
   rests past its end, as when rows at its end fold or go away, scrolls back to its end. New messages slide up and fade in, and
   the newest stays in view. The square voice button is in the bar at the trailing edge.
 - Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it
@@ -394,9 +394,9 @@ iPad keeps the sidebar with the same screens.
   field, up to 4 lines, over the row of buttons. Content fades under the glass bars at the top and bottom. Dragging the content closes the
   keyboard.
 - Activity: as Slack's. All and Unread pills; each notification has Golem's avatar, its title and the day, as the
-  web's Inbox, "in #" and the channel, two lines of text, and an accent dot while unread.
+  web's Inbox, "in #" and the topic, two lines of text, and an accent dot while unread.
 - Search: as Slack's. The field sits at the top under the title. Before a query the screen lists the person's recent
-  searches, then one row for Golem, with Golem's face glyph, that opens Golem; no channels. The web's search page is
+  searches, then one row for Golem, with Golem's face glyph, that opens Golem; no topics. The web's search page is
   the same. Scrolling closes the keyboard.
 - Artifacts: a sheet on iPhone with Files and Artifacts pills and a glass close button; an open artifact has a glass
   back button. Each screen keeps its own panel.
@@ -408,7 +408,7 @@ iPad keeps the sidebar with the same screens.
   up-and-down chevron opening a native menu. Sign out is a `danger` row with its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.
 - Menus: native. Sheets: a 40 pt square glass close button at the left and the title in the middle,
   `fontSize.sheetTitle` `semibold`; fields are `fill` with radius 12 and a 1 pt accent outline when focused.
-- Live Activity: on the Lock Screen, a status symbol, the working thread's title in `fontSize.row` `semibold`, the
+- Live Activity: on the Lock Screen, a status symbol, the working chat's title in `fontSize.row` `semibold`, the
   status in words (Working, Waiting for you, Done, Failed) in `caption`, and the elapsed time; in the Dynamic Island,
-  the symbol and the elapsed time, and when expanded the title, the status, and how many threads work. A tap opens the
-  thread.
+  the symbol and the elapsed time, and when expanded the title, the status, and how many chats work. A tap opens the
+  chat.

@@ -5,7 +5,7 @@ import { showError } from "../ui/toast.tsx";
 
 /**
  * A message box for text and files. Files are picked, dropped on it, or pasted into it. Enter sends; Shift+Enter adds a
- * line. With `clearAtOnce`, the box clears as the message is sent, as a sent message shows in the thread at once, and
+ * line. With `clearAtOnce`, the box clears as the message is sent, as a sent message shows in the chat at once, and
  * gets its text back if it fails; otherwise it is busy until `onSend` ends. With `onStop`, while the agent works, an empty
  * box shows Stop in Send's place, and Send steers.
  */

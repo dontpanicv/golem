@@ -186,7 +186,7 @@ struct WorkGroup: View {
     }
 }
 
-/// A thought, the words between tool calls, or a tool call: its name, then the thread it reached or the values of its
+/// A thought, the words between tool calls, or a tool call: its name, then the chat it reached or the values of its
 /// arguments. Tapping a tool call shows its arguments and result.
 struct WorkStep: View {
     let step: Step

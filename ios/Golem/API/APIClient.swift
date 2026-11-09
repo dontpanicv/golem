@@ -68,42 +68,42 @@ final class APIClient {
         try decode(try await send("PUT", "/api/v1/workspaces/\(id)", ["name": name]).data)
     }
 
-    /// The workspace's thread that never ends; the first call makes it.
-    func orchestrator(workspaceID: String) async throws -> ThreadSummary {
+    /// The workspace's chat that never ends; the first call makes it.
+    func orchestrator(workspaceID: String) async throws -> ChatSummary {
         try await get("/api/v1/workspaces/\(workspaceID)/orchestrator")
     }
 
-    func createChannel(workspaceID: String, name: String, isPrivate: Bool) async throws -> Channel {
-        try await post("/api/v1/workspaces/\(workspaceID)/channels", ["name": name, "private": isPrivate])
+    func createTopic(workspaceID: String, name: String, isPrivate: Bool) async throws -> Topic {
+        try await post("/api/v1/workspaces/\(workspaceID)/topics", ["name": name, "private": isPrivate])
     }
 
-    func renameChannel(workspaceID: String, channelID: String, name: String) async throws -> Channel {
-        let path = "/api/v1/workspaces/\(workspaceID)/channels/\(channelID)"
+    func renameTopic(workspaceID: String, topicID: String, name: String) async throws -> Topic {
+        let path = "/api/v1/workspaces/\(workspaceID)/topics/\(topicID)"
         return try decode(try await send("PUT", path, ["name": name]).data)
     }
 
-    func mergeChannel(workspaceID: String, channelID: String, into: String) async throws {
-        _ = try await send("POST", "/api/v1/workspaces/\(workspaceID)/channels/\(channelID)/merge", ["into": into])
+    func mergeTopic(workspaceID: String, topicID: String, into: String) async throws {
+        _ = try await send("POST", "/api/v1/workspaces/\(workspaceID)/topics/\(topicID)/merge", ["into": into])
     }
 
-    func createThread(
-        workspaceID: String, channelID: String, text: String, files: [URL], progress: UploadShare? = nil
-    ) async throws -> ThreadSummary {
-        let fields = ["channelId": channelID, "text": text]
-        let path = "/api/v1/workspaces/\(workspaceID)/threads"
+    func createChat(
+        workspaceID: String, topicID: String, text: String, files: [URL], progress: UploadShare? = nil
+    ) async throws -> ChatSummary {
+        let fields = ["topicId": topicID, "text": text]
+        let path = "/api/v1/workspaces/\(workspaceID)/chats"
         return try decode(try await sendForm(path, fields, files, progress: progress).data)
     }
 
-    func setThreadSettled(workspaceID: String, threadID: String, settled: Bool) async throws {
+    func setChatSettled(workspaceID: String, chatID: String, settled: Bool) async throws {
         _ = try await post(
-            "/api/v1/workspaces/\(workspaceID)/threads/\(threadID)/settled", ["settled": settled]
-        ) as ThreadSummary
+            "/api/v1/workspaces/\(workspaceID)/chats/\(chatID)/settled", ["settled": settled]
+        ) as ChatSummary
     }
 
-    func moveThread(workspaceID: String, threadID: String, channelID: String) async throws {
+    func moveChat(workspaceID: String, chatID: String, topicID: String) async throws {
         _ = try await post(
-            "/api/v1/workspaces/\(workspaceID)/threads/\(threadID)/channel", ["channelId": channelID]
-        ) as ThreadSummary
+            "/api/v1/workspaces/\(workspaceID)/chats/\(chatID)/topic", ["topicId": topicID]
+        ) as ChatSummary
     }
 
     func search(workspaceID: String, query: String) async throws -> SearchResponse {
@@ -131,12 +131,12 @@ final class APIClient {
 
     // MARK: Routines
 
-    func routines(workspaceID: String, channelID: String) async throws -> ChannelRoutines {
-        try await get("/api/v1/workspaces/\(workspaceID)/channels/\(channelID)/routines")
+    func routines(workspaceID: String, topicID: String) async throws -> TopicRoutines {
+        try await get("/api/v1/workspaces/\(workspaceID)/topics/\(topicID)/routines")
     }
 
-    func brief(workspaceID: String, channelID: String) async throws -> Brief? {
-        let found: ChannelBrief = try await get("/api/v1/workspaces/\(workspaceID)/channels/\(channelID)/brief")
+    func brief(workspaceID: String, topicID: String) async throws -> Brief? {
+        let found: TopicBrief = try await get("/api/v1/workspaces/\(workspaceID)/topics/\(topicID)/brief")
         return found.brief
     }
 
@@ -152,27 +152,27 @@ final class APIClient {
         _ = try await send("DELETE", "/api/v1/routines/\(id)")
     }
 
-    // MARK: Threads
+    // MARK: Chats
 
-    func thread(_ id: String) async throws -> ThreadState { try await get("/api/v1/threads/\(id)") }
+    func chat(_ id: String) async throws -> ChatState { try await get("/api/v1/chats/\(id)") }
 
     /// `voice`: spoken in a conversation, so the answer is written to be read aloud.
     func sendMessage(
-        threadID: String, text: String, files: [URL], voice: Bool = false, progress: UploadShare? = nil
+        chatID: String, text: String, files: [URL], voice: Bool = false, progress: UploadShare? = nil
     ) async throws {
         let fields = voice ? ["text": text, "voice": "true"] : ["text": text]
-        _ = try await sendForm("/api/v1/threads/\(threadID)/messages", fields, files, progress: progress)
+        _ = try await sendForm("/api/v1/chats/\(chatID)/messages", fields, files, progress: progress)
     }
 
     // MARK: Files
 
-    /// The files of a channel, or the workspace's own for a nil `channelID`.
-    func files(workspaceID: String, channelID: String?) async throws -> [SavedFile] {
-        (try await get(filesPath(workspaceID, channelID)) as SavedFiles).files
+    /// The files of a topic, or the workspace's own for a nil `topicID`.
+    func files(workspaceID: String, topicID: String?) async throws -> [SavedFile] {
+        (try await get(filesPath(workspaceID, topicID)) as SavedFiles).files
     }
 
-    func uploadFiles(workspaceID: String, channelID: String?, files: [URL]) async throws -> [SavedFile] {
-        (try decode(try await sendForm(filesPath(workspaceID, channelID), [:], files).data) as SavedFiles).files
+    func uploadFiles(workspaceID: String, topicID: String?, files: [URL]) async throws -> [SavedFile] {
+        (try decode(try await sendForm(filesPath(workspaceID, topicID), [:], files).data) as SavedFiles).files
     }
 
     /// Returns the files left where the file was.
@@ -199,28 +199,28 @@ final class APIClient {
         try await send("GET", "/api/v1/workspaces/\(workspaceID)/files/\(fileID)/picture").data
     }
 
-    /// Reads the server-sent events of a thread until the stream ends, the task is cancelled, or an error occurs.
-    func threadEvents(_ id: String, onState: (ThreadState) -> Void) async throws {
-        try await events("/api/v1/threads/\(id)/events", named: "thread", onEvent: onState)
+    /// Reads the server-sent events of a chat until the stream ends, the task is cancelled, or an error occurs.
+    func chatEvents(_ id: String, onState: (ChatState) -> Void) async throws {
+        try await events("/api/v1/chats/\(id)/events", named: "chat", onEvent: onState)
     }
 
     /// Answers an approval; `scope` "turn" also allows the rest of the turn's changes on that machine.
-    func answerApproval(threadID: String, approvalID: String, allow: Bool, scope: String = "once") async throws {
+    func answerApproval(chatID: String, approvalID: String, allow: Bool, scope: String = "once") async throws {
         _ = try await send(
-            "POST", "/api/v1/threads/\(threadID)/approvals/\(approvalID)", ["allow": allow, "scope": scope]
+            "POST", "/api/v1/chats/\(chatID)/approvals/\(approvalID)", ["allow": allow, "scope": scope]
         )
     }
 
-    /// Stops the agent of a thread: it drops the messages it has not read yet and ends its run.
-    func stopThread(_ id: String) async throws {
-        _ = try await send("POST", "/api/v1/threads/\(id)/stop")
+    /// Stops the agent of a chat: it drops the messages it has not read yet and ends its run.
+    func stopChat(_ id: String) async throws {
+        _ = try await send("POST", "/api/v1/chats/\(id)/stop")
     }
 
-    /// Reads the threads of a workspace whose agent works, at once and after every change, until the stream ends, the
+    /// Reads the chats of a workspace whose agent works, at once and after every change, until the stream ends, the
     /// task is cancelled, or an error occurs.
-    func workingEvents(workspaceID: String, onThreads: ([String]) -> Void) async throws {
-        try await events("/api/v1/workspaces/\(workspaceID)/working", named: "working") { (event: WorkingThreads) in
-            onThreads(event.threadIds)
+    func workingEvents(workspaceID: String, onChats: ([String]) -> Void) async throws {
+        try await events("/api/v1/workspaces/\(workspaceID)/working", named: "working") { (event: WorkingChats) in
+            onChats(event.chatIds)
         }
     }
 
@@ -262,8 +262,8 @@ final class APIClient {
 
     // MARK: Transport
 
-    private func filesPath(_ workspaceID: String, _ channelID: String?) -> String {
-        "/api/v1/workspaces/\(workspaceID)\(channelID.map { "/channels/\($0)" } ?? "")/files"
+    private func filesPath(_ workspaceID: String, _ topicID: String?) -> String {
+        "/api/v1/workspaces/\(workspaceID)\(topicID.map { "/topics/\($0)" } ?? "")/files"
     }
 
     func get<Response: Decodable>(_ path: String) async throws -> Response {
@@ -365,9 +365,9 @@ extension APIClient {
     }
 
     /// Gives Golem the push token of a Live Activity, in hex, that follows the work for the person's newest message.
-    func followActivity(threadID: String, token: String, environment: String) async throws {
+    func followActivity(chatID: String, token: String, environment: String) async throws {
         _ = try await send(
-            "POST", "/api/v1/threads/\(threadID)/live-activity", ["token": token, "environment": environment]
+            "POST", "/api/v1/chats/\(chatID)/live-activity", ["token": token, "environment": environment]
         )
     }
 }

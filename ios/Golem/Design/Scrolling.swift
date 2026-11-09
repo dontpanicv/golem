@@ -2,7 +2,7 @@ import SwiftUI
 
 extension View {
     /// Scrolls a list back to its end when it rests past it. Rows that get shorter or go away at the end, such as a
-    /// work log that folds or a thread that is settled, can leave it there, which shows only empty space.
+    /// work log that folds or a chat that is settled, can leave it there, which shows only empty space.
     func returnsToEnd(
         position: Binding<ScrollPosition>? = nil, onPhase: ((ScrollPhase) -> Void)? = nil
     ) -> some View {

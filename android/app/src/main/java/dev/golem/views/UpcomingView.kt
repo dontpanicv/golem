@@ -112,7 +112,7 @@ fun UpcomingList(header: @Composable () -> Unit) {
                     items(group.items, key = { it.id }) { item ->
                         Box(Modifier.animateItem()) {
                             when (item) {
-                                is UpcomingItem.ApprovalItem -> ApprovalRow(item.threadId, item.approval)
+                                is UpcomingItem.ApprovalItem -> ApprovalRow(item.chatId, item.approval)
                                 is UpcomingItem.RoutineItem -> RoutineRow(item.routine, group.kind, ::replace) {
                                     upcoming = upcoming?.let { it.copy(routines = it.routines - item.routine) }
                                 }
@@ -136,20 +136,20 @@ fun UpcomingList(header: @Composable () -> Unit) {
 }
 
 @Composable
-private fun ApprovalRow(threadId: String, approval: Approval) {
+private fun ApprovalRow(chatId: String, approval: Approval) {
     val session = LocalSession.current
     val open = LocalOpen.current
-    val title = if (threadId == session.orchestrator?.id) "Golem"
-    else session.channels.flatMap { it.threads }.firstOrNull { it.id == threadId }?.title
-    ListRow(approval.text, icon = Pixel.Hand.vector, subtitle = title, onClick = { open(Destination.Thread(threadId)) })
+    val title = if (chatId == session.orchestrator?.id) "Golem"
+    else session.topics.flatMap { it.chats }.firstOrNull { it.id == chatId }?.title
+    ListRow(approval.text, icon = Pixel.Hand.vector, subtitle = title, onClick = { open(Destination.Chat(chatId)) })
 }
 
-/** A routine: it opens its thread, or its channel before its first run; the switch pauses it, the menu runs or deletes it. */
+/** A routine: it opens its chat, or its topic before its first run; the switch pauses it, the menu runs or deletes it. */
 @Composable
 private fun RoutineRow(routine: Routine, kind: UpcomingKind, changed: (Routine) -> Unit, deleted: () -> Unit) {
     val session = LocalSession.current
     val open = LocalOpen.current
-    val channel = session.channels.firstOrNull { it.id == routine.channelId }?.let { "#${it.name}" }
+    val topic = session.topics.firstOrNull { it.id == routine.topicId }?.let { "#${it.name}" }
     val detail = when (kind) {
         UpcomingKind.NeedsYou -> routine.lastRun?.error ?: "Failed"
         UpcomingKind.Paused -> "Paused"
@@ -158,8 +158,8 @@ private fun RoutineRow(routine: Routine, kind: UpcomingKind, changed: (Routine) 
     }
     ListRow(
         routine.name, icon = if (routine.place == null) Pixel.Refresh.vector else Pixel.Place.vector,
-        subtitle = listOfNotNull(channel, detail).joinToString(" · "),
-        onClick = { open(routine.threadId?.let { Destination.Thread(it) } ?: Destination.Channel(routine.channelId)) },
+        subtitle = listOfNotNull(topic, detail).joinToString(" · "),
+        onClick = { open(routine.chatId?.let { Destination.Chat(it) } ?: Destination.Topic(routine.topicId)) },
     ) {
         routine.nextRunAt?.let { DayStrip(it) }
         GolemSwitch(routine.enabled, { enabled ->
@@ -198,7 +198,7 @@ private fun ReminderRow(reminder: Reminder, kind: UpcomingKind, cancelled: () ->
     ListRow(
         reminder.text, icon = if (reminder.place == null) Pixel.Bell.vector else Pixel.Place.vector,
         subtitle = if (reminder.waitsForPlace) placeWindow(reminder) else upcomingTime(reminder.dueAt, kind),
-        onClick = { open(Destination.Thread(reminder.threadId)) },
+        onClick = { open(Destination.Chat(reminder.chatId)) },
     ) {
         if (!reminder.waitsForPlace) DayStrip(reminder.dueAt)
         RowMenu("Reminder actions", listOf(
@@ -236,7 +236,7 @@ fun placeWindow(reminder: Reminder): String? {
 }
 
 /**
- * The suggestions over the composer of the person's Golem. Golem suggests from quiet threads, so they load again when
+ * The suggestions over the composer of the person's Golem. Golem suggests from quiet chats, so they load again when
  * the orchestrator's own work ends.
  */
 @Composable
@@ -258,7 +258,7 @@ fun Suggestions(running: Boolean?) {
 }
 
 /**
- * A routine, a reminder, or a channel that Golem suggests, with Decline and Accept: a compact row in Upcoming, and a
+ * A routine, a reminder, or a topic that Golem suggests, with Decline and Accept: a compact row in Upcoming, and a
  * card over the composer of the person's Golem. `answered` takes it away.
  */
 @Composable
@@ -269,7 +269,7 @@ fun SuggestionCard(suggestion: Suggestion, card: Boolean = true, answered: () ->
     val kind = when (suggestion.kind) {
         "routine" -> "Routine"
         "reminder" -> "Reminder"
-        else -> "Private channel"
+        else -> "Private topic"
     }
     val detail = listOfNotNull(kind, suggestion.time?.let(::dayAndTime) ?: suggestion.schedule).joinToString(" · ")
 
@@ -283,10 +283,10 @@ fun SuggestionCard(suggestion: Suggestion, card: Boolean = true, answered: () ->
                     val done = when (suggestion.kind) {
                         "routine" -> "Routine added"
                         "reminder" -> "Reminder set"
-                        else -> "Channel added"
+                        else -> "Topic added"
                     }
                     session.show(done, dev.golem.api.Toast.Tone.Success)
-                    if (suggestion.kind == "channel") session.reloadWorkspace()
+                    if (suggestion.kind == "topic") session.reloadWorkspace()
                 }
                 answered()
             }
@@ -339,7 +339,7 @@ data class UpcomingGroup(val kind: UpcomingKind, val items: List<UpcomingItem>)
 sealed interface UpcomingItem {
     val id: String
 
-    data class ApprovalItem(val threadId: String, val approval: Approval) : UpcomingItem {
+    data class ApprovalItem(val chatId: String, val approval: Approval) : UpcomingItem {
         override val id get() = "approval:${approval.id}"
     }
 
@@ -362,7 +362,7 @@ sealed interface UpcomingItem {
  * wait for a place, the routines at a place, and the paused routines last.
  */
 fun Upcoming.groups(now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): List<UpcomingGroup> {
-    val needsYou = approvals.map<_, UpcomingItem> { UpcomingItem.ApprovalItem(it.threadId, it.approval) }.toMutableList()
+    val needsYou = approvals.map<_, UpcomingItem> { UpcomingItem.ApprovalItem(it.chatId, it.approval) }.toMutableList()
     val paused = mutableListOf<UpcomingItem>()
     val routinesAtPlace = mutableListOf<UpcomingItem>()
     val timed = reminders.filter { !it.waitsForPlace }.map<_, Pair<Double, UpcomingItem>> { it.dueAt to UpcomingItem.ReminderItem(it) }

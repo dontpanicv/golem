@@ -89,9 +89,9 @@ fun MessageRow(message: Message, continued: Boolean, waiting: Boolean, openFile:
             message.work?.let { WorkLog(it) }
             if (message.text.isNotEmpty()) {
                 Copyable(message.text) {
-                    // Only a message with a thread link redraws when a thread starts or stops working.
+                    // Only a message with a chat link redraws when a chat starts or stops working.
                     MarkdownText(
-                        message.text, working = if (message.text.contains("thread:")) session.working else emptySet(),
+                        message.text, working = if (message.text.contains("chat:")) session.working else emptySet(),
                         color = if (message.failed) Golem.mobile.danger else Golem.mobile.text,
                     )
                 }
@@ -111,12 +111,12 @@ fun mood(message: Message, waiting: Boolean): Mood? = when {
     else -> null
 }
 
-/** The step of a turn that another thread's message started. */
-const val RELAY = "from_thread"
+/** The step of a turn that another chat's message started. */
+const val RELAY = "from_chat"
 
 /**
  * The message follows one of the same author within five minutes, and has no work log to head; or it is a turn of
- * Golem that the answer of another thread started.
+ * Golem that the answer of another chat started.
  */
 fun continues(message: Message, previous: Message): Boolean {
     if (message.agent && previous.agent && relayedFrom(message) != null) return true
@@ -124,7 +124,7 @@ fun continues(message: Message, previous: Message): Boolean {
         message.time - previous.time < 5 * 60 * 1000
 }
 
-/** The title of the thread whose message started this turn, or null for a turn that a person started. */
+/** The title of the chat whose message started this turn, or null for a turn that a person started. */
 fun relayedFrom(message: Message): String? =
     message.work?.steps?.firstOrNull()?.takeIf { it.tool == RELAY }?.let { linkedText(it.text) }
 
@@ -291,7 +291,7 @@ private fun WorkGroup(steps: List<Step>) {
 }
 
 /**
- * A thought, the words between tool calls, or a tool call: its name, then the thread it reached or the values of its
+ * A thought, the words between tool calls, or a tool call: its name, then the chat it reached or the values of its
  * arguments. Tapping a tool call shows its arguments and result.
  */
 @Composable

@@ -1,15 +1,15 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { randomUUIDv5 } from "bun";
-import type { Threads } from "../threads/threads.ts";
+import type { Chats } from "../chats/chats.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 import type { FeedbackReports } from "./feedback.ts";
 
 /** The agent tool that reports a problem with Golem itself to the server's owner. */
 export function feedbackTools(
   feedback: Pick<FeedbackReports, "report">,
-  workspaces: Pick<Workspaces, "threadOf">,
-  threads: Pick<Threads, "requester">,
+  workspaces: Pick<Workspaces, "chatOf">,
+  chats: Pick<Chats, "requester">,
   workspaceId: string
 ) {
   return [
@@ -37,12 +37,12 @@ export function feedbackTools(
       }),
       replay: "safe",
       execute: async (args, api) => {
-        const thread = workspaces.threadOf(workspaceId, api.conversationId);
-        const person = await threads.requester(workspaceId, api.conversationId);
+        const chat = workspaces.chatOf(workspaceId, api.conversationId);
+        const person = await chats.requester(workspaceId, api.conversationId);
         feedback.report(workspaceId, {
           ...args,
           id: randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url"),
-          threadId: thread?.id ?? null,
+          chatId: chat?.id ?? null,
           personId: person?.id ?? null,
         });
         return { output: [{ type: "text", text: "Reported." }] };

@@ -50,7 +50,7 @@ export interface BrowseResult {
 }
 
 /**
- * A headless Chrome for each thread and person, driven by Vercel's agent-browser, so that agents can visit websites.
+ * A headless Chrome for each chat and person, driven by Vercel's agent-browser, so that agents can visit websites.
  * Each session keeps its tabs and logins until it closes or stays idle for an hour. All web traffic of agents goes
  * through `egress`, which reaches public addresses only.
  */
@@ -68,7 +68,7 @@ export class Browser {
     return browserTools(this, workspaceId, requesterOf);
   }
 
-  /** A picture of the page in the browser of a thread and person, or null when it cannot take one. */
+  /** A picture of the page in the browser of a chat and person, or null when it cannot take one. */
   async screenshot(
     workspaceId: string,
     conversationId: number,

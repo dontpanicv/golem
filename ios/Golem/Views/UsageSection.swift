@@ -25,12 +25,12 @@ struct UsageSection: View {
                 // The same groups as the web's: sub-headings in the section.
                 group("By source", usage.sources) { sourceName($0.source) }
                 group("By model", usage.models) { modelName($0.model) }
-                if !usage.threads.isEmpty {
-                    ListSubheading("Top threads")
-                    ForEach(usage.threads, id: \.threadId) { thread in
-                        Button { thread.threadId.map { open(.thread($0)) } } label: {
-                            SettingsRow(thread.title ?? "", description: "\(tokens(thread.tokens)) tokens") {
-                                value(cost(thread.cost))
+                if !usage.chats.isEmpty {
+                    ListSubheading("Top chats")
+                    ForEach(usage.chats, id: \.chatId) { chat in
+                        Button { chat.chatId.map { open(.chat($0)) } } label: {
+                            SettingsRow(chat.title ?? "", description: "\(tokens(chat.tokens)) tokens") {
+                                value(cost(chat.cost))
                             }
                             .contentShape(.rect)
                         }
@@ -92,7 +92,7 @@ struct UsageSection: View {
 
     private func sourceName(_ source: String?) -> String {
         switch source {
-        case "thread": "Threads"
+        case "chat": "Chats"
         case "orchestrator": "Golem"
         case "routine": "Routines"
         case "reminder": "Reminders"

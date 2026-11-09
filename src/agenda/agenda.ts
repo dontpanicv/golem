@@ -1,4 +1,9 @@
 import type { Database } from "bun:sqlite";
+import type {
+  Approval,
+  Chats,
+  Suggestion as ReviewSuggestion,
+} from "../chats/chats.ts";
 import type { Place, PlaceEvent, Places } from "../places/places.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
@@ -8,11 +13,6 @@ import {
   type Reminders,
 } from "../reminders/reminders.ts";
 import { nextRun, type Routine, type Routines } from "../routines/routines.ts";
-import type {
-  Approval,
-  Suggestion as ReviewSuggestion,
-  Threads,
-} from "../threads/threads.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 
 /** An automation that Golem suggests to a person; nothing runs until they accept it. */
@@ -27,10 +27,10 @@ export interface Suggestion {
   readonly schedule: string | null;
   /** When the reminder is due, or the routine's first run. */
   readonly at: number | null;
-  /** The channel the routine runs in. */
-  readonly channelId: string;
-  /** The thread whose messages gave the suggestion. */
-  readonly threadId: string;
+  /** The topic the routine runs in. */
+  readonly topicId: string;
+  /** The chat whose messages gave the suggestion. */
+  readonly chatId: string;
   readonly createdAt: number;
 }
 
@@ -55,16 +55,16 @@ export interface Upcoming {
   readonly suggestions: readonly Suggestion[];
   /** The actions that wait until the person allows them. */
   readonly approvals: readonly {
-    readonly threadId: string;
+    readonly chatId: string;
     readonly approval: Approval;
   }[];
 }
 
 export type AgendaWorkspaces = Pick<
   Workspaces,
-  "channelsIn" | "members" | "requireMember"
+  "topicsIn" | "members" | "requireMember"
 >;
-export type AgendaThreads = Pick<Threads, "approvalsFor" | "orchestrator">;
+export type AgendaChats = Pick<Chats, "approvalsFor" | "orchestrator">;
 export type AgendaRoutines = Pick<
   Routines,
   "atPlace" | "create" | "inWorkspace"
@@ -83,7 +83,7 @@ const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 /** A routine does not run for an arrival or a departure that Golem hears of later than this. */
 const ROUTINE_EVENT_AGE = 15 * 60_000;
 const COLUMNS =
-  "id, kind, name, text, schedule, at, channel_id AS channelId, thread_id AS threadId, created_at AS createdAt";
+  "id, kind, name, text, schedule, at, topic_id AS topicId, chat_id AS chatId, created_at AS createdAt";
 
 interface SuggestionRow extends Omit<Suggestion, "at"> {
   readonly at: string | null;
@@ -99,7 +99,7 @@ export class Agenda {
   constructor(
     private readonly database: Database,
     private readonly workspaces: AgendaWorkspaces,
-    private readonly threads: AgendaThreads,
+    private readonly chats: AgendaChats,
     private readonly routines: AgendaRoutines,
     private readonly reminders: AgendaReminders,
     private readonly places: AgendaPlaces
@@ -111,8 +111,8 @@ export class Agenda {
    */
   offer(
     workspaceId: string,
-    threadId: string,
-    channelId: string,
+    chatId: string,
+    topicId: string,
     suggestion: ReviewSuggestion
   ): void {
     const routine = suggestion.kind === "routine";
@@ -141,14 +141,14 @@ export class Agenda {
     }
     this.database
       .query(
-        "INSERT INTO suggestion (id, workspace_id, person_id, thread_id, channel_id, kind, name, text, schedule, at, time_zone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO suggestion (id, workspace_id, person_id, chat_id, topic_id, kind, name, text, schedule, at, time_zone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         Bun.randomUUIDv7(),
         workspaceId,
         suggestion.personId,
-        threadId,
-        channelId,
+        chatId,
+        topicId,
         suggestion.kind,
         name,
         routine ? suggestion.instructions : suggestion.text,
@@ -159,22 +159,22 @@ export class Agenda {
       );
   }
 
-  /** Gives the open suggestions of a thread the channel it moved to, where an accepted routine then runs. */
-  /** Moves the open suggestions of channel `from` to channel `to`, as when one channel merges into another. */
-  moveChannel(from: string, to: string): void {
+  /** Gives the open suggestions of a chat the topic it moved to, where an accepted routine then runs. */
+  /** Moves the open suggestions of topic `from` to topic `to`, as when one topic merges into another. */
+  moveTopic(from: string, to: string): void {
     this.database
       .query(
-        "UPDATE suggestion SET channel_id = ? WHERE channel_id = ? AND answered_at IS NULL AND deleted_at IS NULL"
+        "UPDATE suggestion SET topic_id = ? WHERE topic_id = ? AND answered_at IS NULL AND deleted_at IS NULL"
       )
       .run(to, from);
   }
 
-  moveWithThread(threadId: string, channelId: string): void {
+  moveWithChat(chatId: string, topicId: string): void {
     this.database
       .query(
-        "UPDATE suggestion SET channel_id = ? WHERE thread_id = ? AND answered_at IS NULL AND deleted_at IS NULL"
+        "UPDATE suggestion SET topic_id = ? WHERE chat_id = ? AND answered_at IS NULL AND deleted_at IS NULL"
       )
-      .run(channelId, threadId);
+      .run(topicId, chatId);
   }
 
   /** What a review may not suggest to a person again, as lines: their routines, reminders, and suggestions. */
@@ -225,7 +225,7 @@ export class Agenda {
   }
 
   /**
-   * Answers a suggestion of the person: `accept` makes the routine in its channel, or the reminder in their
+   * Answers a suggestion of the person: `accept` makes the routine in its topic, or the reminder in their
    * orchestrator, both as theirs; otherwise reviews do not ask again.
    */
   async answer(
@@ -251,12 +251,12 @@ export class Agenda {
       if (row.kind === "routine") {
         if (
           !this.workspaces
-            .channelsIn(workspaceId, user.id)
-            .some((channel) => channel.id === row.channelId)
+            .topicsIn(workspaceId, user.id)
+            .some((topic) => topic.id === row.topicId)
         ) {
-          throw new HttpError(409, "Its channel is gone");
+          throw new HttpError(409, "Its topic is gone");
         }
-        this.routines.create(workspaceId, row.channelId, {
+        this.routines.create(workspaceId, row.topicId, {
           id: resultId,
           name: row.name,
           schedule: row.schedule!,
@@ -264,7 +264,7 @@ export class Agenda {
           createdBy: user.id,
         });
       } else {
-        const orchestrator = await this.threads.orchestrator(workspaceId, user);
+        const orchestrator = await this.chats.orchestrator(workspaceId, user);
         try {
           this.reminders.create(workspaceId, user, orchestrator.id, user.id, {
             id: resultId,
@@ -294,7 +294,7 @@ export class Agenda {
       routines: this.routines.inWorkspace(workspaceId, user.id),
       reminders: this.pendingReminders(workspaceId, user),
       suggestions: this.suggestions(workspaceId, user),
-      approvals: this.threads.approvalsFor(workspaceId, user),
+      approvals: this.chats.approvalsFor(workspaceId, user),
     };
   }
 

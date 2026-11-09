@@ -22,7 +22,7 @@ function fakeCli(output = "✓ Example Domain") {
 }
 
 describe("Browser", () => {
-  test("runs the commands in the thread's session under Golem's policy", async () => {
+  test("runs the commands in the chat's session under Golem's policy", async () => {
     const cli = fakeCli();
     const result = await new Browser(cli.run).browse(
       "golem-w-1",
@@ -52,7 +52,7 @@ describe("Browser", () => {
     ]);
   });
 
-  test("each person of a thread has a browser session of their own", async () => {
+  test("each person of a chat has a browser session of their own", async () => {
     const cli = fakeCli();
     let requester: string | null = "alice";
     const [tool] = new Browser(cli.run).tools("w", async () => requester);

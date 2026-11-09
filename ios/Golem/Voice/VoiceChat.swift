@@ -2,12 +2,12 @@ import Foundation
 import Observation
 import os
 
-/// Conversation mode in a thread: the user talks, Golem answers aloud, hands-free, until the user ends it.
+/// Conversation mode in a chat: the user talks, Golem answers aloud, hands-free, until the user ends it.
 ///
 /// - **Hearing.** The listener stays on with echo cancellation, and transcribes only what Apple's sound classifier
 ///   calls   speech. A pause after the user's words ends their turn (short after a finished sentence, long after
-///   "and…"), and   the words go to the thread as a voice message, which steers a run at work.
-/// - **Speaking.** It follows the thread's events and says each new sentence of the agent's text as it streams (a voice
+///   "and…"), and   the words go to the chat as a voice message, which steers a run at work.
+/// - **Speaking.** It follows the chat's events and says each new sentence of the agent's text as it streams (a voice
 ///   message asks the agent to say what it is about to do before it uses tools), in Supertonic's voice (``Speaker``).
 /// - **Cutting in.** With headphones, the user's words stop the voice at once, and what was left unsaid is dropped.
 ///   On the iPhone's speaker, echo cancellation leaves enough of Golem's voice for the recognizer to turn into words
@@ -32,8 +32,8 @@ final class VoiceChat {
     }
 
     private(set) var phase: Phase = .off
-    /// The thread it talks in.
-    private(set) var thread: String?
+    /// The chat it talks in.
+    private(set) var chat: String?
     /// What the user is saying now.
     private(set) var heard = ""
     /// The microphone is ignored (it stays on for echo cancellation).
@@ -60,7 +60,7 @@ final class VoiceChat {
     @ObservationIgnored private var ticker: Task<Void, Never>?
     @ObservationIgnored private var narrator: Task<Void, Never>?
     @ObservationIgnored private var sending = false
-    /// The thread's run is working, as its events last said.
+    /// The chat's run is working, as its events last said.
     @ObservationIgnored private var busy = false
     @ObservationIgnored private var wasSpeaking = false
     /// Until then, what the microphone hears is still Golem's voice: the room's echo and the speaker's latency after
@@ -78,17 +78,17 @@ final class VoiceChat {
 
     // MARK: Control
 
-    /// Starts talking in thread `id`, sending through `api`.
-    func start(thread id: String, api: APIClient) async {
+    /// Starts talking in chat `id`, sending through `api`.
+    func start(chat id: String, api: APIClient) async {
         if isOn {
-            if id == thread { return }
+            if id == chat { return }
             end()
         }
         phase = .starting
         error = nil
         heard = ""
         muted = false
-        thread = id
+        chat = id
         self.api = api
         narration = Narration()
         guard Speaker.isBundled else {
@@ -112,7 +112,7 @@ final class VoiceChat {
         }
     }
 
-    /// Stops listening and speaking, and leaves the thread's run alone.
+    /// Stops listening and speaking, and leaves the chat's run alone.
     func end() {
         guard isOn else { return }
         ticker?.cancel()
@@ -122,7 +122,7 @@ final class VoiceChat {
         speaker.stop()
         if listener.owner == Self.owner { listener.shutDown() }
         phase = .off
-        thread = nil
+        chat = nil
         heard = ""
         muted = false
     }
@@ -207,7 +207,7 @@ final class VoiceChat {
         }
     }
 
-    /// The user's turn, to the thread as a voice message.
+    /// The user's turn, to the chat as a voice message.
     private func send() {
         guard !sending else { return }
         sending = true
@@ -220,13 +220,13 @@ final class VoiceChat {
     private func deliver() async {
         let text = await listener.take().trimmingCharacters(in: .whitespacesAndNewlines)
         heard = ""
-        guard isOn, let thread, let api, !text.isEmpty else { return }
+        guard isOn, let chat, let api, !text.isEmpty else { return }
         // Nothing to say ("." from a cough or a breath).
         guard text.contains(where: { $0.isLetter || $0.isNumber }) else { return }
         listener.sent()
         if speaker.isSpeaking { interrupt() }
         do {
-            try await api.sendMessage(threadID: thread, text: text, files: [], voice: true)
+            try await api.sendMessage(chatID: chat, text: text, files: [], voice: true)
             error = nil
         } catch {
             log.error("send failed: \(error)")
@@ -246,29 +246,29 @@ final class VoiceChat {
         error = message
     }
 
-    // MARK: The thread
+    // MARK: The chat
 
-    /// Follows the thread and says what its agent writes from now on. Reads the events again after each error.
+    /// Follows the chat and says what its agent writes from now on. Reads the events again after each error.
     private func follow(_ id: String, api: APIClient) {
         narrator?.cancel()
         narrator = Task { [weak self] in
             var first = true
             while !Task.isCancelled {
                 do {
-                    try await api.threadEvents(id) { state in
-                        guard let self, self.thread == id else { return }
+                    try await api.chatEvents(id) { state in
+                        guard let self, self.chat == id else { return }
                         self.saw(state, first: first)
                         first = false
                     }
                 } catch {
-                    self?.log.error("thread events ended: \(error)")
+                    self?.log.error("chat events ended: \(error)")
                 }
                 try? await Task.sleep(for: .seconds(1))
             }
         }
     }
 
-    private func saw(_ state: ThreadState, first: Bool) {
+    private func saw(_ state: ChatState, first: Bool) {
         busy = state.running
         let (anchor, pieces) = Self.runText(state.messages)
         if first {

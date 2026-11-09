@@ -1,16 +1,16 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { randomUUIDv5 } from "bun";
+import type { Chats } from "../chats/chats.ts";
 import type { Places } from "../places/places.ts";
-import type { Threads } from "../threads/threads.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 import type { Reminder, ReminderInput, Reminders } from "./reminders.ts";
 
 /** Agent tools for the one-time reminders of a workspace, at a time or at a place. */
 export function reminderTools(
   reminders: Reminders,
-  workspaces: Pick<Workspaces, "agentMember" | "members" | "threadOf">,
-  threads: Pick<Threads, "realm" | "requester">,
+  workspaces: Pick<Workspaces, "agentMember" | "members" | "chatOf">,
+  chats: Pick<Chats, "realm" | "requester">,
   places: Pick<Places, "usable">,
   workspaceId: string
 ) {
@@ -52,13 +52,13 @@ export function reminderTools(
     Type.String({ description: "Name of a member of this workspace" })
   );
   const actorFor = async (
-    conversationId: Parameters<Threads["requester"]>[1]
+    conversationId: Parameters<Chats["requester"]>[1]
   ) => {
-    const asker = await threads.requester(workspaceId, conversationId);
+    const asker = await chats.requester(workspaceId, conversationId);
     return {
       asker,
       actor: asker ?? workspaces.agentMember(workspaceId),
-      realm: await threads.realm(workspaceId, conversationId),
+      realm: await chats.realm(workspaceId, conversationId),
     };
   };
   /** The member named `recipient`, else the person who asks. */
@@ -132,7 +132,7 @@ export function reminderTools(
     defineTool({
       name: "reminders_create",
       description:
-        "Schedule one reminder for one exact future date and time, or for when the recipient arrives at or leaves a place; their iPhone tells Golem. A place reminder can have a window: from, such as 'when I get to work on Monday', and until, when it fires anyway, such as 'next time I am at the shop this week'. 'At 18:00 if I am home, else when I get home' is arrive home from 18:00. Make one reminder for one request, with no helper reminders or threads. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time or place in your answer.",
+        "Schedule one reminder for one exact future date and time, or for when the recipient arrives at or leaves a place; their iPhone tells Golem. A place reminder can have a window: from, such as 'when I get to work on Monday', and until, when it fires anyway, such as 'next time I am at the shop this week'. 'At 18:00 if I am home, else when I get home' is arrive home from 18:00. Make one reminder for one request, with no helper reminders or chats. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time or place in your answer.",
       parameters: Type.Object({
         text,
         at,
@@ -146,9 +146,9 @@ export function reminderTools(
       replay: "safe",
       execute: async (args, api) => {
         const { actor, asker } = await actorFor(api.conversationId);
-        const source = workspaces.threadOf(workspaceId, api.conversationId);
+        const source = workspaces.chatOf(workspaceId, api.conversationId);
         if (!source) {
-          throw new Error("This tool works only in a thread.");
+          throw new Error("This tool works only in a chat.");
         }
         const recipientId = recipientOf(
           actor,
@@ -289,7 +289,7 @@ function describe(reminder: Reminder): string {
       ? `When: the recipient ${place.event === "arrive" ? "arrives at" : "leaves"} ${place.name}${reminder.notBefore === null ? "" : `, not before ${local(reminder.notBefore, reminder.timeZone)}`}${reminder.notAfter === null ? "" : `, at ${local(reminder.notAfter, reminder.timeZone)} at the latest`}`
       : `Due: ${local(reminder.dueAt, reminder.timeZone)} ${reminder.timeZone} (${new Date(reminder.dueAt).toISOString()})`,
     `Recipient: ${reminder.recipientId}`,
-    `Thread: ${reminder.threadId}`,
+    `Chat: ${reminder.chatId}`,
     `Status: ${status}`,
   ].join("\n");
 }

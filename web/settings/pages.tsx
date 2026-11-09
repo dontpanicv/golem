@@ -4,12 +4,12 @@ import { useRef } from "react";
 import { signOut } from "../accounts/login.tsx";
 import { request } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
+import { LearnedSection } from "../chats/learned.tsx";
 import { MachinesSection } from "../hands/machines.tsx";
 import { IntegrationsSection } from "../integrations/section.tsx";
 import { LlmCard, llmQuery } from "../llm/card.tsx";
 import { UsageSection } from "../llm/usage.tsx";
 import { PlacesSection } from "../places/section.tsx";
-import { LearnedSection } from "../threads/learned.tsx";
 import {
   Avatar,
   Button,

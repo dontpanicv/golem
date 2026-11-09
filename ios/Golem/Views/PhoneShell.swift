@@ -76,13 +76,13 @@ struct PhoneShell: View {
     }
 
     private var onTop: Destination? {
-        paths[bar.tab]?.last ?? (bar.tab == .golem ? session.orchestrator.map { .thread($0.id) } : nil)
+        paths[bar.tab]?.last ?? (bar.tab == .golem ? session.orchestrator.map { .chat($0.id) } : nil)
     }
 
-    /// Opens the Golem thread, whose composer then starts dictating.
+    /// Opens the Golem chat, whose composer then starts dictating.
     private func openDictation() {
         if let orchestrator = session.orchestrator, Dictation.shared.take(for: orchestrator.id) {
-            open(.thread(orchestrator.id))
+            open(.chat(orchestrator.id))
         }
     }
 
@@ -113,7 +113,7 @@ struct PhoneShell: View {
             HomeView(open: open).id(session.workspace?.id)
         case .golem:
             if let orchestrator = session.orchestrator {
-                WithArtifacts { ConversationView(threadID: orchestrator.id, showArtifacts: $0, open: open) }
+                WithArtifacts { ConversationView(chatID: orchestrator.id, showArtifacts: $0, open: open) }
                     .id(orchestrator.id)
             }
         case .activity:
@@ -128,24 +128,24 @@ struct PhoneShell: View {
     @ViewBuilder
     private func screen(_ destination: Destination) -> some View {
         switch destination {
-        case let .channel(id), let .newThread(id):
+        case let .topic(id), let .newChat(id):
             WithArtifacts {
-                ChannelView(channelID: id, compose: destination == .newThread(id), showArtifacts: $0, open: open)
+                TopicView(topicID: id, compose: destination == .newChat(id), showArtifacts: $0, open: open)
             }.id(id)
-        case let .artifact(channel?, artifact):
-            WithArtifacts { ChannelView(channelID: channel, artifactID: artifact, showArtifacts: $0, open: open) }
+        case let .artifact(topic?, artifact):
+            WithArtifacts { TopicView(topicID: topic, artifactID: artifact, showArtifacts: $0, open: open) }
                 .id(artifact)
         case let .artifact(nil, artifact):
             if let orchestrator = session.orchestrator {
                 WithArtifacts {
-                    ConversationView(threadID: orchestrator.id, artifactID: artifact, showArtifacts: $0, open: open)
+                    ConversationView(chatID: orchestrator.id, artifactID: artifact, showArtifacts: $0, open: open)
                 }
                 .id(artifact)
             }
-        case let .channelDetails(id):
-            ChannelDetailsView(channelID: id, open: open).id(id)
-        case let .thread(id):
-            WithArtifacts { ConversationView(threadID: id, showArtifacts: $0, open: open) }.id(id)
+        case let .topicDetails(id):
+            TopicDetailsView(topicID: id, open: open).id(id)
+        case let .chat(id):
+            WithArtifacts { ConversationView(chatID: id, showArtifacts: $0, open: open) }.id(id)
         case .feedback:
             FeedbackView(open: open).id(session.workspace?.id)
         // These open a tab or a sheet instead; see `open`.
@@ -155,11 +155,11 @@ struct PhoneShell: View {
     }
 
     /// Opens a screen: Golem, Activity, and Search in their tabs, the settings in a sheet, anything else on the open
-    /// tab's stack. Another screen closes the settings, which would hide it, as when a notification opens a thread.
+    /// tab's stack. Another screen closes the settings, which would hide it, as when a notification opens a chat.
     private func open(_ destination: Destination) {
         if destination != .settings, destination != .workspaceSettings { sheet = nil }
         switch destination {
-        case .thread(session.orchestrator?.id ?? ""):
+        case .chat(session.orchestrator?.id ?? ""):
             paths[.golem] = []
             bar.tab = .golem
         case .search:

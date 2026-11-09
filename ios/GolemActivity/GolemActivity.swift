@@ -5,16 +5,16 @@ import WidgetKit
 @main
 struct GolemActivityBundle: WidgetBundle {
     var body: some Widget {
-        ThreadActivity()
+        ChatActivity()
         AlarmActivity()
     }
 }
 
 /// The work for the person's message on the Lock Screen and in the Dynamic Island: what works now, how it goes, and
-/// for how long. A tap opens the thread.
-struct ThreadActivity: Widget {
+/// for how long. A tap opens the chat.
+struct ChatActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: ThreadActivityAttributes.self) { context in
+        ActivityConfiguration(for: ChatActivityAttributes.self) { context in
             HStack(spacing: Tokens.Space.lg) {
                 StatusSymbol(status: context.state.status)
                     .font(.system(size: 22, weight: .semibold))
@@ -68,7 +68,7 @@ struct ThreadActivity: Widget {
     }
 }
 
-private typealias Status = ThreadActivityStatus
+private typealias Status = ChatActivityStatus
 
 private struct StatusSymbol: View {
     let status: Status
@@ -85,22 +85,22 @@ private struct StatusSymbol: View {
     }
 }
 
-/// "Working" or "Waiting for you", and how many threads work when there are more than one.
+/// "Working" or "Waiting for you", and how many chats work when there are more than one.
 private struct StatusText: View {
-    let state: ThreadActivityAttributes.ContentState
+    let state: ChatActivityAttributes.ContentState
 
     var body: some View {
         let words = switch state.status {
         case .working: "Working"
         case .waiting: "Waiting for you"
         }
-        Text(state.threads > 1 ? "\(words) · \(state.threads) threads" : words)
+        Text(state.chats > 1 ? "\(words) · \(state.chats) chats" : words)
     }
 }
 
 /// The time since the message.
 private struct Elapsed: View {
-    let context: ActivityViewContext<ThreadActivityAttributes>
+    let context: ActivityViewContext<ChatActivityAttributes>
 
     var body: some View {
         Text(timerInterval: context.attributes.startedAt...Date.distantFuture, countsDown: false)

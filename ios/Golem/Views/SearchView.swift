@@ -25,7 +25,7 @@ struct SearchView: View {
                         .buttonStyle(.row)
                     }
                     if let orchestrator = session.orchestrator {
-                        Button { open(.thread(orchestrator.id)) } label: {
+                        Button { open(.chat(orchestrator.id)) } label: {
                             ListRow(title: "Golem", golem: true) { EmptyView() }
                         }
                         .buttonStyle(.row)
@@ -40,8 +40,8 @@ struct SearchView: View {
                     }
                     ForEach(response?.results ?? []) { result in
                         Button { show(result) } label: {
-                            let channel = session.channels.first { $0.id == result.channelId }
-                            SearchRow(result: result, channel: channel?.name)
+                            let topic = session.topics.first { $0.id == result.topicId }
+                            SearchRow(result: result, topic: topic?.name)
                         }
                         .buttonStyle(.row)
                         .disabled(!opens(result))
@@ -103,25 +103,25 @@ struct SearchView: View {
         }
     }
 
-    /// Opens an artifact where it belongs, a saved file in Quick Look, or a thread.
+    /// Opens an artifact where it belongs, a saved file in Quick Look, or a chat.
     private func show(_ result: SearchResult) {
         save()
         if result.kind == "artifact" {
-            open(.artifact(channel: result.channelId, artifact: String(result.uri.dropFirst("artifact:".count))))
+            open(.artifact(topic: result.topicId, artifact: String(result.uri.dropFirst("artifact:".count))))
         } else if let file = savedFile(result) {
             opening = file
-        } else if let thread = result.threadId, result.kind == "thread" {
-            open(.thread(thread))
+        } else if let chat = result.chatId, result.kind == "chat" {
+            open(.chat(chat))
         }
     }
 
     private func opens(_ result: SearchResult) -> Bool {
-        result.kind == "artifact" || result.kind == "thread" || savedFile(result) != nil
+        result.kind == "artifact" || result.kind == "chat" || savedFile(result) != nil
     }
 
-    /// A file Golem saved: `channels/<channel>/files/<uuidv7>-<name>`, or `files/<uuidv7>-<name>` of the workspace.
+    /// A file Golem saved: `topics/<topic>/files/<uuidv7>-<name>`, or `files/<uuidv7>-<name>` of the workspace.
     private func savedFile(_ result: SearchResult) -> FileRef? {
-        guard let match = result.uri.firstMatch(of: /^(?:channels\/[^\/]+\/)?files\/([0-9a-f-]{36})-(.+)$/) else {
+        guard let match = result.uri.firstMatch(of: /^(?:topics\/[^\/]+\/)?files\/([0-9a-f-]{36})-(.+)$/) else {
             return nil
         }
         return FileRef(id: String(match.1), name: String(match.2))
@@ -130,7 +130,7 @@ struct SearchView: View {
 
 private struct SearchRow: View {
     let result: SearchResult
-    let channel: String?
+    let topic: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: Tokens.Space.md) {
@@ -161,14 +161,14 @@ private struct SearchRow: View {
 
     private var place: String {
         let date = Date(milliseconds: result.updatedAt).formatted(.dateTime.day().month(.abbreviated))
-        return channel.map { "#\($0) · \(date)" } ?? date
+        return topic.map { "#\($0) · \(date)" } ?? date
     }
 
     private var icon: Pixel {
         switch (result.modality, result.kind) {
         case ("image", _): .photo
         case ("audio", _): .sound
-        case (_, "thread"): .compose
+        case (_, "chat"): .compose
         case (_, "artifact"): .artifact
         case (_, "capture"): .inbox
         default: .file

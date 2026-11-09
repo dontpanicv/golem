@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// What the agents reported about Golem, newest first, for the server's owner: a tap opens the report's thread when
+/// What the agents reported about Golem, newest first, for the server's owner: a tap opens the report's chat when
 /// the owner sees it; the check dismisses it.
 struct FeedbackView: View {
     let open: (Destination) -> Void
@@ -37,7 +37,7 @@ struct FeedbackView: View {
     private func row(_ feedback: Feedback) -> some View {
         HStack(alignment: .top, spacing: 0) {
             Button {
-                if let threadID = feedback.threadId { open(.thread(threadID)) }
+                if let chatID = feedback.chatId { open(.chat(chatID)) }
             } label: {
                 HStack(alignment: .top, spacing: Tokens.Space.md) {
                     Image(pixel: feedback.kind.pixel)
@@ -67,7 +67,7 @@ struct FeedbackView: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.row)
-            .disabled(feedback.threadId == nil)
+            .disabled(feedback.chatId == nil)
             Button("Dismiss", pixel: .check) { dismiss(feedback) }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.golem(.ghost, .icon))

@@ -4,7 +4,7 @@ import WebKit
 /// An open artifact: a bar with its actions, then the artifact running, or the data it keeps.
 struct ArtifactView: View {
     let artifactID: String
-    /// Changes when the thread does, so the artifact loads again after an agent changes it.
+    /// Changes when the chat does, so the artifact loads again after an agent changes it.
     let changes: Int
     /// Called after the artifact is deleted or changed, so the Artifacts tab lists it again.
     let changed: () -> Void
@@ -121,7 +121,7 @@ struct ArtifactView: View {
         }
     }
 
-    /// Runs an action, then loads the artifact and the thread's list again.
+    /// Runs an action, then loads the artifact and the chat's list again.
     private func act(_ action: @escaping () async throws -> Void) {
         Task {
             await session.run {

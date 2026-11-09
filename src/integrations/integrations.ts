@@ -66,7 +66,7 @@ export interface Integration {
 }
 
 /**
- * A tool of a connector, which agents call in threads and routine scripts call as `tools.<name>(args)`. It gets the
+ * A tool of a connector, which agents call in chats and routine scripts call as `tools.<name>(args)`. It gets the
  * secret of the workspace's credential for its integration; the secret never reaches the agent or the script.
  */
 export interface ConnectorTool<Parameters extends TSchema = TSchema> {
@@ -104,7 +104,7 @@ export type FileOf = (
 ) => Promise<{ readonly path: string; readonly name: string }>;
 
 /**
- * Saves a file to the channel of the turn's thread: `write` writes it to the path it gets and returns its name. Gives
+ * Saves a file to the topic of the turn's chat: `write` writes it to the path it gets and returns its name. Gives
  * the file's id and name.
  */
 export type SaveFile = (
@@ -307,7 +307,7 @@ export interface Turn {
   readonly save?: SaveFile;
   /**
    * Resolves when the person allows the action of `text`, and throws when they do not; `approverId` null lets any
-   * member answer. Only an agent in a thread can ask, so a routine's script cannot act as a person.
+   * member answer. Only an agent in a chat can ask, so a routine's script cannot act as a person.
    */
   readonly approve?: (text: string, approverId: string | null) => Promise<void>;
 }
@@ -1178,7 +1178,7 @@ export class Integrations {
         if (allowed !== null) {
           if (!turn.approve) {
             throw new Error(
-              `Only an agent in a thread can use ${tool.name}, after a person allows it.`
+              `Only an agent in a chat can use ${tool.name}, after a person allows it.`
             );
           }
           await turn.approve(

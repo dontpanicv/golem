@@ -8,7 +8,7 @@ entry file. `test/architecture.test.ts` enforces the rules on this page.
 
 The code was first split by technical layer: all JSON routes in `src/api.ts`, all web routes in `src/web.ts`, all
 pages in `src/ui/pages.ts`, and six jobs in `src/workspaces.ts`. A feature touched files all over `src/`, and the
-dependencies went in circles (`threads` ↔ `search`, `llm` → `workspaces`). Now a feature lives in one folder, and
+dependencies went in circles (`chats` ↔ `search`, `llm` → `workspaces`). Now a feature lives in one folder, and
 the dependencies go in one direction.
 
 ## Layout
@@ -25,18 +25,18 @@ src/
 ├── platform/                Shared code that knows no domain
 │   ├── config.ts, secrets.ts, database.ts, auth.ts, errors.ts, requirements.ts
 ├── accounts/                Sign-in and sign-out (better-auth is in platform/auth.ts)
-├── workspaces/              Workspaces, members, channels, and the thread registry
+├── workspaces/              Workspaces, members, topics, and the chat registry
 ├── llm/                     The shared LLM provider, its stored login, and the agents' web search
 ├── hands/                   The machines of each workspace: pairing, connections, and the agents' hands tools
 ├── integrations/            The connectors, their tools, and the credentials of workspaces and people
 ├── places/                  The places that people mark on a map, each person's last state at them, and the map tiles
-├── artifacts/               The pages and small apps agents make for a channel, their link pages, and their data
-├── browser/                 The headless Chrome of each thread and person, which agents visit websites with
+├── artifacts/               The pages and small apps agents make for a topic, their link pages, and their data
+├── browser/                 The headless Chrome of each chat and person, which agents visit websites with
 ├── notifications/           Each person's inbox, the devices that get pushes, and the APNs sender
-├── threads/                 One Pi Durable session per workspace, a conversation per thread, the agent tools, and the
-│                            files of each channel
+├── chats/                 One Pi Durable session per workspace, a conversation per chat, the agent tools, and the
+│                            files of each topic
 ├── search/                  Extraction, embeddings, and the index of each workspace
-├── routines/                Scheduled scripts and instructions of each channel, and their runs
+├── routines/                Scheduled scripts and instructions of each topic, and their runs
 ├── reminders/               One-time workspace reminders and their agent tools
 ├── agenda/                  Each person's Upcoming, and the automations Golem suggests to them
 ├── phone/                   The calls of agents' phone tools to each person's open Golem app on their iPhone
@@ -67,21 +67,21 @@ module uses only `app/`, `ui/`, and the modules before it, and never the server'
 ## Rules
 
 1. **One direction.** The modules are in this order: `accounts`, `workspaces`, `llm`, `hands`, `integrations`,
-   `places`, `artifacts`, `browser`, `notifications`, `threads`, `search`, `routines`, `reminders`, `agenda`, `intake`, `phone`, `feedback`. A module uses only the modules before it. `platform/` uses no module.
+   `places`, `artifacts`, `browser`, `notifications`, `chats`, `search`, `routines`, `reminders`, `agenda`, `intake`, `phone`, `feedback`. A module uses only the modules before it. `platform/` uses no module.
 2. **Entry files only.** A service uses another module only through its `<module>.ts`. Routes and pages can also
    use another module's `pages.ts`. Only `app/routes.ts` imports `web.ts` and `api.ts`.
    Biome's `noBarrelFile` stays on, so an entry file holds real code and does not re-export.
 3. **Services do not know HTTP routes.** A service throws `HttpError` from `platform/errors.ts` for bad input or
    missing access, and never imports from `app/`. `app/app.ts` makes the services; routes get them from `input.app`.
 4. **One owner per table.** Only the owner module queries a table (see the comment in `platform/database.ts`). The
-   indexer reads workspaces and threads through `Workspaces.ids` and `Workspaces.threadsIn`.
+   indexer reads workspaces and chats through `Workspaces.ids` and `Workspaces.chatsIn`.
 5. **Membership in one place.** Every workspace read and write calls `Workspaces.requireMember` first. Non-members
    get `404`.
-6. **Ports for the backward edges.** `threads` needs search for its recall tool, and search reads threads. So
-   `threads` declares the port it needs (`ThreadHooks.recall`, with its own `RecallResult` type), and
-   `app/app.ts` connects it to the indexer. In the same way, `ThreadHooks.tools` gives agents the tools of
-   `routines`, which runs its work in threads, and `ThreadHooks.suggest` gives `agenda` the automations that the
-   reviews of quiet threads suggest.
+6. **Ports for the backward edges.** `chats` needs search for its recall tool, and search reads chats. So
+   `chats` declares the port it needs (`ChatHooks.recall`, with its own `RecallResult` type), and
+   `app/app.ts` connects it to the indexer. In the same way, `ChatHooks.tools` gives agents the tools of
+   `routines`, which runs its work in chats, and `ChatHooks.suggest` gives `agenda` the automations that the
+   reviews of quiet chats suggest.
 
 ## Schema
 
@@ -95,7 +95,7 @@ per module would need a bookkeeping table and an upgrade step on every machine, 
 - `test/` holds the end-to-end tests that drive the whole server as a person would (`server`, `api`, and `web`),
   the shared test server in `test/harness.ts`, the design token check, the architecture test, and the check that the
   web app's API types fit the server's (`web-types`).
-- Web tests are next to their code too, for example `web/threads/message.test.tsx`.
+- Web tests are next to their code too, for example `web/chats/message.test.tsx`.
 
 ## Add a feature
 

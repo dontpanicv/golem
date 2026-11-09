@@ -7,12 +7,12 @@ import { FeedbackReports } from "./feedback.ts";
 
 const alice: User = { id: "alice", name: "Alice", email: "Alice@example.com" };
 const bob: User = { id: "bob", name: "Bob", email: "bob@example.com" };
-const thread = (id: string, conversationId: number, realm: string | null) => ({
+const chat = (id: string, conversationId: number, realm: string | null) => ({
   id,
   conversationId,
   realm,
 });
-const threads = [thread("shared", 1, null), thread("bobs", 2, "bob")];
+const chats = [chat("shared", 1, null), chat("bobs", 2, "bob")];
 
 function setup() {
   const database = authDatabase();
@@ -21,10 +21,10 @@ function setup() {
     database,
     {
       requireMember: () => ({ id: "home", name: "Home", role: "member" }),
-      threadOf: (_workspaceId: string, conversationId: number) =>
-        threads.find((each) => each.conversationId === conversationId) ?? null,
-      threadsIn: (_workspaceId: string, realm: string | null) =>
-        threads.filter((each) => each.realm === null || each.realm === realm),
+      chatOf: (_workspaceId: string, conversationId: number) =>
+        chats.find((each) => each.conversationId === conversationId) ?? null,
+      chatsIn: (_workspaceId: string, realm: string | null) =>
+        chats.filter((each) => each.realm === null || each.realm === realm),
     } as never,
     { requester: async () => bob } as never,
     "alice@example.com"
@@ -52,7 +52,7 @@ test("an agent reports once per call, and only the server's owner reads the repo
       tool: "phone_alarm",
       summary: "Snooze",
       detail: "No snooze",
-      threadId: "shared",
+      chatId: "shared",
       createdAt: expect.any(Number),
     },
   ]);
@@ -61,11 +61,11 @@ test("an agent reports once per call, and only the server's owner reads the repo
   );
 });
 
-test("the owner reads a report from another person's private thread without its link", async () => {
+test("the owner reads a report from another person's private chat without its link", async () => {
   const { feedback, report } = setup();
   await report(2, "task-2", "Private");
 
-  expect(feedback.list("home", alice)[0]?.threadId).toBeNull();
+  expect(feedback.list("home", alice)[0]?.chatId).toBeNull();
 });
 
 test("a dismissed report leaves the list", async () => {

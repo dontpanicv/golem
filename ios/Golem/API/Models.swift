@@ -17,23 +17,23 @@ struct Workspace: Codable, Hashable, Identifiable {
     let role: String
 }
 
-struct ThreadSummary: Codable, Hashable, Identifiable {
+struct ChatSummary: Codable, Hashable, Identifiable {
     let id: String
-    let channelId: String
+    let topicId: String
     let title: String
     let updatedAt: Double
     let settledAt: Double?
 }
 
-struct Channel: Codable, Hashable, Identifiable {
+struct Topic: Codable, Hashable, Identifiable {
     let id: String
     let name: String
-    /// The person a private channel belongs to, who alone sees it; nil for a channel every member sees.
+    /// The person a private topic belongs to, who alone sees it; nil for a topic every member sees.
     let ownerId: String?
     let summary: String?
     /// One emoji, shown in place of the # before the name.
     let icon: String?
-    let threads: [ThreadSummary]
+    let chats: [ChatSummary]
 }
 
 /// Facts that the family writes by hand, such as names, birthdays, and places; every agent of the workspace reads them.
@@ -64,7 +64,7 @@ struct Work: Codable, Hashable {
     let steps: [Step]
 }
 
-/// A thought, words between tool calls, or a tool call. A tool call's text is the thread link in its result, or else
+/// A thought, words between tool calls, or a tool call. A tool call's text is the chat link in its result, or else
 /// the values of its arguments; `input` is its arguments as JSON, `output` the start of its result.
 struct Step: Codable, Hashable {
     let kind: String
@@ -76,16 +76,16 @@ struct Step: Codable, Hashable {
     let failed: Bool
 }
 
-struct WorkingThreads: Codable, Hashable {
-    let threadIds: [String]
+struct WorkingChats: Codable, Hashable {
+    let chatIds: [String]
 }
 
-/// Something that needs the person: it opens its thread, or its channel without one.
+/// Something that needs the person: it opens its chat, or its topic without one.
 struct InboxNotification: Codable, Hashable, Identifiable {
     let id: String
     let workspaceId: String
-    let channelId: String
-    let threadId: String?
+    let topicId: String
+    let chatId: String?
     let title: String
     let text: String
     let createdAt: Double
@@ -105,7 +105,7 @@ struct FileRef: Codable, Hashable, Identifiable {
     let name: String
 }
 
-/// A file of a channel, or of the workspace for the orchestrator: uploaded there, or attached to a message.
+/// A file of a topic, or of the workspace for the orchestrator: uploaded there, or attached to a message.
 struct SavedFile: Codable, Hashable, Identifiable {
     let id: String
     let name: String
@@ -116,14 +116,14 @@ struct SavedFile: Codable, Hashable, Identifiable {
 
 struct SavedFiles: Codable { let files: [SavedFile] }
 
-/// A page or small app an agent made. It belongs to a channel, or to the workspace when `channelId` is nil;
-/// `threadId` is the thread that made it. `url` is the link people share.
+/// A page or small app an agent made. It belongs to a topic, or to the workspace when `topicId` is nil;
+/// `chatId` is the chat that made it. `url` is the link people share.
 struct Artifact: Codable, Hashable, Identifiable {
     enum Visibility: String, Codable { case `public`, members }
 
     let id: String
-    let channelId: String?
-    let threadId: String
+    let topicId: String?
+    let chatId: String
     let title: String
     let visibility: Visibility
     let url: String
@@ -192,8 +192,8 @@ indirect enum JSONValue: Codable, Hashable {
     }
 }
 
-struct ThreadState: Codable, Hashable {
-    let thread: ThreadSummary
+struct ChatState: Codable, Hashable {
+    let chat: ChatSummary
     let messages: [Message]
     let running: Bool
     let approvals: [Approval]
@@ -241,10 +241,10 @@ struct RoutineRun: Codable, Hashable, Identifiable {
     let error: String?
 }
 
-/// Work a channel does on a schedule, or each time a person arrives at or leaves its `place`.
+/// Work a topic does on a schedule, or each time a person arrives at or leaves its `place`.
 struct Routine: Codable, Hashable, Identifiable {
     let id: String
-    let channelId: String
+    let topicId: String
     let name: String
     /// A cron expression; nil for a routine at a place.
     let schedule: String?
@@ -253,7 +253,7 @@ struct Routine: Codable, Hashable, Identifiable {
     let script: String?
     var enabled: Bool
     let nextRunAt: Double?
-    let threadId: String?
+    let chatId: String?
     let lastRun: RoutineRun?
 }
 
@@ -274,19 +274,19 @@ struct RoutinePlace: Codable, Hashable {
     var summary: String { event == .arrive ? "Arrive at \(name)" : "Leave \(name)" }
 }
 
-struct ChannelRoutines: Codable {
+struct TopicRoutines: Codable {
     let routines: [Routine]
     let runs: [RoutineRun]
 }
 
-/// What a channel is for, where it is now, its decisions, its open questions, and what each person wants, as Markdown
-/// with thread links; the model writes it again from the channel's threads.
+/// What a topic is for, where it is now, its decisions, its open questions, and what each person wants, as Markdown
+/// with chat links; the model writes it again from the topic's chats.
 struct Brief: Codable {
     let text: String
     let updatedAt: Double
 }
 
-struct ChannelBrief: Codable {
+struct TopicBrief: Codable {
     let brief: Brief?
 }
 
@@ -318,8 +318,8 @@ struct SearchResult: Codable, Hashable, Identifiable {
     let uri: String
     let kind: String
     let title: String
-    let threadId: String?
-    let channelId: String?
+    let chatId: String?
+    let topicId: String?
     let snippet: String
     let modality: String
     let loc: Double?
@@ -353,7 +353,7 @@ struct Profile: Codable {
 
 struct WorkspaceDetail: Codable {
     let workspace: Workspace
-    let channels: [Channel]
+    let topics: [Topic]
 }
 
 extension Date {

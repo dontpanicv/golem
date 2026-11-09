@@ -8,13 +8,13 @@ const HOUR = 60 * 60 * 1000;
 function routine(id: string, fields: Partial<Routine>): Routine {
   return {
     id,
-    channelId: "channel",
+    topicId: "topic",
     name: id,
     schedule: "0 7 * * *",
     place: null,
     enabled: true,
     nextRunAt: null,
-    threadId: null,
+    chatId: null,
     lastRun: null,
     ...fields,
   };
@@ -54,7 +54,7 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
     reminders: [
       {
         id: "week",
-        threadId: "thread",
+        chatId: "chat",
         recipientId: "alice",
         createdBy: "alice",
         text: "Call the dentist",
@@ -66,7 +66,7 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
       },
       {
         id: "tomorrow",
-        threadId: "thread",
+        chatId: "chat",
         recipientId: "alice",
         createdBy: "alice",
         text: "Take out the bins",
@@ -78,7 +78,7 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
       },
       {
         id: "soon",
-        threadId: "thread",
+        chatId: "chat",
         recipientId: "alice",
         createdBy: "alice",
         text: "Water the plants",
@@ -90,7 +90,7 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
       },
       {
         id: "cottage",
-        threadId: "thread",
+        chatId: "chat",
         recipientId: "alice",
         createdBy: "alice",
         text: "Pack the tent",
@@ -116,14 +116,14 @@ test("the agenda shows what needs the person, the suggestions, then what runs by
         text: "Remind me to water the plants",
         schedule: "0 8 * * 6",
         at: NOW + 24 * HOUR,
-        channelId: "channel",
-        threadId: "thread",
+        topicId: "topic",
+        chatId: "chat",
         createdAt: NOW,
       },
     ],
     approvals: [
       {
-        threadId: "thread",
+        chatId: "chat",
         approval: {
           id: "deploy",
           tool: "hands_run",

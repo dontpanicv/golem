@@ -3,8 +3,8 @@ package dev.golem.api
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-// The calls and models of Settings, Workspace settings, and Channel details: integrations, places, machines, what
-// Golem learned, usage, the LLM provider, and a channel's routines (docs/api.md).
+// The calls and models of Settings, Workspace settings, and Topic details: integrations, places, machines, what
+// Golem learned, usage, the LLM provider, and a topic's routines (docs/api.md).
 
 // Integrations
 
@@ -167,7 +167,7 @@ suspend fun Api.removeMachine(workspaceId: String, machineId: String) {
 // What Golem learned
 
 /**
- * A fact about a person (`about`), or how to do a task in a channel, or in the person's orchestrator when `channelId`
+ * A fact about a person (`about`), or how to do a task in a topic, or in the person's orchestrator when `topicId`
  * is null (`howto`). `realm` is the person who alone sees it; null for every member.
  */
 @Serializable
@@ -175,10 +175,10 @@ data class Learned(
     val id: Int,
     val kind: String,
     val personId: String? = null,
-    val channelId: String? = null,
+    val topicId: String? = null,
     val realm: String? = null,
     val text: String,
-    val threadId: String? = null,
+    val chatId: String? = null,
     val updatedAt: Double = 0.0,
 )
 
@@ -198,7 +198,7 @@ suspend fun Api.deleteLearned(workspaceId: String, id: Int) {
 
 /**
  * Tokens and the cost in US dollars at the model's list price. `input` leaves out `cacheRead`. A row of a list has its
- * own key too: `day` ("YYYY-MM-DD" in UTC), `source`, `model`, `threadId` and `title`, or `userId` and `name`.
+ * own key too: `day` ("YYYY-MM-DD" in UTC), `source`, `model`, `chatId` and `title`, or `userId` and `name`.
  */
 @Serializable
 data class UsageTotals(
@@ -210,7 +210,7 @@ data class UsageTotals(
     val day: String? = null,
     val source: String? = null,
     val model: String? = null,
-    val threadId: String? = null,
+    val chatId: String? = null,
     val title: String? = null,
     val userId: String? = null,
     val name: String? = null,
@@ -227,7 +227,7 @@ data class Usage(
     val total: UsageTotals = UsageTotals(),
     val sources: List<UsageTotals> = emptyList(),
     val models: List<UsageTotals> = emptyList(),
-    val threads: List<UsageTotals> = emptyList(),
+    val chats: List<UsageTotals> = emptyList(),
     /** Only for the server's owner. */
     val people: List<UsageTotals>? = null,
 )

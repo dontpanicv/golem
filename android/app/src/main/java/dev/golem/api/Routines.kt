@@ -14,11 +14,11 @@ data class RoutineRun(
     val error: String? = null,
 )
 
-/** Work a channel does on a schedule, or each time a person arrives at or leaves its `place`. */
+/** Work a topic does on a schedule, or each time a person arrives at or leaves its `place`. */
 @Serializable
 data class Routine(
     val id: String,
-    val channelId: String,
+    val topicId: String,
     val name: String,
     /** A cron expression in the server's time zone; null for a routine at a place. */
     val schedule: String? = null,
@@ -28,7 +28,7 @@ data class Routine(
     val enabled: Boolean,
     /** Null while paused, and for a routine at a place. */
     val nextRunAt: Double? = null,
-    val threadId: String? = null,
+    val chatId: String? = null,
     val lastRun: RoutineRun? = null,
 )
 
@@ -51,10 +51,10 @@ data class RoutinePlace(
 fun placeSummary(event: String, name: String) = if (event == "arrive") "Arrive at $name" else "Leave $name"
 
 @Serializable
-data class ChannelRoutines(val routines: List<Routine> = emptyList(), val runs: List<RoutineRun> = emptyList())
+data class TopicRoutines(val routines: List<Routine> = emptyList(), val runs: List<RoutineRun> = emptyList())
 
-suspend fun Api.routines(workspaceId: String, channelId: String): ChannelRoutines =
-    get("/api/v1/workspaces/$workspaceId/channels/$channelId/routines")
+suspend fun Api.routines(workspaceId: String, topicId: String): TopicRoutines =
+    get("/api/v1/workspaces/$workspaceId/topics/$topicId/routines")
 
 suspend fun Api.setRoutine(id: String, enabled: Boolean): Routine =
     decode(send("PUT", "/api/v1/routines/$id", Api.body("enabled" to enabled)))

@@ -7,11 +7,11 @@ import type { Message } from "../app/types.ts";
 import { showToast } from "../ui/toast.tsx";
 import { delivery, ownMessage, sendWithFiles } from "./data.ts";
 
-export type Outgoing = Message & { readonly threadId: string };
+export type Outgoing = Message & { readonly chatId: string };
 
 /**
  * The text messages written in this browser that Golem does not have yet. They stay in localStorage through a reload,
- * every tab sees them, and each shows in its thread until the thread's stream brings the stored message.
+ * every tab sees them, and each shows in its chat until the chat's stream brings the stored message.
  */
 export const outbox = createCollection(
   localStorageCollectionOptions<Outgoing, string>({
@@ -21,7 +21,7 @@ export const outbox = createCollection(
   })
 );
 
-/** The threads whose page is open: their stream brings a sent message, so it leaves the outbox only then. */
+/** The chats whose page is open: their stream brings a sent message, so it leaves the outbox only then. */
 export const followed = new Set<string>();
 
 /**
@@ -29,15 +29,15 @@ export const followed = new Set<string>();
  * files needs the connection now, as the outbox cannot keep files.
  */
 export function sendMessage(
-  threadId: string,
+  chatId: string,
   text: string,
   files: readonly File[]
 ): Promise<unknown> {
   if (files.length > 0) {
-    return sendWithFiles(threadId, text, files).isPersisted.promise;
+    return sendWithFiles(chatId, text, files).isPersisted.promise;
   }
   // The id is the request id too: a retry of a message that reached Golem does not send it again.
-  outbox.insert({ ...ownMessage(crypto.randomUUID(), text), threadId });
+  outbox.insert({ ...ownMessage(crypto.randomUUID(), text), chatId });
   flush();
   return Promise.resolve();
 }
@@ -99,11 +99,11 @@ async function sendAll(): Promise<void> {
     if (!next) {
       return;
     }
-    const arrived = followed.has(next.threadId)
-      ? delivery(next.threadId)
+    const arrived = followed.has(next.chatId)
+      ? delivery(next.chatId)
       : Promise.resolve(true);
     try {
-      await request(`/threads/${next.threadId}/messages`, {
+      await request(`/chats/${next.chatId}/messages`, {
         method: "POST",
         body: { text: next.text, requestId: next.id },
       });

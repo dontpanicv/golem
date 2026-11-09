@@ -15,12 +15,12 @@ import {
 } from "../integrations/integrations.ts";
 import type { User } from "../platform/auth.ts";
 import { Secrets } from "../platform/secrets.ts";
-import { Routines, type RoutineThreads } from "./routines.ts";
+import { type RoutineChats, Routines } from "./routines.ts";
 
 let golem: TestApp;
 let alice: User;
 let workspaceId: string;
-let channelId: string;
+let topicId: string;
 /** The routines of the test, with a school connector; the app's own routines serve the agents' tools. */
 let routines: Routines;
 let integrations: Integrations;
@@ -66,11 +66,7 @@ beforeAll(async () => {
   ))!;
   alice = { id: user.id, name: user.name, email: user.email };
   workspaceId = (await golem.app.workspaces.create(alice, "Family")).id;
-  channelId = golem.app.workspaces.createChannel(
-    workspaceId,
-    alice,
-    "school"
-  ).id;
+  topicId = golem.app.workspaces.createTopic(workspaceId, alice, "school").id;
   integrations = new Integrations(
     golem.app.database,
     Secrets.forTests(),
@@ -81,11 +77,11 @@ beforeAll(async () => {
     golem.app.database,
     golem.app.workspaces,
     integrations,
-    golem.app.threads,
+    golem.app.chats,
     golem.app.indexer,
     golem.app.places
   );
-  // The memory and the channel briefs ask the model in the background too.
+  // The memory and the topic briefs ask the model in the background too.
   golem.faux.setResponses(Array.from({ length: 200 }, () => agent));
 });
 afterAll(() => golem.close());
@@ -158,26 +154,26 @@ function agent(context: Context) {
   return fauxAssistantMessage("Ok.");
 }
 
-/** The texts of Alice's notifications that open the thread. */
-function noticesOf(threadId: string): string[] {
+/** The texts of Alice's notifications that open the chat. */
+function noticesOf(chatId: string): string[] {
   return golem.app.notifications
     .inbox(workspaceId, alice)
-    .notifications.filter((notice) => notice.threadId === threadId)
+    .notifications.filter((notice) => notice.chatId === chatId)
     .map((notice) => notice.text);
 }
 
-function threadOf(threadId: string | null) {
+function chatOf(chatId: string | null) {
   return golem.app.workspaces
-    .allThreadsIn(workspaceId)
-    .find((thread) => thread.id === threadId)!;
+    .allChatsIn(workspaceId)
+    .find((chat) => chat.id === chatId)!;
 }
 
-test("a script that finds nothing ends the run quietly, without the agent or a thread", async () => {
+test("a script that finds nothing ends the run quietly, without the agent or a chat", async () => {
   await integrations.addCredential(workspaceId, alice, "school", {
     label: "Anna",
     secret: "school-password",
   });
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Quiet school",
     schedule: "0 7 * * *",
@@ -188,7 +184,7 @@ test("a script that finds nothing ends the run quietly, without the agent or a t
   const [run] = routines.tick(routine.nextRunAt!);
   expect(await run).toMatchObject({ outcome: "quiet", error: null });
   expect(secretsSeen).toEqual(["school-password"]);
-  expect(routines.get(routine.id, alice).threadId).toBeNull();
+  expect(routines.get(routine.id, alice).chatId).toBeNull();
   // The next run is the next day at 7:00, not the same time again.
   expect(routines.get(routine.id, alice).nextRunAt).toBeGreaterThan(
     routine.nextRunAt!
@@ -208,8 +204,8 @@ test("a script that finds nothing ends the run quietly, without the agent or a t
   ).toEqual({ deleted: 1 });
 });
 
-test("the agent judges what the script found: quiet answers stay out of the thread", async () => {
-  const routine = routines.create(workspaceId, channelId, {
+test("the agent judges what the script found: quiet answers stay out of the chat", async () => {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "School",
     schedule: "0 7 * * *",
@@ -220,10 +216,10 @@ test("the agent judges what the script found: quiet answers stay out of the thre
   school.push({ time: 1, text: "The lunch menu changed." });
   const quiet = await routines.tick(routine.nextRunAt!)[0]!;
   expect(quiet.outcome).toBe("quiet");
-  const thread = threadOf(routines.get(routine.id, alice).threadId);
-  expect(thread.title).toBe("School");
-  expect(thread.channelId).toBe(channelId);
-  expect((await golem.app.threads.messages(thread)).messages).toEqual([]);
+  const chat = chatOf(routines.get(routine.id, alice).chatId);
+  expect(chat.title).toBe("School");
+  expect(chat.topicId).toBe(topicId);
+  expect((await golem.app.chats.messages(chat)).messages).toEqual([]);
 
   // The script remembers what it saw, so the next run gives the agent only the new message.
   school.push({ time: 2, text: "The class goes on a trip on Friday." });
@@ -231,13 +227,13 @@ test("the agent judges what the script found: quiet answers stay out of the thre
     routines.get(routine.id, alice).nextRunAt!
   )[0]!;
   expect(posted.outcome).toBe("posted");
-  const { messages } = await golem.app.threads.messages(thread);
+  const { messages } = await golem.app.chats.messages(chat);
   expect(messages.map((message) => message.text)).toEqual([
     "The class goes on a trip on Friday.",
   ]);
-  // A run's answer stays in its thread; only the agent's notify tool notifies.
-  expect(noticesOf(thread.id)).toEqual([]);
-  const { runs } = routines.inChannel(workspaceId, channelId, alice);
+  // A run's answer stays in its chat; only the agent's notify tool notifies.
+  expect(noticesOf(chat.id)).toEqual([]);
+  const { runs } = routines.inTopic(workspaceId, topicId, alice);
   expect(runs.slice(0, 2).map((run) => run.outcome)).toEqual([
     "posted",
     "quiet",
@@ -246,7 +242,7 @@ test("the agent judges what the script found: quiet answers stay out of the thre
 });
 
 test("what the script found waits for the next run when the agent cannot answer", async () => {
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Exams",
     schedule: "0 7 * * *",
@@ -269,10 +265,10 @@ test("what the script found waits for the next run when the agent cannot answer"
       routines.get(routine.id, alice).nextRunAt!
     )[0]!;
     expect(posted.outcome).toBe("posted");
-    const thread = threadOf(routines.get(routine.id, alice).threadId);
-    expect(
-      (await golem.app.threads.messages(thread)).messages.at(-1)?.text
-    ).toBe("Anna has an exam on Monday.");
+    const chat = chatOf(routines.get(routine.id, alice).chatId);
+    expect((await golem.app.chats.messages(chat)).messages.at(-1)?.text).toBe(
+      "Anna has an exam on Monday."
+    );
   } finally {
     modelDown = false;
     routines.delete(routine.id, alice);
@@ -280,7 +276,7 @@ test("what the script found waits for the next run when the agent cannot answer"
 });
 
 test("a failing script fails the run, goes to the agent to repair, and notifies its person every time", async () => {
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Failing",
     schedule: "0 7 * * *",
@@ -293,17 +289,17 @@ test("a failing script fails the run, goes to the agent to repair, and notifies 
     outcome: "failed",
     error: "Error: The login page changed",
   });
-  const thread = threadOf(routines.get(routine.id, alice).threadId);
+  const chat = chatOf(routines.get(routine.id, alice).chatId);
   const failure = 'The routine "Failing" failed: Error: The login page changed';
-  const { messages } = await golem.app.threads.messages(thread);
+  const { messages } = await golem.app.chats.messages(chat);
   expect(messages.map((message) => message.text)).toEqual([
     "I cannot read the school system.",
     failure,
   ]);
-  // Every failed run notifies its person once, with the failure; the repair answer stays in the thread.
-  expect(noticesOf(thread.id)).toEqual([failure]);
+  // Every failed run notifies its person once, with the failure; the repair answer stays in the chat.
+  expect(noticesOf(chat.id)).toEqual([failure]);
   await routines.tick(routines.get(routine.id, alice).nextRunAt!)[0];
-  expect(noticesOf(thread.id)).toEqual([failure, failure]);
+  expect(noticesOf(chat.id)).toEqual([failure, failure]);
   routines.delete(routine.id, alice);
 });
 
@@ -321,7 +317,7 @@ test("a connector without a credential fails the script", async () => {
     golem.app.database,
     golem.app.workspaces,
     other,
-    golem.app.threads,
+    golem.app.chats,
     golem.app.indexer,
     golem.app.places
   );
@@ -333,7 +329,7 @@ test("a connector without a credential fails the script", async () => {
 });
 
 test("a paused routine does not run, and a routine runs once however many runs it missed", async () => {
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Paused",
     schedule: "*/5 * * * *",
@@ -363,7 +359,7 @@ test("a routine runs as the person who last wrote its script, and not after its 
     label: "Bob",
     secret: "bob-password",
   });
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Taken over",
     schedule: "0 7 * * *",
@@ -416,7 +412,7 @@ test("a routine runs as the person who last wrote its script, and not after its 
 });
 
 test("a routine runs at most every 15 minutes, whatever its schedule says", async () => {
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Every minute",
     schedule: "* * * * *",
@@ -449,7 +445,7 @@ test("a routine at a place runs each time its person arrives or leaves, at most 
     personId: alice.id,
   } as const;
   expect(() =>
-    routines.create(workspaceId, channelId, {
+    routines.create(workspaceId, topicId, {
       ...input,
       id: crypto.randomUUID(),
       schedule: "0 7 * * *",
@@ -457,13 +453,13 @@ test("a routine at a place runs each time its person arrives or leaves, at most 
     })
   ).toThrow("Give a routine a schedule or a place.");
   expect(() =>
-    routines.create(workspaceId, channelId, {
+    routines.create(workspaceId, topicId, {
       ...input,
       id: crypto.randomUUID(),
       place: { ...place, id: "elsewhere" },
     })
   ).toThrow("Give a place that the person and the writer use");
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     ...input,
     id: crypto.randomUUID(),
     place,
@@ -484,8 +480,7 @@ test("a routine at a place runs each time its person arrives or leaves, at most 
   expect(await run).toMatchObject({ outcome: "posted" });
   const ran = routines.get(routine.id, alice);
   expect(
-    (await golem.app.threads.messages(threadOf(ran.threadId))).messages.at(-1)
-      ?.text
+    (await golem.app.chats.messages(chatOf(ran.chatId))).messages.at(-1)?.text
   ).toBe("The heating is on.");
   // A second arrival soon after, as at the edge of the circle, runs nothing.
   expect(routines.atPlace(workspaceId, alice.id, cottage.id, "arrive")).toEqual(
@@ -517,19 +512,19 @@ test("a routine at a place runs each time its person arrives or leaves, at most 
 });
 
 test("a run that a stop cuts off goes on at the next start, and the agent does its work once", async () => {
-  const { threads } = golem.app;
+  const { chats } = golem.app;
   let answered: Promise<string | null> | undefined;
   // As Golem stops: the agent got the task, then its harness closes while the run waits for the answer.
-  const stopping: RoutineThreads = {
-    messages: (thread) => threads.messages(thread),
+  const stopping: RoutineChats = {
+    messages: (chat) => chats.messages(chat),
     requester: (workspace, conversation) =>
-      threads.requester(workspace, conversation),
-    realm: (workspace, conversation) => threads.realm(workspace, conversation),
-    startAgentThread: (workspace, channel, title) =>
-      threads.startAgentThread(workspace, channel, title),
-    observe: (...args) => threads.observe(...args),
+      chats.requester(workspace, conversation),
+    realm: (workspace, conversation) => chats.realm(workspace, conversation),
+    startAgentChat: (workspace, topic, title) =>
+      chats.startAgentChat(workspace, topic, title),
+    observe: (...args) => chats.observe(...args),
     instruct: (...args) => {
-      answered = threads.instruct(...args);
+      answered = chats.instruct(...args);
       beforeStop.close();
       return Promise.reject(new Error("Harness is closed"));
     },
@@ -542,7 +537,7 @@ test("a run that a stop cuts off goes on at the next start, and the agent does i
     golem.app.indexer,
     golem.app.places
   );
-  const routine = beforeStop.create(workspaceId, channelId, {
+  const routine = beforeStop.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Backfill",
     schedule: "0 7 * * *",
@@ -560,9 +555,9 @@ test("a run that a stop cuts off goes on at the next start, and the agent does i
       error: null,
       result: null,
     });
-    const thread = threadOf(routines.get(routine.id, alice).threadId);
+    const chat = chatOf(routines.get(routine.id, alice).chatId);
     expect(
-      (await threads.messages(thread)).messages.map((message) => message.text)
+      (await chats.messages(chat)).messages.map((message) => message.text)
     ).toEqual(["Ok."]);
   } finally {
     afterStart.close();
@@ -571,7 +566,7 @@ test("a run that a stop cuts off goes on at the next start, and the agent does i
 });
 
 test("a script run that a stop cut off goes on with what the script found, and one of a deleted routine fails", async () => {
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Exams later",
     schedule: "0 7 * * *",
@@ -579,7 +574,7 @@ test("a script run that a stop cut off goes on with what the script found, and o
     script: SCRIPT,
     createdBy: alice.id,
   });
-  const deleted = routines.create(workspaceId, channelId, {
+  const deleted = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Gone",
     schedule: "0 7 * * *",
@@ -625,10 +620,10 @@ test("a script run that a stop cut off goes on with what the script found, and o
         .query("SELECT store FROM routine WHERE id = ?")
         .get(routine.id)
     ).toEqual({ store: JSON.stringify(found.store) });
-    const thread = threadOf(routines.get(routine.id, alice).threadId);
-    expect(
-      (await golem.app.threads.messages(thread)).messages.at(-1)?.text
-    ).toBe("Anna has an exam on Monday.");
+    const chat = chatOf(routines.get(routine.id, alice).chatId);
+    expect((await golem.app.chats.messages(chat)).messages.at(-1)?.text).toBe(
+      "Anna has an exam on Monday."
+    );
   } finally {
     afterStart.close();
     routines.delete(routine.id, alice);
@@ -641,7 +636,7 @@ function restart(): Routines {
     golem.app.database,
     golem.app.workspaces,
     integrations,
-    golem.app.threads,
+    golem.app.chats,
     golem.app.indexer,
     golem.app.places
   );
@@ -665,7 +660,7 @@ function outcomeOf(runId: string) {
 }
 
 test("the agent reads this run's pending records before its scan state commits, and failed runs keep the old state", async () => {
-  const routine = routines.create(workspaceId, channelId, {
+  const routine = routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Current records",
     schedule: "0 7 * * *",
@@ -740,20 +735,19 @@ test("the agent reads this run's pending records before its scan state commits, 
 });
 
 test("a restart before input admission uses the saved instructions, script result, and scan state", async () => {
-  const { threads } = golem.app;
+  const { chats } = golem.app;
   const beforeStop = new Routines(
     golem.app.database,
     golem.app.workspaces,
     integrations,
     {
-      messages: (thread) => threads.messages(thread),
+      messages: (chat) => chats.messages(chat),
       requester: (workspace, conversation) =>
-        threads.requester(workspace, conversation),
-      realm: (workspace, conversation) =>
-        threads.realm(workspace, conversation),
-      startAgentThread: (workspace, channel, title) =>
-        threads.startAgentThread(workspace, channel, title),
-      observe: (...args) => threads.observe(...args),
+        chats.requester(workspace, conversation),
+      realm: (workspace, conversation) => chats.realm(workspace, conversation),
+      startAgentChat: (workspace, topic, title) =>
+        chats.startAgentChat(workspace, topic, title),
+      observe: (...args) => chats.observe(...args),
       instruct: () => {
         beforeStop.close();
         return Promise.reject(new Error("Server stopped before admission"));
@@ -762,7 +756,7 @@ test("a restart before input admission uses the saved instructions, script resul
     golem.app.indexer,
     golem.app.places
   );
-  const routine = beforeStop.create(workspaceId, channelId, {
+  const routine = beforeStop.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Saved input",
     schedule: "0 7 * * *",
@@ -784,8 +778,8 @@ test("a restart before input admission uses the saved instructions, script resul
   const started = restart();
   try {
     expect((await outcomeOf(interrupted.id)).outcome).toBe("posted");
-    const thread = threadOf(routines.get(routine.id, alice).threadId);
-    expect((await threads.messages(thread)).messages.at(-1)?.text).toBe(
+    const chat = chatOf(routines.get(routine.id, alice).chatId);
+    expect((await chats.messages(chat)).messages.at(-1)?.text).toBe(
       "Anna has an exam on Monday."
     );
     expect(
@@ -800,16 +794,16 @@ test("a restart before input admission uses the saved instructions, script resul
 });
 
 test("agents create routines and test scripts", async () => {
-  const thread = await golem.app.threads.create(
+  const chat = await golem.app.chats.create(
     workspaceId,
     alice,
-    channelId,
+    topicId,
     "Check the school every morning"
   );
-  const ref = () => threadOf(thread.id);
+  const ref = () => chatOf(chat.id);
   const idle = () =>
     until(
-      () => golem.app.threads.messages(ref()),
+      () => golem.app.chats.messages(ref()),
       (state) => !state.running && state.messages.at(-1)?.text === "Done."
     );
   await idle();
@@ -820,15 +814,15 @@ test("agents create routines and test scripts", async () => {
   const [created] = golem.app.routines.inWorkspace(workspaceId, null);
   expect(created).toMatchObject({
     name: "School",
-    channelId,
+    topicId,
     schedule: "0 7 * * *",
     script: "return [];",
     enabled: true,
   });
 
-  await golem.app.threads.send(thread.id, alice, "Make a broken routine");
+  await golem.app.chats.send(chat.id, alice, "Make a broken routine");
   await until(
-    () => golem.app.threads.messages(ref()),
+    () => golem.app.chats.messages(ref()),
     (state) => !state.running && state.messages.length === 4
   );
   expect(toolResults.at(-1)).toContain(
@@ -836,9 +830,9 @@ test("agents create routines and test scripts", async () => {
   );
   expect(golem.app.routines.inWorkspace(workspaceId, null)).toHaveLength(1);
 
-  await golem.app.threads.send(thread.id, alice, "Test a script");
+  await golem.app.chats.send(chat.id, alice, "Test a script");
   await until(
-    () => golem.app.threads.messages(ref()),
+    () => golem.app.chats.messages(ref()),
     (state) => !state.running && state.messages.length === 6
   );
   expect(toolResults.at(-1)).toContain(
@@ -852,13 +846,9 @@ test("agents create routines and test scripts", async () => {
     radius: 300,
     shared: false,
   });
-  await golem.app.threads.send(
-    thread.id,
-    alice,
-    "Warm the cabin when I arrive"
-  );
+  await golem.app.chats.send(chat.id, alice, "Warm the cabin when I arrive");
   await until(
-    () => golem.app.threads.messages(ref()),
+    () => golem.app.chats.messages(ref()),
     (state) => !state.running && state.messages.length === 8
   );
   expect(toolResults.at(-1)).toContain(

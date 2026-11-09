@@ -6,13 +6,13 @@ import {
 } from "@tanstack/react-router";
 import { LoginPage } from "../accounts/login.tsx";
 import { SuggestionCards, UpcomingPage } from "../agenda/page.tsx";
+import { ChatPage, TopicPage } from "../chats/pages.tsx";
 import { FeedbackPage } from "../feedback/page.tsx";
 import { FollowingPage } from "../intake/page.tsx";
 import { InboxPage } from "../notifications/page.tsx";
-import { ChannelDetails } from "../routines/details.tsx";
+import { TopicDetails } from "../routines/details.tsx";
 import { SearchPage } from "../search/page.tsx";
 import { SettingsPage, WorkspaceSettingsPage } from "../settings/pages.tsx";
-import { ChannelPage, ThreadPage } from "../threads/pages.tsx";
 import { TooltipProvider } from "../ui/components.tsx";
 import { FilePreview } from "../ui/file-preview.tsx";
 import { Toasts } from "../ui/toast.tsx";
@@ -89,20 +89,20 @@ const orchestrator = createRoute({
   component: OrchestratorPage,
 });
 
-const channel = createRoute({
+const topic = createRoute({
   getParentRoute: () => workspace,
-  path: "/c/$channelId",
+  path: "/topic/$topicId",
   validateSearch: withArtifact,
-  // The channel's details come from the routines module, which comes after threads.
-  component: () => <ChannelPage details={<ChannelDetails />} />,
+  // The topic's details come from the routines module, which comes after chats.
+  component: () => <TopicPage details={<TopicDetails />} />,
 });
 
-const thread = createRoute({
+const chat = createRoute({
   getParentRoute: () => workspace,
-  path: "/t/$threadId",
+  path: "/chat/$chatId",
   validateSearch: withArtifact,
-  // The suggestions over the orchestrator's composer come from the agenda module, which comes after threads.
-  component: () => <ThreadPage orchestratorCards={<SuggestionCards />} />,
+  // The suggestions over the orchestrator's composer come from the agenda module, which comes after chats.
+  component: () => <ChatPage orchestratorCards={<SuggestionCards />} />,
 });
 
 const inbox = createRoute({
@@ -151,8 +151,8 @@ export const router = createRouter({
       workspace.addChildren([
         workspaceHome,
         orchestrator,
-        channel,
-        thread,
+        topic,
+        chat,
         inbox,
         upcoming,
         following,

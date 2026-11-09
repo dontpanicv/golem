@@ -5,14 +5,14 @@ import type {
   WatchedItem,
 } from "../integrations/integrations.ts";
 import type { User } from "../platform/auth.ts";
-import type { ThreadRef } from "../workspaces/workspaces.ts";
+import type { ChatRef } from "../workspaces/workspaces.ts";
 import type { Audit } from "./audit.ts";
 import type { IntakeIntegrations, IntakeWorkspaces } from "./intake.ts";
 import type { IntakeRecall, ItemRow } from "./recall.ts";
 
 interface ReadRow {
   id: string;
-  thread_id: string;
+  chat_id: string;
   source_ids: string;
 }
 
@@ -30,22 +30,22 @@ export class SourceReads {
     ) => string
   ) {}
 
-  capture(thread: ThreadRef, owner: User, read: SourceRead, now: number): void {
-    this.workspaces.requireMember(thread.workspaceId, owner);
+  capture(chat: ChatRef, owner: User, read: SourceRead, now: number): void {
+    this.workspaces.requireMember(chat.workspaceId, owner);
     const credential = this.integrations
       .watched()
       .find(
         (each) =>
           each.id === read.credential.id &&
-          each.workspaceId === thread.workspaceId &&
+          each.workspaceId === chat.workspaceId &&
           each.ownerId === owner.id
       );
     if (
       !(
         credential &&
         this.workspaces
-          .threadsIn(thread.workspaceId, owner.id)
-          .some((each) => each.id === thread.id)
+          .chatsIn(chat.workspaceId, owner.id)
+          .some((each) => each.id === chat.id)
       )
     ) {
       return;
@@ -57,9 +57,9 @@ export class SourceReads {
     const id = new Bun.CryptoHasher("sha256")
       .update(
         JSON.stringify([
-          thread.workspaceId,
+          chat.workspaceId,
           owner.id,
-          thread.id,
+          chat.id,
           credential.id,
           read.tool,
           fingerprint,
@@ -69,12 +69,12 @@ export class SourceReads {
     this.audit.record(
       id,
       "source.read",
-      thread.workspaceId,
+      chat.workspaceId,
       owner.id,
       {
         tool: read.tool,
         credentialId: credential.id,
-        threadId: thread.id,
+        chatId: chat.id,
         result: credential.integration === "google" ? read.items : read.result,
       },
       now
@@ -84,9 +84,9 @@ export class SourceReads {
     ) {
       this.database
         .query(
-          "UPDATE intake_source_read SET assessed_at=NULL WHERE id=? AND assessed_at IS NOT NULL AND EXISTS(SELECT 1 FROM intake_check WHERE workspace_id=? AND owner_id=? AND thread_id=? AND state='open' AND deleted_at IS NULL AND revised_at>intake_source_read.assessed_at)"
+          "UPDATE intake_source_read SET assessed_at=NULL WHERE id=? AND assessed_at IS NOT NULL AND EXISTS(SELECT 1 FROM intake_check WHERE workspace_id=? AND owner_id=? AND chat_id=? AND state='open' AND deleted_at IS NULL AND revised_at>intake_source_read.assessed_at)"
         )
-        .run(id, thread.workspaceId, owner.id, thread.id);
+        .run(id, chat.workspaceId, owner.id, chat.id);
       return;
     }
     this.database.transaction(() => {
@@ -94,20 +94,20 @@ export class SourceReads {
         const sourceId = this.keep(credential, item);
         this.database
           .query(
-            "UPDATE intake_item SET thread_id=coalesce(thread_id,?) WHERE id=?"
+            "UPDATE intake_item SET chat_id=coalesce(chat_id,?) WHERE id=?"
           )
-          .run(thread.id, sourceId);
+          .run(chat.id, sourceId);
         return sourceId;
       });
       this.database
         .query(
-          "INSERT INTO intake_source_read(id,workspace_id,owner_id,thread_id,credential_id,source_ids,observed_at) VALUES(?,?,?,?,?,?,?)"
+          "INSERT INTO intake_source_read(id,workspace_id,owner_id,chat_id,credential_id,source_ids,observed_at) VALUES(?,?,?,?,?,?,?)"
         )
         .run(
           id,
-          thread.workspaceId,
+          chat.workspaceId,
           owner.id,
-          thread.id,
+          chat.id,
           credential.id,
           JSON.stringify(ids),
           now
@@ -119,7 +119,7 @@ export class SourceReads {
     workspaceId: string,
     owner: User,
     recall: IntakeRecall,
-    threadId?: string
+    chatId?: string
   ) {
     this.workspaces.requireMember(workspaceId, owner);
     const credentials = this.integrations
@@ -130,46 +130,42 @@ export class SourceReads {
           credential.ownerId === owner.id
       )
       .map((credential) => credential.id);
-    const threads = this.workspaces
-      .threadsIn(workspaceId, owner.id)
-      .map((thread) => thread.id);
+    const chats = this.workspaces
+      .chatsIn(workspaceId, owner.id)
+      .map((chat) => chat.id);
     const rows = this.database
       .query(
-        "SELECT r.id,r.thread_id,r.source_ids FROM intake_source_read r WHERE r.workspace_id=? AND r.owner_id=? AND r.assessed_at IS NULL AND r.deleted_at IS NULL AND (? IS NULL OR r.thread_id=?) AND r.credential_id IN (SELECT value FROM json_each(?)) AND r.thread_id IN (SELECT value FROM json_each(?)) ORDER BY r.observed_at,r.id LIMIT 1000"
+        "SELECT r.id,r.chat_id,r.source_ids FROM intake_source_read r WHERE r.workspace_id=? AND r.owner_id=? AND r.assessed_at IS NULL AND r.deleted_at IS NULL AND (? IS NULL OR r.chat_id=?) AND r.credential_id IN (SELECT value FROM json_each(?)) AND r.chat_id IN (SELECT value FROM json_each(?)) ORDER BY r.observed_at,r.id LIMIT 1000"
       )
       .all(
         workspaceId,
         owner.id,
-        threadId ?? null,
-        threadId ?? null,
+        chatId ?? null,
+        chatId ?? null,
         JSON.stringify(credentials),
-        JSON.stringify(threads)
+        JSON.stringify(chats)
       ) as ReadRow[];
-    return [...Map.groupBy(rows, (row) => row.thread_id)].map(
-      ([id, reads]) => ({
-        threadId: id,
-        reads,
-        evidence: recall.visible(
-          workspaceId,
-          owner,
-          this.database
-            .query(
-              "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND superseded_at IS NULL AND deleted_at IS NULL AND id IN (SELECT value FROM json_each(?)) ORDER BY at,id"
-            )
-            .all(
-              workspaceId,
-              owner.id,
-              JSON.stringify([
-                ...new Set(
-                  reads.flatMap(
-                    (read) => JSON.parse(read.source_ids) as string[]
-                  )
-                ),
-              ])
-            ) as ItemRow[]
-        ),
-      })
-    );
+    return [...Map.groupBy(rows, (row) => row.chat_id)].map(([id, reads]) => ({
+      chatId: id,
+      reads,
+      evidence: recall.visible(
+        workspaceId,
+        owner,
+        this.database
+          .query(
+            "SELECT * FROM intake_item WHERE workspace_id=? AND owner_id=? AND superseded_at IS NULL AND deleted_at IS NULL AND id IN (SELECT value FROM json_each(?)) ORDER BY at,id"
+          )
+          .all(
+            workspaceId,
+            owner.id,
+            JSON.stringify([
+              ...new Set(
+                reads.flatMap((read) => JSON.parse(read.source_ids) as string[])
+              ),
+            ])
+          ) as ItemRow[]
+      ),
+    }));
   }
 
   finish(reads: ReadRow[], now: number): void {

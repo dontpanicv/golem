@@ -10,7 +10,7 @@ import {
 } from "react";
 import { fileHref } from "../app/api.ts";
 import { queryClient } from "../app/query.ts";
-import type { ThreadSummary } from "../app/types.ts";
+import type { ChatSummary } from "../app/types.ts";
 import { ArtifactList, ArtifactPreview } from "../artifacts/panel.tsx";
 import {
   Button,
@@ -24,13 +24,13 @@ import { dayTime, size } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
 import {
-  channelsOf,
+  chatsOf,
   meQuery,
-  mergeChannel,
+  mergeTopic,
   orchestratorQuery,
   rememberOpened,
   setSettled,
-  threadsOf,
+  topicsOf,
 } from "../workspaces/data.ts";
 import { PanelHeader } from "../workspaces/shell.tsx";
 import { ApprovalRequest } from "./approval.tsx";
@@ -38,40 +38,40 @@ import { Composer } from "./composer.tsx";
 import {
   filesOf,
   messagesOf,
-  moveThread,
+  moveChat,
   type Place,
   placeKey,
-  startThread,
-  stopThread,
+  startChat,
+  stopChat,
   uploadFiles,
-  useThreadStream,
+  useChatStream,
 } from "./data.ts";
 import { continues, followEnd, MessageView } from "./message.tsx";
 import { followed, outbox, sendMessage } from "./outbox.ts";
 
-const threadRoute = getRouteApi("/signed-in/w/$workspaceId/t/$threadId");
+const chatRoute = getRouteApi("/signed-in/w/$workspaceId/chat/$chatId");
 
 /**
- * A thread of the workspace in the address; a thread of another workspace is not found. `orchestratorCards` shows over
+ * A chat of the workspace in the address; a chat of another workspace is not found. `orchestratorCards` shows over
  * the composer of the person's orchestrator only.
  */
-export function ThreadPage({
+export function ChatPage({
   orchestratorCards,
 }: {
   orchestratorCards: ReactNode;
 }) {
-  const { workspaceId, threadId } = threadRoute.useParams();
+  const { workspaceId, chatId } = chatRoute.useParams();
   const orchestrator = useQuery(orchestratorQuery(workspaceId)).data;
-  const isOrchestrator = orchestrator?.id === threadId;
+  const isOrchestrator = orchestrator?.id === chatId;
   const { data: listed, isReady } = useLiveQuery({
     query: (q) =>
       q
-        .from({ thread: threadsOf(workspaceId) })
-        .where(({ thread: row }) => eq(row.id, threadId))
+        .from({ chat: chatsOf(workspaceId) })
+        .where(({ chat: row }) => eq(row.id, chatId))
         .findOne(),
   });
-  const thread = isOrchestrator ? orchestrator : listed;
-  if (!thread) {
+  const chat = isOrchestrator ? orchestrator : listed;
+  if (!chat) {
     return isReady && orchestrator ? (
       <section className="conversation">
         <PanelHeader title="" />
@@ -80,47 +80,45 @@ export function ThreadPage({
     ) : null;
   }
   return (
-    <Thread
+    <Chat
       cards={isOrchestrator ? orchestratorCards : null}
+      chat={chat}
+      chatId={chatId}
       isOrchestrator={isOrchestrator}
-      thread={thread}
-      threadId={threadId}
       workspaceId={workspaceId}
     />
   );
 }
 
-/** A thread: its live transcript and composer, and the panel with its place's artifacts and files. */
-function Thread({
+/** A chat: its live transcript and composer, and the panel with its place's artifacts and files. */
+function Chat({
   workspaceId,
-  threadId,
-  thread,
+  chatId,
+  chat,
   isOrchestrator,
   cards,
 }: {
   workspaceId: string;
-  threadId: string;
-  thread: ThreadSummary;
+  chatId: string;
+  chat: ChatSummary;
   isOrchestrator: boolean;
   /** Cards over the composer. */
   cards: ReactNode;
 }) {
-  const { data: channels = [] } = useLiveQuery({
-    query: (q) => q.from({ channel: channelsOf(workspaceId) }),
+  const { data: topics = [] } = useLiveQuery({
+    query: (q) => q.from({ topic: topicsOf(workspaceId) }),
   });
-  const channel = channels.find(
-    (candidate) => candidate.id === thread.channelId
-  );
+  const topic = topics.find((candidate) => candidate.id === chat.topicId);
   const { data: messages = [] } = useLiveQuery({
     query: (q) =>
       q
-        .from({ message: messagesOf(threadId) })
+        .from({ message: messagesOf(chatId) })
         .orderBy(({ message }) => message.time),
   });
-  // The orchestrator belongs to the workspace, not to its channel: its files and artifacts are the workspace's own.
+  // The orchestrator belongs to the workspace, not to its topic: its files and artifacts are the workspace's own.
   const place: Place = {
     workspaceId,
-    channelId: isOrchestrator ? null : thread.channelId,
+    topicId: isOrchestrator ? null : chat.topicId,
   };
   const key = placeKey(place);
   const placeChanged = useDebounced(
@@ -136,12 +134,12 @@ function Thread({
     query: (q) =>
       q
         .from({ message: outbox })
-        .where(({ message }) => eq(message.threadId, threadId))
+        .where(({ message }) => eq(message.chatId, chatId))
         .orderBy(({ message }) => message.time),
   });
-  const { running, approvals } = useThreadStream(
+  const { running, approvals } = useChatStream(
     workspaceId,
-    threadId,
+    chatId,
     placeChanged
   );
   const me = useQuery(meQuery).data?.user.id;
@@ -152,27 +150,27 @@ function Thread({
     (message) => message.work?.endedAt === null || message.streaming
   );
   useEffect(() => {
-    followed.add(threadId);
+    followed.add(chatId);
     return () => {
-      followed.delete(threadId);
+      followed.delete(chatId);
     };
-  }, [threadId]);
+  }, [chatId]);
   useEffect(
-    () => rememberOpened(`/w/${workspaceId}/t/${threadId}`),
-    [workspaceId, threadId]
+    () => rememberOpened(`/w/${workspaceId}/chat/${chatId}`),
+    [workspaceId, chatId]
   );
-  const settled = thread.settledAt !== null;
+  const settled = chat.settledAt !== null;
   return (
     <>
       <section className="conversation">
         <PanelHeader
           title={
             isOrchestrator ? (
-              thread.title
+              chat.title
             ) : (
               <>
-                <span className="breadcrumb">{channel?.name} › </span>
-                {thread.title}
+                <span className="breadcrumb">{topic?.name} › </span>
+                {chat.title}
               </>
             )
           }
@@ -182,26 +180,21 @@ function Thread({
               <Menu
                 entries={[
                   { kind: "label", label: "Move to" },
-                  ...channels.map((candidate) => ({
+                  ...topics.map((candidate) => ({
                     kind: "action" as const,
                     label: candidate.name,
                     icon: candidate.ownerId
                       ? ("lock" as const)
                       : ("hash" as const),
-                    current: candidate.id === thread.channelId,
+                    current: candidate.id === chat.topicId,
                     onSelect: () =>
-                      moveThread(
-                        workspaceId,
-                        threadId,
-                        thread.channelId,
-                        candidate.id
-                      ),
+                      moveChat(workspaceId, chatId, chat.topicId, candidate.id),
                   })),
                 ]}
                 trigger={
                   <Button
                     icon="forward"
-                    label="Move thread"
+                    label="Move chat"
                     size="icon"
                     variant="ghost"
                   />
@@ -209,8 +202,8 @@ function Thread({
               />
               <Button
                 icon={settled ? "inbox" : "check"}
-                label={settled ? "Un-settle thread" : "Settle thread"}
-                onClick={() => setSettled(workspaceId, threadId, !settled)}
+                label={settled ? "Un-settle chat" : "Settle chat"}
+                onClick={() => setSettled(workspaceId, chatId, !settled)}
                 size="icon"
                 variant="ghost"
               />
@@ -236,8 +229,8 @@ function Thread({
           {mine.map((approval) => (
             <ApprovalRequest
               approval={approval}
+              chatId={chatId}
               key={approval.id}
-              threadId={threadId}
             />
           ))}
           {waiting.map((message) => (
@@ -257,12 +250,10 @@ function Thread({
         {cards}
         <Composer
           clearAtOnce
-          onSend={(text, files) => sendMessage(threadId, text, files)}
-          onStop={
-            running ? () => stopThread(threadId).catch(showError) : undefined
-          }
+          onSend={(text, files) => sendMessage(chatId, text, files)}
+          onStop={running ? () => stopChat(chatId).catch(showError) : undefined}
           placeholder={
-            isOrchestrator ? "Message Golem" : `Message #${channel?.name ?? ""}`
+            isOrchestrator ? "Message Golem" : `Message #${topic?.name ?? ""}`
           }
         />
       </section>
@@ -271,46 +262,46 @@ function Thread({
   );
 }
 
-const channelRoute = getRouteApi("/signed-in/w/$workspaceId/c/$channelId");
+const topicRoute = getRouteApi("/signed-in/w/$workspaceId/topic/$topicId");
 
 /**
- * A channel: its threads, settled ones folded away, in up to the top half; its details under them; and the panel with
- * the files and artifacts of all its threads.
+ * A topic: its chats, settled ones folded away, in up to the top half; its details under them; and the panel with
+ * the files and artifacts of all its chats.
  */
-export function ChannelPage({ details }: { details: ReactNode }) {
-  const { workspaceId, channelId } = channelRoute.useParams();
+export function TopicPage({ details }: { details: ReactNode }) {
+  const { workspaceId, topicId } = topicRoute.useParams();
   const navigate = useNavigate();
   const [into, setInto] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const channels = channelsOf(workspaceId);
-  const { data: channel, isReady } = useLiveQuery({
+  const topics = topicsOf(workspaceId);
+  const { data: topic, isReady } = useLiveQuery({
     query: (q) =>
       q
-        .from({ channel: channels })
-        .where(({ channel: row }) => eq(row.id, channelId))
+        .from({ topic: topics })
+        .where(({ topic: row }) => eq(row.id, topicId))
         .findOne(),
   });
   const { data: active = [] } = useLiveQuery({
     query: (q) =>
       q
-        .from({ thread: threadsOf(workspaceId) })
-        .where(({ thread }) => eq(thread.channelId, channelId))
-        .where(({ thread }) => isNull(thread.settledAt))
-        .orderBy(({ thread }) => thread.updatedAt, "desc"),
+        .from({ chat: chatsOf(workspaceId) })
+        .where(({ chat }) => eq(chat.topicId, topicId))
+        .where(({ chat }) => isNull(chat.settledAt))
+        .orderBy(({ chat }) => chat.updatedAt, "desc"),
   });
   const { data: settled = [] } = useLiveQuery({
     query: (q) =>
       q
-        .from({ thread: threadsOf(workspaceId) })
-        .where(({ thread }) => eq(thread.channelId, channelId))
-        .where(({ thread }) => not(isNull(thread.settledAt)))
-        .orderBy(({ thread }) => thread.settledAt, "desc"),
+        .from({ chat: chatsOf(workspaceId) })
+        .where(({ chat }) => eq(chat.topicId, topicId))
+        .where(({ chat }) => not(isNull(chat.settledAt)))
+        .orderBy(({ chat }) => chat.settledAt, "desc"),
   });
   useEffect(
-    () => rememberOpened(`/w/${workspaceId}/c/${channelId}`),
-    [workspaceId, channelId]
+    () => rememberOpened(`/w/${workspaceId}/topic/${topicId}`),
+    [workspaceId, topicId]
   );
-  if (!channel) {
+  if (!topic) {
     return isReady ? (
       <section className="conversation">
         <PanelHeader title="" />
@@ -318,11 +309,10 @@ export function ChannelPage({ details }: { details: ReactNode }) {
       </section>
     ) : null;
   }
-  // A channel that every member sees merges only into another such channel.
-  const targets = [...channels.values()].filter(
+  // A topic that every member sees merges only into another such topic.
+  const targets = [...topics.values()].filter(
     (other) =>
-      other.id !== channelId &&
-      (channel.ownerId !== null || other.ownerId === null)
+      other.id !== topicId && (topic.ownerId !== null || other.ownerId === null)
   );
   const merge = async () => {
     if (!into) {
@@ -330,11 +320,11 @@ export function ChannelPage({ details }: { details: ReactNode }) {
     }
     setBusy(true);
     try {
-      await mergeChannel(workspaceId, channelId, into.id);
+      await mergeTopic(workspaceId, topicId, into.id);
       setInto(null);
       navigate({
-        to: "/w/$workspaceId/c/$channelId",
-        params: { workspaceId, channelId: into.id },
+        to: "/w/$workspaceId/topic/$topicId",
+        params: { workspaceId, topicId: into.id },
       });
     } catch (error) {
       showError(error);
@@ -349,7 +339,7 @@ export function ChannelPage({ details }: { details: ReactNode }) {
           title={
             <>
               <span className="breadcrumb"># </span>
-              {channel.name}
+              {topic.name}
             </>
           }
         >
@@ -367,7 +357,7 @@ export function ChannelPage({ details }: { details: ReactNode }) {
               trigger={
                 <Button
                   icon="forward"
-                  label="Merge channel"
+                  label="Merge topic"
                   size="icon"
                   variant="ghost"
                 />
@@ -376,24 +366,24 @@ export function ChannelPage({ details }: { details: ReactNode }) {
           ) : null}
           <PanelToggle />
         </PanelHeader>
-        <div className="channel">
-          <div className="channel-threads">
+        <div className="topic">
+          <div className="topic-chats">
             {active.length + settled.length > 0 ? (
               <div className="list">
-                {active.map((thread) => (
-                  <ThreadRow
-                    key={thread.id}
-                    thread={thread}
+                {active.map((chat) => (
+                  <ChatRow
+                    chat={chat}
+                    key={chat.id}
                     workspaceId={workspaceId}
                   />
                 ))}
                 {settled.length > 0 ? (
-                  <details className="settled-threads">
+                  <details className="settled-chats">
                     <summary>Settled ({settled.length})</summary>
-                    {settled.map((thread) => (
-                      <ThreadRow
-                        key={thread.id}
-                        thread={thread}
+                    {settled.map((chat) => (
+                      <ChatRow
+                        chat={chat}
+                        key={chat.id}
                         workspaceId={workspaceId}
                       />
                     ))}
@@ -401,25 +391,20 @@ export function ChannelPage({ details }: { details: ReactNode }) {
                 ) : null}
               </div>
             ) : (
-              <Empty title="No threads yet" />
+              <Empty title="No chats yet" />
             )}
           </div>
-          <div className="channel-details">{details}</div>
+          <div className="topic-details">{details}</div>
         </div>
         <Composer
           onSend={async (text, files) => {
-            const thread = await startThread(
-              workspaceId,
-              channelId,
-              text,
-              files
-            );
+            const chat = await startChat(workspaceId, topicId, text, files);
             navigate({
-              to: "/w/$workspaceId/t/$threadId",
-              params: { workspaceId, threadId: thread.id },
+              to: "/w/$workspaceId/chat/$chatId",
+              params: { workspaceId, chatId: chat.id },
             });
           }}
-          placeholder={`Start a thread in #${channel.name}`}
+          placeholder={`Start a chat in #${topic.name}`}
         />
         <Dialog
           busy={busy}
@@ -427,45 +412,45 @@ export function ChannelPage({ details }: { details: ReactNode }) {
           onSubmit={merge}
           open={into !== null}
           submit="Merge"
-          title={`Merge #${channel.name} into #${into?.name ?? ""}?`}
+          title={`Merge #${topic.name} into #${into?.name ?? ""}?`}
         >
-          <p>Its threads, files, artifacts, and routines move there.</p>
+          <p>Its chats, files, artifacts, and routines move there.</p>
         </Dialog>
       </section>
-      <PlacePanel place={{ workspaceId, channelId }} />
+      <PlacePanel place={{ workspaceId, topicId }} />
     </>
   );
 }
 
-function ThreadRow({
+function ChatRow({
   workspaceId,
-  thread,
+  chat,
 }: {
   workspaceId: string;
-  thread: {
+  chat: {
     id: string;
     title: string;
     updatedAt: number;
     settledAt: number | null;
   };
 }) {
-  const settled = thread.settledAt !== null;
+  const settled = chat.settledAt !== null;
   return (
     <div className="file-row">
       <Link
         className="list-row"
-        params={{ workspaceId, threadId: thread.id }}
-        to="/w/$workspaceId/t/$threadId"
+        params={{ workspaceId, chatId: chat.id }}
+        to="/w/$workspaceId/chat/$chatId"
       >
         <Icon name="compose" />
-        <span className="name">{thread.title}</span>
-        <WorkingSpinner threadId={thread.id} />
-        <span className="meta">{dayTime(thread.updatedAt)}</span>
+        <span className="name">{chat.title}</span>
+        <WorkingSpinner chatId={chat.id} />
+        <span className="meta">{dayTime(chat.updatedAt)}</span>
       </Link>
       <Button
         icon={settled ? "inbox" : "check"}
-        label={settled ? "Un-settle thread" : "Settle thread"}
-        onClick={() => setSettled(workspaceId, thread.id, !settled)}
+        label={settled ? "Un-settle chat" : "Settle chat"}
+        onClick={() => setSettled(workspaceId, chat.id, !settled)}
         size="icon"
         variant="ghost"
       />
@@ -638,7 +623,7 @@ function FileList({ place }: { place: Place }) {
     // biome-ignore lint/a11y/noStaticElementInteractions: dropping files is a shortcut for the upload button
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: the same
     <div
-      className="thread-files"
+      className="chat-files"
       data-dropping={dropping || undefined}
       onDragLeave={(event) =>
         event.currentTarget.contains(event.relatedTarget as Node) ||

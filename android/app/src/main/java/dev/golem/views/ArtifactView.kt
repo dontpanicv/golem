@@ -73,7 +73,7 @@ fun ArtifactView(artifactId: String, changes: Int, changed: () -> Unit) {
     var showData by remember { mutableStateOf(false) }
     LaunchedEffect(changes) { session.run { detail = session.api.artifact(artifactId) } }
 
-    /** Runs an action, then loads the artifact and the thread's list again. */
+    /** Runs an action, then loads the artifact and the chat's list again. */
     fun act(action: suspend () -> Unit) = session.launch {
         action()
         detail = session.api.artifact(artifactId)

@@ -13,24 +13,24 @@ Nothing else is written anywhere. Set `GOLEM_CONFIG` and `GOLEM_DATA` to move th
 
 ```text
 data/
-├── golem.sqlite                     The directory: accounts, sessions, workspaces, members, channels,
-│                                    the thread registry, settings, and encrypted credentials.
+├── golem.sqlite                     The directory: accounts, sessions, workspaces, members, topics,
+│                                    the chat registry, settings, and encrypted credentials.
 ├── workspaces/
 │   └── <workspace-id>/              The folder of Golem's one workspace, the family's.
-│       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per thread
+│       ├── session.sqlite           The agents: one Pi Durable session, with one conversation per chat
 │       │                            (transcript, runs, tasks).
-│       ├── memory.sqlite            The brief of each channel, every version; what Golem learned about each
-│       │                            person and each channel; and the workspace's one memory from before each
+│       ├── memory.sqlite            The brief of each topic, every version; what Golem learned about each
+│       │                            person and each topic; and the workspace's one memory from before each
 │       │                            member had an orchestrator.
-│       ├── threads/
-│       │   └── <thread-id>/
+│       ├── chats/
+│       │   └── <chat-id>/
 │       │       └── memory.sqlite   The orchestrator's own conversation and returned worker results,
 │       │                            merged in pairs into a tree of summaries.
-│       ├── channels/
-│       │   └── <channel-id>/
-│       │       ├── files/           Files uploaded to the channel or attached to messages in its threads.
+│       ├── topics/
+│       │   └── <topic-id>/
+│       │       ├── files/           Files uploaded to the topic or attached to messages in its chats.
 │       │       │   └── <uuidv7>-<name>.<ext>
-│       │       └── deleted/         Files deleted from the channel and old versions, kept as they were.
+│       │       └── deleted/         Files deleted from the topic and old versions, kept as they were.
 │       ├── notes/                   Knowledge as markdown with YAML frontmatter; an Obsidian vault.
 │       ├── files/                   Documents people upload to the workspace, and the orchestrator's files.
 │       ├── deleted/                 Files deleted from `files/` and old versions, kept as they were.
@@ -52,34 +52,34 @@ data/
 
 ## Rules
 
-- **Nothing is ever removed.** A delete marks the row with `deleted_at`, and reads leave it out; a deleted thread file
-  moves to `channels/<id>/deleted/`. A channel goes only by merging into another, which first moves its threads, files,
-  artifacts, and routines there; the empty channel is then marked deleted. A result already sent to an orchestrator remains part of its own conversation;
+- **Nothing is ever removed.** A delete marks the row with `deleted_at`, and reads leave it out; a deleted chat file
+  moves to `topics/<id>/deleted/`. A topic goes only by merging into another, which first moves its chats, files,
+  artifacts, and routines there; the empty topic is then marked deleted. A result already sent to an orchestrator remains part of its own conversation;
   `session.sqlite` keeps the messages. A deleted workspace (`organization.deletedAt`, from before Golem had one
   workspace) hides all of it, and its folder stays. Deleted
-  channels and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
+  topics and machines get `~<id>` after their name (and a machine after its certificate), so the name is free again.
   Artifact records that a visitor or a member deleted still count toward the artifact's limits, until a member clears
   the data, which moves the records aside with `~<time>` after their scope. A record that an agent deletes moves aside
   at once.
-- **A thread moves with what it made.** A thread that moves to another channel takes its artifacts, its routine,
-  and the files of its old channel that it mentions and no other thread there does, with their old versions. The
-  index keeps their vectors. When the move takes the thread from people, the old channel's brief is written again
-  from the threads that stay; the new channel's brief reads the whole thread. `session.sqlite` keeps the conversation,
+- **A chat moves with what it made.** A chat that moves to another topic takes its artifacts, its routine,
+  and the files of its old topic that it mentions and no other chat there does, with their old versions. The
+  index keeps their vectors. When the move takes the chat from people, the old topic's brief is written again
+  from the chats that stay; the new topic's brief reads the whole chat. `session.sqlite` keeps the conversation,
   with a note of the move.
-- **One workspace, with private channels.** Every byte of the family's data is under `data/workspaces/<workspace-id>/`.
-  A private channel (`channel.owner_id`) belongs to one member: its threads, files, artifacts, and routines are theirs
+- **One workspace, with private topics.** Every byte of the family's data is under `data/workspaces/<workspace-id>/`.
+  A private topic (`topic.owner_id`) belongs to one member: its chats, files, artifacts, and routines are theirs
   alone. An orchestrator remembers only its own conversation and the results sent to it. Every read names whose view
   it serves (`Realm` in `src/workspaces/workspaces.ts`), and only background work that acts for no person reads all of it.
-- **Search is one index, filtered per person.** "Search everything" means everything the person sees: the channels
-  every member sees, their own private channels, and their own orchestrator. The workspace has one `index.sqlite`, so
+- **Search is one index, filtered per person.** "Search everything" means everything the person sees: the topics
+  every member sees, their own private topics, and their own orchestrator. The workspace has one `index.sqlite`, so
   each source is embedded once; a search leaves out the sources the person may not see before it ranks.
-- **Folders are named by id, not by name.** Renaming a workspace, channel, or thread changes a row, never a path.
-  A channel's folder holds only its files; a thread's channel is a column in `golem.sqlite`, and so is an artifact's.
-- **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `memory.sqlite`, the thread memories, `notes/`,
+- **Folders are named by id, not by name.** Renaming a workspace, topic, or chat changes a row, never a path.
+  A topic's folder holds only its files; a chat's topic is a column in `golem.sqlite`, and so is an artifact's.
+- **Canonical and derived data are separate.** `golem.sqlite`, `session.sqlite`, `memory.sqlite`, the chat memories, `notes/`,
   `files/`, `raw/`, and `tables/` are the record; the memories come from `session.sqlite`, but only model calls can write them
   again. `index.sqlite`, `models/`, and `logs/` can be deleted; Golem rebuilds or
   downloads them.
-- **Immutable things get time-ordered names.** Captures, channel files, and Parquet parts are named with UUIDv7,
+- **Immutable things get time-ordered names.** Captures, topic files, and Parquet parts are named with UUIDv7,
   so names never collide, sort by time, and merge as a set union when copies sync between machines.
 - **One writer per SQLite file.** This Golem process is the only writer of each database. Other machines read
   copies (see the replication design in the README).
@@ -89,19 +89,19 @@ data/
 | Data | Where | Format |
 | --- | --- | --- |
 | People, sessions, workspaces, members | `golem.sqlite` (better-auth tables) | SQLite |
-| Channels, threads, credentials, routines and their runs, one-time reminders, suggestions, notifications, push devices, Live Activities, recent searches, the usage of the model by day, the feedback of agents | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
-| Current and historical source evidence, collection cursors, private context, internal checks, and delivery state | `golem.sqlite`, `intake_item`, `intake_source`, `intake_fts`, `intake_check`, `intake_context`, `intake_delivery`, `intake_thread_read` | SQLite; all rows belong to one person |
+| Topics, chats, credentials, routines and their runs, one-time reminders, suggestions, notifications, push devices, Live Activities, recent searches, the usage of the model by day, the feedback of agents | `golem.sqlite` | SQLite; secrets AES-256-GCM with `config/secret.key` |
+| Current and historical source evidence, collection cursors, private context, internal checks, and delivery state | `golem.sqlite`, `intake_item`, `intake_source`, `intake_fts`, `intake_check`, `intake_context`, `intake_delivery`, `intake_chat_read` | SQLite; all rows belong to one person |
 | Raw collection results, attachment bytes, prompts, model responses and usage, retrieval results, state changes, notices, agent work, corrections, and runtime fingerprints | `audit.sqlite`, `event` and `blob` | SQLite WAL, synchronous FULL; local private file, no integration credential secrets |
 | ChatGPT login | `golem.sqlite` | encrypted, shared by all workspaces |
-| A thread's conversation and agent state | `session.sqlite`, the conversation named in `thread.conversation_id` | Pi Durable |
+| A chat's conversation and agent state | `session.sqlite`, the conversation named in `chat.conversation_id` | Pi Durable |
 | A routine run's fixed definition and initial store, and its script result | `golem.sqlite`, `routine_run.input` and `routine_run.result`; retained after completion | JSON |
-| What Golem learned: facts about each person and how-tos of each channel, which the reviews of quiet threads write and people correct | `memory.sqlite`, the tables `learned`, `learned_read`, and `learned_since` | SQLite |
-| The channel briefs: summaries of the messages of a channel's threads, which the model wrote | `memory.sqlite` | SQLite; old orchestrator memory tables are kept but no longer read |
-| The memory of each member's orchestrator: its own conversation and returned worker results | `threads/<thread-id>/memory.sqlite` | SQLite |
-| Files uploaded to a channel or attached to messages in its threads | `channels/<id>/files/` | the file as uploaded |
-| Artifacts: pages and small apps agents make, which belong to a channel, or the orchestrator's to the workspace | `golem.sqlite` | HTML, and the records their visitors keep |
+| What Golem learned: facts about each person and how-tos of each topic, which the reviews of quiet chats write and people correct | `memory.sqlite`, the tables `learned`, `learned_read`, and `learned_since` | SQLite |
+| The topic briefs: summaries of the messages of a topic's chats, which the model wrote | `memory.sqlite` | SQLite; old orchestrator memory tables are kept but no longer read |
+| The memory of each member's orchestrator: its own conversation and returned worker results | `chats/<chat-id>/memory.sqlite` | SQLite |
+| Files uploaded to a topic or attached to messages in its chats | `topics/<id>/files/` | the file as uploaded |
+| Artifacts: pages and small apps agents make, which belong to a topic, or the orchestrator's to the workspace | `golem.sqlite` | HTML, and the records their visitors keep |
 | Knowledge: people, places, decisions, how-tos | `notes/` | markdown + YAML frontmatter (`type`, `title`, dates, links) |
-| Uploaded documents, and the files of the orchestrator, which belongs to no channel | `files/` | the file as uploaded |
+| Uploaded documents, and the files of the orchestrator, which belongs to no topic | `files/` | the file as uploaded |
 | Mail, chats, transcripts, API responses | `raw/<source>/…` | as received (JSON, `.eml`, text) |
 | Finances, metrics, any history of numbers | `tables/<dataset>/…` | Parquet, one part per import run |
 
@@ -109,16 +109,16 @@ The old orchestrator memory tables in `memory.sqlite` and the databases in `memo
 not read them. Each current memory is built from its orchestrator's complete saved transcript, including past worker results.
 
 `intake_delivery.notification` is a nullable, validated proposal with a reason, source id, and exact quote. Null means
-the thread update is silent, including rows made by the prior version. The additive migration keeps those rows and
-adds a source-conversation index for short replies. Delivery and notification are separate: a useful thread answer
+the chat update is silent, including rows made by the prior version. The additive migration keeps those rows and
+adds a source-conversation index for short replies. Delivery and notification are separate: a useful chat answer
 can complete without a notice or a change to `intake_check.notified_at`. Only confirmed notices consume matching due
 checks. The private audit records the proposal, fresh source read, final judge input and result, and suppression or
-confirmation. Source failures retain the delivery for retry with the same thread request and notification ids.
+confirmation. Source failures retain the delivery for retry with the same chat request and notification ids.
 
-`intake_delivery.subject` keeps a proposed new subject while `thread_id` is null. The additive column leaves
-previously routed rows unchanged. A final evidence assessment can cancel the proposal or select an existing thread;
-only a still-useful review can create a destination. The binding saves its thread, source references, and check links
-together. A stable thread request id prevents another thread when creation succeeds before the binding is saved.
+`intake_delivery.subject` keeps a proposed new subject while `chat_id` is null. The additive column leaves
+previously routed rows unchanged. A final evidence assessment can cancel the proposal or select an existing chat;
+only a still-useful review can create a destination. The binding saves its chat, source references, and check links
+together. A stable chat request id prevents another chat when creation succeeds before the binding is saved.
 
 ## Backups
 
@@ -129,10 +129,10 @@ that snapshots the file system. Keep `config/` in a password manager or another 
 ## Search
 
 The workspace's index is `data/workspaces/<workspace-id>/index.sqlite`. Search, the search page, and the agents'
-`recall` tool find only what their person, or their thread's realm, sees.
+`recall` tool find only what their person, or their chat's realm, sees.
 
-- **What is indexed:** every thread's messages, every artifact's text, and every file in the workspace's `notes/`,
-  `files/`, `raw/`, and each channel's `files/`. Drop files into those folders; Golem notices within a second. Every file's path is searchable by
+- **What is indexed:** every chat's messages, every artifact's text, and every file in the workspace's `notes/`,
+  `files/`, `raw/`, and each topic's `files/`. Drop files into those folders; Golem notices within a second. Every file's path is searchable by
   keywords, also when Golem cannot read the file. The same kinds as DigUp:
 
   | Kind | Formats | How |
@@ -160,7 +160,7 @@ The workspace's index is `data/workspaces/<workspace-id>/index.sqlite`. Search, 
   scores for the query, centered and scaled per kind because pictures and audio score on a different scale than text;
   keyword coverage is the share of query words a source contains. A source shows when
   z ≥ 3 or coverage ≥ 0.5, scored `max(z, 0) + 2 × coverage^1.5`; queries made of ids or numbers weigh words more.
-- **Freshness:** Golem rescans a workspace a second after any change to one of its threads, and every minute for
+- **Freshness:** Golem rescans a workspace a second after any change to one of its chats, and every minute for
   files. Only changed sources are re-read, and only changed text is re-embedded. A different model or runtime
   re-embeds everything. Until the model runs, search and recall use keywords only.
 
@@ -184,8 +184,8 @@ version. Original versions remain as evidence for previously inferred checks.
 
 The personal Following ledger uses `intake_check_revision` in `golem.sqlite`. Additive triggers record check creation and changes made by both current and previous server versions. Each revision holds the previous and current text, state, source IDs, discussion, stated date, and review time. User actions add their exact words and action to the same transaction; the private audit also records the complete correction and result. Stopped checks retain their evidence and history. Existing checks get an initial snapshot when this schema is added. The apps use the revision number to reject concurrent edits.
 
-Automatic Gmail collection selects only incoming Primary inbox mail after Gmail filters and the owner's sent-mail context. Other categories, archived incoming mail, drafts, spam, and trash are excluded before body fetch and raw intake storage. A normal tool can still read older mail when the person or thread agent needs it; only eligible messages from such a read enter the intake ledger. Earlier stored source records remain historical evidence.
+Automatic Gmail collection selects only incoming Primary inbox mail after Gmail filters and the owner's sent-mail context. Other categories, archived incoming mail, drafts, spam, and trash are excluded before body fetch and raw intake storage. A normal tool can still read older mail when the person or chat agent needs it; only eligible messages from such a read enter the intake ledger. Earlier stored source records remain historical evidence.
 
-`intake_archive` maps each source account, conversation, calendar period, and destination channel to one source file. Its selected message IDs prevent unrelated private messages from entering a shared channel. Gmail uses its thread ID, Slack channels use their source thread ID, and Plaud uses its recording ID. WhatsApp conversations and Slack DMs or group DMs use one file per calendar day in the server's time zone, as the agenda does. The file keeps its ID when messages arrive or change. Source messages remain separate, complete evidence records in SQLite and the audit.
+`intake_archive` maps each source account, conversation, calendar period, and destination topic to one source file. Its selected message IDs prevent unrelated private messages from entering a shared topic. Gmail uses its chat ID, Slack channels use their source thread ID, and Plaud uses its recording ID. WhatsApp conversations and Slack DMs or group DMs use one file per calendar day in the server's time zone, as the agenda does. The file keeps its ID when messages arrive or change. Source messages remain separate, complete evidence records in SQLite and the audit.
 
 The archive stores pending membership and attachment IDs before completing a file update, so an interrupted write can resume. A matching generated filename recovers a file saved before its ID reached SQLite. Unchanged content is not written again. Supported attachments keep their file IDs across message edits. A conversation file that the person or an agent edited is never deleted, also when its sources are deleted. File versions use the same retained-version store as other Golem files.

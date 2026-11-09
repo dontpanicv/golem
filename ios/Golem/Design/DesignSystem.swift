@@ -8,7 +8,7 @@ extension Color {
     /// A color that follows the light or dark appearance. Hex is `#rrggbb` or `#rrggbbaa`.
     init(light: String, dark: String) {
         let light = UIColor(hex: light), dark = UIColor(hex: dark)
-        // SwiftUI resolves colors on its render thread too, so the provider must not be main-actor isolated.
+        // SwiftUI resolves colors on its render chat too, so the provider must not be main-actor isolated.
         self.init(uiColor: UIColor { @Sendable traits in
             traits.userInterfaceStyle == .dark ? dark : light
         })
@@ -214,11 +214,11 @@ struct NavRow: View {
     let pixel: Pixel
     var selected = false
     var count: Int?
-    /// A thread whose agent works shows a spinner.
+    /// A chat whose agent works shows a spinner.
     var working = false
     /// Shows in place of the symbol when set.
     var emoji: String?
-    /// A private channel, which only its person sees.
+    /// A private topic, which only its person sees.
     var locked = false
     /// Golem's face in place of the symbol.
     var golem = false

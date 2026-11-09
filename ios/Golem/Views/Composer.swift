@@ -59,9 +59,9 @@ struct FileChips: View {
 
 /// A message box with the files picked, or dropped on it, to send with it, and dictation into it (``MicButton``),
 /// as T3's: a glass field with the add button at the start, then the mic and the round send button. While the text
-/// fits one line, all sit in one row; else the text spans the field over them. `owner` keys the dictation: the thread,
-/// or the channel of a new thread. While `sending`, the send button spins. With `stop`, while the agent works, an empty
-/// composer shows Stop in the send button's place, and the send button steers. The Golem thread's composer starts
+/// fits one line, all sit in one row; else the text spans the field over them. `owner` keys the dictation: the chat,
+/// or the topic of a new chat. While `sending`, the send button spins. With `stop`, while the agent works, an empty
+/// composer shows Stop in the send button's place, and the send button steers. The Golem chat's composer starts
 /// dictating on a ``Dictation`` request.
 struct Composer: View {
     let owner: String
@@ -143,9 +143,9 @@ struct Composer: View {
         .onChange(of: active) { _, active in
             if !active, gesture == .locked { gesture = nil }
         }
-        .onChange(of: Dictation.shared.thread, initial: true) { _, thread in
-            guard thread == owner else { return }
-            Dictation.shared.thread = nil
+        .onChange(of: Dictation.shared.chat, initial: true) { _, chat in
+            guard chat == owner else { return }
+            Dictation.shared.chat = nil
             gesture = .locked
             startListening()
         }

@@ -33,13 +33,13 @@ class UpcomingTest {
 
     private fun routine(id: String, at: Double?, enabled: Boolean = true, outcome: String? = null, place: RoutinePlace? = null) =
         Routine(
-            id = id, channelId = "general", name = id, schedule = if (place == null) "0 8 * * *" else null, place = place,
+            id = id, topicId = "general", name = id, schedule = if (place == null) "0 8 * * *" else null, place = place,
             enabled = enabled, nextRunAt = if (enabled) at else null,
             lastRun = outcome?.let { RoutineRun("run", id, id, 0.0, 0.0, it) },
         )
 
     private fun reminder(id: String, at: Double, place: ReminderPlace? = null, from: Double? = null, until: Double? = null) =
-        Reminder(id = id, threadId = "thread", text = id, dueAt = at, place = place, notBefore = from, notAfter = until)
+        Reminder(id = id, chatId = "chat", text = id, dueAt = at, place = place, notBefore = from, notAfter = until)
 
     @Test
     fun aPlaceReminderShowsItsWindow() {
@@ -67,7 +67,7 @@ class UpcomingTest {
                 reminder("tent", hours(-2.0), ReminderPlace("cottage", "Cottage", event = "arrive")),
             ),
             suggestions = listOf(Suggestion("idea", "reminder", "Call", time = hours(30.0))),
-            approvals = listOf(WaitingApproval("thread", Approval("allow", "hands_exec", "Run", expiresAt = 0.0))),
+            approvals = listOf(WaitingApproval("chat", Approval("allow", "hands_exec", "Run", expiresAt = 0.0))),
         )
 
         val groups = upcoming.groups(now, utc)
@@ -103,8 +103,8 @@ class UpcomingTest {
     @Test
     fun savedFilesOpenFromTheirSearchUri() {
         val id = "0190f5a2-1c3b-7d4e-8f90-123456789abc"
-        assertEquals(id, savedFile("channels/general/files/$id-bill.pdf")?.id)
+        assertEquals(id, savedFile("topics/general/files/$id-bill.pdf")?.id)
         assertEquals("bill.pdf", savedFile("files/$id-bill.pdf")?.name)
-        assertNull(savedFile("thread:abc"))
+        assertNull(savedFile("chat:abc"))
     }
 }

@@ -21,7 +21,7 @@ struct PlaceFormTests {
             UIHostingController(rootView: PlaceForm(workspaceID: "home", place: place) { _ in }.environment(Session())),
             animated: false
         )
-        // Each sleep resumes on the main thread, so a frozen app gets far fewer than the 30 ticks of 3 seconds.
+        // Each sleep resumes on the main chat, so a frozen app gets far fewer than the 30 ticks of 3 seconds.
         let started = Date()
         var ticks = 0
         while Date().timeIntervalSince(started) < 3 {

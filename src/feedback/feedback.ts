@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
+import type { Chats } from "../chats/chats.ts";
 import type { User } from "../platform/auth.ts";
 import { HttpError, required } from "../platform/errors.ts";
-import type { Threads } from "../threads/threads.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 import { feedbackTools } from "./tools.ts";
 
@@ -16,14 +16,14 @@ export interface Feedback {
   readonly tool: string | null;
   readonly summary: string;
   readonly detail: string;
-  /** The thread of the turn, only when the reader sees it. */
-  readonly threadId: string | null;
+  /** The chat of the turn, only when the reader sees it. */
+  readonly chatId: string | null;
   readonly createdAt: number;
 }
 
 export interface FeedbackInput {
   readonly id: string;
-  readonly threadId: string | null;
+  readonly chatId: string | null;
   readonly personId: string | null;
   readonly kind: string;
   readonly tool?: string;
@@ -33,28 +33,28 @@ export interface FeedbackInput {
 
 type FeedbackWorkspaces = Pick<
   Workspaces,
-  "requireMember" | "threadOf" | "threadsIn"
+  "requireMember" | "chatOf" | "chatsIn"
 >;
-type FeedbackThreads = Pick<Threads, "requester">;
+type FeedbackChats = Pick<Chats, "requester">;
 
 const COLUMNS =
-  "id, kind, tool, summary, detail, thread_id AS threadId, created_at AS createdAt";
+  "id, kind, tool, summary, detail, chat_id AS chatId, created_at AS createdAt";
 
 /**
  * The reports that agents write about Golem: failed tools, missing tools, and better ways. Only the server's owner
- * reads them, also those from other people's private turns, but without a link to a thread they do not see.
+ * reads them, also those from other people's private turns, but without a link to a chat they do not see.
  */
 export class FeedbackReports {
   constructor(
     private readonly database: Database,
     private readonly workspaces: FeedbackWorkspaces,
-    private readonly threads: FeedbackThreads,
+    private readonly chats: FeedbackChats,
     /** The email of the server's owner, lowercase. */
     private readonly owner: string | null
   ) {}
 
   tools(workspaceId: string) {
-    return feedbackTools(this, this.workspaces, this.threads, workspaceId);
+    return feedbackTools(this, this.workspaces, this.chats, workspaceId);
   }
 
   report(workspaceId: string, input: FeedbackInput): void {
@@ -63,12 +63,12 @@ export class FeedbackReports {
     }
     this.database
       .query(
-        "INSERT OR IGNORE INTO feedback (id, workspace_id, thread_id, person_id, kind, tool, summary, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO feedback (id, workspace_id, chat_id, person_id, kind, tool, summary, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         input.id,
         workspaceId,
-        input.threadId,
+        input.chatId,
         input.personId,
         input.kind,
         input.tool?.trim() || null,
@@ -82,7 +82,7 @@ export class FeedbackReports {
   list(workspaceId: string, user: User): Feedback[] {
     this.requireOwner(workspaceId, user);
     const seen = new Set(
-      this.workspaces.threadsIn(workspaceId, user.id).map(({ id }) => id)
+      this.workspaces.chatsIn(workspaceId, user.id).map(({ id }) => id)
     );
     return (
       this.database
@@ -92,10 +92,8 @@ export class FeedbackReports {
         .all(workspaceId) as Feedback[]
     ).map((feedback) => ({
       ...feedback,
-      threadId:
-        feedback.threadId && seen.has(feedback.threadId)
-          ? feedback.threadId
-          : null,
+      chatId:
+        feedback.chatId && seen.has(feedback.chatId) ? feedback.chatId : null,
     }));
   }
 

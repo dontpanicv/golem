@@ -6,7 +6,7 @@ import SwiftUI
 /// The heading of a list section, as Linear's "In Progress": small and dim, with an optional add button.
 struct ListSectionHeader: View {
     let title: String
-    /// Opens what the section lists, such as the channel.
+    /// Opens what the section lists, such as the topic.
     var open: (() -> Void)?
     var add: (label: String, action: () -> Void)?
 

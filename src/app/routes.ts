@@ -2,6 +2,7 @@ import { accountApiRoutes } from "../accounts/api.ts";
 import { agendaApiRoutes } from "../agenda/api.ts";
 import { artifactApiRoutes } from "../artifacts/api.ts";
 import { artifactWebRoutes } from "../artifacts/web.ts";
+import { chatApiRoutes } from "../chats/api.ts";
 import { feedbackApiRoutes } from "../feedback/api.ts";
 import { handsApiRoutes } from "../hands/api.ts";
 import { intakeApiRoutes } from "../intake/api.ts";
@@ -13,7 +14,6 @@ import { placeApiRoutes } from "../places/api.ts";
 import { HttpError } from "../platform/errors.ts";
 import { routineApiRoutes } from "../routines/api.ts";
 import { searchApiRoutes } from "../search/api.ts";
-import { threadApiRoutes } from "../threads/api.ts";
 import { workspaceApiRoutes } from "../workspaces/api.ts";
 import { api } from "./api.ts";
 import type { Route } from "./http.ts";
@@ -46,7 +46,7 @@ export const allRoutes: readonly Route[] = [
   ...artifactApiRoutes,
   ...artifactWebRoutes,
   ...notificationApiRoutes,
-  ...threadApiRoutes,
+  ...chatApiRoutes,
   ...searchApiRoutes,
   ...routineApiRoutes,
   ...agendaApiRoutes,

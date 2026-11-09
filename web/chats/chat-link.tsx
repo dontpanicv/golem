@@ -2,26 +2,26 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { WorkingSpinner } from "../ui/components.tsx";
 
-/** A link that opens a thread, and its spinner while the thread's agent works. */
-export function ThreadLink({
+/** A link that opens a chat, and its spinner while the chat's agent works. */
+export function ChatLink({
   workspaceId,
-  threadId,
+  chatId,
   children,
 }: {
   workspaceId: string;
-  threadId: string;
+  chatId: string;
   children: ReactNode;
 }) {
   return (
     <>
       <Link
-        className="thread-link"
-        params={{ workspaceId, threadId }}
-        to="/w/$workspaceId/t/$threadId"
+        className="chat-link"
+        params={{ workspaceId, chatId }}
+        to="/w/$workspaceId/chat/$chatId"
       >
         {children}
       </Link>
-      <WorkingSpinner threadId={threadId} />
+      <WorkingSpinner chatId={chatId} />
     </>
   );
 }

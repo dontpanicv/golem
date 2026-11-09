@@ -2,7 +2,7 @@ import { api } from "../app/api.ts";
 import { json, type Route } from "../app/http.ts";
 import { HttpError } from "../platform/errors.ts";
 
-/** The inbox of a workspace, and the devices that get its pushes. Opening a thread marks its notifications read. */
+/** The inbox of a workspace, and the devices that get its pushes. Opening a chat marks its notifications read. */
 export const notificationApiRoutes: readonly Route[] = [
   [
     "GET",

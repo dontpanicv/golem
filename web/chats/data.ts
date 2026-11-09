@@ -8,31 +8,31 @@ import { queryClient } from "../app/query.ts";
 import type {
   Approval,
   Brief,
+  ChatState,
+  ChatSummary,
   Learned,
   Message,
   SavedFile,
-  ThreadState,
-  ThreadSummary,
 } from "../app/types.ts";
 import { showError } from "../ui/toast.tsx";
-import { meQuery, refreshInbox, threadsOf } from "../workspaces/data.ts";
+import { chatsOf, meQuery, refreshInbox } from "../workspaces/data.ts";
 
-/** The last state each open thread's event stream sent, and who waits for the next one. */
-const streamed = new Map<string, ThreadState>();
-const waiting = new Map<string, Set<(state: ThreadState) => void>>();
+/** The last state each open chat's event stream sent, and who waits for the next one. */
+const streamed = new Map<string, ChatState>();
+const waiting = new Map<string, Set<(state: ChatState) => void>>();
 
 /**
- * The messages of a thread. While its page is open, the thread's event stream writes every change into it; a message
+ * The messages of a chat. While its page is open, the chat's event stream writes every change into it; a message
  * someone sends shows at once and stays until the stream brings the stored one.
  */
-export const messagesOf = keyed((threadId: string) =>
+export const messagesOf = keyed((chatId: string) =>
   createCollection(
     queryCollectionOptions({
-      id: `messages:${threadId}`,
-      queryKey: ["threads", threadId],
+      id: `messages:${chatId}`,
+      queryKey: ["chats", chatId],
       queryClient,
       queryFn: ({ signal }) =>
-        request<ThreadState>(`/threads/${threadId}`, { signal }),
+        request<ChatState>(`/chats/${chatId}`, { signal }),
       select: (state) => state.messages as Message[],
       getKey: (message) => message.id,
       // The event stream keeps the messages current, so a saved copy needs no request.
@@ -41,8 +41,8 @@ export const messagesOf = keyed((threadId: string) =>
         let delivered = true;
         for (const mutation of transaction.mutations) {
           const { files } = mutation.metadata as { files: readonly File[] };
-          const arrived = delivery(threadId);
-          await request(`/threads/${threadId}/messages`, {
+          const arrived = delivery(chatId);
+          await request(`/chats/${chatId}/messages`, {
             method: "POST",
             body: messageForm({ text: mutation.modified.text, files }),
           });
@@ -56,11 +56,11 @@ export const messagesOf = keyed((threadId: string) =>
 
 /** Sends a message with files: it shows at once, with the names of its files, and needs a connection. */
 export function sendWithFiles(
-  threadId: string,
+  chatId: string,
   text: string,
   files: readonly File[]
 ) {
-  return messagesOf(threadId).insert(
+  return messagesOf(chatId).insert(
     {
       ...ownMessage(`local-${crypto.randomUUID()}`, text),
       files: files.map((file, index) => ({
@@ -90,90 +90,90 @@ export function ownMessage(id: string, text: string): Message {
 }
 
 /**
- * Whether the thread's stream brings one more message of the signed-in person within 15 s. Start it before the
+ * Whether the chat's stream brings one more message of the signed-in person within 15 s. Start it before the
  * request that sends the message, which the stream can bring before the response.
  */
-export function delivery(threadId: string): Promise<boolean> {
+export function delivery(chatId: string): Promise<boolean> {
   const userId = queryClient.getQueryData(meQuery.queryKey)?.user.id;
-  const mine = (state: ThreadState | undefined) =>
+  const mine = (state: ChatState | undefined) =>
     state?.messages.filter((message) => message.authorId === userId).length ??
     0;
-  const before = mine(streamed.get(threadId));
-  return nextState(threadId, (state) => mine(state) > before);
+  const before = mine(streamed.get(chatId));
+  return nextState(chatId, (state) => mine(state) > before);
 }
 
-/** Starts a thread in a channel; its first message is its title. */
-export async function startThread(
+/** Starts a chat in a topic; its first message is its title. */
+export async function startChat(
   workspaceId: string,
-  channelId: string,
+  topicId: string,
   text: string,
   files: readonly File[]
-): Promise<ThreadSummary> {
-  const thread = await request<ThreadSummary>(
-    `/workspaces/${workspaceId}/threads`,
-    { method: "POST", body: messageForm({ channelId, text, files }) }
-  );
-  threadsOf(workspaceId).utils.writeUpsert(thread);
-  return thread;
+): Promise<ChatSummary> {
+  const chat = await request<ChatSummary>(`/workspaces/${workspaceId}/chats`, {
+    method: "POST",
+    body: messageForm({ topicId, text, files }),
+  });
+  chatsOf(workspaceId).utils.writeUpsert(chat);
+  return chat;
 }
 
-export function stopThread(threadId: string): Promise<void> {
-  return request(`/threads/${threadId}/stop`, { method: "POST" });
+export function stopChat(chatId: string): Promise<void> {
+  return request(`/chats/${chatId}/stop`, { method: "POST" });
 }
 
-/** Answers an approval; the thread's stream takes it away once the agent goes on. */
+/** Answers an approval; the chat's stream takes it away once the agent goes on. */
 export function answerApproval(
-  threadId: string,
+  chatId: string,
   approvalId: string,
   allow: boolean,
   scope: "once" | "turn" = "once"
 ): Promise<void> {
-  return request(`/threads/${threadId}/approvals/${approvalId}`, {
+  return request(`/chats/${chatId}/approvals/${approvalId}`, {
     method: "POST",
     body: { allow, scope },
   });
 }
 
 /**
- * Follows a thread while its page is open: every change goes into its messages. `onChange` runs after each one, as
+ * Follows a chat while its page is open: every change goes into its messages. `onChange` runs after each one, as
  * files and artifacts come with messages. Gives whether the agent works, and what it waits for a person to allow.
  */
-export function useThreadStream(
+export function useChatStream(
   workspaceId: string,
-  threadId: string,
+  chatId: string,
   onChange: () => void
 ): { running: boolean; approvals: readonly Approval[] } {
   const [running, setRunning] = useState(
-    () => streamed.get(threadId)?.running ?? false
+    () => streamed.get(chatId)?.running ?? false
   );
   const [approvals, setApprovals] = useState<readonly Approval[]>(
-    () => streamed.get(threadId)?.approvals ?? []
+    () => streamed.get(chatId)?.approvals ?? []
   );
   useEffect(() => {
     let source: EventSource | undefined;
-    // A hidden page closes the stream, so Golem sends this thread's notifications as pushes.
+    // A hidden page closes the stream, so Golem sends this chat's notifications as pushes.
     const follow = () => {
       source?.close();
       source = document.hidden ? undefined : open();
     };
     const open = () => {
-      const stream = new EventSource(`/api/v1/threads/${threadId}/events`);
+      const stream = new EventSource(`/api/v1/chats/${chatId}/events`);
       let opened = false;
       stream.addEventListener("open", () => {
         opened = false;
       });
-      stream.addEventListener("thread", (event) => {
-        const state = JSON.parse(event.data) as ThreadState;
-        // The stream reads the thread's notifications before its first event.
+      stream.addEventListener("chat", (event) => {
+        const state = JSON.parse(event.data) as ChatState;
+        // The stream reads the chat's notifications before its first event.
         if (!opened) {
           opened = true;
           refreshInbox(workspaceId);
         }
-        streamed.set(threadId, state);
-        write(threadId, state);
+        streamed.set(chatId, state);
+        write(chatId, state);
         setRunning(state.running);
         setApprovals(state.approvals);
-        for (const listener of waiting.get(threadId) ?? []) {
+        for (const listener of waiting.get(chatId) ?? []) {
           listener(state);
         }
         onChange();
@@ -186,16 +186,16 @@ export function useThreadStream(
       document.removeEventListener("visibilitychange", follow);
       source?.close();
     };
-  }, [workspaceId, threadId, onChange]);
+  }, [workspaceId, chatId, onChange]);
   return { running, approvals };
 }
 
 /**
  * Writes only the messages that changed, so a streaming answer renders only itself again, and takes out the ones the
- * thread no longer has: a streaming answer gets a new id once it is stored. Messages sent from here stay until then.
+ * chat no longer has: a streaming answer gets a new id once it is stored. Messages sent from here stay until then.
  */
-function write(threadId: string, state: ThreadState): void {
-  const messages = messagesOf(threadId);
+function write(chatId: string, state: ChatState): void {
+  const messages = messagesOf(chatId);
   const current = new Set(state.messages.map((message) => message.id));
   const gone = [...messages.keys()].filter(
     (key) => !(current.has(String(key)) || String(key).startsWith("local-"))
@@ -218,33 +218,33 @@ function write(threadId: string, state: ThreadState): void {
 
 const DELIVERY_MS = 15_000;
 
-/** Whether the thread's stream sends a state that `ready` accepts within 15 s. */
+/** Whether the chat's stream sends a state that `ready` accepts within 15 s. */
 function nextState(
-  threadId: string,
-  ready: (state: ThreadState) => boolean
+  chatId: string,
+  ready: (state: ChatState) => boolean
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const listeners = waiting.get(threadId) ?? new Set();
-    waiting.set(threadId, listeners);
+    const listeners = waiting.get(chatId) ?? new Set();
+    waiting.set(chatId, listeners);
     const done = (result: boolean) => {
       clearTimeout(timer);
       listeners.delete(listener);
       resolve(result);
     };
-    const listener = (state: ThreadState) => ready(state) && done(true);
+    const listener = (state: ChatState) => ready(state) && done(true);
     const timer = setTimeout(() => done(false), DELIVERY_MS);
     listeners.add(listener);
   });
 }
 
 function messageForm(fields: {
-  channelId?: string;
+  topicId?: string;
   text: string;
   files: readonly File[];
 }): FormData {
   const form = new FormData();
-  if (fields.channelId) {
-    form.set("channelId", fields.channelId);
+  if (fields.topicId) {
+    form.set("topicId", fields.topicId);
   }
   form.set("text", fields.text);
   for (const file of fields.files) {
@@ -253,50 +253,48 @@ function messageForm(fields: {
   return form;
 }
 
-/** A channel, or the workspace's own files and artifacts for a null `channelId`, which the orchestrator keeps. */
+/** A topic, or the workspace's own files and artifacts for a null `topicId`, which the orchestrator keeps. */
 export interface Place {
   readonly workspaceId: string;
-  readonly channelId: string | null;
+  readonly topicId: string | null;
 }
 
 /**
- * Moves a thread to another channel: it shows there at once, and goes back with the reason if Golem refuses. Then both
- * channels show the files and artifacts that moved with it.
+ * Moves a chat to another topic: it shows there at once, and goes back with the reason if Golem refuses. Then both
+ * topics show the files and artifacts that moved with it.
  */
-export async function moveThread(
+export async function moveChat(
   workspaceId: string,
-  threadId: string,
+  chatId: string,
   from: string,
   to: string
 ): Promise<void> {
   try {
-    await threadsOf(workspaceId).update(threadId, (draft) => {
-      draft.channelId = to;
+    await chatsOf(workspaceId).update(chatId, (draft) => {
+      draft.topicId = to;
     }).isPersisted.promise;
   } catch (error) {
     showError(error);
     return;
   }
-  const keys = [from, to].map((channelId) =>
-    placeKey({ workspaceId, channelId })
-  );
+  const keys = [from, to].map((topicId) => placeKey({ workspaceId, topicId }));
   await queryClient.invalidateQueries({
     predicate: ({ queryKey }) => keys.some((key) => queryKey.includes(key)),
   });
 }
 
 export function placeKey(place: Place): string {
-  return `${place.workspaceId}/${place.channelId ?? ""}`;
+  return `${place.workspaceId}/${place.topicId ?? ""}`;
 }
 
 function placeOf(key: string): Place {
-  const [workspaceId, channelId] = key.split("/") as [string, string];
-  return { workspaceId, channelId: channelId || null };
+  const [workspaceId, topicId] = key.split("/") as [string, string];
+  return { workspaceId, topicId: topicId || null };
 }
 
-function filesPath({ workspaceId, channelId }: Place): string {
-  return channelId
-    ? `/workspaces/${workspaceId}/channels/${channelId}/files`
+function filesPath({ workspaceId, topicId }: Place): string {
+  return topicId
+    ? `/workspaces/${workspaceId}/topics/${topicId}/files`
     : `/workspaces/${workspaceId}/files`;
 }
 
@@ -339,12 +337,12 @@ export async function uploadFiles(
   filesOf(placeKey(place)).utils.writeUpsert(response.files);
 }
 
-export function briefQuery(workspaceId: string, channelId: string) {
+export function briefQuery(workspaceId: string, topicId: string) {
   return queryOptions({
-    queryKey: ["workspaces", workspaceId, "brief", channelId],
+    queryKey: ["workspaces", workspaceId, "brief", topicId],
     queryFn: ({ signal }) =>
       request<{ brief: Brief | null }>(
-        `/workspaces/${workspaceId}/channels/${channelId}/brief`,
+        `/workspaces/${workspaceId}/topics/${topicId}/brief`,
         { signal }
       ),
   });

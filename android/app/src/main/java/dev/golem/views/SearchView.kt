@@ -82,9 +82,9 @@ fun SearchView() {
         save()
         val file = savedFile(result.uri)
         when {
-            result.kind == "artifact" -> open(Destination.Artifact(result.channelId, result.uri.removePrefix("artifact:")))
+            result.kind == "artifact" -> open(Destination.Artifact(result.topicId, result.uri.removePrefix("artifact:")))
             file != null -> openFile(file)
-            result.kind == "thread" && result.threadId != null -> open(Destination.Thread(result.threadId))
+            result.kind == "chat" && result.chatId != null -> open(Destination.Chat(result.chatId))
         }
     }
 
@@ -130,7 +130,7 @@ fun SearchView() {
                             }
                         }
                         session.orchestrator?.let { orchestrator ->
-                            item(key = "golem") { ListRow("Golem", golem = true, onClick = { open(Destination.Thread(orchestrator.id)) }) }
+                            item(key = "golem") { ListRow("Golem", golem = true, onClick = { open(Destination.Chat(orchestrator.id)) }) }
                         }
                     } else {
                         if (response?.semantic == false) {
@@ -143,9 +143,9 @@ fun SearchView() {
                             }
                         }
                         items(response?.results.orEmpty(), key = { it.uri }) { result ->
-                            val opens = result.kind == "artifact" || result.kind == "thread" || savedFile(result.uri) != null
+                            val opens = result.kind == "artifact" || result.kind == "chat" || savedFile(result.uri) != null
                             SearchRow(
-                                result, session.channels.firstOrNull { it.id == result.channelId }?.name,
+                                result, session.topics.firstOrNull { it.id == result.topicId }?.name,
                                 onClick = if (opens) ({ show(result) }) else null,
                                 modifier = Modifier.animateItem(),
                             )
@@ -169,16 +169,16 @@ suspend fun <T> quietly(read: suspend () -> T): T? = try {
     null
 }
 
-private val SAVED_FILE = Regex("^(?:channels/[^/]+/)?files/([0-9a-f-]{36})-(.+)$")
+private val SAVED_FILE = Regex("^(?:topics/[^/]+/)?files/([0-9a-f-]{36})-(.+)$")
 
-/** A file Golem saved: `channels/<channel>/files/<uuidv7>-<name>`, or `files/<uuidv7>-<name>` of the workspace. */
+/** A file Golem saved: `topics/<topic>/files/<uuidv7>-<name>`, or `files/<uuidv7>-<name>` of the workspace. */
 fun savedFile(uri: String): FileRef? = SAVED_FILE.find(uri)?.let { FileRef(it.groupValues[1], it.groupValues[2]) }
 
 /** A result: the icon of its kind, its title, its snippet, and where and when. */
 @Composable
-private fun SearchRow(result: SearchResult, channel: String?, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
+private fun SearchRow(result: SearchResult, topic: String?, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     val icon = when (result.kind) {
-        "thread" -> Pixel.Compose.vector
+        "chat" -> Pixel.Compose.vector
         "artifact" -> Pixel.Artifact.vector
         "capture" -> Pixel.Inbox.vector
         else -> Pixel.File.vector
@@ -199,7 +199,7 @@ private fun SearchRow(result: SearchResult, channel: String?, onClick: (() -> Un
             if (result.snippet.isNotEmpty()) {
                 MarkdownText(result.snippet, size = Tokens.Mobile.FontSize.small, color = Golem.mobile.textSecondary)
             }
-            Text(channel?.let { "#$it · $day" } ?: day, style = golemText(Tokens.Mobile.FontSize.caption),
+            Text(topic?.let { "#$it · $day" } ?: day, style = golemText(Tokens.Mobile.FontSize.caption),
                 color = Golem.mobile.textQuaternary)
         }
     }

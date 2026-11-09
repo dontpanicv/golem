@@ -45,7 +45,7 @@ targets:
         keychain-access-groups: ['$(AppIdentifierPrefix)$(GOLEM_BUNDLE_ID)']
         # Reminders and approvals come through a Focus.
         com.apple.developer.usernotifications.time-sensitive: true
-        # A thread's push is a message from Golem (GolemNotification), which Siri reads aloud and replies to.
+        # A chat's push is a message from Golem (GolemNotification), which Siri reads aloud and replies to.
         com.apple.developer.usernotifications.communication: true
         com.apple.developer.siri: true
         # Phone tools (Golem/Phone): Apple Health and Apple Home.
@@ -184,7 +184,7 @@ targets:
     sources:
       - path: GolemActivity
       # The activity's attributes, the tokens, and the font come from the app.
-      - path: Golem/API/ThreadActivity.swift
+      - path: Golem/API/ChatActivity.swift
       - path: Golem/Phone/GolemAlarm.swift
       - path: Golem/Design/Tokens.swift
       - path: Golem/Design/DesignSystem.swift

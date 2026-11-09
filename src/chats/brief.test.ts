@@ -12,13 +12,13 @@ const trips = { id: "trips", name: "trips" };
 const { signal } = new AbortController();
 
 function message(
-  threadId: string,
+  chatId: string,
   messageId: number,
   text: string
 ): BriefMessage {
   return {
-    threadId,
-    threadTitle: `Thread ${threadId}`,
+    chatId,
+    chatTitle: `Chat ${chatId}`,
     messageId,
     author: "Alice",
     text,
@@ -46,7 +46,7 @@ test("a merge writes a new version of the brief from the old one and the new mes
   let version = 0;
   const { briefs, prompts } = briefsOf(() => {
     version += 1;
-    return `<summary>Trips, version ${version}.</summary>\n<brief>\n## Now\n- Version ${version} [Thread a](thread:a)\n</brief>`;
+    return `<summary>Trips, version ${version}.</summary>\n<brief>\n## Now\n- Version ${version} [Chat a](chat:a)\n</brief>`;
   });
   expect(briefs.latest("trips")).toBeNull();
   expect(briefs.through("a")).toBe(-1);
@@ -58,17 +58,17 @@ test("a merge writes a new version of the brief from the old one and the new mes
   );
   expect(first).toBe("Trips, version 1.");
   expect(briefs.latest("trips")?.text).toBe(
-    "## Now\n- Version 1 [Thread a](thread:a)"
+    "## Now\n- Version 1 [Chat a](chat:a)"
   );
   expect(briefs.through("a")).toBe(3);
   expect(briefs.through("b")).toBe(5);
   expect(prompts[0]).toContain("<brief>\n(none yet)\n</brief>");
   expect(prompts[0]).toContain(
-    "[Thread a](thread:a) Alice, 2026-10-25 12:03 UTC: Prague in May"
+    "[Chat a](chat:a) Alice, 2026-10-25 12:03 UTC: Prague in May"
   );
 
   await briefs.merge(trips, [message("a", 7, "Book it")], signal);
-  expect(prompts[1]).toContain("- Version 1 [Thread a](thread:a)");
+  expect(prompts[1]).toContain("- Version 1 [Chat a](chat:a)");
   expect(briefs.latest("trips")?.text).toContain("Version 2");
   expect(briefs.through("a")).toBe(7);
   briefs.close();
@@ -120,10 +120,10 @@ test("many messages go in parts, each a version", async () => {
   briefs.close();
 });
 
-test("a restart starts the brief from nothing, and unread threads are read from their first message", async () => {
+test("a restart starts the brief from nothing, and unread chats are read from their first message", async () => {
   const { briefs, prompts } = briefsOf(
     (prompt) =>
-      `<summary>Trips.</summary>\n<brief>\n## Now\n- ${prompt.includes("Prague") ? "Prague" : "Train"} [Thread a](thread:a)\n</brief>`
+      `<summary>Trips.</summary>\n<brief>\n## Now\n- ${prompt.includes("Prague") ? "Prague" : "Train"} [Chat a](chat:a)\n</brief>`
   );
   await briefs.merge(
     trips,

@@ -394,7 +394,7 @@ test("a turn uses its person's own credential, else a shared one, and only its o
   notes.deleteCredential(workspaceId, bob, family.id);
 });
 
-test("a tool that acts as a person asks its credential's owner every time, and only an agent in a thread can ask", async () => {
+test("a tool that acts as a person asks its credential's owner every time, and only an agent in a chat can ask", async () => {
   const { internalAdapter } = await golem.app.auth.$context;
   const bobId = (await internalAdapter.findUserByEmail("bob@example.com"))!.user
     .id;
@@ -470,7 +470,7 @@ test("a tool that acts as a person asks its credential's owner every time, and o
   // A routine's script cannot ask.
   await expect(
     send!.execute({ text: "From a script" }, { userId: bobId })
-  ).rejects.toThrow("Only an agent in a thread can use messenger_send");
+  ).rejects.toThrow("Only an agent in a chat can use messenger_send");
   expect(asked).toEqual([["Send: Hi", alice.id]]);
   expect(sent).toEqual(["session of curl x: Hi"]);
 });
@@ -1111,7 +1111,7 @@ esac
   );
   await expect(
     tools[8]!.execute({ chat: "family@g.us", message: "M1" }, turn)
-  ).rejects.toThrow("Only an agent in a thread can save files.");
+  ).rejects.toThrow("Only an agent in a chat can save files.");
 
   whatsApp.deleteCredential(workspaceId, alice, credential.id);
   const unlinked = join(directory, "deleted", credential.id, "logged-out");
@@ -1242,7 +1242,7 @@ test("only a credential's owner lets Golem read it for them, and only a watched 
   expect(watching.watched()).toEqual([]);
 });
 
-test("only an opted-in account owner's thread receives verified read observations", async () => {
+test("only an opted-in account owner's chat receives verified read observations", async () => {
   const evidence = {
     id: "answer",
     kind: "message" as const,

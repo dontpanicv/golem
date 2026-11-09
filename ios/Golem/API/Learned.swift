@@ -1,6 +1,6 @@
 import Foundation
 
-/// What Golem learned from quiet threads that the person sees, and how much the model was used.
+/// What Golem learned from quiet chats that the person sees, and how much the model was used.
 extension APIClient {
     /// Facts first.
     func learned(workspaceID: String) async throws -> [Learned] {
@@ -22,18 +22,18 @@ extension APIClient {
     }
 }
 
-/// A fact about a person (`about`), or how to do a task in a channel, or in the person's orchestrator when
-/// `channelId` is nil (`howto`). `realm` is the person who alone sees it; nil for every member.
+/// A fact about a person (`about`), or how to do a task in a topic, or in the person's orchestrator when
+/// `topicId` is nil (`howto`). `realm` is the person who alone sees it; nil for every member.
 struct Learned: Codable, Hashable, Identifiable {
     enum Kind: String, Codable { case about, howto }
 
     let id: Int
     let kind: Kind
     let personId: String?
-    let channelId: String?
+    let topicId: String?
     let realm: String?
     var text: String
-    let threadId: String?
+    let chatId: String?
     let updatedAt: Double
 }
 
@@ -47,13 +47,13 @@ struct Usage: Codable, Hashable {
     let sources: [UsageTotals]
     let models: [UsageTotals]
     /// The 10 that cost most, of those the person sees.
-    let threads: [UsageTotals]
+    let chats: [UsageTotals]
     /// Only for the server's owner.
     let people: [UsageTotals]?
 }
 
 /// Tokens and the cost in US dollars at the model's list price. `input` leaves out `cacheRead`. A row of a list has
-/// its own key too: `day` ("YYYY-MM-DD" in UTC), `source`, `model`, `threadId` and `title`, or `userId` and `name`.
+/// its own key too: `day` ("YYYY-MM-DD" in UTC), `source`, `model`, `chatId` and `title`, or `userId` and `name`.
 struct UsageTotals: Codable, Hashable {
     let input: Double
     let output: Double
@@ -63,7 +63,7 @@ struct UsageTotals: Codable, Hashable {
     var day: String?
     var source: String?
     var model: String?
-    var threadId: String?
+    var chatId: String?
     var title: String?
     var userId: String?
     var name: String?

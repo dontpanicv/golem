@@ -2,29 +2,29 @@ import AppIntents
 import Observation
 import UIKit
 
-/// A request to dictate a message to the open workspace's Golem thread, from the Action button, Siri, or Shortcuts.
-/// The shell takes it once the Golem thread is loaded and opens the thread, and its composer starts listening.
+/// A request to dictate a message to the open workspace's Golem chat, from the Action button, Siri, or Shortcuts.
+/// The shell takes it once the Golem chat is loaded and opens the chat, and its composer starts listening.
 @Observable
 final class Dictation {
     static let shared = Dictation()
 
     var requested = false
-    /// The thread whose composer starts listening, until it does.
-    var thread: String?
+    /// The chat whose composer starts listening, until it does.
+    var chat: String?
 
-    /// Takes the request for the Golem thread `orchestrator`; true when there was one.
+    /// Takes the request for the Golem chat `orchestrator`; true when there was one.
     func take(for orchestrator: String?) -> Bool {
         guard requested, let orchestrator else { return false }
         requested = false
-        thread = orchestrator
+        chat = orchestrator
         return true
     }
 }
 
-/// Opens Golem and dictates to the Golem thread. Set the Action button to Shortcut › Golem › Dictate to Golem.
+/// Opens Golem and dictates to the Golem chat. Set the Action button to Shortcut › Golem › Dictate to Golem.
 struct DictateIntent: AppIntent {
     static let title: LocalizedStringResource = "Dictate to Golem"
-    static let description = IntentDescription("Opens the Golem thread and listens.")
+    static let description = IntentDescription("Opens the Golem chat and listens.")
     static let supportedModes: IntentModes = .foreground
 
     @MainActor func perform() async throws -> some IntentResult {
@@ -33,12 +33,12 @@ struct DictateIntent: AppIntent {
     }
 }
 
-/// Sends a question, with a screenshot and the clipboard, to the Golem thread of the last open workspace, and does not
+/// Sends a question, with a screenshot and the clipboard, to the Golem chat of the last open workspace, and does not
 /// open Golem: the answer comes as a notification. A shortcut gives it the screen: Take Screenshot, Dictate Text,
 /// Get Clipboard, then Ask Golem.
 struct AskIntent: AppIntent {
     static let title: LocalizedStringResource = "Ask Golem"
-    static let description = IntentDescription("Sends a question about the screen to the Golem thread.")
+    static let description = IntentDescription("Sends a question about the screen to the Golem chat.")
     static let supportedModes: IntentModes = .background
 
     @Parameter(title: "Question") var question: String
@@ -54,7 +54,7 @@ struct AskIntent: AppIntent {
             throw APIError(status: 0, message: "Open Golem and sign in first.")
         }
         let api = APIClient.signedIn()
-        let thread = try await api.orchestrator(workspaceID: workspaceID)
+        let chat = try await api.orchestrator(workspaceID: workspaceID)
         var text = question
         if let clipboard = clipboard?.trimmingCharacters(in: .whitespacesAndNewlines), !clipboard.isEmpty {
             text += "\n\nClipboard (it can be old):\n\(clipboard)"
@@ -66,7 +66,7 @@ struct AskIntent: AppIntent {
             try jpeg.write(to: url)
             files.append(url)
         }
-        try await api.sendMessage(threadID: thread.id, text: text, files: files)
+        try await api.sendMessage(chatID: chat.id, text: text, files: files)
         return .result()
     }
 }

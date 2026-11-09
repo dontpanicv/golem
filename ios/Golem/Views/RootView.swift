@@ -24,7 +24,7 @@ struct RootView: View {
             if session.signedIn { await session.load() }
         }
         .task(id: "\(session.signedIn) \(Push.shared.token ?? "")") { await session.registerDevice() }
-        // A tapped Live Activity opens its thread.
+        // A tapped Live Activity opens its chat.
         .onOpenURL { url in
             if let tapped = Push.tapped(url) { Push.shared.tapped = tapped }
         }
@@ -33,7 +33,7 @@ struct RootView: View {
         .task(id: session.signedIn && scenePhase != .background) {
             if session.signedIn, scenePhase != .background { await PhoneLink.follow(session.api) }
         }
-        // Threads read on screen read their notifications, so the inbox and the app icon load again. A reminder or a
+        // Chats read on screen read their notifications, so the inbox and the app icon load again. A reminder or a
         // routine at a place that an agent made while the app was open is watched once the app goes to the background.
         .onChange(of: scenePhase) {
             if scenePhase != .inactive {
@@ -67,13 +67,13 @@ private struct LoadingView: View {
 
 enum Destination: Hashable, Identifiable {
     case search
-    case channel(String)
-    /// A channel with its composer focused, to start a thread.
-    case newThread(String)
-    /// A channel with one of its artifacts open, or the orchestrator with one of the workspace's own for a nil channel.
-    case artifact(channel: String?, artifact: String)
-    case channelDetails(String)
-    case thread(String)
+    case topic(String)
+    /// A topic with its composer focused, to start a chat.
+    case newChat(String)
+    /// A topic with one of its artifacts open, or the orchestrator with one of the workspace's own for a nil topic.
+    case artifact(topic: String?, artifact: String)
+    case topicDetails(String)
+    case chat(String)
     case inbox
     case upcoming
     case following
@@ -83,22 +83,22 @@ enum Destination: Hashable, Identifiable {
 
     var id: Self { self }
 
-    /// What `MainView` remembers, so the app opens on the last channel or thread.
+    /// What `MainView` remembers, so the app opens on the last topic or chat.
     var key: String? {
         switch self {
-        case let .channel(id): "channel:\(id)"
-        case let .thread(id): "thread:\(id)"
+        case let .topic(id): "topic:\(id)"
+        case let .chat(id): "chat:\(id)"
         default: nil
         }
     }
 
-    /// The channel or thread of a ``key``.
+    /// The topic or chat of a ``key``.
     init?(key: String) {
         let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return nil }
         switch parts[0] {
-        case "channel": self = .channel(parts[1])
-        case "thread": self = .thread(parts[1])
+        case "topic": self = .topic(parts[1])
+        case "chat": self = .chat(parts[1])
         default: return nil
         }
     }
@@ -144,7 +144,7 @@ private struct MainView: View {
     }
 }
 
-/// Channels with their threads on the left, the open screen in the detail column, artifacts in the inspector.
+/// Topics with their chats on the left, the open screen in the detail column, artifacts in the inspector.
 private struct SplitView: View {
     @Environment(Session.self) private var session
     @State private var selection: Destination?
@@ -163,24 +163,24 @@ private struct SplitView: View {
                 switch selection {
                 case .search:
                     SearchView(open: open).id(session.workspace?.id)
-                case let .channel(id):
-                    ChannelView(channelID: id, showArtifacts: $showArtifacts, open: open).id(id)
-                case let .newThread(id):
-                    ChannelView(channelID: id, compose: true, showArtifacts: $showArtifacts, open: open).id(id)
-                case let .artifact(channel?, artifact):
-                    ChannelView(channelID: channel, artifactID: artifact, showArtifacts: $showArtifacts, open: open)
+                case let .topic(id):
+                    TopicView(topicID: id, showArtifacts: $showArtifacts, open: open).id(id)
+                case let .newChat(id):
+                    TopicView(topicID: id, compose: true, showArtifacts: $showArtifacts, open: open).id(id)
+                case let .artifact(topic?, artifact):
+                    TopicView(topicID: topic, artifactID: artifact, showArtifacts: $showArtifacts, open: open)
                         .id(artifact)
                 case let .artifact(nil, artifact):
                     if let orchestrator = session.orchestrator {
                         ConversationView(
-                            threadID: orchestrator.id, artifactID: artifact, showArtifacts: $showArtifacts, open: open
+                            chatID: orchestrator.id, artifactID: artifact, showArtifacts: $showArtifacts, open: open
                         )
                             .id(artifact)
                     }
-                case let .channelDetails(id):
-                    ChannelDetailsView(channelID: id, open: open).id(id)
-                case let .thread(id):
-                    ConversationView(threadID: id, showArtifacts: $showArtifacts, open: open).id(id)
+                case let .topicDetails(id):
+                    TopicDetailsView(topicID: id, open: open).id(id)
+                case let .chat(id):
+                    ConversationView(chatID: id, showArtifacts: $showArtifacts, open: open).id(id)
                 case .inbox:
                     InboxView(open: open).id(session.workspace?.id)
                 case .following:
@@ -194,7 +194,7 @@ private struct SplitView: View {
                 case .settings:
                     SettingsView(open: open)
                 case nil:
-                    EmptyState(title: "Choose a thread")
+                    EmptyState(title: "Choose a chat")
                 }
             }
         }
@@ -214,10 +214,10 @@ private struct SplitView: View {
         .onChange(of: Dictation.shared.requested) { openDictation() }
     }
 
-    /// Opens the Golem thread, whose composer then starts dictating.
+    /// Opens the Golem chat, whose composer then starts dictating.
     private func openDictation() {
         if let orchestrator = session.orchestrator, Dictation.shared.take(for: orchestrator.id) {
-            open(.thread(orchestrator.id))
+            open(.chat(orchestrator.id))
         }
     }
 
@@ -231,16 +231,16 @@ private struct SplitView: View {
         if let key = destination.key { opened = key }
     }
 
-    /// Opens the channel or thread this device had open last, if it is in the workspace, else the orchestrator.
+    /// Opens the topic or chat this device had open last, if it is in the workspace, else the orchestrator.
     private func openHome() {
-        let channels = session.channels
-        let orchestrator = session.orchestrator.map { Destination.thread($0.id) }
-        let destinations = Array([orchestrator].compactMap { $0 }) + channels.flatMap { channel in
-            [Destination.channel(channel.id)] + channel.threads.map { .thread($0.id) }
+        let topics = session.topics
+        let orchestrator = session.orchestrator.map { Destination.chat($0.id) }
+        let destinations = Array([orchestrator].compactMap { $0 }) + topics.flatMap { topic in
+            [Destination.topic(topic.id)] + topic.chats.map { .chat($0.id) }
         }
-        let general = channels.first { $0.name == "general" } ?? channels.first
+        let general = topics.first { $0.name == "general" } ?? topics.first
         if let home = destinations.first(where: { $0.key == opened }) ?? orchestrator
-            ?? general.map({ .channel($0.id) }) {
+            ?? general.map({ .topic($0.id) }) {
             open(home)
         } else {
             selection = nil
@@ -252,13 +252,13 @@ private struct Sidebar: View {
     let selection: Destination?
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
-    @State private var newChannel = false
+    @State private var newTopic = false
     @State private var showSettled = false
-    /// The ids of the channels whose threads this device hides, joined by commas.
-    @AppStorage("foldedChannels") private var folded = ""
+    /// The ids of the topics whose chats this device hides, joined by commas.
+    @AppStorage("foldedTopics") private var folded = ""
 
-    private var settledThreads: [ThreadSummary] {
-        session.channels.flatMap(\.threads).filter { $0.settledAt != nil }
+    private var settledChats: [ChatSummary] {
+        session.topics.flatMap(\.chats).filter { $0.settledAt != nil }
             .sorted { ($0.settledAt ?? 0) > ($1.settledAt ?? 0) }
     }
 
@@ -266,25 +266,25 @@ private struct Sidebar: View {
         ScrollView {
             VStack(spacing: 1) {
                 if let orchestrator = session.orchestrator {
-                    row("Golem", pixel: .golem, destination: .thread(orchestrator.id),
+                    row("Golem", pixel: .golem, destination: .chat(orchestrator.id),
                         working: session.working.contains(orchestrator.id), golem: true)
                 }
                 row("Inbox", pixel: .bell, destination: .inbox, count: session.inbox?.unread)
                 row("Search", pixel: .search, destination: .search)
                 row("Upcoming", pixel: .agenda, destination: .upcoming)
                 row("Following", pixel: .eye, destination: .following)
-                SectionHeader(title: "Channels")
-                ForEach(session.channels.filter { $0.ownerId == nil }) { channelRow($0) }
+                SectionHeader(title: "Topics")
+                ForEach(session.topics.filter { $0.ownerId == nil }) { topicRow($0) }
                 Button {
-                    newChannel = true
+                    newTopic = true
                 } label: {
-                    NavRow(title: "New channel", pixel: .plus)
+                    NavRow(title: "New topic", pixel: .plus)
                 }
                 .buttonStyle(.plain)
-                let privateChannels = session.channels.filter { $0.ownerId != nil }
-                if session.owner || !privateChannels.isEmpty {
+                let privateTopics = session.topics.filter { $0.ownerId != nil }
+                if session.owner || !privateTopics.isEmpty {
                     SectionHeader(title: "Private")
-                    ForEach(privateChannels) { channelRow($0) }
+                    ForEach(privateTopics) { topicRow($0) }
                     if session.owner {
                         row("Feedback", pixel: .info, destination: .feedback)
                     }
@@ -297,16 +297,16 @@ private struct Sidebar: View {
         }
         .refreshable { await session.run { try await session.reloadWorkspace() } }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !settledThreads.isEmpty {
+            if !settledChats.isEmpty {
                 VStack(spacing: Tokens.Space.xs) {
                     Button { showSettled.toggle() } label: {
-                        NavRow(title: "Settled", pixel: .inbox, count: settledThreads.count)
+                        NavRow(title: "Settled", pixel: .inbox, count: settledChats.count)
                     }
                     .buttonStyle(.plain)
                     if showSettled {
                         ScrollView {
                             VStack(spacing: 1) {
-                                ForEach(settledThreads) { thread in threadRow(thread) }
+                                ForEach(settledChats) { chat in chatRow(chat) }
                             }
                         }
                         .frame(maxHeight: Tokens.Size.settledShelf)
@@ -318,10 +318,10 @@ private struct Sidebar: View {
         }
         .background(Tokens.Colors.canvas)
         .navigationTitle("Golem")
-        .sheet(isPresented: $newChannel) {
-            NewChannelDialog { name, isPrivate in
-                if let channel = try await session.createChannel(name: name, isPrivate: isPrivate) {
-                    open(.channel(channel.id))
+        .sheet(isPresented: $newTopic) {
+            NewTopicDialog { name, isPrivate in
+                if let topic = try await session.createTopic(name: name, isPrivate: isPrivate) {
+                    open(.topic(topic.id))
                 }
             }
         }
@@ -342,17 +342,17 @@ private struct Sidebar: View {
         .buttonStyle(.plain)
     }
 
-    private func channelRow(_ channel: Channel) -> some View {
-        let threads = channel.threads.filter { $0.settledAt == nil }
-        let open = !folded.split(separator: ",").contains { $0 == channel.id }
+    private func topicRow(_ topic: Topic) -> some View {
+        let chats = topic.chats.filter { $0.settledAt == nil }
+        let open = !folded.split(separator: ",").contains { $0 == topic.id }
         return VStack(spacing: 1) {
             HStack(spacing: Tokens.Space.xs) {
-                row(channel.name, pixel: .hash, destination: .channel(channel.id), emoji: channel.icon,
-                    locked: channel.ownerId != nil)
+                row(topic.name, pixel: .hash, destination: .topic(topic.id), emoji: topic.icon,
+                    locked: topic.ownerId != nil)
                     .frame(maxWidth: .infinity)
-                if !threads.isEmpty {
-                    Button(open ? "Fold threads" : "Unfold threads", pixel: .forward) {
-                        withAnimation(.snappy) { toggleFolded(channel.id) }
+                if !chats.isEmpty {
+                    Button(open ? "Fold chats" : "Unfold chats", pixel: .forward) {
+                        withAnimation(.snappy) { toggleFolded(topic.id) }
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
@@ -364,8 +364,8 @@ private struct Sidebar: View {
             }
             if open {
                 VStack(spacing: 1) {
-                    ForEach(threads) { thread in
-                        threadRow(thread)
+                    ForEach(chats) { chat in
+                        chatRow(chat)
                     }
                 }
                 .padding(.leading, Tokens.Space.xl)
@@ -373,24 +373,24 @@ private struct Sidebar: View {
         }
     }
 
-    private func toggleFolded(_ channelID: String) {
+    private func toggleFolded(_ topicID: String) {
         var ids = folded.split(separator: ",").map(String.init)
-        if let index = ids.firstIndex(of: channelID) { ids.remove(at: index) } else { ids.append(channelID) }
+        if let index = ids.firstIndex(of: topicID) { ids.remove(at: index) } else { ids.append(topicID) }
         folded = ids.joined(separator: ",")
     }
 
-    private func threadRow(_ thread: ThreadSummary) -> some View {
+    private func chatRow(_ chat: ChatSummary) -> some View {
         HStack(spacing: Tokens.Space.xs) {
-            row(thread.title, pixel: .compose, destination: .thread(thread.id),
-                working: session.working.contains(thread.id))
+            row(chat.title, pixel: .compose, destination: .chat(chat.id),
+                working: session.working.contains(chat.id))
                 .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
                 .frame(maxWidth: .infinity)
-            Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
-                   pixel: thread.settledAt == nil ? .check : .inbox) {
+            Button(chat.settledAt == nil ? "Settle chat" : "Un-settle chat",
+                   pixel: chat.settledAt == nil ? .check : .inbox) {
                 Task {
                     await session.run {
-                        try await session.setThreadSettled(threadID: thread.id, settled: thread.settledAt == nil)
-                        if selection == .thread(thread.id) { open(.channel(thread.channelId)) }
+                        try await session.setChatSettled(chatID: chat.id, settled: chat.settledAt == nil)
+                        if selection == .chat(chat.id) { open(.topic(chat.topicId)) }
                     }
                 }
             }
@@ -402,9 +402,9 @@ private struct Sidebar: View {
     }
 }
 
-/// A dialog that asks for a new channel's name, and whether only the person sees it. It stays open when creating
+/// A dialog that asks for a new topic's name, and whether only the person sees it. It stays open when creating
 /// fails.
-struct NewChannelDialog: View {
+struct NewTopicDialog: View {
     let create: (String, Bool) async throws -> Void
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
@@ -413,7 +413,7 @@ struct NewChannelDialog: View {
     @State private var busy = false
 
     var body: some View {
-        Dialog(title: "New channel") {
+        Dialog(title: "New topic") {
             GolemTextField("Name", text: $name, autofocus: true)
                 .onSubmit(submit)
                 .textInputAutocapitalization(.never)
@@ -442,7 +442,7 @@ struct NewChannelDialog: View {
     }
 }
 
-/// Asks before a channel merges into another. It stays open when merging fails.
+/// Asks before a topic merges into another. It stays open when merging fails.
 struct MergeDialog: View {
     let title: String
     let message: String

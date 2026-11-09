@@ -22,9 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
-import dev.golem.api.Channel
+import dev.golem.api.Topic
 import dev.golem.api.Destination
-import dev.golem.api.ThreadSummary
+import dev.golem.api.ChatSummary
 import dev.golem.design.Pixel
 import dev.golem.design.vector
 import dev.golem.design.FoldingSection
@@ -40,8 +40,8 @@ import dev.golem.design.golemText
 import kotlinx.coroutines.launch
 
 /**
- * The open workspace, as Slack's Home: its newest open threads and its channels, in sections that fold. The round
- * button starts a thread or a channel.
+ * The open workspace, as Slack's Home: its newest open chats and its topics, in sections that fold. The round
+ * button starts a chat or a topic.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,19 +49,19 @@ fun HomeView() {
     val session = LocalSession.current
     val open = LocalOpen.current
     val scope = rememberCoroutineScope()
-    var threadsFolded by rememberSaveable { mutableStateOf(false) }
-    var allThreads by rememberSaveable { mutableStateOf(false) }
-    var channelsFolded by rememberSaveable { mutableStateOf(false) }
+    var chatsFolded by rememberSaveable { mutableStateOf(false) }
+    var allChats by rememberSaveable { mutableStateOf(false) }
+    var topicsFolded by rememberSaveable { mutableStateOf(false) }
     var privateFolded by rememberSaveable { mutableStateOf(false) }
-    var newChannel by remember { mutableStateOf(false) }
+    var newTopic by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
-    val openThreads = session.channels.flatMap { it.threads }.filter { it.settledAt == null }.sortedByDescending { it.updatedAt }
-    val privateChannels = session.channels.filter { it.ownerId != null }
+    val openChats = session.topics.flatMap { it.chats }.filter { it.settledAt == null }.sortedByDescending { it.updatedAt }
+    val privateTopics = session.topics.filter { it.ownerId != null }
 
     Scaffold(
         containerColor = Golem.mobile.background,
         topBar = { ScreenBar(session.workspace?.name ?: "Home") },
-        floatingActionButton = { NewMenu { newChannel = true } },
+        floatingActionButton = { NewMenu { newTopic = true } },
     ) { padding ->
         PullToRefreshBox(
             refreshing, onRefresh = {
@@ -74,16 +74,16 @@ fun HomeView() {
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = Tokens.Mobile.Size.voice + Tokens.Space.xxl)) {
-                if (openThreads.isNotEmpty()) {
+                if (openChats.isNotEmpty()) {
                     item {
-                        FoldingSection("Threads", threadsFolded, { threadsFolded = it }) {
-                            (if (allThreads) openThreads else openThreads.take(3)).forEach { ThreadRow(it) }
-                            // Only the newest threads show, so many threads do not push the channels down.
-                            if (openThreads.size > 3) {
+                        FoldingSection("Chats", chatsFolded, { chatsFolded = it }) {
+                            (if (allChats) openChats else openChats.take(3)).forEach { ChatRow(it) }
+                            // Only the newest chats show, so many chats do not push the topics down.
+                            if (openChats.size > 3) {
                                 ListRow(
-                                    if (allThreads) "Show less" else "Show more",
-                                    icon = if (allThreads) Pixel.ChevronUp.vector else Pixel.Chevron.vector,
-                                    onClick = { allThreads = !allThreads },
+                                    if (allChats) "Show less" else "Show more",
+                                    icon = if (allChats) Pixel.ChevronUp.vector else Pixel.Chevron.vector,
+                                    onClick = { allChats = !allChats },
                                 )
                             }
                         }
@@ -91,15 +91,15 @@ fun HomeView() {
                     }
                 }
                 item {
-                    FoldingSection("Channels", channelsFolded, { channelsFolded = it }) {
-                        session.channels.filter { it.ownerId == null }.forEach { ChannelRow(it) }
+                    FoldingSection("Topics", topicsFolded, { topicsFolded = it }) {
+                        session.topics.filter { it.ownerId == null }.forEach { TopicRow(it) }
                     }
                 }
-                if (session.owner || privateChannels.isNotEmpty()) {
+                if (session.owner || privateTopics.isNotEmpty()) {
                     item {
                         ListSeparator()
                         FoldingSection("Private", privateFolded, { privateFolded = it }) {
-                            privateChannels.forEach { ChannelRow(it) }
+                            privateTopics.forEach { TopicRow(it) }
                             if (session.owner) ListRow("Feedback", icon = Pixel.Info.vector, onClick = { open(Destination.Feedback) })
                         }
                     }
@@ -107,16 +107,16 @@ fun HomeView() {
             }
         }
     }
-    if (newChannel) {
-        NewChannelDialog(onDismiss = { newChannel = false }) { name, private ->
-            session.createChannel(name, private)?.let { open(Destination.Channel(it.id)) }
+    if (newTopic) {
+        NewTopicDialog(onDismiss = { newTopic = false }) { name, private ->
+            session.createTopic(name, private)?.let { open(Destination.Topic(it.id)) }
         }
     }
 }
 
-/** The round accent button over the bar, as Slack's: a new thread in a channel, or a new channel. */
+/** The round accent button over the bar, as Slack's: a new chat in a topic, or a new topic. */
 @Composable
-private fun NewMenu(newChannel: () -> Unit) {
+private fun NewMenu(newTopic: () -> Unit) {
     val session = LocalSession.current
     val open = LocalOpen.current
     var expanded by remember { mutableStateOf(false) }
@@ -128,10 +128,10 @@ private fun NewMenu(newChannel: () -> Unit) {
         GolemMenu(
             expanded, { expanded = false },
             buildList {
-                add(MenuAction("New channel", Pixel.Hash.vector, action = newChannel))
-                if (session.channels.isNotEmpty()) {
-                    add(MenuAction("New thread", Pixel.Compose.vector, children = session.channels.map { channel ->
-                        MenuAction("# ${channel.name}") { open(Destination.NewThread(channel.id)) }
+                add(MenuAction("New topic", Pixel.Hash.vector, action = newTopic))
+                if (session.topics.isNotEmpty()) {
+                    add(MenuAction("New chat", Pixel.Compose.vector, children = session.topics.map { topic ->
+                        MenuAction("# ${topic.name}") { open(Destination.NewChat(topic.id)) }
                     }))
                 }
             },
@@ -140,37 +140,37 @@ private fun NewMenu(newChannel: () -> Unit) {
 }
 
 @Composable
-private fun ThreadRow(thread: ThreadSummary) {
+private fun ChatRow(chat: ChatSummary) {
     val session = LocalSession.current
     val open = LocalOpen.current
     var menu by remember { mutableStateOf(false) }
     Box {
         ListRow(
-            thread.title, icon = Pixel.Chat.vector,
-            subtitle = session.channels.firstOrNull { it.id == thread.channelId }?.let { "# ${it.name}" },
-            working = thread.id in session.working,
-            onClick = { open(Destination.Thread(thread.id)) },
+            chat.title, icon = Pixel.Chat.vector,
+            subtitle = session.topics.firstOrNull { it.id == chat.topicId }?.let { "# ${it.name}" },
+            working = chat.id in session.working,
+            onClick = { open(Destination.Chat(chat.id)) },
             onLongClick = { menu = true },
         )
         GolemMenu(menu, { menu = false }, listOf(
-            MenuAction("Settle thread", Pixel.Check.vector) { session.launch { session.setThreadSettled(thread.id, true) } },
+            MenuAction("Settle chat", Pixel.Check.vector) { session.launch { session.setChatSettled(chat.id, true) } },
         ))
     }
 }
 
 @Composable
-private fun ChannelRow(channel: Channel) {
+private fun TopicRow(topic: Topic) {
     val session = LocalSession.current
     val open = LocalOpen.current
-    val openThreads = channel.threads.filter { it.settledAt == null }
+    val openChats = topic.chats.filter { it.settledAt == null }
     ListRow(
-        channel.name, icon = Pixel.Hash.vector, emoji = channel.icon,
-        working = openThreads.any { it.id in session.working },
-        onClick = { open(Destination.Channel(channel.id)) },
+        topic.name, icon = Pixel.Hash.vector, emoji = topic.icon,
+        working = openChats.any { it.id in session.working },
+        onClick = { open(Destination.Topic(topic.id)) },
     ) {
-        if (channel.ownerId != null) Icon(Pixel.Lock.vector, "Private", tint = Golem.mobile.textQuaternary)
-        if (openThreads.isNotEmpty()) {
-            Text("${openThreads.size}", style = golemMono(Tokens.Mobile.FontSize.mono, Tokens.FontWeight.medium),
+        if (topic.ownerId != null) Icon(Pixel.Lock.vector, "Private", tint = Golem.mobile.textQuaternary)
+        if (openChats.isNotEmpty()) {
+            Text("${openChats.size}", style = golemMono(Tokens.Mobile.FontSize.mono, Tokens.FontWeight.medium),
                 color = Golem.mobile.textQuaternary)
         }
     }

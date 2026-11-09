@@ -202,11 +202,11 @@ test("search covers one workspace and never another, also through the agent's re
   ]);
   await app.indexer.scan(family.id);
   await app.indexer.scan(work.id);
-  const channel = app.workspaces.channels(family.id, anna.user)[0]!;
-  await app.threads.create(
+  const topic = app.workspaces.topics(family.id, anna.user)[0]!;
+  await app.chats.create(
     family.id,
     anna.user,
-    channel.id,
+    topic.id,
     "When is the dentist?"
   );
   for (let attempt = 0; attempt < 100 && !recalled; attempt += 1) {
@@ -219,8 +219,8 @@ test("search covers one workspace and never another, also through the agent's re
   const found = await app.indexer.search(family.id, "dentist", 20, null);
   expect(found.semantic).toBe(true);
   expect(found.results.map((result) => result.kind).sort()).toEqual([
+    "chat",
     "note",
-    "thread",
   ]);
   expect(found.results.some((result) => result.title === "Payroll")).toBe(
     false
@@ -429,13 +429,13 @@ test("a picture without a vector is read again until the model gives one, and ag
   index.close();
 });
 
-test("a channel file that moves to another channel keeps its segments and vectors", async () => {
+test("a topic file that moves to another topic keeps its segments and vectors", async () => {
   const index = new WorkspaceIndex(":memory:", "model");
-  const file = (channelId: string) => ({
-    uri: `channels/${channelId}/files/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b-plan.txt`,
+  const file = (topicId: string) => ({
+    uri: `topics/${topicId}/files/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b-plan.txt`,
     kind: "file" as const,
     title: "plan",
-    channelId,
+    topicId,
     version: "1700000000000:42",
     updatedAt: 0,
   });
@@ -454,7 +454,7 @@ test("a channel file that moves to another channel keeps its segments and vector
   expect(
     index
       .search("holiday", bagOfWords(prose("holiday")), 5, all)
-      .map((result) => [result.uri, result.channelId])
+      .map((result) => [result.uri, result.topicId])
   ).toEqual([[file("work").uri, "work"]]);
   index.close();
 });

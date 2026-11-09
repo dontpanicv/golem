@@ -1,10 +1,10 @@
 import Foundation
 
-/// The artifacts of the workspace and its channels, and the calls of their `golem` runtime.
+/// The artifacts of the workspace and its topics, and the calls of their `golem` runtime.
 extension APIClient {
-    /// The artifacts of a channel, or the workspace's own for a nil `channelID`.
-    func artifacts(workspaceID: String, channelID: String?) async throws -> [Artifact] {
-        let place = channelID.map { "/channels/\($0)" } ?? ""
+    /// The artifacts of a topic, or the workspace's own for a nil `topicID`.
+    func artifacts(workspaceID: String, topicID: String?) async throws -> [Artifact] {
+        let place = topicID.map { "/topics/\($0)" } ?? ""
         return (try await get("/api/v1/workspaces/\(workspaceID)\(place)/artifacts") as ArtifactList).artifacts
     }
 

@@ -9,14 +9,14 @@ import type { Conversation } from "@earendil-works/pi-durable";
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import { Browser } from "../browser/browser.ts";
 import type { User } from "../platform/auth.ts";
-import type { ThreadRef, ThreadSummary } from "../workspaces/workspaces.ts";
-import { Threads } from "./threads.ts";
+import type { ChatRef, ChatSummary } from "../workspaces/workspaces.ts";
+import { Chats } from "./chats.ts";
 
 let golem: TestApp;
 let alice: User;
 let workspaceId: string;
-let channelId: string;
-let reopened: Threads | undefined;
+let topicId: string;
+let reopened: Chats | undefined;
 
 beforeEach(async () => {
   golem = await startTestApp();
@@ -27,7 +27,7 @@ beforeEach(async () => {
   ))!;
   alice = { id: user.id, name: user.name, email: user.email };
   workspaceId = (await golem.app.workspaces.create(alice, "Family")).id;
-  channelId = golem.app.workspaces.channels(workspaceId, alice)[0]!.id;
+  topicId = golem.app.workspaces.topics(workspaceId, alice)[0]!.id;
   reopened = undefined;
   respond(() => fauxAssistantMessage("Done."));
 });
@@ -37,22 +37,22 @@ afterEach(async () => {
   await golem.close();
 });
 
-test("one hundred routine runs keep one thread and a bounded context, with the full transcript available", async () => {
+test("one hundred routine runs keep one chat and a bounded context, with the full transcript available", async () => {
   const contexts: string[] = [];
   respond((context) => {
     contexts.push(JSON.stringify(context));
     return fauxAssistantMessage("Saved.");
   });
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Daily"
   );
-  const conversation = await conversationOf(golem.app.threads, thread);
+  const conversation = await conversationOf(golem.app.chats, chat);
   for (let index = 0; index < 100; index += 1) {
     await instruct(
-      golem.app.threads,
-      thread,
+      golem.app.chats,
+      chat,
       `Batch ${index}: ${"source ".repeat(100)}`,
       `run-${index}`
     );
@@ -68,21 +68,21 @@ test("one hundred routine runs keep one thread and a bounded context, with the f
     .filter((context) => context.includes("Batch "))
     .map((context) => context.length);
   expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThan(1000);
-  expect((await golem.app.threads.messages(thread)).messages).toHaveLength(100);
+  expect((await golem.app.chats.messages(chat)).messages).toHaveLength(100);
   expect(
     golem.app.workspaces
-      .allThreadsIn(workspaceId)
-      .filter((candidate) => candidate.id === thread.id)
+      .allChatsIn(workspaceId)
+      .filter((candidate) => candidate.id === chat.id)
   ).toHaveLength(1);
 }, 15_000);
 
 test("recovery after the context boundary reuses it, and a settled input never resets a later run", async () => {
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Daily"
   );
-  const conversation = await conversationOf(golem.app.threads, thread);
+  const conversation = await conversationOf(golem.app.chats, chat);
   await conversation.submit(
     {
       type: "write",
@@ -91,29 +91,29 @@ test("recovery after the context boundary reuses it, and a settled input never r
     },
     BACKGROUND_CONTEXT
   );
-  await golem.app.threads.closeAll();
-  reopened = reopenThreads();
-  await instruct(reopened, thread, "First batch", "run-one");
-  await instruct(reopened, thread, "Second batch", "run-two");
-  const before = await conversationOf(reopened, thread);
+  await golem.app.chats.closeAll();
+  reopened = reopenChats();
+  await instruct(reopened, chat, "First batch", "run-one");
+  await instruct(reopened, chat, "Second batch", "run-two");
+  const before = await conversationOf(reopened, chat);
   const head = (await before.context(BACKGROUND_CONTEXT)).head!.id;
-  await instruct(reopened, thread, "Must not become another input", "run-one");
+  await instruct(reopened, chat, "Must not become another input", "run-one");
   expect((await before.context(BACKGROUND_CONTEXT)).head!.id).toBe(head);
   expect(
     (await before.entries({}, 100, undefined, BACKGROUND_CONTEXT)).items.filter(
       (entry) => entry.kind === "golem.routine-context"
     )
   ).toHaveLength(2);
-  expect((await reopened.messages(thread)).messages).toHaveLength(2);
+  expect((await reopened.messages(chat)).messages).toHaveLength(2);
 });
 
 test("a run admitted by the previous server resumes without a new context boundary", async () => {
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Existing run"
   );
-  const conversation = await conversationOf(golem.app.threads, thread);
+  const conversation = await conversationOf(golem.app.chats, chat);
   await (
     await conversation.submit(
       {
@@ -133,10 +133,10 @@ test("a run admitted by the previous server resumes without a new context bounda
     )
   ).wait(BACKGROUND_CONTEXT);
   expect(
-    await instruct(golem.app.threads, thread, "Not another input", "existing")
+    await instruct(golem.app.chats, chat, "Not another input", "existing")
   ).toBe("Done.");
   expect((await conversation.context(BACKGROUND_CONTEXT)).head).toBeUndefined();
-  expect((await golem.app.threads.messages(thread)).messages).toHaveLength(1);
+  expect((await golem.app.chats.messages(chat)).messages).toHaveLength(1);
 });
 
 test("a new routine waits for active work, and a person's concurrent message follows its admission", async () => {
@@ -151,26 +151,17 @@ test("a new routine waits for active work, and a person's concurrent message fol
     }
     return fauxAssistantMessage("Done.");
   });
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Daily"
   );
-  const first = instruct(
-    golem.app.threads,
-    thread,
-    "Hold the first run",
-    "first"
-  );
+  const first = instruct(golem.app.chats, chat, "Hold the first run", "first");
   await until(async () => started, Boolean);
-  const second = instruct(golem.app.threads, thread, "Second run", "second");
-  const person = golem.app.threads.send(
-    thread.id,
-    alice,
-    "A person follows up"
-  );
+  const second = instruct(golem.app.chats, chat, "Second run", "second");
+  const person = golem.app.chats.send(chat.id, alice, "A person follows up");
   await Bun.sleep(30);
-  const conversation = await conversationOf(golem.app.threads, thread);
+  const conversation = await conversationOf(golem.app.chats, chat);
   expect(
     (
       await conversation.entries({}, 100, undefined, BACKGROUND_CONTEXT)
@@ -181,7 +172,7 @@ test("a new routine waits for active work, and a person's concurrent message fol
   await second;
   await person;
   const state = await until(
-    () => golem.app.threads.messages(thread),
+    () => golem.app.chats.messages(chat),
     (value) => !value.running
   );
   expect(state.messages.map((message) => message.text)).toEqual([
@@ -220,31 +211,31 @@ test("a tool result survives a real session restart without repeating the file s
       { stopReason: "toolUse" }
     );
   });
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Daily"
   );
   const running = instruct(
-    golem.app.threads,
-    thread,
+    golem.app.chats,
+    chat,
     "Archive the source",
     "archive"
   ).catch(() => null);
   await until(async () => waiting, Boolean);
-  const conversation = await conversationOf(golem.app.threads, thread);
+  const conversation = await conversationOf(golem.app.chats, chat);
   const head = (await conversation.context(BACKGROUND_CONTEXT)).head!.id;
-  await golem.app.threads.closeAll();
+  await golem.app.chats.closeAll();
   await running;
   stopped = true;
-  reopened = reopenThreads();
-  expect(
-    await instruct(reopened, thread, "Archive the source", "archive")
-  ).toBe("File saved.");
-  const recovered = await conversationOf(reopened, thread);
+  reopened = reopenChats();
+  expect(await instruct(reopened, chat, "Archive the source", "archive")).toBe(
+    "File saved."
+  );
+  const recovered = await conversationOf(reopened, chat);
   expect((await recovered.context(BACKGROUND_CONTEXT)).head!.id).toBe(head);
-  expect(await reopened.files({ workspaceId, channelId })).toHaveLength(1);
-  expect((await reopened.messages(thread)).messages).toHaveLength(1);
+  expect(await reopened.files({ workspaceId, topicId })).toHaveLength(1);
+  expect((await reopened.messages(chat)).messages).toHaveLength(1);
 });
 
 test("tool-using routine answers are posted and notify, while reminders keep their earlier context", async () => {
@@ -255,27 +246,27 @@ test("tool-using routine answers are posted and notify, while reminders keep the
           stopReason: "toolUse",
         })
   );
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Daily"
   );
   expect(
-    await instruct(golem.app.threads, thread, "Routine source", "routine")
+    await instruct(golem.app.chats, chat, "Routine source", "routine")
   ).toBe("New item archived.");
   expect(
     golem.app.notifications.inbox(workspaceId, alice).notifications[0]?.text
   ).toBe("New item archived.");
   respond(() => fauxAssistantMessage("Reminder delivered."));
-  await golem.app.threads.instruct(
-    thread,
+  await golem.app.chats.instruct(
+    chat,
     "Reminder",
     "reminder",
     [],
     alice.id,
     "reminder"
   );
-  const conversation = await conversationOf(golem.app.threads, thread);
+  const conversation = await conversationOf(golem.app.chats, chat);
   expect(
     JSON.stringify((await conversation.context(BACKGROUND_CONTEXT)).messages)
   ).toContain("Routine source");
@@ -287,13 +278,13 @@ test("an oversized routine input is refused before the provider is called", asyn
     calls += 1;
     return fauxAssistantMessage("Unexpected.");
   });
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Daily"
   );
   await expect(
-    instruct(golem.app.threads, thread, "source ".repeat(50_000), "oversized")
+    instruct(golem.app.chats, chat, "source ".repeat(50_000), "oversized")
   ).rejects.toThrow("Input budget exceeded");
   expect(calls).toBe(0);
 });
@@ -325,23 +316,23 @@ test("a long run compacts between complete tool rounds and keeps its source and 
           { stopReason: "toolUse" }
         );
   });
-  const thread = await golem.app.threads.startAgentThread(
+  const chat = await golem.app.chats.startAgentChat(
     workspaceId,
-    channelId,
+    topicId,
     "Long run"
   );
   expect(
-    await instruct(golem.app.threads, thread, "Inspect source-123", "long")
+    await instruct(golem.app.chats, chat, "Inspect source-123", "long")
   ).toBe("Source-123 checked.");
   expect(summaries).toBeGreaterThan(0);
   expect(Math.max(...requests)).toBeLessThan(256 * 1024);
-  const conversation = await conversationOf(golem.app.threads, thread);
+  const conversation = await conversationOf(golem.app.chats, chat);
   expect(
     (
       await conversation.entries({}, 100, undefined, BACKGROUND_CONTEXT)
     ).items.some((entry) => entry.kind === "pi.compaction")
   ).toBe(true);
-  expect((await golem.app.threads.messages(thread)).messages.at(-1)?.text).toBe(
+  expect((await golem.app.chats.messages(chat)).messages.at(-1)?.text).toBe(
     "Source-123 checked."
   );
 }, 10_000);
@@ -351,35 +342,25 @@ function respond(response: FauxResponseFactory) {
 }
 
 function instruct(
-  threads: Threads,
-  thread: ThreadSummary & ThreadRef,
+  chats: Chats,
+  chat: ChatSummary & ChatRef,
   text: string,
   requestId: string
 ) {
-  return threads.instruct(
-    thread,
-    text,
-    requestId,
-    "everyone",
-    alice.id,
-    "routine"
-  );
+  return chats.instruct(chat, text, requestId, "everyone", alice.id, "routine");
 }
 
-function conversationOf(
-  threads: Threads,
-  thread: ThreadRef
-): Promise<Conversation> {
+function conversationOf(chats: Chats, chat: ChatRef): Promise<Conversation> {
   return (
-    threads as unknown as {
-      conversation: (thread: ThreadRef) => Promise<Conversation>;
+    chats as unknown as {
+      conversation: (chat: ChatRef) => Promise<Conversation>;
     }
-  ).conversation(thread);
+  ).conversation(chat);
 }
 
-function reopenThreads(): Threads {
+function reopenChats(): Chats {
   const { app } = golem;
-  return new Threads(
+  return new Chats(
     golem.dataDirectory,
     app.llm,
     app.workspaces,

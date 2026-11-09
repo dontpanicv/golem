@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Markdown that an agent wrote, as the web shows it: headings, lists, quotes, code blocks, tables, and rules, with
-/// the inline Markdown in each. A link takes the accent; a link to `thread:<id>` is followed by "working" while the
-/// agent of that thread works. A fenced `card` block shows its cards, as the web's `cards.tsx` does.
+/// the inline Markdown in each. A link takes the accent; a link to `chat:<id>` is followed by "working" while the
+/// agent of that chat works. A fenced `card` block shows its cards, as the web's `cards.tsx` does.
 ///
 /// ```swift
 /// MarkdownText(text: "## Plan\n- Book the flight", size: Tokens.Mobile.FontSize.body)
@@ -140,7 +140,7 @@ struct MarkdownText: View {
         return blocks
     }
 
-    /// The text of one run, with code in a monospaced font, and links in the accent. A thread link is followed by
+    /// The text of one run, with code in a monospaced font, and links in the accent. A chat link is followed by
     /// "working" while its agent works.
     private static func inline(
         _ run: AttributedSubstring, next: URL?, _ size: CGFloat, _ working: Set<String>
@@ -159,9 +159,9 @@ struct MarkdownText: View {
         }
         guard let link = piece.link else { return piece }
         piece.foregroundColor = Tokens.Colors.accent
-        let id = String(link.absoluteString.dropFirst("thread:".count))
+        let id = String(link.absoluteString.dropFirst("chat:".count))
         // A link with bold or code in it is several runs; the note follows the last.
-        if link.scheme == "thread", working.contains(id), next != link {
+        if link.scheme == "chat", working.contains(id), next != link {
             var note = AttributedString(" · working")
             note.foregroundColor = Tokens.Colors.textTertiary
             piece += note

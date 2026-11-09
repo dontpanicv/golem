@@ -48,18 +48,18 @@ class MainActivity : ComponentActivity() {
         AuthTabIntent.Builder().build().launch(signIn, url, host, path)
     }
 
-    /** A tapped notification opens its thread, or its channel without one. */
+    /** A tapped notification opens its chat, or its topic without one. */
     private fun take(intent: Intent) {
         val workspace = intent.getStringExtra(WORKSPACE) ?: return
-        val thread = intent.getStringExtra(THREAD)
-        val channel = intent.getStringExtra(CHANNEL) ?: return
-        session.tapped = Tapped(workspace, thread?.let { Destination.Thread(it) } ?: Destination.Channel(channel))
+        val chat = intent.getStringExtra(CHAT)
+        val topic = intent.getStringExtra(TOPIC) ?: return
+        session.tapped = Tapped(workspace, chat?.let { Destination.Chat(it) } ?: Destination.Topic(topic))
         intent.removeExtra(WORKSPACE)
     }
 
     companion object {
         const val WORKSPACE = "workspaceId"
-        const val CHANNEL = "channelId"
-        const val THREAD = "threadId"
+        const val TOPIC = "topicId"
+        const val CHAT = "chatId"
     }
 }

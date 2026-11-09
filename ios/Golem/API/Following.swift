@@ -51,7 +51,7 @@ struct FollowingCheck: Codable, Hashable, Identifiable {
     let revision: Int
     let text: String
     let state: String
-    let threadId: String?
+    let chatId: String?
     let checkAt: Double
     let reviewAt: Double
     let explicitTime: Int
@@ -94,7 +94,7 @@ struct FollowingEvidence: Codable, Hashable, Identifiable {
     }
 }
 
-/// All that intake holds for the person: its sources, its thread updates, what it keeps, and the person's feedback.
+/// All that intake holds for the person: its sources, its chat updates, what it keeps, and the person's feedback.
 struct FollowingOverview: Codable {
     let sources: [IntakeSource]
     let updates: [IntakeUpdate]
@@ -126,9 +126,9 @@ struct IntakeSource: Codable, Hashable, Identifiable {
 
 struct IntakeUpdate: Codable, Hashable, Identifiable {
     let id: String
-    let threadId: String?
-    let threadTitle: String?
-    let newThread: String?
+    let chatId: String?
+    let chatTitle: String?
+    let newChat: String?
     let body: String
     let attention: String
     let notice: String?
@@ -138,7 +138,7 @@ struct IntakeUpdate: Codable, Hashable, Identifiable {
     let evidence: [FollowingEvidence]
 
     var waits: Bool { deliveredAt == nil && cancelledAt == nil }
-    var title: String { threadTitle ?? "New thread: \(newThread ?? "untitled")" }
+    var title: String { chatTitle ?? "New chat: \(newChat ?? "untitled")" }
 
     /// The message, without the source links after it.
     var message: String {
@@ -162,11 +162,11 @@ struct IntakeKept: Codable, Hashable, Identifiable {
     let fromOwner: Bool
     let attachments: [FollowingAttachment]?
     let outcome: String
-    let threadId: String?
+    let chatId: String?
     let place: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, source, text, url, fromOwner, attachments, outcome, threadId, place
+        case id, source, text, url, fromOwner, attachments, outcome, chatId, place
         case timestamp = "at"
     }
 
@@ -179,17 +179,17 @@ struct IntakeKept: Codable, Hashable, Identifiable {
 
     var badge: String {
         switch outcome {
-        case "thread": "In thread"
+        case "chat": "In chat"
         case "filed": "Filed"
         default: "Context"
         }
     }
 
-    /// Where the observation went: its thread, its channel's files, or only Golem's context.
+    /// Where the observation went: its chat, its topic's files, or only Golem's context.
     var location: String {
         switch outcome {
-        case "thread": "In \(place ?? "a thread")"
-        case "filed": "Filed in \(place ?? "a channel")"
+        case "chat": "In \(place ?? "a chat")"
+        case "filed": "Filed in \(place ?? "a topic")"
         default: "Kept as context"
         }
     }

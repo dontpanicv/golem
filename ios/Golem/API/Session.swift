@@ -6,7 +6,7 @@ import SwiftUI
 import Security
 import UserNotifications
 
-/// The signed-in user, their workspaces, and the open workspace with its channels.
+/// The signed-in user, their workspaces, and the open workspace with its topics.
 @Observable
 final class Session {
     let api = APIClient()
@@ -22,12 +22,12 @@ final class Session {
     /// Whether the person is the server's owner, who reads the agents' feedback.
     private(set) var owner = false
     private(set) var workspace: Workspace?
-    private(set) var channels: [Channel] = []
+    private(set) var topics: [Topic] = []
     /// The path of each member's profile picture in the open workspace, by person.
     private(set) var pictures: [String: String] = [:]
-    /// The open workspace's thread that never ends, which channel lists leave out.
-    private(set) var orchestrator: ThreadSummary?
-    /// The threads of the open workspace whose agent works.
+    /// The open workspace's chat that never ends, which topic lists leave out.
+    private(set) var orchestrator: ChatSummary?
+    /// The chats of the open workspace whose agent works.
     private(set) var working: Set<String> = []
     /// The open workspace's notifications.
     private(set) var inbox: Inbox?
@@ -138,7 +138,7 @@ final class Session {
     // MARK: Workspaces
 
     func open(_ workspace: Workspace) async throws {
-        // A conversation talks in a thread of the workspace that started it.
+        // A conversation talks in a chat of the workspace that started it.
         if workspace.id != self.workspace?.id { VoiceSession.shared.talk.end() }
         let detail = try await api.workspace(workspace.id)
         let orchestrator = try await api.orchestrator(workspaceID: workspace.id)
@@ -147,7 +147,7 @@ final class Session {
         pictures = Dictionary(uniqueKeysWithValues: members.compactMap { member in
             member.picture.map { (member.userId, $0) }
         })
-        channels = detail.channels
+        topics = detail.topics
         self.orchestrator = orchestrator
         UserDefaults.standard.set(workspace.id, forKey: Keys.workspaceID)
         try? await loadInbox()
@@ -195,15 +195,15 @@ final class Session {
         workspaces = workspaces.map { $0.id == renamed.id ? renamed : $0 }
     }
 
-    /// Follows which threads of the open workspace work, reading the stream again after each error, until cancelled.
-    /// The channels and threads load again when work starts or ends, or a thread settles.
+    /// Follows which chats of the open workspace work, reading the stream again after each error, until cancelled.
+    /// The topics and chats load again when work starts or ends, or a chat settles.
     func followWorking() async {
         working = []
         guard let workspace else { return }
         while !Task.isCancelled {
-            try? await api.workingEvents(workspaceID: workspace.id) { threadIds in
+            try? await api.workingEvents(workspaceID: workspace.id) { chatIds in
                 Task { try? await reloadWorkspace() }
-                working = Set(threadIds)
+                working = Set(chatIds)
             }
             try? await Task.sleep(for: .seconds(2))
         }
@@ -220,47 +220,47 @@ final class Session {
         if let workspace { try await open(workspace) }
     }
 
-    /// Adds a channel; a private one only the person sees.
-    func createChannel(name: String, isPrivate: Bool) async throws -> Channel? {
+    /// Adds a topic; a private one only the person sees.
+    func createTopic(name: String, isPrivate: Bool) async throws -> Topic? {
         guard let workspace else { return nil }
-        let channel = try await api.createChannel(workspaceID: workspace.id, name: name, isPrivate: isPrivate)
+        let topic = try await api.createTopic(workspaceID: workspace.id, name: name, isPrivate: isPrivate)
         try await reloadWorkspace()
-        return channel
+        return topic
     }
 
-    func renameChannel(channelID: String, name: String) async throws {
+    func renameTopic(topicID: String, name: String) async throws {
         guard let workspace else { return }
-        _ = try await api.renameChannel(workspaceID: workspace.id, channelID: channelID, name: name)
+        _ = try await api.renameTopic(workspaceID: workspace.id, topicID: topicID, name: name)
         try await reloadWorkspace()
     }
 
-    /// Merges a channel into another: its threads, files, artifacts, and routines move there, and the empty channel
-    /// goes. Channels are never deleted.
-    func mergeChannel(channelID: String, into: String) async throws {
+    /// Merges a topic into another: its chats, files, artifacts, and routines move there, and the empty topic
+    /// goes. Topics are never deleted.
+    func mergeTopic(topicID: String, into: String) async throws {
         guard let workspace else { return }
-        try await api.mergeChannel(workspaceID: workspace.id, channelID: channelID, into: into)
+        try await api.mergeTopic(workspaceID: workspace.id, topicID: topicID, into: into)
         try await reloadWorkspace()
     }
 
-    func createThread(channelID: String, text: String, files: [URL]) async throws -> ThreadSummary? {
+    func createChat(topicID: String, text: String, files: [URL]) async throws -> ChatSummary? {
         guard let workspace else { return nil }
-        let thread = try await api.createThread(
-            workspaceID: workspace.id, channelID: channelID, text: text, files: files
+        let chat = try await api.createChat(
+            workspaceID: workspace.id, topicID: topicID, text: text, files: files
         )
         try await reloadWorkspace()
-        return thread
+        return chat
     }
 
-    func setThreadSettled(threadID: String, settled: Bool) async throws {
+    func setChatSettled(chatID: String, settled: Bool) async throws {
         guard let workspace else { return }
-        try await api.setThreadSettled(workspaceID: workspace.id, threadID: threadID, settled: settled)
+        try await api.setChatSettled(workspaceID: workspace.id, chatID: chatID, settled: settled)
         try await reloadWorkspace()
     }
 
-    /// Moves a thread to another channel, with its artifacts and the files that only it mentions.
-    func moveThread(threadID: String, channelID: String) async throws {
+    /// Moves a chat to another topic, with its artifacts and the files that only it mentions.
+    func moveChat(chatID: String, topicID: String) async throws {
         guard let workspace else { return }
-        try await api.moveThread(workspaceID: workspace.id, threadID: threadID, channelID: channelID)
+        try await api.moveChat(workspaceID: workspace.id, chatID: chatID, topicID: topicID)
         try await reloadWorkspace()
     }
 
@@ -283,7 +283,7 @@ final class Session {
         user = nil
         workspaces = []
         workspace = nil
-        channels = []
+        topics = []
         pictures = [:]
         orchestrator = nil
         inbox = nil

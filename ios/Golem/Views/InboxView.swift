@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The open workspace's notifications, newest first, as Slack's Activity: All or Unread, each with Golem's avatar,
-/// where it happened, and a dot while unread. A tap reads one and opens its thread or channel.
+/// where it happened, and a dot while unread. A tap reads one and opens its chat or topic.
 struct InboxView: View {
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
@@ -48,7 +48,7 @@ struct InboxView: View {
 
     private func row(_ notification: InboxNotification) -> some View {
         let unread = notification.readAt == nil
-        let channel = session.channels.first { $0.id == notification.channelId }?.name
+        let topic = session.topics.first { $0.id == notification.topicId }?.name
         return Button {
             if unread { Task { await session.run { try await session.readNotifications(notification.id) } } }
             open(notification.destination)
@@ -67,8 +67,8 @@ struct InboxView: View {
                             .font(.golem(Tokens.Mobile.FontSize.caption))
                             .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                     }
-                    if let channel {
-                        Text("in # \(channel)")
+                    if let topic {
+                        Text("in # \(topic)")
                             .font(.golem(Tokens.Mobile.FontSize.caption, Tokens.FontWeight.book))
                             .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
                     }
@@ -94,5 +94,5 @@ struct InboxView: View {
 }
 
 extension InboxNotification {
-    var destination: Destination { threadId.map { .thread($0) } ?? .channel(channelId) }
+    var destination: Destination { chatId.map { .chat($0) } ?? .topic(topicId) }
 }

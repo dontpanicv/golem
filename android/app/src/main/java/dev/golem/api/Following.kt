@@ -11,7 +11,7 @@ data class FollowingCheck(
     val text: String,
     /** "open", "resolved", or "stopped". */
     val state: String,
-    val threadId: String? = null,
+    val chatId: String? = null,
     val checkAt: Double,
     val reviewAt: Double,
     /** 1 when `checkAt` is a time that a person stated. */
@@ -70,7 +70,7 @@ data class FollowingRevision(
     val current: FollowingSnapshot,
 )
 
-/** All that intake holds for the person: its sources, its thread updates, what it keeps, and the person's feedback. */
+/** All that intake holds for the person: its sources, its chat updates, what it keeps, and the person's feedback. */
 @Serializable
 data class FollowingOverview(
     val sources: List<IntakeSource> = emptyList(),
@@ -96,10 +96,10 @@ data class IntakeSource(
 @Serializable
 data class IntakeUpdate(
     val id: String,
-    val threadId: String? = null,
-    val threadTitle: String? = null,
-    /** The title of a thread Golem will start. */
-    val newThread: String? = null,
+    val chatId: String? = null,
+    val chatTitle: String? = null,
+    /** The title of a chat Golem will start. */
+    val newChat: String? = null,
     val body: String,
     /** "now" or "brief". */
     val attention: String,
@@ -111,7 +111,7 @@ data class IntakeUpdate(
     val evidence: List<FollowingEvidence> = emptyList(),
 ) {
     val waits get() = deliveredAt == null && cancelledAt == null
-    val title get() = threadTitle ?: "New thread: ${newThread ?: "untitled"}"
+    val title get() = chatTitle ?: "New chat: ${newChat ?: "untitled"}"
 
     /** The message, without the source links after it. */
     val message get() = body.lastIndexOf("\n\n").let { if (it < 0) body else body.substring(0, it) }
@@ -126,23 +126,23 @@ data class IntakeKept(
     val url: String? = null,
     val fromOwner: Boolean = false,
     val attachments: List<FollowingAttachment> = emptyList(),
-    /** "thread", "filed", or "context". */
+    /** "chat", "filed", or "context". */
     val outcome: String,
-    val threadId: String? = null,
+    val chatId: String? = null,
     val place: String? = null,
 ) {
     val name get() = sourceName(source)
 
     val badge get() = when (outcome) {
-        "thread" -> "In thread"
+        "chat" -> "In chat"
         "filed" -> "Filed"
         else -> "Context"
     }
 
-    /** Where the observation went: its thread, its channel's files, or only Golem's context. */
+    /** Where the observation went: its chat, its topic's files, or only Golem's context. */
     val location get() = when (outcome) {
-        "thread" -> "In ${place ?: "a thread"}"
-        "filed" -> "Filed in ${place ?: "a channel"}"
+        "chat" -> "In ${place ?: "a chat"}"
+        "filed" -> "Filed in ${place ?: "a topic"}"
         else -> "Kept as context"
     }
 }

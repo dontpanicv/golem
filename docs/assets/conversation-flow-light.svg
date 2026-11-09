@@ -639,18 +639,18 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
 
         <!-- Flow paths -->
         <path data-edge-from="person" data-edge-to="golem" data-edge-label="asks Golem" data-edge-key="0" data-edge-id="ask-golem" data-composition-points="156,262;207.5,262;207.5,157;259,157" d="M 156 262 L 207.5 262 L 207.5 157 L 259 157" class="a-emphasis" data-animate="edge" style="--step: 0;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="person" data-edge-to="threads" data-edge-label="or a channel" data-edge-key="1" data-edge-id="ask-channel" data-composition-points="156,280;207.5,280;207.5,385;259,385" d="M 156 280 L 207.5 280 L 207.5 385 L 259 385" class="a-default" data-animate="edge" style="--step: 1;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="golem" data-edge-to="threads" data-edge-label="send_to_thread" data-edge-key="2" data-edge-id="delegate" data-composition-points="306,186;306,339" d="M 306 186 L 306 339" class="a-emphasis" data-animate="edge" style="--step: 2;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="threads" data-edge-to="golem" data-edge-label="answer relayed" data-edge-key="3" data-edge-id="relay-back" data-composition-points="324,339;324,186" d="M 324 339 L 324 186" class="a-dashed" data-animate="edge" style="--step: 3;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="threads" data-edge-to="tools" data-edge-label="codemode script" data-edge-key="4" data-edge-id="run-tools" data-composition-points="371,415;422.25,415;422.25,499;473.5,499" d="M 371 415 L 422.25 415 L 422.25 499 L 473.5 499" class="a-default" data-animate="edge" style="--step: 4;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="threads" data-edge-to="brief" data-edge-label="quiet 10 min" data-edge-key="5" data-edge-id="keep-brief" data-composition-points="371,355;637.5,355;637.5,166;689,166" d="M 371 355 L 637.5 355 L 637.5 166 L 689 166" class="a-dashed" data-animate="edge" style="--step: 5;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="threads" data-edge-to="learned" data-edge-label="learning loop" data-edge-key="6" data-edge-id="learn" data-composition-points="371,385;637.5,385;637.5,280;689,280" d="M 371 385 L 637.5 385 L 637.5 280 L 689 280" class="a-dashed" data-animate="edge" style="--step: 6;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="threads" data-edge-to="index" data-edge-label="indexed" data-edge-key="7" data-edge-id="index-messages" data-composition-points="371,400;395,400;395,416;665,416;665,385;689,385" d="M 371 400 L 395 400 L 395 416 L 665 416 L 665 385 L 689 385" class="a-dashed" data-animate="edge" style="--step: 7;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="brief" data-edge-to="sections" data-edge-label="channel brief" data-edge-key="8" data-edge-id="brief-in" data-composition-points="689,148;589,148" d="M 689 148 L 589 148" class="a-default" data-animate="edge" style="--step: 8;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="person" data-edge-to="chats" data-edge-label="or a topic" data-edge-key="1" data-edge-id="ask-topic" data-composition-points="156,280;207.5,280;207.5,385;259,385" d="M 156 280 L 207.5 280 L 207.5 385 L 259 385" class="a-default" data-animate="edge" style="--step: 1;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="golem" data-edge-to="chats" data-edge-label="send_to_chat" data-edge-key="2" data-edge-id="delegate" data-composition-points="306,186;306,339" d="M 306 186 L 306 339" class="a-emphasis" data-animate="edge" style="--step: 2;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="chats" data-edge-to="golem" data-edge-label="answer relayed" data-edge-key="3" data-edge-id="relay-back" data-composition-points="324,339;324,186" d="M 324 339 L 324 186" class="a-dashed" data-animate="edge" style="--step: 3;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="chats" data-edge-to="tools" data-edge-label="codemode script" data-edge-key="4" data-edge-id="run-tools" data-composition-points="371,415;422.25,415;422.25,499;473.5,499" d="M 371 415 L 422.25 415 L 422.25 499 L 473.5 499" class="a-default" data-animate="edge" style="--step: 4;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="chats" data-edge-to="brief" data-edge-label="quiet 10 min" data-edge-key="5" data-edge-id="keep-brief" data-composition-points="371,355;637.5,355;637.5,166;689,166" d="M 371 355 L 637.5 355 L 637.5 166 L 689 166" class="a-dashed" data-animate="edge" style="--step: 5;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="chats" data-edge-to="learned" data-edge-label="learning loop" data-edge-key="6" data-edge-id="learn" data-composition-points="371,385;637.5,385;637.5,280;689,280" d="M 371 385 L 637.5 385 L 637.5 280 L 689 280" class="a-dashed" data-animate="edge" style="--step: 6;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="chats" data-edge-to="index" data-edge-label="indexed" data-edge-key="7" data-edge-id="index-messages" data-composition-points="371,400;395,400;395,416;665,416;665,385;689,385" d="M 371 400 L 395 400 L 395 416 L 665 416 L 665 385 L 689 385" class="a-dashed" data-animate="edge" style="--step: 7;" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="brief" data-edge-to="sections" data-edge-label="topic brief" data-edge-key="8" data-edge-id="brief-in" data-composition-points="689,148;589,148" d="M 689 148 L 589 148" class="a-default" data-animate="edge" style="--step: 8;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="learned" data-edge-to="sections" data-edge-label="what it learned" data-edge-key="9" data-edge-id="learned-in" data-composition-points="689,262;639,262;639,166;589,166" d="M 689 262 L 639 262 L 639 166 L 589 166" class="a-default" data-animate="edge" style="--step: 9;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="facts" data-edge-to="sections" data-edge-label="facts" data-edge-key="10" data-edge-id="facts-in" data-composition-points="530,242;530,186" d="M 530 242 L 530 186" class="a-default" data-animate="edge" style="--step: 10;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="sections" data-edge-to="golem" data-edge-label="every turn" data-edge-key="11" data-edge-id="prompt-golem" data-composition-points="471,148;371,148" d="M 471 148 L 371 148" class="a-emphasis" data-animate="edge" style="--step: 11;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="sections" data-edge-to="threads" data-edge-label="every turn" data-edge-key="12" data-edge-id="prompt-threads" data-composition-points="471,166;421,166;421,370;371,370" d="M 471 166 L 421 166 L 421 370 L 371 370" class="a-emphasis" data-animate="edge" style="--step: 12;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="sections" data-edge-to="chats" data-edge-label="every turn" data-edge-key="12" data-edge-id="prompt-chats" data-composition-points="471,166;421,166;421,370;371,370" d="M 471 166 L 421 166 L 421 370 L 371 370" class="a-emphasis" data-animate="edge" style="--step: 12;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
 
         <!-- Nodes -->
         <g id="node-person" data-node-id="person" data-node-label="Family member" tabindex="0" role="button" aria-label="Focus Family member, web · iPhone · Watch, 01 / Person" aria-pressed="false" data-node-kind="external" data-node-sublabel="web · iPhone · Watch" data-node-context="01 / Person">
@@ -664,8 +664,8 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
           <text x="100" y="279" class="t-muted" font-size="7" text-anchor="middle">web · iPhone · Watch</text>
         </g>
 
-        <g id="node-golem" data-node-id="golem" data-node-label="Golem" tabindex="0" role="button" aria-label="Focus Golem, own endless thread, 02 / Agents" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="own endless thread" data-node-tag="memory tree" data-node-context="02 / Agents">
-          <title>Golem · own endless thread · 02 / Agents · memory tree</title>
+        <g id="node-golem" data-node-id="golem" data-node-label="Golem" tabindex="0" role="button" aria-label="Focus Golem, own endless chat, 02 / Agents" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="own endless chat" data-node-tag="memory tree" data-node-context="02 / Agents">
+          <title>Golem · own endless chat · 02 / Agents · memory tree</title>
           <rect x="259" y="128" width="112" height="58" rx="6" class="c-mask"/>
           <rect x="259" y="128" width="112" height="58" rx="6" class="c-frontend" data-animate="node" style="--step: 1; --flow-node-name: archify-relay-node-2;" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(265 134) scale(0.6875)">
@@ -675,18 +675,18 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" x="314" y="149" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Golem</text>
-          <text x="315" y="165" class="t-muted" font-size="7" text-anchor="middle">own endless thread</text>
+          <text x="315" y="165" class="t-muted" font-size="7" text-anchor="middle">own endless chat</text>
         <text x="315" y="175" class="t-frontend" font-size="7" text-anchor="middle">memory tree</text>
         </g>
 
-        <g id="node-threads" data-node-id="threads" data-node-label="Channel threads" tabindex="0" role="button" aria-label="Focus Channel threads, one per topic, 02 / Agents" aria-pressed="false" data-node-kind="backend" data-node-sublabel="one per topic" data-node-tag="Pi Durable" data-node-context="02 / Agents">
-          <title>Channel threads · one per topic · 02 / Agents · Pi Durable</title>
+        <g id="node-chats" data-node-id="chats" data-node-label="Topic chats" tabindex="0" role="button" aria-label="Focus Topic chats, one per topic, 02 / Agents" aria-pressed="false" data-node-kind="backend" data-node-sublabel="one per topic" data-node-tag="Pi Durable" data-node-context="02 / Agents">
+          <title>Topic chats · one per topic · 02 / Agents · Pi Durable</title>
           <rect x="259" y="339" width="112" height="92" rx="6" class="c-mask"/>
           <rect x="259" y="339" width="112" height="92" rx="6" class="c-backend" data-animate="node" style="--step: 2; --flow-node-name: archify-relay-node-3;" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265 345) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="315" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Channel threads</text>
+          <text data-node-label="" x="315" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Topic chats</text>
           <text x="315" y="393" class="t-muted" font-size="7" text-anchor="middle">one per topic</text>
         <text x="315" y="405.5" class="t-backend" font-size="7" text-anchor="middle">Pi Durable</text>
         </g>
@@ -727,15 +727,15 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
         <text x="530" y="522.1" class="t-cloud" font-size="7" text-anchor="middle">sandbox</text>
         </g>
 
-        <g id="node-brief" data-node-id="brief" data-node-label="Channel brief" tabindex="0" role="button" aria-label="Focus Channel brief, rewritten when quiet, 04 / Memory" aria-pressed="false" data-node-kind="database" data-node-sublabel="rewritten when quiet" data-node-context="04 / Memory">
-          <title>Channel brief · rewritten when quiet · 04 / Memory</title>
+        <g id="node-brief" data-node-id="brief" data-node-label="Topic brief" tabindex="0" role="button" aria-label="Focus Topic brief, rewritten when quiet, 04 / Memory" aria-pressed="false" data-node-kind="database" data-node-sublabel="rewritten when quiet" data-node-context="04 / Memory">
+          <title>Topic brief · rewritten when quiet · 04 / Memory</title>
           <rect x="689" y="128" width="112" height="58" rx="6" class="c-mask"/>
           <rect x="689" y="128" width="112" height="58" rx="6" class="c-database" data-animate="node" style="--step: 6; --flow-node-name: archify-relay-node-6;" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(695 134) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="745" y="161" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Channel brief</text>
+          <text data-node-label="" x="745" y="161" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Topic brief</text>
           <text x="745" y="174.4" class="t-muted" font-size="7" text-anchor="middle">rewritten when quiet</text>
         </g>
 
@@ -768,37 +768,37 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
           <rect x="177" y="188.5" width="61" height="16" rx="4" class="c-mask"/>
           <text x="207.5" y="199.5" class="t-edge-emphasis" font-size="8" text-anchor="middle">asks Golem</text>
         </g>
-        <g data-edge-from="person" data-edge-to="threads" data-edge-label="or a channel" data-edge-key="1" data-edge-id="ask-channel">
+        <g data-edge-from="person" data-edge-to="chats" data-edge-label="or a topic" data-edge-key="1" data-edge-id="ask-topic">
           <rect x="172.1" y="311.5" width="70.8" height="16" rx="4" class="c-mask"/>
-          <text x="207.5" y="322.5" class="t-edge-default" font-size="8" text-anchor="middle">or a channel</text>
+          <text x="207.5" y="322.5" class="t-edge-default" font-size="8" text-anchor="middle">or a topic</text>
         </g>
-        <g data-edge-from="golem" data-edge-to="threads" data-edge-label="send_to_thread" data-edge-key="2" data-edge-id="delegate">
+        <g data-edge-from="golem" data-edge-to="chats" data-edge-label="send_to_chat" data-edge-key="2" data-edge-id="delegate">
           <rect x="219.39999999999998" y="217.25" width="80.6" height="16" rx="4" class="c-mask"/>
-          <text x="259.7" y="228.25" class="t-edge-emphasis" font-size="8" text-anchor="middle">send_to_thread</text>
+          <text x="259.7" y="228.25" class="t-edge-emphasis" font-size="8" text-anchor="middle">send_to_chat</text>
         </g>
-        <g data-edge-from="threads" data-edge-to="golem" data-edge-label="answer relayed" data-edge-key="3" data-edge-id="relay-back">
+        <g data-edge-from="chats" data-edge-to="golem" data-edge-label="answer relayed" data-edge-key="3" data-edge-id="relay-back">
           <rect x="330" y="293.75" width="80.6" height="16" rx="4" class="c-mask"/>
           <text x="370.3" y="304.75" class="t-edge-dashed" font-size="8" text-anchor="middle">answer relayed</text>
         </g>
-        <g data-edge-from="threads" data-edge-to="tools" data-edge-label="codemode script" data-edge-key="4" data-edge-id="run-tools">
+        <g data-edge-from="chats" data-edge-to="tools" data-edge-label="codemode script" data-edge-key="4" data-edge-id="run-tools">
           <rect x="379.5" y="436" width="85.5" height="16" rx="4" class="c-mask"/>
           <text x="422.25" y="447" class="t-edge-default" font-size="8" text-anchor="middle">codemode script</text>
         </g>
-        <g data-edge-from="threads" data-edge-to="brief" data-edge-label="quiet 10 min" data-edge-key="5" data-edge-id="keep-brief">
+        <g data-edge-from="chats" data-edge-to="brief" data-edge-label="quiet 10 min" data-edge-key="5" data-edge-id="keep-brief">
           <rect x="468.85" y="335" width="70.8" height="16" rx="4" class="c-mask"/>
           <text x="504.25" y="346" class="t-edge-dashed" font-size="8" text-anchor="middle">quiet 10 min</text>
         </g>
-        <g data-edge-from="threads" data-edge-to="learned" data-edge-label="learning loop" data-edge-key="6" data-edge-id="learn">
+        <g data-edge-from="chats" data-edge-to="learned" data-edge-label="learning loop" data-edge-key="6" data-edge-id="learn">
           <rect x="466.4" y="365" width="75.7" height="16" rx="4" class="c-mask"/>
           <text x="504.25" y="376" class="t-edge-dashed" font-size="8" text-anchor="middle">learning loop</text>
         </g>
-        <g data-edge-from="threads" data-edge-to="index" data-edge-label="indexed" data-edge-key="7" data-edge-id="index-messages">
+        <g data-edge-from="chats" data-edge-to="index" data-edge-label="indexed" data-edge-key="7" data-edge-id="index-messages">
           <rect x="506.85" y="396" width="46.3" height="16" rx="4" class="c-mask"/>
           <text x="530" y="407" class="t-edge-dashed" font-size="8" text-anchor="middle">indexed</text>
         </g>
-        <g data-edge-from="brief" data-edge-to="sections" data-edge-label="channel brief" data-edge-key="8" data-edge-id="brief-in">
+        <g data-edge-from="brief" data-edge-to="sections" data-edge-label="topic brief" data-edge-key="8" data-edge-id="brief-in">
           <rect x="601.15" y="127" width="75.7" height="16" rx="4" class="c-mask"/>
-          <text x="639" y="138" class="t-edge-default" font-size="8" text-anchor="middle">channel brief</text>
+          <text x="639" y="138" class="t-edge-default" font-size="8" text-anchor="middle">topic brief</text>
         </g>
         <g data-edge-from="learned" data-edge-to="sections" data-edge-label="what it learned" data-edge-key="9" data-edge-id="learned-in">
           <rect x="645" y="207" width="85.5" height="16" rx="4" class="c-mask"/>
@@ -812,7 +812,7 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
           <rect x="390.5" y="127" width="61" height="16" rx="4" class="c-mask"/>
           <text x="421" y="138" class="t-edge-emphasis" font-size="8" text-anchor="middle">every turn</text>
         </g>
-        <g data-edge-from="sections" data-edge-to="threads" data-edge-label="every turn" data-edge-key="12" data-edge-id="prompt-threads">
+        <g data-edge-from="sections" data-edge-to="chats" data-edge-label="every turn" data-edge-key="12" data-edge-id="prompt-chats">
           <rect x="390.5" y="247" width="61" height="16" rx="4" class="c-mask"/>
           <text x="421" y="258" class="t-edge-emphasis" font-size="8" text-anchor="middle">every turn</text>
         </g>

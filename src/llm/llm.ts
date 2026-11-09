@@ -31,8 +31,8 @@ export interface LlmProvider {
   readonly name: string;
   readonly provider: Provider;
   /**
-   * The fast model that runs ChatGPT's web search and names new threads; without one, agents have no web_search tool
-   * and a thread keeps the first line of its message as its name.
+   * The fast model that runs ChatGPT's web search and names new chats; without one, agents have no web_search tool
+   * and a chat keeps the first line of its message as its name.
    */
   readonly fastModel?: string;
 }
@@ -60,11 +60,11 @@ export interface LlmStatus {
 }
 
 /**
- * What a model call was for: a person's thread, their orchestrator, a routine run, a reminder, what Golem read in the
+ * What a model call was for: a person's chat, their orchestrator, a routine run, a reminder, what Golem read in the
  * accounts a person watches, or work for nobody.
  */
 export type UsageSource =
-  | "thread"
+  | "chat"
   | "orchestrator"
   | "routine"
   | "reminder"
@@ -77,7 +77,7 @@ export interface Spend {
   /** The person whose turn or memory it was; null for work that acts for no person, such as a brief. */
   readonly userId: string | null;
   readonly source: UsageSource;
-  readonly threadId: string | null;
+  readonly chatId: string | null;
 }
 
 /** The cumulative usage of one conversation by model or tool, as Pi Durable keeps it in `pi.usage`. */
@@ -102,7 +102,7 @@ export interface UsageReport {
   readonly total: UsageTotals;
   readonly sources: readonly (UsageTotals & { readonly source: UsageSource })[];
   readonly models: readonly (UsageTotals & { readonly model: string })[];
-  readonly threads: readonly (UsageTotals & { readonly threadId: string })[];
+  readonly chats: readonly (UsageTotals & { readonly chatId: string })[];
   /** Each person's usage, and `""` for work for nobody; only for the server's owner, else null. */
   readonly people:
     | readonly (UsageTotals & { readonly userId: string })[]
@@ -112,8 +112,8 @@ export interface UsageReport {
 const DEFAULT_EFFORT: ModelThinkingLevel = "medium";
 /** The most days a usage report covers. */
 const MAX_USAGE_DAYS = 366;
-/** The threads that cost most, which a usage report lists. */
-const TOP_THREADS = 10;
+/** The chats that cost most, which a usage report lists. */
+const TOP_CHATS = 10;
 const TOTALS =
   "sum(input) AS input, sum(output) AS output, sum(cache_read) AS cacheRead, sum(cache_write) AS cacheWrite, sum(cost) AS cost";
 
@@ -436,10 +436,10 @@ export class Llm {
         "model",
         "ORDER BY cost DESC, input + output DESC"
       ),
-      threads: query<{ threadId: string }>(
-        "thread_id AS threadId",
-        "thread_id",
-        `HAVING thread_id != '' ORDER BY cost DESC, input + output DESC LIMIT ${TOP_THREADS}`
+      chats: query<{ chatId: string }>(
+        "chat_id AS chatId",
+        "chat_id",
+        `HAVING chat_id != '' ORDER BY cost DESC, input + output DESC LIMIT ${TOP_CHATS}`
       ),
       people: owner
         ? query<{ userId: string }>(
@@ -454,9 +454,9 @@ export class Llm {
   private record(spend: Spend, model: string, usage: Usage): void {
     this.database
       .query(
-        `INSERT INTO llm_usage (workspace_id, day, user_id, source, thread_id, model, input, output, cache_read, cache_write, cost)
+        `INSERT INTO llm_usage (workspace_id, day, user_id, source, chat_id, model, input, output, cache_read, cache_write, cost)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (workspace_id, day, user_id, source, thread_id, model) DO UPDATE SET
+        ON CONFLICT (workspace_id, day, user_id, source, chat_id, model) DO UPDATE SET
           input = input + excluded.input, output = output + excluded.output, cache_read = cache_read + excluded.cache_read,
           cache_write = cache_write + excluded.cache_write, cost = cost + excluded.cost`
       )
@@ -465,7 +465,7 @@ export class Llm {
         new Date().toISOString().slice(0, 10),
         spend.userId ?? "",
         spend.source,
-        spend.threadId ?? "",
+        spend.chatId ?? "",
         model,
         usage.input,
         usage.output,

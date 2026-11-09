@@ -11,8 +11,8 @@ data class Feedback(
     val tool: String? = null,
     val summary: String,
     val detail: String = "",
-    /** Null when the owner does not see the thread, such as another person's private channel. */
-    val threadId: String? = null,
+    /** Null when the owner does not see the chat, such as another person's private topic. */
+    val chatId: String? = null,
     val createdAt: Double,
 )
 

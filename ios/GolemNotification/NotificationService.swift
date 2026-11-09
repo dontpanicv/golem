@@ -1,14 +1,14 @@
 import Intents
 import UserNotifications
 
-/// Shows a push from a thread as a message from Golem in a conversation named after the thread, so Siri reads it aloud
-/// on AirPods and in CarPlay, and sends a spoken reply to the thread (`SiriReply`). Other pushes stay as they are.
+/// Shows a push from a chat as a message from Golem in a conversation named after the chat, so Siri reads it aloud
+/// on AirPods and in CarPlay, and sends a spoken reply to the chat (`SiriReply`). Other pushes stay as they are.
 nonisolated final class NotificationService: UNNotificationServiceExtension {
     override func didReceive(
         _ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
         let content = request.content
-        guard content.categoryIdentifier == "message", let threadID = content.userInfo["threadId"] as? String else {
+        guard content.categoryIdentifier == "message", let chatID = content.userInfo["chatId"] as? String else {
             return contentHandler(content)
         }
         let golem = INPerson(
@@ -17,7 +17,7 @@ nonisolated final class NotificationService: UNNotificationServiceExtension {
         )
         let intent = INSendMessageIntent(
             recipients: nil, outgoingMessageType: .outgoingMessageText, content: content.body,
-            speakableGroupName: INSpeakableString(spokenPhrase: content.title), conversationIdentifier: threadID,
+            speakableGroupName: INSpeakableString(spokenPhrase: content.title), conversationIdentifier: chatID,
             serviceName: nil, sender: golem, attachments: nil
         )
         let interaction = INInteraction(intent: intent, response: nil)

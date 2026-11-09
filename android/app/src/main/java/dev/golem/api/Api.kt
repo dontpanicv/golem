@@ -114,79 +114,79 @@ class Api {
         send("DELETE", "/api/v1/me/picture")
     }
 
-    suspend fun orchestrator(workspaceId: String): ThreadSummary = get("/api/v1/workspaces/$workspaceId/orchestrator")
+    suspend fun orchestrator(workspaceId: String): ChatSummary = get("/api/v1/workspaces/$workspaceId/orchestrator")
 
-    suspend fun createChannel(workspaceId: String, name: String, private: Boolean): Channel =
-        post("/api/v1/workspaces/$workspaceId/channels", body("name" to name, "private" to private))
+    suspend fun createTopic(workspaceId: String, name: String, private: Boolean): Topic =
+        post("/api/v1/workspaces/$workspaceId/topics", body("name" to name, "private" to private))
 
-    suspend fun renameChannel(workspaceId: String, channelId: String, name: String): Channel =
-        decode(send("PUT", "/api/v1/workspaces/$workspaceId/channels/$channelId", body("name" to name)))
+    suspend fun renameTopic(workspaceId: String, topicId: String, name: String): Topic =
+        decode(send("PUT", "/api/v1/workspaces/$workspaceId/topics/$topicId", body("name" to name)))
 
-    suspend fun mergeChannel(workspaceId: String, channelId: String, into: String) {
-        send("POST", "/api/v1/workspaces/$workspaceId/channels/$channelId/merge", body("into" to into))
+    suspend fun mergeTopic(workspaceId: String, topicId: String, into: String) {
+        send("POST", "/api/v1/workspaces/$workspaceId/topics/$topicId/merge", body("into" to into))
     }
 
-    suspend fun brief(workspaceId: String, channelId: String): Brief? =
-        get<ChannelBrief>("/api/v1/workspaces/$workspaceId/channels/$channelId/brief").brief
+    suspend fun brief(workspaceId: String, topicId: String): Brief? =
+        get<TopicBrief>("/api/v1/workspaces/$workspaceId/topics/$topicId/brief").brief
 
-    // Threads
+    // Chats
 
-    suspend fun createThread(
-        workspaceId: String, channelId: String, text: String, files: List<File>, progress: UploadShare? = null,
-    ): ThreadSummary = decode(
+    suspend fun createChat(
+        workspaceId: String, topicId: String, text: String, files: List<File>, progress: UploadShare? = null,
+    ): ChatSummary = decode(
         sendForm(
-            "/api/v1/workspaces/$workspaceId/threads", mapOf("channelId" to channelId, "text" to text), files, progress
+            "/api/v1/workspaces/$workspaceId/chats", mapOf("topicId" to topicId, "text" to text), files, progress
         )
     )
 
-    suspend fun thread(id: String): ThreadState = get("/api/v1/threads/$id")
+    suspend fun chat(id: String): ChatState = get("/api/v1/chats/$id")
 
     /** `voice`: spoken in a conversation, so the answer is written to be read aloud. */
     suspend fun sendMessage(
-        threadId: String, text: String, files: List<File>, voice: Boolean = false, progress: UploadShare? = null,
+        chatId: String, text: String, files: List<File>, voice: Boolean = false, progress: UploadShare? = null,
     ) {
         val fields = if (voice) mapOf("text" to text, "voice" to "true") else mapOf("text" to text)
-        sendForm("/api/v1/threads/$threadId/messages", fields, files, progress)
+        sendForm("/api/v1/chats/$chatId/messages", fields, files, progress)
     }
 
-    suspend fun setThreadSettled(workspaceId: String, threadId: String, settled: Boolean) {
-        send("POST", "/api/v1/workspaces/$workspaceId/threads/$threadId/settled", body("settled" to settled))
+    suspend fun setChatSettled(workspaceId: String, chatId: String, settled: Boolean) {
+        send("POST", "/api/v1/workspaces/$workspaceId/chats/$chatId/settled", body("settled" to settled))
     }
 
-    suspend fun moveThread(workspaceId: String, threadId: String, channelId: String) {
-        send("POST", "/api/v1/workspaces/$workspaceId/threads/$threadId/channel", body("channelId" to channelId))
+    suspend fun moveChat(workspaceId: String, chatId: String, topicId: String) {
+        send("POST", "/api/v1/workspaces/$workspaceId/chats/$chatId/topic", body("topicId" to topicId))
     }
 
     /** Answers an approval; `scope` "turn" also allows the rest of the turn's changes on that machine. */
-    suspend fun answerApproval(threadId: String, approvalId: String, allow: Boolean, scope: String = "once") {
-        send("POST", "/api/v1/threads/$threadId/approvals/$approvalId", body("allow" to allow, "scope" to scope))
+    suspend fun answerApproval(chatId: String, approvalId: String, allow: Boolean, scope: String = "once") {
+        send("POST", "/api/v1/chats/$chatId/approvals/$approvalId", body("allow" to allow, "scope" to scope))
     }
 
-    suspend fun stopThread(id: String) {
-        send("POST", "/api/v1/threads/$id/stop")
+    suspend fun stopChat(id: String) {
+        send("POST", "/api/v1/chats/$id/stop")
     }
 
-    /** Reads the thread's server-sent events until the stream ends, the coroutine is cancelled, or an error occurs. */
-    suspend fun threadEvents(id: String, onState: (ThreadState) -> Unit) =
-        events("/api/v1/threads/$id/events", "thread") { onState(json.decodeFromString(it)) }
+    /** Reads the chat's server-sent events until the stream ends, the coroutine is cancelled, or an error occurs. */
+    suspend fun chatEvents(id: String, onState: (ChatState) -> Unit) =
+        events("/api/v1/chats/$id/events", "chat") { onState(json.decodeFromString(it)) }
 
-    /** Reads which threads of a workspace work, at once and after every change. */
-    suspend fun workingEvents(workspaceId: String, onThreads: (List<String>) -> Unit) =
+    /** Reads which chats of a workspace work, at once and after every change. */
+    suspend fun workingEvents(workspaceId: String, onChats: (List<String>) -> Unit) =
         events("/api/v1/workspaces/$workspaceId/working", "working") {
-            onThreads(json.decodeFromString<WorkingThreads>(it).threadIds)
+            onChats(json.decodeFromString<WorkingChats>(it).chatIds)
         }
 
     // Files
 
-    private fun filesPath(workspaceId: String, channelId: String?) =
-        "/api/v1/workspaces/$workspaceId${channelId?.let { "/channels/$it" } ?: ""}/files"
+    private fun filesPath(workspaceId: String, topicId: String?) =
+        "/api/v1/workspaces/$workspaceId${topicId?.let { "/topics/$it" } ?: ""}/files"
 
-    /** The files of a channel, or the workspace's own for a null `channelId`. */
-    suspend fun files(workspaceId: String, channelId: String?): List<SavedFile> =
-        get<SavedFiles>(filesPath(workspaceId, channelId)).files
+    /** The files of a topic, or the workspace's own for a null `topicId`. */
+    suspend fun files(workspaceId: String, topicId: String?): List<SavedFile> =
+        get<SavedFiles>(filesPath(workspaceId, topicId)).files
 
-    suspend fun uploadFiles(workspaceId: String, channelId: String?, files: List<File>): List<SavedFile> =
-        decode<SavedFiles>(sendForm(filesPath(workspaceId, channelId), emptyMap(), files)).files
+    suspend fun uploadFiles(workspaceId: String, topicId: String?, files: List<File>): List<SavedFile> =
+        decode<SavedFiles>(sendForm(filesPath(workspaceId, topicId), emptyMap(), files)).files
 
     /** Returns the files left where the file was. */
     suspend fun deleteFile(workspaceId: String, fileId: String): List<SavedFile> =
@@ -217,10 +217,10 @@ class Api {
 
     // Artifacts
 
-    /** The artifacts of a channel, or the workspace's own for a null `channelId`. */
-    suspend fun artifacts(workspaceId: String, channelId: String?): List<Artifact> =
+    /** The artifacts of a topic, or the workspace's own for a null `topicId`. */
+    suspend fun artifacts(workspaceId: String, topicId: String?): List<Artifact> =
         get<ArtifactList>(
-            "/api/v1/workspaces/$workspaceId${channelId?.let { "/channels/$it" } ?: ""}/artifacts"
+            "/api/v1/workspaces/$workspaceId${topicId?.let { "/topics/$it" } ?: ""}/artifacts"
         ).artifacts
 
     suspend fun artifact(id: String): ArtifactDetail = get("/api/v1/artifacts/$id")

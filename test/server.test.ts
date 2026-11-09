@@ -19,7 +19,7 @@ afterAll(() => golem.close());
 let alice: string;
 let bob: string;
 let workspaceId: string;
-let threadId: string;
+let chatId: string;
 
 test("only allowed emails sign in, and only with Google", async () => {
   alice = await signIn("Alice", "alice@example.com");
@@ -162,7 +162,7 @@ test("the iOS app gets a token only for a Google sign-in it started, with its ve
   ]);
 });
 
-test("the first person to sign in starts the workspace, with a general channel", async () => {
+test("the first person to sign in starts the workspace, with a general topic", async () => {
   const [workspace] = (
     (await (await call("/api/v1/me", { token: alice })).json()) as any
   ).workspaces;
@@ -170,34 +170,32 @@ test("the first person to sign in starts the workspace, with a general channel",
   const detail = (await (
     await call(`/api/v1/workspaces/${workspaceId}`, { token: alice })
   ).json()) as any;
-  expect(
-    detail.channels.map((channel: { name: string }) => channel.name)
-  ).toEqual(["general"]);
-  const duplicate = await call(`/api/v1/workspaces/${workspaceId}/channels`, {
+  expect(detail.topics.map((topic: { name: string }) => topic.name)).toEqual([
+    "general",
+  ]);
+  const duplicate = await call(`/api/v1/workspaces/${workspaceId}/topics`, {
     token: alice,
     body: { name: "General" },
   });
   expect(duplicate.status).toBe(409);
 });
 
-test("a thread is a Pi Durable session that knows who wrote each message", async () => {
+test("a chat is a Pi Durable session that knows who wrote each message", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Saturday works.")]);
-  const { channels } = (await (
+  const { topics } = (await (
     await call(`/api/v1/workspaces/${workspaceId}`, { token: alice })
   ).json()) as any;
-  const thread = (await (
-    await call(`/api/v1/workspaces/${workspaceId}/threads`, {
+  const chat = (await (
+    await call(`/api/v1/workspaces/${workspaceId}/chats`, {
       token: alice,
-      body: { channelId: channels[0].id, text: "Plan the cabin trip" },
+      body: { topicId: topics[0].id, text: "Plan the cabin trip" },
     })
   ).json()) as any;
-  threadId = thread.id;
-  expect(thread.title).toBe("Plan the cabin trip");
+  chatId = chat.id;
+  expect(chat.title).toBe("Plan the cabin trip");
   const state = await until(
     async () =>
-      (
-        await call(`/api/v1/threads/${threadId}`, { token: alice })
-      ).json() as any,
+      (await call(`/api/v1/chats/${chatId}`, { token: alice })).json() as any,
     (current) => current.messages.length === 2 && !current.running
   );
   expect(
@@ -215,12 +213,12 @@ test("workspaces are isolated until someone adds you", async () => {
   expect(
     (await call(`/api/v1/workspaces/${workspaceId}`, { token: bob })).status
   ).toBe(404);
-  expect(
-    (await call(`/api/v1/threads/${threadId}`, { token: bob })).status
-  ).toBe(404);
+  expect((await call(`/api/v1/chats/${chatId}`, { token: bob })).status).toBe(
+    404
+  );
   expect(
     (
-      await call(`/api/v1/threads/${threadId}/messages`, {
+      await call(`/api/v1/chats/${chatId}/messages`, {
         token: bob,
         body: { text: "hi" },
       })
@@ -236,9 +234,9 @@ test("workspaces are isolated until someone adds you", async () => {
     body: { email: "BOB@example.com" },
   });
   expect(added.status).toBe(200);
-  expect(
-    (await call(`/api/v1/threads/${threadId}`, { token: bob })).status
-  ).toBe(200);
+  expect((await call(`/api/v1/chats/${chatId}`, { token: bob })).status).toBe(
+    200
+  );
 });
 
 test("a credential is private until its owner shares it, only its owner deletes it, and secrets never leave the server", async () => {
@@ -370,7 +368,7 @@ test("the web app signs in with Google and keeps cross-site posts out", async ()
 
   const cookie = `better-auth.session_token=${await signedCookie(alice)}`;
   const crossSite = await handler(
-    new Request(`http://golem.test/api/v1/workspaces/${workspaceId}/channels`, {
+    new Request(`http://golem.test/api/v1/workspaces/${workspaceId}/topics`, {
       method: "POST",
       headers: {
         cookie,
@@ -382,6 +380,6 @@ test("the web app signs in with Google and keeps cross-site posts out", async ()
   );
   expect(crossSite.status).toBe(403);
   expect(
-    (await call(`/api/v1/threads/${threadId}`, { headers: { cookie } })).status
+    (await call(`/api/v1/chats/${chatId}`, { headers: { cookie } })).status
   ).toBe(200);
 });

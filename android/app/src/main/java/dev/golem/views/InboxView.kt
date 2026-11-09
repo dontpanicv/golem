@@ -49,7 +49,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The open workspace's notifications, newest first, as Slack's Activity: All or Unread, each with Golem's avatar,
- * where it happened, and a dot while unread. A tap reads one and opens its thread or channel.
+ * where it happened, and a dot while unread. A tap reads one and opens its chat or topic.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,12 +103,12 @@ private fun NotificationRow(notification: InboxNotification, modifier: Modifier 
     val session = LocalSession.current
     val open = LocalOpen.current
     val unread = notification.readAt == null
-    val channel = session.channels.firstOrNull { it.id == notification.channelId }?.name
+    val topic = session.topics.firstOrNull { it.id == notification.topicId }?.name
     Row(
         modifier.fillMaxWidth()
             .pressable({
                 if (unread) session.launch { session.readNotifications(notification.id) }
-                open(notification.threadId?.let { Destination.Thread(it) } ?: Destination.Channel(notification.channelId))
+                open(notification.chatId?.let { Destination.Chat(it) } ?: Destination.Topic(notification.topicId))
             })
             .padding(horizontal = Tokens.Mobile.Size.margin, vertical = Tokens.Space.lg),
         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.lg),
@@ -124,7 +124,7 @@ private fun NotificationRow(notification: InboxNotification, modifier: Modifier 
                 Text(shortDay(notification.createdAt), style = golemText(Tokens.Mobile.FontSize.caption),
                     color = Golem.mobile.textQuaternary, modifier = Modifier.padding(start = Tokens.Space.md))
             }
-            channel?.let {
+            topic?.let {
                 Text("in # $it", style = golemText(Tokens.Mobile.FontSize.caption, Tokens.FontWeight.book),
                     color = Golem.mobile.textTertiary)
             }

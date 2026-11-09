@@ -11,7 +11,7 @@ import { readNotifications } from "./data.ts";
 
 const route = getRouteApi("/signed-in/w/$workspaceId/inbox");
 
-/** The workspace's notifications, newest first, as Linear's Inbox: a click reads one and opens its thread or channel. */
+/** The workspace's notifications, newest first, as Linear's Inbox: a click reads one and opens its chat or topic. */
 export function InboxPage() {
   const { workspaceId } = route.useParams();
   const { data: inbox } = useQuery(inboxQuery(workspaceId));
@@ -63,7 +63,7 @@ function InboxRow({
   };
   const body = (
     <>
-      <Icon name={notification.threadId ? "compose" : "hash"} />
+      <Icon name={notification.chatId ? "compose" : "hash"} />
       <span className="search-text">
         <strong>{notification.title}</strong>
         <span>{notification.text}</span>
@@ -76,12 +76,12 @@ function InboxRow({
       )}
     </>
   );
-  return notification.threadId ? (
+  return notification.chatId ? (
     <Link
       className="search-row inbox-row list-row"
       onClick={onClick}
-      params={{ workspaceId, threadId: notification.threadId }}
-      to="/w/$workspaceId/t/$threadId"
+      params={{ workspaceId, chatId: notification.chatId }}
+      to="/w/$workspaceId/chat/$chatId"
     >
       {body}
     </Link>
@@ -89,8 +89,8 @@ function InboxRow({
     <Link
       className="search-row inbox-row list-row"
       onClick={onClick}
-      params={{ workspaceId, channelId: notification.channelId }}
-      to="/w/$workspaceId/c/$channelId"
+      params={{ workspaceId, topicId: notification.topicId }}
+      to="/w/$workspaceId/topic/$topicId"
     >
       {body}
     </Link>

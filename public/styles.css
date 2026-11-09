@@ -952,7 +952,7 @@ span.avatar.large::after {
   display: contents;
 }
 
-.sidebar-channels {
+.sidebar-topics {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -1062,28 +1062,28 @@ span.avatar.large::after {
   outline-offset: -1px;
 }
 
-.nav-threads {
+.nav-chats {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-.nav-threads:empty {
+.nav-chats:empty {
   display: none;
 }
-.sidebar-channel {
+.sidebar-topic {
   position: relative;
 }
-.sidebar-channel .nav-item {
+.sidebar-topic .nav-item {
   padding-right: 30px;
 }
-.sidebar-channel .fold-action {
+.sidebar-topic .fold-action {
   position: absolute;
   top: 2px;
   right: 2px;
   opacity: 0;
 }
-.sidebar-channel:hover .fold-action,
-.sidebar-channel:focus-within .fold-action,
+.sidebar-topic:hover .fold-action,
+.sidebar-topic:focus-within .fold-action,
 .fold-action:has([aria-expanded="false"]) {
   opacity: 1;
 }
@@ -1095,21 +1095,21 @@ span.avatar.large::after {
 .fold-action [aria-expanded="true"] {
   rotate: 90deg;
 }
-.sidebar-thread {
+.sidebar-chat {
   position: relative;
   margin-left: 19px;
 }
-.sidebar-thread .nav-item {
+.sidebar-chat .nav-item {
   padding: 0 30px 0 6px;
 }
-.sidebar-thread .settle-action {
+.sidebar-chat .settle-action {
   position: absolute;
   top: 2px;
   right: 2px;
   opacity: 0;
 }
-.sidebar-thread:hover .settle-action,
-.sidebar-thread:focus-within .settle-action {
+.sidebar-chat:hover .settle-action,
+.sidebar-chat:focus-within .settle-action {
   opacity: 1;
 }
 
@@ -1136,10 +1136,10 @@ span.avatar.large::after {
   overflow-y: auto;
   scrollbar-width: none;
 }
-.settled-list .sidebar-thread {
+.settled-list .sidebar-chat {
   margin-left: 0;
 }
-.settled-list .sidebar-thread .nav-item {
+.settled-list .sidebar-chat .nav-item {
   padding-left: var(--space-md);
 }
 .sidebar-footer {
@@ -1165,8 +1165,8 @@ span.avatar.large::after {
 
 @media (hover: none) {
   .nav-section .button,
-  .sidebar-channel .fold-action,
-  .sidebar-thread .settle-action {
+  .sidebar-topic .fold-action,
+  .sidebar-chat .settle-action {
     opacity: 1;
   }
 }
@@ -1193,21 +1193,21 @@ span.avatar.large::after {
     var(--dither-fade-bottom) bottom / 8px 56px repeat-x;
 }
 
-/* A channel's threads take what they need, up to half; its details fill the rest. */
-.channel {
+/* A topic's chats take what they need, up to half; its details fill the rest. */
+.topic {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
 }
-.channel-threads {
+.topic-chats {
   flex: none;
   max-height: 50%;
   padding: var(--space-xl) var(--space-xxl);
   overflow-y: auto;
   border-bottom: 0.5px solid var(--color-border);
 }
-.channel-details {
+.topic-details {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -1259,7 +1259,7 @@ span.avatar.large::after {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.thread-link {
+.chat-link {
   color: var(--color-accent);
   text-decoration: none;
   text-underline-offset: 2px;
@@ -1308,7 +1308,7 @@ span.avatar.large::after {
 .guide li + li {
   margin-top: var(--space-md);
 }
-.prose a:not(.thread-link) {
+.prose a:not(.chat-link) {
   color: var(--color-accent);
   text-underline-offset: 2px;
 }
@@ -1634,7 +1634,7 @@ span.avatar.large::after {
     color: var(--color-text);
     transition-duration: 0s;
   }
-  .thread-link:hover {
+  .chat-link:hover {
     color: var(--color-accent-hover);
     text-decoration: underline;
     transition-duration: 0s;
@@ -1915,7 +1915,7 @@ span.avatar.large::after {
   flex: 1;
 }
 
-.settled-threads summary {
+.settled-chats summary {
   display: flex;
   align-items: center;
   height: var(--size-control);
@@ -1926,18 +1926,18 @@ span.avatar.large::after {
   list-style: none;
   user-select: none;
 }
-.settled-threads summary::-webkit-details-marker {
+.settled-chats summary::-webkit-details-marker {
   display: none;
 }
 
-.thread-files {
+.chat-files {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
   min-height: 0;
   padding: var(--space-md);
 }
-.thread-files > form {
+.chat-files > form {
   padding: var(--space-xs) var(--space-xs) 0;
 }
 

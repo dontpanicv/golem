@@ -130,7 +130,7 @@ export function apnsOutcome(
 
 /**
  * The push: the alert, the app icon's badge, where a tap goes, and its buttons (`Push.swift`). An approval has Deny
- * and Allow; a thread's message has Reply, Snooze, and Done, and the app's notification service shows it as a message
+ * and Allow; a chat's message has Reply, Snooze, and Done, and the app's notification service shows it as a message
  * from Golem, so Siri reads it aloud and takes a spoken reply.
  */
 export function apnsPayload({
@@ -140,21 +140,21 @@ export function apnsPayload({
   approvalId,
   timeSensitive,
 }: PushMessage) {
-  const category = approvalId ? "approval" : notification.threadId && "message";
+  const category = approvalId ? "approval" : notification.chatId && "message";
   return {
     aps: {
       alert: { title: notification.title, body },
       badge,
       sound: "default",
-      "thread-id": notification.threadId ?? notification.channelId,
+      "thread-id": notification.chatId ?? notification.topicId,
       ...(category ? { category } : {}),
       ...(category === "message" ? { "mutable-content": 1 } : {}),
       ...(timeSensitive ? { "interruption-level": "time-sensitive" } : {}),
     },
     notificationId: notification.id,
     workspaceId: notification.workspaceId,
-    channelId: notification.channelId,
-    threadId: notification.threadId,
+    topicId: notification.topicId,
+    chatId: notification.chatId,
     ...(approvalId ? { approvalId } : {}),
   };
 }

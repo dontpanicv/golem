@@ -44,7 +44,7 @@ class SettingsLogicTest {
     fun usageAddsItsTokensAndCacheRate() {
         val usage = json.decodeFromString<Usage>(
             """{"days":[],"total":{"input":100,"output":50,"cacheRead":300,"cacheWrite":50,"cost":1.5},
-            "sources":[],"models":[],"threads":[],"people":null}"""
+            "sources":[],"models":[],"chats":[],"people":null}"""
         )
         assertEquals(500.0, usage.total.tokens, 0.0)
         assertEquals(0.75, usage.total.cacheRate, 1e-12)

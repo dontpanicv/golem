@@ -15,7 +15,7 @@ import {
   useState,
 } from "react";
 import { request } from "../app/api.ts";
-import type { Channel, ThreadSummary } from "../app/types.ts";
+import type { ChatSummary, Topic } from "../app/types.ts";
 import {
   Button,
   Dialog,
@@ -27,8 +27,8 @@ import {
 import { Icon, type IconName } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
 import {
-  channelsOf,
-  foldedChannels,
+  chatsOf,
+  foldedTopics,
   inboxQuery,
   meQuery,
   orchestratorQuery,
@@ -36,7 +36,7 @@ import {
   refreshWorkspace,
   rememberFolded,
   setSettled,
-  threadsOf,
+  topicsOf,
   useMe,
 } from "./data.ts";
 
@@ -69,7 +69,7 @@ export function WorkspaceLayout() {
 
 const SidebarContext = createContext<() => void>(() => undefined);
 
-/** The app: the workspace and its channels with their threads on the left, the page in the inset panel. */
+/** The app: the workspace and its topics with their chats on the left, the page in the inset panel. */
 export function Shell({
   workspaceId,
   children,
@@ -159,8 +159,8 @@ function SidebarButton() {
 }
 
 /**
- * The threads whose agent works, from the workspace's working stream. Agents start threads and channels as they work,
- * so the channels and threads load again whenever work starts or ends.
+ * The chats whose agent works, from the workspace's working stream. Agents start chats and topics as they work,
+ * so the topics and chats load again whenever work starts or ends.
  */
 function useWorking(workspaceId: string | undefined): ReadonlySet<string> {
   const [working, setWorking] = useState<ReadonlySet<string>>(new Set());
@@ -170,8 +170,8 @@ function useWorking(workspaceId: string | undefined): ReadonlySet<string> {
     }
     const source = new EventSource(`/api/v1/workspaces/${workspaceId}/working`);
     source.addEventListener("working", (event) => {
-      const { threadIds } = JSON.parse(event.data) as { threadIds: string[] };
-      setWorking(new Set(threadIds));
+      const { chatIds } = JSON.parse(event.data) as { chatIds: string[] };
+      setWorking(new Set(chatIds));
       refreshWorkspace(workspaceId);
       // A run that ends notifies a moment later.
       setTimeout(() => refreshInbox(workspaceId), 1000);
@@ -189,16 +189,16 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
   const workspace = me.workspaces.find(
     (candidate) => candidate.id === workspaceId
   );
-  const [dialog, setDialog] = useState<"channel" | null>(null);
+  const [dialog, setDialog] = useState<"topic" | null>(null);
   return (
     <div className="sidebar-content">
       {workspace ? (
         <WorkspaceNav
-          onNewChannel={() => setDialog("channel")}
+          onNewTopic={() => setDialog("topic")}
           workspaceId={workspace.id}
         />
       ) : (
-        <div className="sidebar-channels" />
+        <div className="sidebar-topics" />
       )}
       <nav className="nav sidebar-footer">
         {workspace ? (
@@ -216,9 +216,9 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
         </Link>
       </nav>
       {workspace ? (
-        <NewChannelDialog
+        <NewTopicDialog
           onClose={() => setDialog(null)}
-          open={dialog === "channel"}
+          open={dialog === "topic"}
           workspaceId={workspace.id}
         />
       ) : null}
@@ -226,77 +226,77 @@ function Sidebar({ workspaceId }: { workspaceId: string | undefined }) {
   );
 }
 
-/** The workspace's orchestrator, inbox, upcoming, and search, its channels with their active threads, which fold, and the settled threads. */
+/** The workspace's orchestrator, inbox, upcoming, and search, its topics with their active chats, which fold, and the settled chats. */
 function WorkspaceNav({
   workspaceId,
-  onNewChannel,
+  onNewTopic,
 }: {
   workspaceId: string;
-  onNewChannel: () => void;
+  onNewTopic: () => void;
 }) {
   const { owner } = useMe();
   const orchestrator = useQuery(orchestratorQuery(workspaceId)).data;
   const unread = useQuery(inboxQuery(workspaceId)).data?.unread;
   const { pathname } = useLocation();
-  // An open thread reads its notifications.
+  // An open chat reads its notifications.
   // biome-ignore lint/correctness/useExhaustiveDependencies: it runs when the page changes
   useEffect(() => {
     refreshInbox(workspaceId);
   }, [workspaceId, pathname]);
-  const { data: channels = [] } = useLiveQuery({
+  const { data: topics = [] } = useLiveQuery({
     query: (q) =>
       q
-        .from({ channel: channelsOf(workspaceId) })
-        .orderBy(({ channel }) => channel.order),
+        .from({ topic: topicsOf(workspaceId) })
+        .orderBy(({ topic }) => topic.order),
   });
   const { data: active = [] } = useLiveQuery({
     query: (q) =>
       q
-        .from({ thread: threadsOf(workspaceId) })
-        .where(({ thread }) => isNull(thread.settledAt))
-        .orderBy(({ thread }) => thread.updatedAt, "desc"),
+        .from({ chat: chatsOf(workspaceId) })
+        .where(({ chat }) => isNull(chat.settledAt))
+        .orderBy(({ chat }) => chat.updatedAt, "desc"),
   });
   const { data: settled = [] } = useLiveQuery({
     query: (q) =>
       q
-        .from({ thread: threadsOf(workspaceId) })
-        .where(({ thread }) => not(isNull(thread.settledAt)))
-        .orderBy(({ thread }) => thread.settledAt, "desc"),
+        .from({ chat: chatsOf(workspaceId) })
+        .where(({ chat }) => not(isNull(chat.settledAt)))
+        .orderBy(({ chat }) => chat.settledAt, "desc"),
   });
-  const [folded, setFolded] = useState(foldedChannels);
-  const toggleFolded = (channelId: string) => {
-    const next = folded.includes(channelId)
-      ? folded.filter((id) => id !== channelId)
-      : [...folded, channelId];
+  const [folded, setFolded] = useState(foldedTopics);
+  const toggleFolded = (topicId: string) => {
+    const next = folded.includes(topicId)
+      ? folded.filter((id) => id !== topicId)
+      : [...folded, topicId];
     setFolded(next);
     rememberFolded(next);
   };
-  const channelItem = (channel: Omit<Channel, "threads">) => {
-    const threads = active.filter((thread) => thread.channelId === channel.id);
-    const open = !folded.includes(channel.id);
+  const topicItem = (topic: Omit<Topic, "chats">) => {
+    const chats = active.filter((chat) => chat.topicId === topic.id);
+    const open = !folded.includes(topic.id);
     return (
-      <div key={channel.id}>
-        <div className="sidebar-channel">
+      <div key={topic.id}>
+        <div className="sidebar-topic">
           <Link
             activeOptions={{ exact: true, includeSearch: false }}
             className="nav-item"
-            params={{ workspaceId, channelId: channel.id }}
-            to="/w/$workspaceId/c/$channelId"
+            params={{ workspaceId, topicId: topic.id }}
+            to="/w/$workspaceId/topic/$topicId"
           >
             <NavContent
-              emoji={channel.icon}
+              emoji={topic.icon}
               icon="hash"
-              label={channel.name}
-              locked={channel.ownerId !== null}
+              label={topic.name}
+              locked={topic.ownerId !== null}
             />
           </Link>
-          {threads.length > 0 ? (
+          {chats.length > 0 ? (
             <span className="fold-action">
               <Button
                 aria-expanded={open}
                 icon="disclosure"
-                label={open ? "Fold threads" : "Unfold threads"}
-                onClick={() => toggleFolded(channel.id)}
+                label={open ? "Fold chats" : "Unfold chats"}
+                onClick={() => toggleFolded(topic.id)}
                 size="tiny"
                 variant="ghost"
               />
@@ -304,13 +304,9 @@ function WorkspaceNav({
           ) : null}
         </div>
         {open ? (
-          <div className="nav-threads">
-            {threads.map((thread) => (
-              <ThreadNav
-                key={thread.id}
-                thread={thread}
-                workspaceId={workspaceId}
-              />
+          <div className="nav-chats">
+            {chats.map((chat) => (
+              <ChatNav chat={chat} key={chat.id} workspaceId={workspaceId} />
             ))}
           </div>
         ) : null}
@@ -319,19 +315,15 @@ function WorkspaceNav({
   };
   return (
     <>
-      <div className="sidebar-channels">
+      <div className="sidebar-topics">
         <nav className="nav">
           {orchestrator ? (
             <Link
               className="nav-item"
-              params={{ workspaceId, threadId: orchestrator.id }}
-              to="/w/$workspaceId/t/$threadId"
+              params={{ workspaceId, chatId: orchestrator.id }}
+              to="/w/$workspaceId/chat/$chatId"
             >
-              <NavContent
-                icon="golem"
-                label="Golem"
-                threadId={orchestrator.id}
-              />
+              <NavContent chatId={orchestrator.id} icon="golem" label="Golem" />
             </Link>
           ) : null}
           <Link
@@ -363,27 +355,23 @@ function WorkspaceNav({
             <NavContent icon="search" label="Search" />
           </Link>
         </nav>
-        <nav aria-label="Channels" className="nav">
+        <nav aria-label="Topics" className="nav">
           <div className="nav-section">
-            Channels
+            Topics
             <Button
               icon="plus"
-              label="New channel"
-              onClick={onNewChannel}
+              label="New topic"
+              onClick={onNewTopic}
               size="tiny"
               variant="ghost"
             />
           </div>
-          {channels
-            .filter((channel) => channel.ownerId === null)
-            .map(channelItem)}
+          {topics.filter((topic) => topic.ownerId === null).map(topicItem)}
         </nav>
-        {owner || channels.some((channel) => channel.ownerId !== null) ? (
-          <nav aria-label="Private channels" className="nav">
+        {owner || topics.some((topic) => topic.ownerId !== null) ? (
+          <nav aria-label="Private topics" className="nav">
             <div className="nav-section">Private</div>
-            {channels
-              .filter((channel) => channel.ownerId !== null)
-              .map(channelItem)}
+            {topics.filter((topic) => topic.ownerId !== null).map(topicItem)}
             {owner ? (
               <Link
                 className="nav-item"
@@ -404,13 +392,9 @@ function WorkspaceNav({
               <Icon name="disclosure" />
             </span>
           </summary>
-          <nav aria-label="Settled threads" className="settled-list">
-            {settled.map((thread) => (
-              <ThreadNav
-                key={thread.id}
-                thread={thread}
-                workspaceId={workspaceId}
-              />
+          <nav aria-label="Settled chats" className="settled-list">
+            {settled.map((chat) => (
+              <ChatNav chat={chat} key={chat.id} workspaceId={workspaceId} />
             ))}
           </nav>
         </details>
@@ -419,28 +403,28 @@ function WorkspaceNav({
   );
 }
 
-function ThreadNav({
+function ChatNav({
   workspaceId,
-  thread,
+  chat,
 }: {
   workspaceId: string;
-  thread: ThreadSummary;
+  chat: ChatSummary;
 }) {
-  const settled = thread.settledAt !== null;
+  const settled = chat.settledAt !== null;
   return (
-    <div className="sidebar-thread">
+    <div className="sidebar-chat">
       <Link
         className="nav-item"
-        params={{ workspaceId, threadId: thread.id }}
-        to="/w/$workspaceId/t/$threadId"
+        params={{ workspaceId, chatId: chat.id }}
+        to="/w/$workspaceId/chat/$chatId"
       >
-        <NavContent icon="compose" label={thread.title} threadId={thread.id} />
+        <NavContent chatId={chat.id} icon="compose" label={chat.title} />
       </Link>
       <span className="settle-action">
         <Button
           icon={settled ? "inbox" : "check"}
-          label={settled ? "Un-settle thread" : "Settle thread"}
-          onClick={() => setSettled(workspaceId, thread.id, !settled)}
+          label={settled ? "Un-settle chat" : "Settle chat"}
+          onClick={() => setSettled(workspaceId, chat.id, !settled)}
           size="tiny"
           variant="ghost"
         />
@@ -453,7 +437,7 @@ export function NavContent({
   icon,
   emoji,
   label,
-  threadId,
+  chatId,
   count,
   locked = false,
 }: {
@@ -461,10 +445,10 @@ export function NavContent({
   /** Shows in place of the icon when set. */
   emoji?: string | null;
   label: string;
-  /** A private channel, which only its person sees. */
+  /** A private topic, which only its person sees. */
   locked?: boolean;
-  /** A thread whose spinner shows while its agent works. */
-  threadId?: string;
+  /** A chat whose spinner shows while its agent works. */
+  chatId?: string;
   /** Shows when it is more than 0. */
   count?: number;
 }) {
@@ -483,13 +467,13 @@ export function NavContent({
           <Icon name="lock" />
         </span>
       ) : null}
-      {threadId ? <WorkingSpinner threadId={threadId} /> : null}
+      {chatId ? <WorkingSpinner chatId={chatId} /> : null}
       {count ? <span className="count">{count}</span> : null}
     </>
   );
 }
 
-function NewChannelDialog({
+function NewTopicDialog({
   workspaceId,
   open,
   onClose,
@@ -508,8 +492,8 @@ function NewChannelDialog({
       onSubmit={async (form) => {
         setBusy(true);
         try {
-          const channel = await request<{ id: string }>(
-            `/workspaces/${workspaceId}/channels`,
+          const topic = await request<{ id: string }>(
+            `/workspaces/${workspaceId}/topics`,
             {
               method: "POST",
               body: { name: String(form.get("name")), private: isPrivate },
@@ -518,8 +502,8 @@ function NewChannelDialog({
           await refreshWorkspace(workspaceId);
           onClose();
           navigate({
-            to: "/w/$workspaceId/c/$channelId",
-            params: { workspaceId, channelId: channel.id },
+            to: "/w/$workspaceId/topic/$topicId",
+            params: { workspaceId, topicId: topic.id },
           });
         } catch (error) {
           showError(error);
@@ -528,8 +512,8 @@ function NewChannelDialog({
         }
       }}
       open={open}
-      submit="Create channel"
-      title="New channel"
+      submit="Create topic"
+      title="New topic"
     >
       <TextField
         autoFocus

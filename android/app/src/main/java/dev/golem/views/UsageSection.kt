@@ -39,7 +39,7 @@ private const val DAYS = 30
 
 /**
  * The use of the model in the last 30 days: the person's own, or everyone's for the server's owner. The cost is at the
- * model's list price, which a ChatGPT login does not pay. A thread opens on a tap.
+ * model's list price, which a ChatGPT login does not pay. A chat opens on a tap.
  */
 @Composable
 fun UsageSection(workspaceId: String) {
@@ -58,11 +58,11 @@ fun UsageSection(workspaceId: String) {
         // The same groups as the web's: sub-headings in the section.
         UsageGroup("By source", current.sources) { sourceName(it.source) }
         UsageGroup("By model", current.models) { modelName(it.model) }
-        if (current.threads.isNotEmpty()) {
-            ListSubheading("Top threads")
-            current.threads.forEach { thread ->
-                SettingsRow(thread.title ?: "", description = "${tokens(thread.tokens)} tokens",
-                    onClick = thread.threadId?.let { id -> { open(Destination.Thread(id)) } }) { SettingsValue(cost(thread.cost)) }
+        if (current.chats.isNotEmpty()) {
+            ListSubheading("Top chats")
+            current.chats.forEach { chat ->
+                SettingsRow(chat.title ?: "", description = "${tokens(chat.tokens)} tokens",
+                    onClick = chat.chatId?.let { id -> { open(Destination.Chat(id)) } }) { SettingsValue(cost(chat.cost)) }
             }
         }
         val people = current.people
@@ -122,7 +122,7 @@ private fun cost(dollars: Double): String = NumberFormat.getCurrencyInstance().a
 }.format(dollars)
 
 private fun sourceName(source: String?) = when (source) {
-    "thread" -> "Threads"
+    "chat" -> "Chats"
     "orchestrator" -> "Golem"
     "routine" -> "Routines"
     "reminder" -> "Reminders"

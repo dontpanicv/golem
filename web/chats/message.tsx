@@ -15,7 +15,7 @@ import { previewLink } from "../ui/file-preview.tsx";
 import { clockTime, duration } from "../ui/format.ts";
 import { Icon } from "../ui/icon.tsx";
 import { usePicture } from "../workspaces/data.ts";
-import { ThreadLink } from "./thread-link.tsx";
+import { ChatLink } from "./chat-link.tsx";
 
 // Markdown and its sanitizer load on their own, once a page shows an agent's answer.
 const Markdown = lazy(() => import("./markdown.tsx"));
@@ -135,8 +135,8 @@ function AuthorAvatar({
 }
 
 /**
- * Whether an agent's message continues the agent's message before it: a turn that the answer of another thread started,
- * such as the result of work that the message before asked that thread for.
+ * Whether an agent's message continues the agent's message before it: a turn that the answer of another chat started,
+ * such as the result of work that the message before asked that chat for.
  */
 export function continues(message: Message, previous: Message | undefined) {
   return (
@@ -144,14 +144,14 @@ export function continues(message: Message, previous: Message | undefined) {
   );
 }
 
-/** The title of the thread whose message started this turn, or null for a turn that a person started. */
+/** The title of the chat whose message started this turn, or null for a turn that a person started. */
 export function relayedFrom(message: Message): string | null {
   const first = message.work?.steps[0];
-  return first?.tool === RELAY ? first.text.replace(THREAD_LINK, "$1") : null;
+  return first?.tool === RELAY ? first.text.replace(CHAT_LINK, "$1") : null;
 }
 
-/** The step of a turn that another thread's message started. */
-const RELAY = "from_thread";
+/** The step of a turn that another chat's message started. */
+const RELAY = "from_chat";
 
 /**
  * The face of an agent's message: it failed, it works or waits for a person, or it finished its work; an answer with
@@ -200,25 +200,21 @@ function FileItem({
   );
 }
 
-/** A link to a thread as agents write it in messages: `[title](thread:<id>)`. */
-const THREAD_LINK = /\[([^\]\n]+)\]\(thread:([\w-]+)\)/g;
+/** A link to a chat as agents write it in messages: `[title](chat:<id>)`. */
+const CHAT_LINK = /\[([^\]\n]+)\]\(chat:([\w-]+)\)/g;
 
-/** Text with each thread link as a link that opens the thread, and its spinner while the thread's agent works. */
+/** Text with each chat link as a link that opens the chat, and its spinner while the chat's agent works. */
 function Linked({ text, workspaceId }: { text: string; workspaceId: string }) {
   const parts: ReactNode[] = [];
   let last = 0;
-  for (const match of text.matchAll(THREAD_LINK)) {
-    const [whole, title, threadId] = match as unknown as [
-      string,
-      string,
-      string,
-    ];
+  for (const match of text.matchAll(CHAT_LINK)) {
+    const [whole, title, chatId] = match as unknown as [string, string, string];
     parts.push(text.slice(last, match.index));
     parts.push(
       <Fragment key={match.index}>
-        <ThreadLink threadId={threadId} workspaceId={workspaceId}>
+        <ChatLink chatId={chatId} workspaceId={workspaceId}>
           {title}
-        </ThreadLink>
+        </ChatLink>
       </Fragment>
     );
     last = match.index + whole.length;
@@ -248,7 +244,7 @@ function WorkLog({ work, workspaceId }: { work: Work; workspaceId: string }) {
   } else if (work.stopped) {
     label = `Stopped after ${duration(work.endedAt! - work.startedAt)}`;
   } else if (work.steps[0]?.tool === RELAY) {
-    label = `From ${work.steps[0].text.replace(THREAD_LINK, "$1")}`;
+    label = `From ${work.steps[0].text.replace(CHAT_LINK, "$1")}`;
   }
   return (
     // React sets `open` only when `working` changes, so it folds when the work ends; until then, the person's choice

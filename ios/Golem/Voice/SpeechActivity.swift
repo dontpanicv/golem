@@ -68,9 +68,9 @@ nonisolated final class SpeechClassifier: NSObject, SNResultsObserving, @uncheck
         guard !samples.isEmpty else { return }
         queue.async { [self] in
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
-                let channel = buffer.floatChannelData?[0]
+                let topic = buffer.floatChannelData?[0]
             else { return }
-            samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+            samples.withUnsafeBufferPointer { topic.update(from: $0.baseAddress!, count: samples.count) }
             buffer.frameLength = AVAudioFrameCount(samples.count)
             analyzer.analyze(buffer, atAudioFramePosition: position)
             position += AVAudioFramePosition(samples.count)

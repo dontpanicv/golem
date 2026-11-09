@@ -107,7 +107,7 @@ fun PhoneShell() {
     fun open(destination: Destination) {
         if (destination != Destination.Settings && destination != Destination.WorkspaceSettings) sheet = null
         when {
-            destination == Destination.Thread(session.orchestrator?.id ?: "") -> {
+            destination == Destination.Chat(session.orchestrator?.id ?: "") -> {
                 stacks.getValue(Tab.Golem).reset()
                 tab = Tab.Golem
             }
@@ -212,15 +212,15 @@ private fun TabStack(tab: Tab, stack: SnapshotStateList<Any>, agendaPage: Mutabl
 private fun Screen(destination: Destination) {
     val session = LocalSession.current
     when (destination) {
-        is Destination.Channel -> ChannelView(destination.id)
-        is Destination.NewThread -> ChannelView(destination.id, compose = true)
-        is Destination.Artifact -> if (destination.channel != null) {
-            ChannelView(destination.channel, artifactId = destination.artifact)
+        is Destination.Topic -> TopicView(destination.id)
+        is Destination.NewChat -> TopicView(destination.id, compose = true)
+        is Destination.Artifact -> if (destination.topic != null) {
+            TopicView(destination.topic, artifactId = destination.artifact)
         } else {
             session.orchestrator?.let { ConversationView(it.id, artifactId = destination.artifact) }
         }
-        is Destination.ChannelDetails -> ChannelDetailsView(destination.id)
-        is Destination.Thread -> ConversationView(destination.id)
+        is Destination.TopicDetails -> TopicDetailsView(destination.id)
+        is Destination.Chat -> ConversationView(destination.id)
         Destination.Feedback -> FeedbackView()
         // These open a tab or the settings instead; see `open`.
         else -> Unit

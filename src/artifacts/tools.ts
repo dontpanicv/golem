@@ -11,41 +11,41 @@ Values are JSON, up to 64 KB each. A write replaces the value. Keep each person'
 
 const idParameter = Type.String({ description: "The artifact id" });
 
-/** The tools that let agents make artifacts in their channel, change them, and read the data their visitors keep. */
+/** The tools that let agents make artifacts in their topic, change them, and read the data their visitors keep. */
 export function artifactTools(
   artifacts: Artifacts,
   workspaces: ArtifactWorkspaces,
   workspaceId: string,
   realmOf: (conversationId: ConversationId) => Promise<string | null>
 ) {
-  const threadOf = (conversationId: number) => {
-    const thread = workspaces.threadOf(workspaceId, conversationId);
-    if (!thread) {
-      throw new Error("This tool works only in a thread.");
+  const chatOf = (conversationId: number) => {
+    const chat = workspaces.chatOf(workspaceId, conversationId);
+    if (!chat) {
+      throw new Error("This tool works only in a chat.");
     }
-    return thread;
+    return chat;
   };
-  /** The channel an artifact belongs to: the named one, or the thread's; null, the workspace, for an orchestrator. */
+  /** The topic an artifact belongs to: the named one, or the chat's; null, the workspace, for an orchestrator. */
   const placeOf = (
-    thread: { readonly channelId: string; readonly ownerId: string | null },
+    chat: { readonly topicId: string; readonly ownerId: string | null },
     realm: string | null,
-    channel: string | undefined
+    topic: string | undefined
   ) => {
-    if (channel !== undefined) {
-      const name = channel.replace(/^#/, "");
+    if (topic !== undefined) {
+      const name = topic.replace(/^#/, "");
       const named = workspaces
-        .channelsIn(workspaceId, realm)
+        .topicsIn(workspaceId, realm)
         .find((candidate) => candidate.name === name);
       if (!named) {
         throw new Error(
-          `There is no channel #${name}. list_channels shows the channels.`
+          `There is no topic #${name}. list_topics shows the topics.`
         );
       }
       return named.id;
     }
-    return thread.ownerId === null ? thread.channelId : null;
+    return chat.ownerId === null ? chat.topicId : null;
   };
-  /** An artifact that the realm of the tool's thread sees. */
+  /** An artifact that the realm of the tool's chat sees. */
   const artifactOf = async (id: string, conversationId: ConversationId) => {
     const artifact = artifacts
       .inWorkspace(workspaceId, await realmOf(conversationId))
@@ -67,27 +67,27 @@ export function artifactTools(
   return [
     defineTool({
       name: "artifacts_create",
-      description: `Make an artifact and give its link to the people. It belongs to the channel of this thread, or to another channel you name, and stays there after the thread is settled; the orchestrator's belong to the workspace. Before you make one, look for an artifact to change with artifacts_list or recall. Never use an artifact to keep facts or a list; save files and say them in your answer. ${RUNTIME}`,
+      description: `Make an artifact and give its link to the people. It belongs to the topic of this chat, or to another topic you name, and stays there after the chat is settled; the orchestrator's belong to the workspace. Before you make one, look for an artifact to change with artifacts_list or recall. Never use an artifact to keep facts or a list; save files and say them in your answer. ${RUNTIME}`,
       parameters: Type.Object({
         title: Type.String({
           description: "A short title; link previews show it",
         }),
         html: Type.String({ description: "The whole HTML document" }),
         visibility,
-        channel: Type.Optional(
+        topic: Type.Optional(
           Type.String({
             description:
-              "The name of the channel it belongs to, such as recipes, when it is not this thread's channel",
+              "The name of the topic it belongs to, such as recipes, when it is not this chat's topic",
           })
         ),
       }),
       // The request key comes from the task, so a rerun after a crash finds the artifact it made before.
       replay: "safe",
-      execute: async ({ channel, ...args }, api) => {
-        const thread = threadOf(api.conversationId);
+      execute: async ({ topic, ...args }, api) => {
+        const chat = chatOf(api.conversationId);
         const artifact = artifacts.create(
-          thread,
-          placeOf(thread, await realmOf(api.conversationId), channel),
+          chat,
+          placeOf(chat, await realmOf(api.conversationId), topic),
           {
             ...args,
             requestKey: `${workspaceId}:${api.taskId}`,
@@ -158,26 +158,24 @@ export function artifactTools(
     defineTool({
       name: "artifacts_list",
       description:
-        "List the artifacts of this workspace, newest first, with their links, channels, and the threads that made them.",
+        "List the artifacts of this workspace, newest first, with their links, topics, and the chats that made them.",
       parameters: Type.Object({}),
       replay: "safe",
       execute: async (_args, api) => {
         const realm = await realmOf(api.conversationId);
-        const channels = workspaces.channelsIn(workspaceId, realm);
-        const threads = workspaces.threadsIn(workspaceId, realm);
+        const topics = workspaces.topicsIn(workspaceId, realm);
+        const chats = workspaces.chatsIn(workspaceId, realm);
         const list = artifacts
           .inWorkspace(workspaceId, realm)
           .map((artifact) => {
-            const channel = channels.find(
-              (candidate) => candidate.id === artifact.channelId
+            const topic = topics.find(
+              (candidate) => candidate.id === artifact.topicId
             );
-            const thread = threads.find(
-              (candidate) => candidate.id === artifact.threadId
+            const chat = chats.find(
+              (candidate) => candidate.id === artifact.chatId
             );
-            const place = channel
-              ? `Channel: #${channel.name}`
-              : "The workspace's";
-            return `${describe(artifact)}\n${place}\nMade in: [${thread?.title}](thread:${artifact.threadId})`;
+            const place = topic ? `Topic: #${topic.name}` : "The workspace's";
+            return `${describe(artifact)}\n${place}\nMade in: [${chat?.title}](chat:${artifact.chatId})`;
           });
         return text(list.join("\n\n") || "This workspace has no artifacts.");
       },

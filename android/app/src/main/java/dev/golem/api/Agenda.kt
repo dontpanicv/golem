@@ -18,16 +18,16 @@ data class Upcoming(
 )
 
 @Serializable
-data class WaitingApproval(val threadId: String, val approval: Approval)
+data class WaitingApproval(val chatId: String, val approval: Approval)
 
 /**
- * A one-time reminder that an agent made; its agent reminds in `threadId` at `dueAt`, or when its recipient arrives at
+ * A one-time reminder that an agent made; its agent reminds in `chatId` at `dueAt`, or when its recipient arrives at
  * or leaves its `place`.
  */
 @Serializable
 data class Reminder(
     val id: String,
-    val threadId: String,
+    val chatId: String,
     val recipientId: String = "",
     val createdBy: String? = null,
     val text: String,
@@ -61,21 +61,21 @@ data class ReminderPlace(
     val summary get() = placeSummary(event, name)
 }
 
-/** A routine, a reminder, or a private channel that Golem suggests from a thread; nothing happens until the person accepts it. */
+/** A routine, a reminder, or a private topic that Golem suggests from a chat; nothing happens until the person accepts it. */
 @Serializable
 data class Suggestion(
     val id: String,
-    /** "routine", "reminder", or "channel". */
+    /** "routine", "reminder", or "topic". */
     val kind: String,
-    /** The routine's name, the reminder's text, or the channel's name. */
+    /** The routine's name, the reminder's text, or the topic's name. */
     val name: String,
     val text: String = "",
     /** A routine's cron expression in the server's time zone. */
     val schedule: String? = null,
     /** When the reminder is due, or the routine's first run. */
     @SerialName("at") val time: Double? = null,
-    val channelId: String = "",
-    val threadId: String = "",
+    val topicId: String = "",
+    val chatId: String = "",
     val createdAt: Double = 0.0,
 )
 

@@ -3,12 +3,12 @@ import type { User } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import type { Workspaces } from "../workspaces/workspaces.ts";
 
-/** Something that needs a person's attention. It opens its thread, or its channel when `threadId` is null. */
+/** Something that needs a person's attention. It opens its chat, or its topic when `chatId` is null. */
 export interface Notification {
   readonly id: string;
   readonly workspaceId: string;
-  readonly channelId: string;
-  readonly threadId: string | null;
+  readonly topicId: string;
+  readonly chatId: string | null;
   readonly title: string;
   /** Plain text, without Markdown. */
   readonly text: string;
@@ -18,7 +18,7 @@ export interface Notification {
 
 export type NotificationInput = Pick<
   Notification,
-  "workspaceId" | "channelId" | "threadId" | "title" | "text"
+  "workspaceId" | "topicId" | "chatId" | "title" | "text"
 > & {
   readonly userId: string;
   /** A durable producer's id, so a retry creates no second notification or push. */
@@ -60,13 +60,13 @@ export type Push = (
   message: PushMessage
 ) => Promise<"sent" | "gone">;
 
-/** What a Live Activity shows: how the work for a person's message goes, and in which thread it is now. */
+/** What a Live Activity shows: how the work for a person's message goes, and in which chat it is now. */
 export interface ActivityState {
   readonly status: "working" | "waiting";
-  /** The thread that works now. */
+  /** The chat that works now. */
   readonly title: string;
-  /** How many threads work on it now. */
-  readonly threads: number;
+  /** How many chats work on it now. */
+  readonly chats: number;
 }
 
 /** Sends one update of a Live Activity to its push token; `gone` when the activity takes no more. */
@@ -77,12 +77,12 @@ export type ActivityPush = (
   priority: 5 | 10
 ) => Promise<"sent" | "gone">;
 
-/** A Live Activity on a person's iPhone that follows the work for their message in a thread. */
+/** A Live Activity on a person's iPhone that follows the work for their message in a chat. */
 export interface LiveActivity {
   readonly token: string;
   readonly userId: string;
   readonly workspaceId: string;
-  readonly threadId: string;
+  readonly chatId: string;
   readonly environment: PushEnvironment;
   readonly startedAt: number;
 }
@@ -91,12 +91,12 @@ export type NotificationWorkspaces = Pick<Workspaces, "list" | "requireMember">;
 
 /** The newest notifications an inbox shows. */
 const INBOX_SIZE = 100;
-/** The most of an answer a notification keeps; the thread has all of it. */
+/** The most of an answer a notification keeps; the chat has all of it. */
 const MAX_TEXT = 500;
 /** The most of a notification's text a push shows. */
 const MAX_PUSH_BODY = 180;
 const COLUMNS =
-  "id, workspace_id AS workspaceId, channel_id AS channelId, thread_id AS threadId, title, text, created_at AS createdAt, read_at AS readAt";
+  "id, workspace_id AS workspaceId, topic_id AS topicId, chat_id AS chatId, title, text, created_at AS createdAt, read_at AS readAt";
 const DEVICE_TOKEN = /^[0-9a-f]{64,200}$/i;
 /** A Live Activity's push token is longer than a device's. */
 const ACTIVITY_TOKEN = /^[0-9a-f]{64,512}$/i;
@@ -112,11 +112,11 @@ const ENVIRONMENTS: readonly string[] = [
 ] satisfies PushEnvironment[];
 
 /**
- * The inbox of each person, and the pushes to their devices. A person who has the thread open on a screen sees what
- * happens there, so a notification for that thread is read at once and sends no push.
+ * The inbox of each person, and the pushes to their devices. A person who has the chat open on a screen sees what
+ * happens there, so a notification for that chat is read at once and sends no push.
  */
 export class Notifications {
-  /** How many open screens of each person show each thread, by `<user> <thread>`. */
+  /** How many open screens of each person show each chat, by `<user> <chat>`. */
   private readonly watching = new Map<string, number>();
 
   constructor(
@@ -127,10 +127,10 @@ export class Notifications {
   ) {}
 
   /**
-   * Puts a notification in a person's inbox and pushes it to their devices, unless they have the thread open.
+   * Puts a notification in a person's inbox and pushes it to their devices, unless they have the chat open.
    *
    * @example
-   * notifications.notify({ workspaceId, userId: anna.id, channelId, threadId, title: "Flights", text: answer });
+   * notifications.notify({ workspaceId, userId: anna.id, topicId, chatId, title: "Flights", text: answer });
    */
   notify(input: NotificationInput): Notification {
     if (input.id) {
@@ -143,13 +143,13 @@ export class Notifications {
     }
     const now = Date.now();
     const seen =
-      input.threadId !== null &&
-      this.watching.has(watchKey(input.userId, input.threadId));
+      input.chatId !== null &&
+      this.watching.has(watchKey(input.userId, input.chatId));
     const notification: Notification = {
       id: input.id ?? Bun.randomUUIDv7(),
       workspaceId: input.workspaceId,
-      channelId: input.channelId,
-      threadId: input.threadId,
+      topicId: input.topicId,
+      chatId: input.chatId,
       title: input.title,
       text: truncate(plainText(input.text), MAX_TEXT),
       createdAt: now,
@@ -157,14 +157,14 @@ export class Notifications {
     };
     this.database
       .query(
-        "INSERT INTO notification (id, workspace_id, user_id, channel_id, thread_id, title, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO notification (id, workspace_id, user_id, topic_id, chat_id, title, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         notification.id,
         notification.workspaceId,
         input.userId,
-        notification.channelId,
-        notification.threadId,
+        notification.topicId,
+        notification.chatId,
         notification.title,
         notification.text,
         notification.createdAt,
@@ -193,18 +193,18 @@ export class Notifications {
     return { notifications, unread, badge: this.badge(user) };
   }
 
-  /** Gives the notifications of a thread the channel it moved to. */
-  /** Moves the notifications of channel `from` to channel `to`, as when one channel merges into another. */
-  moveChannel(from: string, to: string): void {
+  /** Gives the notifications of a chat the topic it moved to. */
+  /** Moves the notifications of topic `from` to topic `to`, as when one topic merges into another. */
+  moveTopic(from: string, to: string): void {
     this.database
-      .query("UPDATE notification SET channel_id = ? WHERE channel_id = ?")
+      .query("UPDATE notification SET topic_id = ? WHERE topic_id = ?")
       .run(to, from);
   }
 
-  moveWithThread(threadId: string, channelId: string): void {
+  moveWithChat(chatId: string, topicId: string): void {
     this.database
-      .query("UPDATE notification SET channel_id = ? WHERE thread_id = ?")
-      .run(channelId, threadId);
+      .query("UPDATE notification SET topic_id = ? WHERE chat_id = ?")
+      .run(topicId, chatId);
   }
 
   /** Marks one notification of the person read, or all of them in the workspace for a null `id`. */
@@ -230,17 +230,17 @@ export class Notifications {
   }
 
   /**
-   * Notes that a screen of the person shows a thread, and marks the thread's notifications read. Call the returned
+   * Notes that a screen of the person shows a chat, and marks the chat's notifications read. Call the returned
    * function when the screen closes or goes to the background.
    */
-  watch(user: User, threadId: string): () => void {
-    const key = watchKey(user.id, threadId);
+  watch(user: User, chatId: string): () => void {
+    const key = watchKey(user.id, chatId);
     this.watching.set(key, (this.watching.get(key) ?? 0) + 1);
     this.database
       .query(
-        "UPDATE notification SET read_at = ? WHERE user_id = ? AND thread_id = ? AND read_at IS NULL"
+        "UPDATE notification SET read_at = ? WHERE user_id = ? AND chat_id = ? AND read_at IS NULL"
       )
-      .run(Date.now(), user.id, threadId);
+      .run(Date.now(), user.id, chatId);
     let watching = true;
     return () => {
       if (!watching) {
@@ -311,13 +311,13 @@ export class Notifications {
   }
 
   /**
-   * Follows the work for the person's message in a thread with a Live Activity of their iPhone, whose push token
-   * is `token`. An older activity of theirs for the same thread ends: the new one follows the newer message.
+   * Follows the work for the person's message in a chat with a Live Activity of their iPhone, whose push token
+   * is `token`. An older activity of theirs for the same chat ends: the new one follows the newer message.
    */
   startActivity(
     user: User,
     workspaceId: string,
-    threadId: string,
+    chatId: string,
     token: unknown,
     environment: unknown
   ): void {
@@ -333,16 +333,16 @@ export class Notifications {
     for (const older of this.activities(workspaceId).filter(
       (activity) =>
         activity.userId === user.id &&
-        activity.threadId === threadId &&
+        activity.chatId === chatId &&
         activity.token !== token
     )) {
       this.endActivity(older);
     }
     this.database
       .query(
-        "INSERT INTO live_activity (token, user_id, workspace_id, thread_id, environment, started_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (token) DO NOTHING"
+        "INSERT INTO live_activity (token, user_id, workspace_id, chat_id, environment, started_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (token) DO NOTHING"
       )
-      .run(token, user.id, workspaceId, threadId, environment, Date.now());
+      .run(token, user.id, workspaceId, chatId, environment, Date.now());
   }
 
   /** The Live Activities that follow work in a workspace now; older ones than iOS keeps end here. */
@@ -354,7 +354,7 @@ export class Notifications {
       .run(Date.now(), workspaceId, Date.now() - ACTIVITY_LIFETIME);
     return this.database
       .query(
-        "SELECT token, user_id AS userId, workspace_id AS workspaceId, thread_id AS threadId, environment, started_at AS startedAt FROM live_activity WHERE workspace_id = ? AND ended_at IS NULL ORDER BY started_at"
+        "SELECT token, user_id AS userId, workspace_id AS workspaceId, chat_id AS chatId, environment, started_at AS startedAt FROM live_activity WHERE workspace_id = ? AND ended_at IS NULL ORDER BY started_at"
       )
       .all(workspaceId) as LiveActivity[];
   }
@@ -404,7 +404,7 @@ export class Notifications {
     // iOS ignores an end that has no content state it can decode.
     const state: ActivityState = ended.state
       ? JSON.parse(ended.state)
-      : { status: "working", title: "", threads: 0 };
+      : { status: "working", title: "", chats: 0 };
     const now = Math.floor(Date.now() / 1000);
     this.sendActivity(
       activity,
@@ -503,6 +503,6 @@ function truncate(text: string, length: number): string {
     : `${text.slice(0, length - 1).trimEnd()}…`;
 }
 
-function watchKey(userId: string, threadId: string): string {
-  return `${userId} ${threadId}`;
+function watchKey(userId: string, chatId: string): string {
+  return `${userId} ${chatId}`;
 }

@@ -26,12 +26,12 @@ import dev.golem.design.Tokens
 import dev.golem.design.golemText
 import kotlinx.coroutines.launch
 
-/** Asks for a new channel's name, and whether only the person sees it. It stays open when creating fails. */
+/** Asks for a new topic's name, and whether only the person sees it. It stays open when creating fails. */
 @Composable
-fun NewChannelDialog(onDismiss: () -> Unit, create: suspend (String, Boolean) -> Unit) {
+fun NewTopicDialog(onDismiss: () -> Unit, create: suspend (String, Boolean) -> Unit) {
     var name by remember { mutableStateOf("") }
     var private by remember { mutableStateOf(false) }
-    BusyDialog("New channel", "Create", onDismiss, enabled = name.isNotBlank(), act = { create(name.trim(), private) }) { submit ->
+    BusyDialog("New topic", "Create", onDismiss, enabled = name.isNotBlank(), act = { create(name.trim(), private) }) { submit ->
         GolemTextField(
             name, { name = it }, placeholder = "Name", autofocus = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Done),

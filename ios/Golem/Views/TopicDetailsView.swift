@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// A channel's name, its summary and brief, its routines, and their newest runs. People create routines by asking an
-/// agent; the model writes the summary and the brief from the channel's threads.
-struct ChannelDetailsView: View {
-    let channelID: String
+/// A topic's name, its summary and brief, its routines, and their newest runs. People create routines by asking an
+/// agent; the model writes the summary and the brief from the topic's chats.
+struct TopicDetailsView: View {
+    let topicID: String
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
     @State private var routines: [Routine] = []
@@ -13,18 +13,18 @@ struct ChannelDetailsView: View {
     @State private var name = ""
     @State private var opening: FileRef?
 
-    private var channel: Channel? { session.channels.first { $0.id == channelID } }
+    private var topic: Topic? { session.topics.first { $0.id == topicID } }
     private var workspaceID: String { session.workspace?.id ?? "" }
     private var renamed: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && name != channel?.name
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && name != topic?.name
     }
 
     var body: some View {
         SettingsList {
-            DetailTitle(title: channel.map { "# \($0.name)" } ?? "", caption: "Channel details")
+            DetailTitle(title: topic.map { "# \($0.name)" } ?? "", caption: "Topic details")
                 .padding(.horizontal, Tokens.Mobile.Size.margin)
                 .padding(.vertical, Tokens.Space.md)
-            SettingsCard(title: "Channel") {
+            SettingsCard(title: "Topic") {
                 HStack(spacing: Tokens.Space.md) {
                     GolemTextField(nil, placeholder: "Name", text: $name)
                         .textInputAutocapitalization(.never)
@@ -37,7 +37,7 @@ struct ChannelDetailsView: View {
                 .padding(.horizontal, Tokens.Mobile.Size.margin)
                 .padding(.bottom, Tokens.Space.lg)
             }
-            if let summary = channel?.summary {
+            if let summary = topic?.summary {
                 SettingsCard(title: "Summary") {
                     Text(summary)
                         .font(.golem(Tokens.Mobile.FontSize.row))
@@ -85,21 +85,21 @@ struct ChannelDetailsView: View {
         }
         .opacity(loaded ? 1 : 0)
         .phoneTabBar()
-        .pushedScreen(channel.map { "#\($0.name)" } ?? "")
+        .pushedScreen(topic.map { "#\($0.name)" } ?? "")
         .task { await load() }
-        .onAppear { name = channel?.name ?? "" }
+        .onAppear { name = topic?.name ?? "" }
         .refreshable { await load() }
         .filePreview($opening)
-        // The brief's links open here instead of leaving the app, as a thread's do.
+        // The brief's links open here instead of leaving the app, as a chat's do.
         .environment(\.openURL, OpenURLAction { url in
-            guard let scheme = url.scheme, ["thread", "file", "artifact"].contains(scheme) else {
+            guard let scheme = url.scheme, ["chat", "file", "artifact"].contains(scheme) else {
                 return .systemAction
             }
             let id = String(url.absoluteString.dropFirst(scheme.count + 1))
             switch scheme {
-            case "thread": open(.thread(id))
+            case "chat": open(.chat(id))
             case "file": opening = FileRef(id: id, name: "")
-            default: open(.artifact(channel: channelID, artifact: id))
+            default: open(.artifact(topic: topicID, artifact: id))
             }
             return .handled
         })
@@ -117,8 +117,8 @@ struct ChannelDetailsView: View {
                     .toggleStyle(.golemSwitch)
                     .accessibilityLabel("Run \(value.name)")
                 GolemMenu {
-                    if let threadID = value.threadId {
-                        MenuItem("Open thread", pixel: .compose) { open(.thread(threadID)) }
+                    if let chatID = value.chatId {
+                        MenuItem("Open chat", pixel: .compose) { open(.chat(chatID)) }
                     }
                     MenuItem("Run now", pixel: .play) { run(value) }
                     MenuItem("Delete", pixel: .trash, role: .destructive) { delete(value) }
@@ -148,9 +148,9 @@ struct ChannelDetailsView: View {
     private func load() async {
         await session.run {
             try await session.reloadWorkspace()
-            let found = try await session.api.routines(workspaceID: workspaceID, channelID: channelID)
+            let found = try await session.api.routines(workspaceID: workspaceID, topicID: topicID)
             (routines, runs) = (found.routines, found.runs)
-            brief = try await session.api.brief(workspaceID: workspaceID, channelID: channelID)
+            brief = try await session.api.brief(workspaceID: workspaceID, topicID: topicID)
             loaded = true
         }
     }
@@ -160,8 +160,8 @@ struct ChannelDetailsView: View {
         guard renamed else { return }
         Task {
             await session.run {
-                try await session.renameChannel(channelID: channelID, name: name)
-                self.name = channel?.name ?? name
+                try await session.renameTopic(topicID: topicID, name: name)
+                self.name = topic?.name ?? name
                 session.show("Saved", .success)
             }
         }

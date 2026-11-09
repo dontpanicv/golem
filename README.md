@@ -17,7 +17,7 @@ SQLite and Markdown.
 
 - **One assistant for the family.** Everybody talks to the same Golem. It knows who writes each message, what each
   person wants, and what the family decided last week.
-- **It remembers.** Each channel keeps a brief that Golem writes again when a conversation goes quiet. A learning
+- **It remembers.** Each topic keeps a brief that Golem writes again when a conversation goes quiet. A learning
   loop keeps short facts about each person and how things are done. The family writes its own facts too. Golem reads
   all of it before every answer.
 - **It does real work.** Golem runs commands on your Macs and Linux machines, reads your mail and calendar, controls
@@ -35,33 +35,33 @@ SQLite and Markdown.
   context and follows unresolved matters. If the builder has 30 days to reply, Golem checks later without a routine
   or a task card. A local model reads new material first.
 - **It stays quiet.** Passive updates send no push. Golem tells you about useful changes and due follow-ups in your
-  matching Golem thread. Explicit routines, reminders, and external messages still need your request or consent.
+  matching Golem chat. Explicit routines, reminders, and external messages still need your request or consent.
 - **Your data stays with you.** One server, one SQLite database, Markdown files, and a search index that runs on the
-  machine. Each person's own channels, machines, accounts, and places are private until they share them.
+  machine. Each person's own topics, machines, accounts, and places are private until they share them.
 
 ## How a conversation flows
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/conversation-flow-dark.svg">
-  <img alt="A family member asks Golem, their own endless thread, or writes in a channel thread. Golem sends work to channel threads with send_to_thread, and the answers come back to it. Channel threads run code mode scripts. When a thread goes quiet, the channel brief is written again, the learning loop updates the learned facts, and the messages go into the search index. The brief, the learned facts, and the workspace facts become prompt sections that every turn reads." src="docs/assets/conversation-flow-light.svg">
+  <img alt="A family member asks Golem, their own endless chat, or writes in a topic chat. Golem sends work to topic chats with send_to_chat, and the answers come back to it. Topic chats run code mode scripts. When a chat goes quiet, the topic brief is written again, the learning loop updates the learned facts, and the messages go into the search index. The brief, the learned facts, and the workspace facts become prompt sections that every turn reads." src="docs/assets/conversation-flow-light.svg">
 </picture>
 
-- **The family has one workspace.** It holds channels, such as `#general`, `#home`, or `#travel`. A channel is open to
+- **The family has one workspace.** It holds topics, such as `#general`, `#home`, or `#travel`. A topic is open to
   every member, or private to one person.
-- **A channel holds threads.** A thread is one conversation about one thing. Several people can write in it, and its
-  agent knows who wrote each message. A thread that is done is settled; its files and artifacts stay in the channel.
-- **Golem is your endless thread.** Each person has one thread with Golem that never ends: the **Golem** tab. It
-  answers simple things itself and gives other work to the thread of the right channel, or starts one. The answer
-  comes back to your Golem thread. A message passes between threads at most twice, so agents cannot talk to each other
+- **A topic holds chats.** A chat is one conversation about one thing. Several people can write in it, and its
+  agent knows who wrote each message. A chat that is done is settled; its files and artifacts stay in the topic.
+- **Golem is your endless chat.** Each person has one chat with Golem that never ends: the **Golem** tab. It
+  answers simple things itself and gives other work to the chat of the right topic, or starts one. The answer
+  comes back to your Golem chat. A message passes between chats at most twice, so agents cannot talk to each other
   without end.
-- **The endless thread does not get slow.** A memory tree of short summaries covers your conversation and the results
-  that workers send back. Their internal work stays in their threads. Old messages fold into the tree, and the agent
+- **The endless chat does not get slow.** A memory tree of short summaries covers your conversation and the results
+  that workers send back. Their internal work stays in their chats. Old messages fold into the tree, and the agent
   opens a summary again with `zoom` when it needs the details.
-- **The channel brief.** When a thread is quiet for 10 minutes, or settled, a background model writes the channel's
+- **The topic brief.** When a chat is quiet for 10 minutes, or settled, a background model writes the topic's
   brief again: its purpose, what is happening now, the decisions, the open questions, and what each person wants.
-  Every thread of the channel starts from it.
+  Every chat of the topic starts from it.
 - **Learned facts.** The learning loop reads the new messages and keeps only lasting facts about each person, such
-  as their work, the people in their life, and what they do not eat, and how-tos for each channel; it skips the
+  as their work, the people in their life, and what they do not eat, and how-tos for each topic; it skips the
   details of one task. It can also suggest a routine or a reminder. You see, change, and remove what it learned in
   Settings, and it does not learn a removed fact again.
 - **Workspace facts.** The family writes facts about itself in Workspace settings: names, birthdays, addresses, work.
@@ -76,20 +76,20 @@ same text until its content changes, so the model's prompt cache stays warm.
 ### Pi Durable
 
 Agents run on [Pi Durable](https://github.com/earendil-works/pi), the durable agent runtime of Earendil. The workspace
-has one Pi Durable session, and each thread is one conversation in it, with its transcript, runs, and tasks. A run that
+has one Pi Durable session, and each chat is one conversation in it, with its transcript, runs, and tasks. A run that
 a restart stopped continues when Golem starts again, and messages that came while Golem was off are caught up. A
-tool that is safe to repeat, such as `send_to_thread`, runs again after a crash and finds the message it sent before.
-The endless Golem thread compacts itself when its context gets long.
+tool that is safe to repeat, such as `send_to_chat`, runs again after a crash and finds the message it sent before.
+The endless Golem chat compacts itself when its context gets long.
 
 Each routine keeps one durable conversation and its full transcript. A new run starts a new active context with its
 saved instructions and script result; a restart resumes that same run, boundary, and tool tasks. Progress stays in
 the routine's script store. A long run compacts between tool rounds at 160 KiB of serialized input, and a provider
 guard refuses routine input above 256 KiB. These are byte limits, not exact token counts. Older runs remain available
-in the thread and through search.
+in the chat and through search.
 
 ### Code mode
 
-The model calls only a small set of core tools directly: channels, threads, files, `recall`, and web search. Every
+The model calls only a small set of core tools directly: topics, chats, files, `recall`, and web search. Every
 other tool is in a namespace that the model uses from a short TypeScript script, in the code mode sandbox of
 [Pi](https://github.com/earendil-works/pi) (`pi-codemode`, 256 MB, its own worker):
 
@@ -142,11 +142,11 @@ person who installed it. `hands` is Golem's copy of the `hands` daemon of
   as the VPN one. The machine needs no public address.
 - **Tools.** Agents use the machine from code mode: `hands_exec` for a command, `hands_job_start`, `hands_job_wait`,
   and `hands_job_cancel` for long work, `hands_read`, `hands_write`, `hands_edit`, and `hands_list` for files, and
-  `hands_copy_file` to put a file of the channel on the machine; `save_file` brings a result back.
+  `hands_copy_file` to put a file of the topic on the machine; `save_file` brings a result back.
 - **Approvals.** Before a command that
   [dcg (destructive command guard)](https://github.com/Dicklesworthstone/destructive_command_guard) flags, such as
   `rm -rf` or `git push --force`, the agent waits until a person allows it: the person who paired the machine when the
-  turn is somebody else's, or else the turn's own person. The question shows in the thread and comes as a push
+  turn is somebody else's, or else the turn's own person. The question shows in the chat and comes as a push
   notification with Allow and Deny.
 - **Who can use it.** A machine is private to your turns until you share it with every member. Several people can pair
   the same machine; it trusts each of their keys. `golem-hands unpair` takes a key away, also on open connections.
@@ -160,7 +160,7 @@ they use a paired machine.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/phone-dark.svg">
-  <img alt="While the Golem app is on screen, it holds GET /api/v1/phone/calls open. The person says Wake me at 6:30; the app sends the message to the thread, and the agent's script calls phone_alarm_set. Golem sends the call on the newest stream of the turn's person, with no approval. The app calls AlarmManager.schedule, and iOS asks for access on the first use. The app posts the answer to /api/v1/phone/calls/:id, as text or JPEGs, and the agent answers Alarm set for 6:30." src="docs/assets/phone-light.svg">
+  <img alt="While the Golem app is on screen, it holds GET /api/v1/phone/calls open. The person says Wake me at 6:30; the app sends the message to the chat, and the agent's script calls phone_alarm_set. Golem sends the call on the newest stream of the turn's person, with no approval. The app calls AlarmManager.schedule, and iOS asks for access on the first use. The app posts the answer to /api/v1/phone/calls/:id, as text or JPEGs, and the agent answers Alarm set for 6:30." src="docs/assets/phone-light.svg">
 </picture>
 
 - **Transport.** The phone accepts no connections, so it connects to Golem: while the app is on screen, it holds an
@@ -214,8 +214,8 @@ namespace.
 The workspace has one search index, `index.sqlite`, on the server. The Search page of both apps and the agents'
 `recall` tool use it, so a person and their agent find the same things.
 
-- **What goes in.** The messages of every thread, the text of every artifact, and every file in the workspace and its
-  channels:
+- **What goes in.** The messages of every chat, the text of every artifact, and every file in the workspace and its
+  topics:
   - documents (Markdown, Office, OpenDocument, mail, calendars, and more) in chunks of about 1800 characters;
   - PDFs page by page, where a scanned page is rendered as a picture and read with OCR;
   - pictures, at most 1024 pixels long, and screenshots with their OCR text;
@@ -235,16 +235,16 @@ The workspace has one search index, `index.sqlite`, on the server. The Search pa
   another scale than text. The share of query words that a source contains adds to it. A source shows when it stands
   out by meaning (z ≥ 3) or holds at least half of the words, so a search shows nothing rather than noise. A query of
   ids or numbers counts the words more.
-- **Privacy.** Before it ranks, a search leaves out what its person may not see. A person finds the channels that every
-  member sees, their own private channels, and their own Golem thread. An agent's `recall` sees what the person of its turn
-  sees: in your Golem thread or private channel that is you, and in a shared channel it is the person whose message the
+- **Privacy.** Before it ranks, a search leaves out what its person may not see. A person finds the topics that every
+  member sees, their own private topics, and their own Golem chat. An agent's `recall` sees what the person of its turn
+  sees: in your Golem chat or private topic that is you, and in a shared topic it is the person whose message the
   agent answers.
 - **Recall.** Agents call `recall` with a question in plain words, and get up to 20 results (8 by default), each with
-  its kind, title, date, the link of its thread, and a snippet. They are told to recall before they say that they do
+  its kind, title, date, the link of its chat, and a snippet. They are told to recall before they say that they do
   not know.
 - **The Search page.** Results come as you type, each with the Markdown lines around the first word that matches.
   Before a query, the page shows your recent searches and Golem.
-- **Freshness.** Golem indexes a thread a second after it changes and checks the files every minute; it reads and
+- **Freshness.** Golem indexes a chat a second after it changes and checks the files every minute; it reads and
   embeds again only what changed. Until the model runs, search finds words only, and the Search page says so.
 
 [docs/data.md](docs/data.md) has every file kind and the details.
@@ -252,17 +252,17 @@ The workspace has one search index, `index.sqlite`, on the server. The Search pa
 ### Artifacts
 
 An artifact is a page or a small app that an agent writes in HTML: an invite with RSVPs, a poll, a shared shopping
-list, a game, or a schedule to print or save as a PDF. It belongs to the channel of the thread that made it and
-stays there when the thread is settled. The side panel of a thread shows the artifacts of its channel, and the iPhone
+list, a game, or a schedule to print or save as a PDF. It belongs to the topic of the chat that made it and
+stays there when the chat is settled. The side panel of a chat shows the artifacts of its topic, and the iPhone
 app shows them in the same way.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/artifacts-dark.svg">
-  <img alt="A family member opens golem.example.com, and anyone with a link opens a.example.com. Both hosts are on Cloudflare and reach the Mac mini through an outbound cloudflared tunnel; the public host passes only artifact paths and answers 404 to the rest. Golem listens on 127.0.0.1:3000, checks who may open the artifact, and shows it in a sandboxed page. The page keeps its data through the golem runtime in golem.sqlite, where the thread agent writes the HTML." src="docs/assets/artifacts-light.svg">
+  <img alt="A family member opens golem.example.com, and anyone with a link opens a.example.com. Both hosts are on Cloudflare and reach the Mac mini through an outbound cloudflared tunnel; the public host passes only artifact paths and answers 404 to the rest. Golem listens on 127.0.0.1:3000, checks who may open the artifact, and shows it in a sandboxed page. The page keeps its data through the golem runtime in golem.sqlite, where the chat agent writes the HTML." src="docs/assets/artifacts-light.svg">
 </picture>
 
-- **Members or public.** A new artifact is for members: only signed-in people who can see its channel open it, so an
-  artifact of a private channel stays private. Any member who sees it, or an agent, can make it public; then anyone
+- **Members or public.** A new artifact is for members: only signed-in people who can see its topic open it, so an
+  artifact of a private topic stays private. Any member who sees it, or an agent, can make it public; then anyone
   with its link opens it, without an account. A link is four words, such as `amber-fox-lake-moss`: easy to know again,
   and too many to guess. A name is never given out again, also after a delete.
 - **Data without a backend.** The page keeps data through `golem`, a small runtime that Golem puts at its start:
@@ -294,10 +294,10 @@ run at a place instead of on a schedule; the iPhone tells Golem when it happens.
   Maps. A place is private to its person's turns until they share it with every member.
 - **The reminder.** The agent makes it with `reminders_create`: the text, the person to remind, a place by name, and
   `arrive` or `leave`. It uses the places of the person who asked, their own first and then the shared ones. The
-  reminder waits in its thread and shows in the person's Upcoming, where they can cancel it.
+  reminder waits in its chat and shows in the person's Upcoming, where they can cancel it.
 - **The routine.** The agent makes it with `routines_create`: the instructions, a place by name, `arrive` or
-  `leave`, and the person whose arrival or departure runs it. It runs each time that event comes, in its channel's
-  thread, as a routine on a schedule does, but at most every 15 minutes, as a person at the edge of the circle goes in
+  `leave`, and the person whose arrival or departure runs it. It runs each time that event comes, in its topic's
+  chat, as a routine on a schedule does, but at most every 15 minutes, as a person at the edge of the circle goes in
   and out. It shows under "Routines at a place" in Upcoming, where the person pauses it.
 - **The iPhone watches; Golem decides.** The iPhone is only a sensor. Golem gives it the places of its person's
   pending reminders and routines, one circle for each place however many wait there, and the app watches them with
@@ -308,7 +308,7 @@ run at a place instead of on a schedule; the iPhone tells Golem when it happens.
   reminders and routines of that place, person, and event, a pause, and the 15 minutes between two runs.
 - **A new reminder or routine.** A new reminder starts as "outside", so a person who is already at the place gets an
   arrival reminder at once. A new routine waits for the next crossing.
-- **Golem reminds.** The reminder is due at once: its thread wakes, the agent writes the reminder, and it comes as a
+- **Golem reminds.** The reminder is due at once: its chat wakes, the agent writes the reminder, and it comes as a
   time-sensitive push. A second report of the same state changes nothing, and a cancelled reminder stays quiet.
 - **Without a connection**, as in the mountains, the iPhone keeps each report with its time and sends it when it is
   online again; it also shows the reminders of that place itself. Golem still makes a late reminder due, but does not
@@ -321,26 +321,26 @@ The first read covers one day; later reads continue from a saved cursor, includi
 private messages, mentions, and your own messages. Plaud supplies meeting summaries.
 
 Intake keeps Slack messages that the person sends, direct mentions, DMs, group DMs, and replies in those Slack
-threads. Gmail reads incoming mail only from the Primary inbox after Gmail filters, plus sent mail for context. It excludes archived incoming mail, other inbox categories, spam, trash, and drafts before fetching bodies. WhatsApp retains both incoming and outgoing text. The configured judge reads bounded batches
-with subject-scoped source history and candidate Golem threads. EmbeddingGemma remains the local recall model.
+chats. Gmail reads incoming mail only from the Primary inbox after Gmail filters, plus sent mail for context. It excludes archived incoming mail, other inbox categories, spam, trash, and drafts before fetching bodies. WhatsApp retains both incoming and outgoing text. The configured judge reads bounded batches
+with subject-scoped source history and candidate Golem chats. EmbeddingGemma remains the local recall model.
 There is no separate relevance-reading model.
 
 The clock also starts work. A stated response period gets a durable check. When it is due, Golem reads fresh source
 evidence before it decides whether you need to know. An acknowledgement does not count as a substantive answer.
 An undated promise gets an internal review, with no claim that a deadline was missed.
 
-Useful developments add a visible message and source files to the existing subject thread, saying what changed and
+Useful developments add a visible message and source files to the existing subject chat, saying what changed and
 what it asks of you. Golem is your second brain, not your worker: it remembers and reminds, and it does research or
 drafts only when you ask. What a message asks of you is nudged in the morning summary every 2 days until you deal
 with it, or tell Golem it is done, rejected, or someone else's. A separate
 notification decision needs exact source evidence: the owner asked, an awaited reply needs attention, a stated time
 arrived, or time-sensitive preparation helps now. Golem checks the latest source before a permitted notification.
-Normal messages, mentions, and an hour without a reply do not qualify alone. An existing matching shared family thread can
-receive the sources too, as a visible message. New subjects start in your own private channels;
-when none fits, Golem creates a private channel and its first thread. The thread agent has its normal tools and
-can find older related mail and tickets. No separate worker thread is made.
+Normal messages, mentions, and an hour without a reply do not qualify alone. An existing matching shared family chat can
+receive the sources too, as a visible message. New subjects start in your own private topics;
+when none fits, Golem creates a private topic and its first chat. The chat agent has its normal tools and
+can find older related mail and tickets. No separate worker chat is made.
 Nonurgent developments wait for the morning review in the 08:00 Europe/Prague hour: one plan groups them by matter,
-posts one message to each thread, and sends you one summary with a notification.
+posts one message to each chat, and sends you one summary with a notification.
 Silent context updates and filing send no push. No source starts an agent, so nothing is researched or drafted for
 you unless you ask. External messages still need a person's request and approval.
 
@@ -357,7 +357,7 @@ Private replay data must stay outside this public repository.
 
 ### More
 
-- **Browser.** Agents visit websites in a headless Chrome of their own for each thread and person, driven by Vercel's
+- **Browser.** Agents visit websites in a headless Chrome of their own for each chat and person, driven by Vercel's
   [agent-browser](https://github.com/vercel-labs/agent-browser). They search the web with ChatGPT's own search,
   because search engines block a headless browser. All their web traffic goes through one egress that blocks the
   server, the home network, and private addresses.
@@ -370,7 +370,7 @@ Private replay data must stay outside this public repository.
 - **Feedback from the agents.** When a tool fails or answers wrong, when no tool can do the work, or when an agent sees
   an easier way, it reports this with `feedback_report` and continues. The server's owner reads the reports under
   **Private** › **Feedback** and dismisses each one when it is done. A report describes Golem, not the person, and
-  links its thread only when the owner can see it.
+  links its chat only when the owner can see it.
 - **The model.** Golem uses ChatGPT, signed in once with the device login of OpenAI's Codex. The server's owner
   chooses the model and the effort for everybody.
 
@@ -416,19 +416,19 @@ so they work without a connection and nothing is downloaded on the phone.
   to keep it listening. The words show in the field as you talk: Parakeet transcribes everything said again every
   second and at every pause, so the text comes in short steps, and the final text is one pass over all of it. Only
   what the sound classifier calls speech is transcribed, so a fan or typing never turns into "Thank you." The Action
-  button, Siri, and Shortcuts can start it too: **Dictate to Golem** opens your Golem thread with the mic on, and
+  button, Siri, and Shortcuts can start it too: **Dictate to Golem** opens your Golem chat with the mic on, and
   **Ask Golem** sends a question with a screenshot and the clipboard without opening the app, and the answer comes
   as a notification.
-- **Conversation.** The wave button in a thread starts a hands-free conversation. The microphone stays on with echo
+- **Conversation.** The wave button in a chat starts a hands-free conversation. The microphone stays on with echo
   cancellation. A pause ends your turn: a short one after a finished sentence, a longer one after "and…", "um", or a
-  comma, in Czech and English. Your words go to the thread as a voice message, which tells the agent to answer as
+  comma, in Czech and English. Your words go to the chat as a voice message, which tells the agent to answer as
   people speak: plain sentences, one to three of them, and one short sentence before it uses a tool. Golem says each
   sentence as it streams in: Supertonic makes a sentence while the one before it plays, in 80 ms buffers.
 - **Cutting in.** With headphones, your voice stops Golem at once, and what it did not say yet is dropped. On the
   iPhone's speaker, echo cancellation leaves enough of Golem's own voice to sound like words, so only "stop", "wait",
   and the like cut in there; a tap on the orb always does. What the microphone hears while Golem speaks is never sent.
-- **It keeps going.** A conversation goes on with the screen locked and when you leave the thread's screen. Ending it
-  stops the microphone and the voice, never the work: the agent finishes, and the answer is in the thread.
+- **It keeps going.** A conversation goes on with the screen locked and when you leave the chat's screen. Ending it
+  stops the microphone and the voice, never the work: the agent finishes, and the answer is in the chat.
 
 ## Self-hosting
 
@@ -474,7 +474,7 @@ Settings.
 Golem keeps everything in two folders ([docs/data.md](docs/data.md)). `GOLEM_CONFIG` and `GOLEM_DATA` move them.
 
 - `config/`: `golem.toml` and `secret.key`. Keep a copy of it safe and apart from the data backups.
-- `data/`: the database, the threads, the files, the search index and its model, and the logs. Back it up offsite.
+- `data/`: the database, the chats, the files, the search index and its model, and the logs. Back it up offsite.
 
 ### The recommended deployment: a Mac mini behind a Cloudflare Tunnel
 

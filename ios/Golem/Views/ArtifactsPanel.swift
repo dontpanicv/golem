@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Files, artifacts, and the open artifact of a channel beside the channel or one of its threads, or of the workspace
+/// Files, artifacts, and the open artifact of a topic beside the topic or one of its chats, or of the workspace
 /// beside the orchestrator.
 struct ArtifactsPanel: View {
     enum Tab: String, CaseIterable {
@@ -15,8 +15,8 @@ struct ArtifactsPanel: View {
     }
 
     /// Nil for the workspace's own files and artifacts.
-    let channelID: String?
-    /// Changes when the thread does, so the files and artifacts load again: they come with messages.
+    let topicID: String?
+    /// Changes when the chat does, so the files and artifacts load again: they come with messages.
     let changes: Int
     /// Closes the panel where it is a sheet, on iPhone.
     var close: (() -> Void)?
@@ -30,9 +30,9 @@ struct ArtifactsPanel: View {
 
     /// `artifactID` opens an artifact at once, as a search result does.
     init(
-        channelID: String?, changes: Int, artifactID: String? = nil, close: (() -> Void)? = nil
+        topicID: String?, changes: Int, artifactID: String? = nil, close: (() -> Void)? = nil
     ) {
-        self.channelID = channelID
+        self.topicID = topicID
         self.changes = changes
         self.close = close
         _openArtifact = State(initialValue: artifactID)
@@ -74,12 +74,12 @@ struct ArtifactsPanel: View {
         .filePreview($opening)
         .task(id: changes) {
             await session.run {
-                files = try await session.api.files(workspaceID: workspaceID, channelID: channelID)
+                files = try await session.api.files(workspaceID: workspaceID, topicID: topicID)
             }
         }
         .task(id: "\(changes)-\(artifactChanges)") {
             await session.run {
-                artifacts = try await session.api.artifacts(workspaceID: workspaceID, channelID: channelID)
+                artifacts = try await session.api.artifacts(workspaceID: workspaceID, topicID: topicID)
                 if let openArtifact, !artifacts.contains(where: { $0.id == openArtifact }) {
                     self.openArtifact = nil
                 }
@@ -89,7 +89,7 @@ struct ArtifactsPanel: View {
 
     private var workspaceID: String { session.workspace?.id ?? "" }
 
-    /// The channel's artifacts, newest first. Tapping one opens it in the panel.
+    /// The topic's artifacts, newest first. Tapping one opens it in the panel.
     @ViewBuilder
     private var artifactsTab: some View {
         if artifacts.isEmpty {
@@ -116,7 +116,7 @@ struct ArtifactsPanel: View {
         }
     }
 
-    /// The channel's files, newest first, under an upload button that spins while files upload. Files dropped on the
+    /// The topic's files, newest first, under an upload button that spins while files upload. Files dropped on the
     /// tab upload.
     private var filesTab: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.md) {
@@ -159,7 +159,7 @@ struct ArtifactsPanel: View {
         uploading = true
         Task {
             await session.run {
-                files = try await session.api.uploadFiles(workspaceID: workspaceID, channelID: channelID, files: picked)
+                files = try await session.api.uploadFiles(workspaceID: workspaceID, topicID: topicID, files: picked)
             }
             uploading = false
         }

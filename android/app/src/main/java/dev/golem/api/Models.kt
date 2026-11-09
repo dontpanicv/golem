@@ -15,28 +15,28 @@ data class Workspace(val id: String, val name: String, val role: String)
 data class Profile(val user: User, val workspaces: List<Workspace>, val owner: Boolean = false)
 
 @Serializable
-data class ThreadSummary(
+data class ChatSummary(
     val id: String,
-    val channelId: String,
+    val topicId: String,
     val title: String,
     val updatedAt: Double,
     val settledAt: Double? = null,
 )
 
 @Serializable
-data class Channel(
+data class Topic(
     val id: String,
     val name: String,
-    /** The person a private channel belongs to, who alone sees it; null for a channel every member sees. */
+    /** The person a private topic belongs to, who alone sees it; null for a topic every member sees. */
     val ownerId: String? = null,
     val summary: String? = null,
     /** One emoji, shown in place of the # before the name. */
     val icon: String? = null,
-    val threads: List<ThreadSummary> = emptyList(),
+    val chats: List<ChatSummary> = emptyList(),
 )
 
 @Serializable
-data class WorkspaceDetail(val workspace: Workspace, val channels: List<Channel>)
+data class WorkspaceDetail(val workspace: Workspace, val topics: List<Topic>)
 
 @Serializable
 data class Member(
@@ -87,15 +87,15 @@ data class Step(
 )
 
 @Serializable
-data class WorkingThreads(val threadIds: List<String>)
+data class WorkingChats(val chatIds: List<String>)
 
-/** Something that needs the person: it opens its thread, or its channel without one. */
+/** Something that needs the person: it opens its chat, or its topic without one. */
 @Serializable
 data class InboxNotification(
     val id: String,
     val workspaceId: String,
-    val channelId: String,
-    val threadId: String? = null,
+    val topicId: String,
+    val chatId: String? = null,
     val title: String,
     val text: String,
     val createdAt: Double,
@@ -108,7 +108,7 @@ data class Inbox(val notifications: List<InboxNotification>, val unread: Int, va
 @Serializable
 data class FileRef(val id: String, val name: String)
 
-/** A file of a channel, or of the workspace for the orchestrator. */
+/** A file of a topic, or of the workspace for the orchestrator. */
 @Serializable
 data class SavedFile(val id: String, val name: String, val size: Double, val time: Double) {
     val ref get() = FileRef(id, name)
@@ -118,8 +118,8 @@ data class SavedFile(val id: String, val name: String, val size: Double, val tim
 data class SavedFiles(val files: List<SavedFile>)
 
 @Serializable
-data class ThreadState(
-    val thread: ThreadSummary,
+data class ChatState(
+    val chat: ChatSummary,
     val messages: List<Message>,
     val running: Boolean,
     val approvals: List<Approval> = emptyList(),
@@ -137,12 +137,12 @@ data class Approval(
     val expiresAt: Double,
 )
 
-/** A page or small app an agent made; it belongs to a channel, or to the workspace when `channelId` is null. */
+/** A page or small app an agent made; it belongs to a topic, or to the workspace when `topicId` is null. */
 @Serializable
 data class Artifact(
     val id: String,
-    val channelId: String? = null,
-    val threadId: String,
+    val topicId: String? = null,
+    val chatId: String,
     val title: String,
     val visibility: String,
     val url: String,
@@ -173,8 +173,8 @@ data class SearchResult(
     val uri: String,
     val kind: String,
     val title: String,
-    val threadId: String? = null,
-    val channelId: String? = null,
+    val chatId: String? = null,
+    val topicId: String? = null,
     val snippet: String = "",
     val score: Double = 0.0,
     val updatedAt: Double = 0.0,
@@ -189,12 +189,12 @@ data class RecentSearch(val query: String, val searchedAt: Double)
 @Serializable
 data class RecentSearches(val searches: List<RecentSearch>)
 
-/** What a channel is for and where it is now, as Markdown with thread links. */
+/** What a topic is for and where it is now, as Markdown with chat links. */
 @Serializable
 data class Brief(val text: String, val updatedAt: Double)
 
 @Serializable
-data class ChannelBrief(val brief: Brief? = null)
+data class TopicBrief(val brief: Brief? = null)
 
 @Serializable
 data class TokenResponse(val token: String? = null)

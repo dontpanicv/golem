@@ -169,7 +169,7 @@ struct ListenerTests {
     }
 }
 
-/// What a conversation reads out of a thread: the agent's messages after the person's last one.
+/// What a conversation reads out of a chat: the agent's messages after the person's last one.
 @Suite("Conversation")
 struct ConversationTests {
     private func message(

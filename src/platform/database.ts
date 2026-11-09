@@ -6,7 +6,7 @@ import { dirname } from "node:path";
  * Application tables. better-auth owns `user`, `session`, `account`, `verification`, `organization` (workspaces),
  * `member`, and `invitation`; it migrates them itself. Append a migration; never edit one that shipped.
  *
- * Each table has one owner module, and only that module queries it: `accounts` owns `profile_picture`, `workspaces` owns `channel`, `thread`, and `workspace_facts` (and reads
+ * Each table has one owner module, and only that module queries it: `accounts` owns `profile_picture`, `workspaces` owns `topic`, `chat`, and `workspace_facts` (and reads
  * `organization` and `member`, and writes the name and `deletedAt` of an `organization`), `integrations` owns
  * `credential`, `oauth_client`, and `integration_setting` (no longer read), `llm` owns `provider_credential`, `llm_usage`, `llm_usage_seen`, and its keys in `setting`,
  * `hands` owns `machine`, `places` owns `place` and `place_presence`, `artifacts` owns `artifact`, `artifact_name`, `artifact_visitor`, and `artifact_record`,
@@ -559,6 +559,55 @@ const migrations = [
   "UPDATE routine_run SET input = NULL, result = NULL WHERE outcome != 'running';",
   // places: a person's last state at a place counts only while their phone watches the place and reports it.
   "ALTER TABLE place_presence ADD COLUMN watched INTEGER NOT NULL DEFAULT 1;",
+  // workspaces, and every module that keeps a reference: channels are topics and threads are chats.
+  `DROP TRIGGER intake_check_created;
+  DROP TRIGGER intake_check_changed;
+  DROP INDEX thread_channel;
+  DROP INDEX routine_channel;
+  DROP INDEX artifact_thread;
+  DROP INDEX artifact_channel;
+  DROP INDEX thread_own_orchestrator;
+  ALTER TABLE thread RENAME COLUMN channel_id TO topic_id;
+  ALTER TABLE routine RENAME COLUMN channel_id TO topic_id;
+  ALTER TABLE routine RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE artifact RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE artifact RENAME COLUMN channel_id TO topic_id;
+  ALTER TABLE reminder RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE notification RENAME COLUMN channel_id TO topic_id;
+  ALTER TABLE notification RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE llm_usage RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE suggestion RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE suggestion RENAME COLUMN channel_id TO topic_id;
+  ALTER TABLE live_activity RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE feedback RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE intake_item RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE intake_check RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE intake_context RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE intake_delivery RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE intake_thread_read RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE intake_source_read RENAME COLUMN thread_id TO chat_id;
+  ALTER TABLE intake_archive RENAME COLUMN channel_id TO topic_id;
+  ALTER TABLE channel RENAME TO topic;
+  ALTER TABLE thread RENAME TO chat;
+  ALTER TABLE intake_thread_read RENAME TO intake_chat_read;
+  CREATE INDEX chat_topic ON chat (topic_id, updated_at);
+  CREATE INDEX routine_topic ON routine (topic_id);
+  CREATE INDEX artifact_chat ON artifact (chat_id);
+  CREATE INDEX artifact_topic ON artifact (topic_id);
+  CREATE UNIQUE INDEX chat_own_orchestrator ON chat (workspace_id, created_by) WHERE orchestrator = 1;
+  CREATE TRIGGER intake_check_created AFTER INSERT ON intake_check BEGIN
+    INSERT INTO intake_check_revision(check_id,workspace_id,owner_id,at,current)
+    VALUES(NEW.id,NEW.workspace_id,NEW.owner_id,NEW.revised_at,json_object('text',NEW.text,'state',NEW.state,'sourceIds',json(NEW.source_ids),'chatId',NEW.chat_id,'checkAt',NEW.check_at,'reviewAt',NEW.next_review_at,'explicitTime',NEW.explicit_time,'notifiedAt',NEW.notified_at));
+  END;
+  CREATE TRIGGER intake_check_changed AFTER UPDATE ON intake_check
+    WHEN OLD.text IS NOT NEW.text OR OLD.state IS NOT NEW.state OR OLD.source_ids IS NOT NEW.source_ids
+      OR OLD.check_at IS NOT NEW.check_at OR OLD.next_review_at IS NOT NEW.next_review_at
+      OR OLD.chat_id IS NOT NEW.chat_id OR OLD.explicit_time IS NOT NEW.explicit_time
+      OR OLD.notified_at IS NOT NEW.notified_at
+    BEGIN
+    INSERT INTO intake_check_revision(check_id,workspace_id,owner_id,at,previous,current)
+    VALUES(NEW.id,NEW.workspace_id,NEW.owner_id,CAST(unixepoch('subsec')*1000 AS INTEGER),json_object('text',OLD.text,'state',OLD.state,'sourceIds',json(OLD.source_ids),'chatId',OLD.chat_id,'checkAt',OLD.check_at,'reviewAt',OLD.next_review_at,'explicitTime',OLD.explicit_time,'notifiedAt',OLD.notified_at),json_object('text',NEW.text,'state',NEW.state,'sourceIds',json(NEW.source_ids),'chatId',NEW.chat_id,'checkAt',NEW.check_at,'reviewAt',NEW.next_review_at,'explicitTime',NEW.explicit_time,'notifiedAt',NEW.notified_at));
+  END;`,
 ];
 
 export function openDatabase(path: string): Database {

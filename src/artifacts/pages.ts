@@ -24,7 +24,7 @@ frame.addEventListener("load", () => {
     } catch {
       reply.error = "Golem is not reachable";
     }
-    channel.port1.postMessage(reply);
+    topic.port1.postMessage(reply);
   };
   frame.contentWindow.postMessage({ golem: 1 }, "*", [channel.port2]);
 }, { once: true });`;

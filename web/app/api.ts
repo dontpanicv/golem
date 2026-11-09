@@ -55,7 +55,7 @@ export async function request<T>(
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/** The address of a file of the workspace, in a channel or its own. */
+/** The address of a file of the workspace, in a topic or its own. */
 export function fileHref(workspaceId: string, fileId: string): string {
   return `/api/v1/workspaces/${workspaceId}/files/${fileId}`;
 }
@@ -85,7 +85,7 @@ export function signIn(): void {
 
 /**
  * Whether a later try can succeed: after no connection, a server that does not answer, or a sign-in that ran out.
- * Other refusals, such as for a thread that was deleted, stay the same.
+ * Other refusals, such as for a chat that was deleted, stay the same.
  */
 export function retriable(error: unknown): boolean {
   if (!(error instanceof ApiError)) {

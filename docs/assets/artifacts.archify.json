@@ -102,7 +102,7 @@
       "id": "check",
       "type": "security",
       "label": "Who may open it",
-      "sublabel": "members: signed in, sees channel",
+      "sublabel": "members: signed in, sees topic",
       "pos": [1030, 190],
       "size": [200, 64],
       "tag": "public host: public only",
@@ -180,7 +180,7 @@
     {
       "id": "agent",
       "type": "backend",
-      "label": "Thread agent",
+      "label": "Chat agent",
       "sublabel": "artifacts_create · _update",
       "pos": [590, 580],
       "size": [150, 64],
@@ -276,8 +276,8 @@
       "dot": "emerald",
       "title": "Members and public",
       "items": [
-        "An agent makes a page or small app; it belongs to its channel",
-        "Members: only signed-in people who see the channel open it",
+        "An agent makes a page or small app; it belongs to its topic",
+        "Members: only signed-in people who see the topic open it",
         "Public: anyone with the link of four words opens it"
       ]
     },

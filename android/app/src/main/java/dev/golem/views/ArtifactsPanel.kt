@@ -49,13 +49,13 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Files, artifacts, and the open artifact of a channel beside the channel or one of its threads, or of the workspace
- * beside the orchestrator (a null `channelId`), in a sheet as Material has it on a phone. `changes` changes when the
- * thread does, so the lists load again; `artifactId` opens one at once, as a link or a search result does.
+ * Files, artifacts, and the open artifact of a topic beside the topic or one of its chats, or of the workspace
+ * beside the orchestrator (a null `topicId`), in a sheet as Material has it on a phone. `changes` changes when the
+ * chat does, so the lists load again; `artifactId` opens one at once, as a link or a search result does.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ArtifactsPanel(channelId: String?, changes: Int, artifactId: String?, onDismiss: () -> Unit) {
+fun ArtifactsPanel(topicId: String?, changes: Int, artifactId: String?, onDismiss: () -> Unit) {
     val session = LocalSession.current
     val workspaceId = session.workspace?.id ?: return
     var tab by remember { mutableStateOf("Files") }
@@ -66,10 +66,10 @@ fun ArtifactsPanel(channelId: String?, changes: Int, artifactId: String?, onDism
     var uploading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val opener = rememberFileOpener()
-    LaunchedEffect(changes) { session.run { files = session.api.files(workspaceId, channelId) } }
+    LaunchedEffect(changes) { session.run { files = session.api.files(workspaceId, topicId) } }
     LaunchedEffect(changes, artifactChanges) {
         session.run {
-            artifacts = session.api.artifacts(workspaceId, channelId)
+            artifacts = session.api.artifacts(workspaceId, topicId)
             if (openArtifact != null && artifacts.none { it.id == openArtifact }) openArtifact = null
         }
     }
@@ -111,7 +111,7 @@ fun ArtifactsPanel(channelId: String?, changes: Int, artifactId: String?, onDism
                     UploadButton(uploading) { picked ->
                         uploading = true
                         scope.launch {
-                            session.run { files = session.api.uploadFiles(workspaceId, channelId, picked) }
+                            session.run { files = session.api.uploadFiles(workspaceId, topicId, picked) }
                             uploading = false
                         }
                     }

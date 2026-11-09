@@ -591,11 +591,11 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
         </g>
         </g>
 
-        <g data-edge-from="app" data-edge-to="golem" data-edge-label="message to the thread" data-edge-key="2" data-edge-id="message">
+        <g data-edge-from="app" data-edge-to="golem" data-edge-label="message to the chat" data-edge-key="2" data-edge-id="message">
           <path data-composition-edge-from="app" data-composition-edge-to="golem" data-composition-edge-id="message" data-composition-points="370.83333333333337,320;571.1666666666667,320" d="M 370.83333333333337 320 L 571.1666666666667 320" class="a-default" data-animate="edge" style="--step: 2;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g>
           <rect x="395.70000000000005" y="300" width="150.6" height="18" rx="3" class="c-mask"/>
-          <text x="471.00000000000006" y="310" class="t-muted" font-size="11" text-anchor="middle">message to the thread</text>
+          <text x="471.00000000000006" y="310" class="t-muted" font-size="11" text-anchor="middle">message to the chat</text>
         </g>
         <text x="382.83333333333337" y="338" class="t-muted" font-size="7">the agent's script calls phone_alarm_set</text>
         </g>

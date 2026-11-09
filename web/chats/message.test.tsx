@@ -25,11 +25,11 @@ async function render(node: ReactNode): Promise<string> {
   return renderToString(<RouterProvider router={router} />);
 }
 
-test("an answer's thread links open the thread, its files show, and nothing in it runs", async () => {
+test("an answer's chat links open the chat, its files show, and nothing in it runs", async () => {
   const html = await render(
     <Markdown
       text={[
-        "Started [Dinner <b>plan</b>](thread:abc-1), <i>*soon*</i>, and read ![the list](file:f-1).",
+        "Started [Dinner <b>plan</b>](chat:abc-1), <i>*soon*</i>, and read ![the list](file:f-1).",
         '<img src="x" onerror="alert(1)"><script>alert(2)</script>',
         '[bad](javascript:alert(3)) <a href="https://example.com" onclick="alert(4)">site</a>',
         '<iframe src="https://example.com"></iframe>',
@@ -37,7 +37,7 @@ test("an answer's thread links open the thread, its files show, and nothing in i
       workspaceId="family"
     />
   );
-  expect(html).toContain('class="thread-link" href="/w/family/t/abc-1"');
+  expect(html).toContain('class="chat-link" href="/w/family/chat/abc-1"');
   expect(html).toContain("Dinner <b>plan</b>");
   expect(html).toContain('src="/api/v1/workspaces/family/files/f-1"');
   expect(html).toContain('href="https://example.com"');
@@ -114,7 +114,7 @@ const message = (work: Work): Message => ({
 const call = (text: string) => ({
   kind: "tool" as const,
   text,
-  tool: "start_thread",
+  tool: "start_chat",
   input: null,
   output: null,
   running: false,
@@ -159,16 +159,16 @@ test("calls of one tool in a row fold into one row, and a stopped turn says so",
         startedAt: 1000,
         endedAt: 4000,
         stopped: true,
-        steps: [call("[Dinner](thread:d-1)"), call("[Trip](thread:t-2)")],
+        steps: [call("[Dinner](chat:d-1)"), call("[Trip](chat:t-2)")],
       })}
       workspaceId="w"
     />
   );
   expect(html).toContain("Stopped after 3s");
   expect(html).toContain(
-    '<span class="work-tool-name">Start thread</span><span class="work-tool-detail">2<!-- --> times</span>'
+    '<span class="work-tool-name">Start chat</span><span class="work-tool-detail">2<!-- --> times</span>'
   );
-  expect(html).toContain('class="thread-link" href="/w/w/t/d-1">Dinner</a>');
+  expect(html).toContain('class="chat-link" href="/w/w/chat/d-1">Dinner</a>');
 });
 
 test("a finished work shows one pixel for each tool call, and the face shows how the work went", async () => {
@@ -256,7 +256,7 @@ test("the working summary says the step Golem is at, and an approval puts Allow 
         allowsTurn: false,
         expiresAt: 0,
       }}
-      threadId="t"
+      chatId="t"
     />
   );
   expect(approval).toContain("<p>vacuum.start vacuum.hall</p>");
@@ -264,13 +264,13 @@ test("the working summary says the step Golem is at, and an approval puts Allow 
   expect(approval).not.toContain("Allow for this turn");
 });
 
-test("a turn that another thread's answer started continues Golem's message before it, and says where it came from", async () => {
+test("a turn that another chat's answer started continues Golem's message before it, and says where it came from", async () => {
   const relayed = message({
     startedAt: 1000,
     endedAt: 4000,
     stopped: false,
     steps: [
-      { ...call("[SVJ Rokycanova 8](thread:s-1)"), tool: "from_thread" },
+      { ...call("[SVJ Rokycanova 8](chat:s-1)"), tool: "from_chat" },
       call("x"),
     ],
   });

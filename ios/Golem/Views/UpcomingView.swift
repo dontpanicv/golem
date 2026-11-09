@@ -49,14 +49,14 @@ struct UpcomingView: View {
     @ViewBuilder
     private func row(_ item: UpcomingItem, in kind: UpcomingGroup.Kind) -> some View {
         switch item {
-        case let .approval(threadID, approval):
-            Button { open(.thread(threadID)) } label: {
-                ListRow(approval.text, pixel: .hand, subtitle: threadTitle(threadID))
+        case let .approval(chatID, approval):
+            Button { open(.chat(chatID)) } label: {
+                ListRow(approval.text, pixel: .hand, subtitle: chatTitle(chatID))
             }
             .buttonStyle(.row)
         case let .routine(routine):
             actionRow {
-                open(routine.threadId.map { .thread($0) } ?? .channel(routine.channelId))
+                open(routine.chatId.map { .chat($0) } ?? .topic(routine.topicId))
             } label: {
                 ListRow(
                     title: routine.name, pixel: routine.place == nil ? .refresh : .place,
@@ -71,7 +71,7 @@ struct UpcomingView: View {
                 ) { setEnabled(routine, !routine.enabled) }
             }
         case let .reminder(reminder):
-            actionRow { open(.thread(reminder.threadId)) } label: {
+            actionRow { open(.chat(reminder.chatId)) } label: {
                 ListRow(
                     title: reminder.text, pixel: reminder.place == nil ? .bell : .place,
                     subtitle: reminder.waitsForPlace ? reminder.placeWindow : when(reminder.dueAt, kind)
@@ -104,14 +104,14 @@ struct UpcomingView: View {
     }
 
     private func subtitle(_ routine: Routine, _ kind: UpcomingGroup.Kind) -> String {
-        let channel = session.channels.first { $0.id == routine.channelId }.map { "#\($0.name)" }
+        let topic = session.topics.first { $0.id == routine.topicId }.map { "#\($0.name)" }
         let detail: String? = switch kind {
         case .needsYou: routine.lastRun?.error ?? "Failed"
         case .paused: "Paused"
         case .routinesAtPlace: routine.place?.summary
         default: routine.nextRunAt.map { when($0, kind) }
         }
-        return [channel, detail].compactMap { $0 }.joined(separator: " · ")
+        return [topic, detail].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// The time alone today and tomorrow, which the group names; the day too after that.
@@ -121,9 +121,9 @@ struct UpcomingView: View {
         return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
     }
 
-    private func threadTitle(_ threadID: String) -> String? {
-        if threadID == session.orchestrator?.id { return "Golem" }
-        return session.channels.flatMap(\.threads).first { $0.id == threadID }?.title
+    private func chatTitle(_ chatID: String) -> String? {
+        if chatID == session.orchestrator?.id { return "Golem" }
+        return session.topics.flatMap(\.chats).first { $0.id == chatID }?.title
     }
 
     private func setEnabled(_ routine: Routine, _ enabled: Bool) {
@@ -240,7 +240,7 @@ struct UpcomingGroup: Identifiable, Hashable {
 }
 
 enum UpcomingItem: Hashable, Identifiable {
-    case approval(threadID: String, Approval)
+    case approval(chatID: String, Approval)
     case routine(Routine)
     case reminder(Reminder)
     case suggestion(Suggestion)
@@ -260,7 +260,7 @@ extension Upcoming {
     /// reminders by their time go under the day, soonest first ("This week" is the 5 days after tomorrow); then the
     /// reminders that wait for a place, the routines at a place, and the paused routines last.
     func groups(now: Date = .now, calendar: Calendar = .current) -> [UpcomingGroup] {
-        var needsYou = approvals.map { UpcomingItem.approval(threadID: $0.threadId, $0.approval) }
+        var needsYou = approvals.map { UpcomingItem.approval(chatID: $0.chatId, $0.approval) }
         var paused: [UpcomingItem] = []
         var timed: [(time: Double, item: UpcomingItem)] = reminders.filter { !$0.waitsForPlace }
             .map { ($0.dueAt, .reminder($0)) }

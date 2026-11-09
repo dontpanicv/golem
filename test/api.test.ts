@@ -14,7 +14,7 @@ let golem: TestApp;
 let alice: string;
 let bob: string;
 let workspaceId: string;
-let channelId: string;
+let topicId: string;
 
 beforeAll(async () => {
   golem = await startTestApp();
@@ -28,7 +28,7 @@ beforeAll(async () => {
   const detail = await body(
     await golem.call(`/api/v1/workspaces/${workspaceId}`, { token: alice })
   );
-  channelId = detail.channels[0].id;
+  topicId = detail.topics[0].id;
 });
 
 afterAll(() => golem.close());
@@ -60,17 +60,14 @@ test("JSON for the apps has no half emoji and no line end that splits an event",
 test("a request body must be a JSON object", async () => {
   const post = (text: string) =>
     golem.handler(
-      new Request(
-        `http://golem.test/api/v1/workspaces/${workspaceId}/channels`,
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${alice}`,
-            "content-type": "application/json",
-          },
-          body: text,
-        }
-      )
+      new Request(`http://golem.test/api/v1/workspaces/${workspaceId}/topics`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${alice}`,
+          "content-type": "application/json",
+        },
+        body: text,
+      })
     );
   for (const text of ["{", "[1]", '"Family"', "null"]) {
     expect(await failure(await post(text))).toEqual({
@@ -89,18 +86,18 @@ test("names and messages are checked before anything is stored", async () => {
   const base = `/api/v1/workspaces/${workspaceId}`;
   expect(
     await failure(
-      await golem.call(`${base}/channels`, {
+      await golem.call(`${base}/topics`, {
         token: alice,
         body: { name: "#!!" },
       })
     )
   ).toEqual({
     status: 400,
-    error: "Use letters or numbers in the channel name",
+    error: "Use letters or numbers in the topic name",
   });
   expect(
     await failure(
-      await golem.call(`${base}/channels`, {
+      await golem.call(`${base}/topics`, {
         token: alice,
         body: { name: 42 },
       })
@@ -108,36 +105,36 @@ test("names and messages are checked before anything is stored", async () => {
   ).toEqual({ status: 400, error: "Name is required" });
   expect(
     await body(
-      await golem.call(`${base}/channels`, {
+      await golem.call(`${base}/topics`, {
         token: alice,
         body: { name: "#Weekend Plans" },
       })
     )
-  ).toMatchObject({ name: "weekend-plans", threads: [] });
+  ).toMatchObject({ name: "weekend-plans", chats: [] });
   expect(
     (
-      await golem.call(`${base}/threads`, {
+      await golem.call(`${base}/chats`, {
         token: alice,
-        body: { channelId: "no-such-channel", text: "Hello" },
+        body: { topicId: "no-such-topic", text: "Hello" },
       })
     ).status
   ).toBe(404);
   expect(
     await failure(
-      await golem.call(`${base}/threads`, {
+      await golem.call(`${base}/chats`, {
         token: alice,
-        body: { channelId, text: "   " },
+        body: { topicId, text: "   " },
       })
     )
   ).toEqual({ status: 400, error: "Message is required" });
-  const { channels } = await body(await golem.call(base, { token: alice }));
-  expect(
-    channels.flatMap((channel: { threads: unknown[] }) => channel.threads)
-  ).toEqual([]);
+  const { topics } = await body(await golem.call(base, { token: alice }));
+  expect(topics.flatMap((topic: { chats: unknown[] }) => topic.chats)).toEqual(
+    []
+  );
 });
 
-test("a channel name keeps Czech letters, and only a member renames a channel", async () => {
-  const base = `/api/v1/workspaces/${workspaceId}/channels`;
+test("a topic name keeps Czech letters, and only a member renames a topic", async () => {
+  const base = `/api/v1/workspaces/${workspaceId}/topics`;
   const trips = await body(
     await golem.call(base, { token: alice, body: { name: "Výlety do hor" } })
   );
@@ -170,19 +167,19 @@ test("a channel name keeps Czech letters, and only a member renames a channel", 
   ).toBe(404);
 });
 
-test("a long first line makes a short thread title", async () => {
+test("a long first line makes a short chat title", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Noted.")]);
-  const thread = await body(
-    await golem.call(`/api/v1/workspaces/${workspaceId}/threads`, {
+  const chat = await body(
+    await golem.call(`/api/v1/workspaces/${workspaceId}/chats`, {
       token: alice,
-      body: { channelId, text: `${"a".repeat(80)}\nsecond line` },
+      body: { topicId, text: `${"a".repeat(80)}\nsecond line` },
     })
   );
-  expect(thread.title).toBe(`${"a".repeat(59)}…`);
+  expect(chat.title).toBe(`${"a".repeat(59)}…`);
   // The answer must use its own scripted response before the next test sets others.
   await until(
     async () =>
-      body(await golem.call(`/api/v1/threads/${thread.id}`, { token: alice })),
+      body(await golem.call(`/api/v1/chats/${chat.id}`, { token: alice })),
     (state) => state.messages.length === 2 && !state.running
   );
 });
@@ -192,17 +189,17 @@ test("a message sent again with the same request id, as the web app's outbox ret
     fauxAssistantMessage("Noted."),
     fauxAssistantMessage("Got it."),
   ]);
-  const thread = await body(
-    await golem.call(`/api/v1/workspaces/${workspaceId}/threads`, {
+  const chat = await body(
+    await golem.call(`/api/v1/workspaces/${workspaceId}/chats`, {
       token: alice,
-      body: { channelId, text: "Groceries" },
+      body: { topicId, text: "Groceries" },
     })
   );
   const state = () =>
-    golem.call(`/api/v1/threads/${thread.id}`, { token: alice }).then(body);
+    golem.call(`/api/v1/chats/${chat.id}`, { token: alice }).then(body);
   await until(state, (now) => now.messages.length === 2 && !now.running);
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const sent = await golem.call(`/api/v1/threads/${thread.id}/messages`, {
+    const sent = await golem.call(`/api/v1/chats/${chat.id}/messages`, {
       token: alice,
       body: { text: "And milk", requestId: "outbox-1" },
     });
@@ -340,8 +337,8 @@ test("an unknown integration is not found", async () => {
   ).toBe(404);
 });
 
-test("routines of a channel are listed, paused, run, and deleted, and only members see them", async () => {
-  const routine = golem.app.routines.create(workspaceId, channelId, {
+test("routines of a topic are listed, paused, run, and deleted, and only members see them", async () => {
+  const routine = golem.app.routines.create(workspaceId, topicId, {
     id: crypto.randomUUID(),
     name: "Morning",
     schedule: "0 7 * * *",
@@ -349,19 +346,19 @@ test("routines of a channel are listed, paused, run, and deleted, and only membe
     script: "return [];",
     createdBy: "golem",
   });
-  const list = `/api/v1/workspaces/${workspaceId}/channels/${channelId}/routines`;
+  const list = `/api/v1/workspaces/${workspaceId}/topics/${topicId}/routines`;
   expect(await body(await golem.call(list, { token: alice }))).toMatchObject({
     routines: [
       {
         id: routine.id,
-        channelId,
+        topicId,
         name: "Morning",
         schedule: "0 7 * * *",
         instructions: "Say what is new.",
         script: "return [];",
         enabled: true,
         nextRunAt: routine.nextRunAt,
-        threadId: null,
+        chatId: null,
         lastRun: null,
       },
     ],
@@ -404,19 +401,17 @@ test("routines of a channel are listed, paused, run, and deleted, and only membe
   ).toBe(404);
 });
 
-test("artifacts of a channel open with their runtime, run calls, and change and delete only for members", async () => {
+test("artifacts of a topic open with their runtime, run calls, and change and delete only for members", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Here it is.")]);
-  const thread = await body(
-    await golem.call(`/api/v1/workspaces/${workspaceId}/threads`, {
+  const chat = await body(
+    await golem.call(`/api/v1/workspaces/${workspaceId}/chats`, {
       token: alice,
-      body: { channelId, text: "Make a quiz" },
+      body: { topicId, text: "Make a quiz" },
     })
   );
   const artifact = golem.app.artifacts.create(
-    golem.app.workspaces
-      .allThreadsIn(workspaceId)
-      .find((t) => t.id === thread.id)!,
-    channelId,
+    golem.app.workspaces.allChatsIn(workspaceId).find((t) => t.id === chat.id)!,
+    topicId,
     { title: "Quiz", html: "<p>Q</p>", requestKey: "api-test" }
   );
   const eve = await golem.signIn("Eve", "eve@example.com");
@@ -425,7 +420,7 @@ test("artifacts of a channel open with their runtime, run calls, and change and 
   expect(
     await body(
       await golem.call(
-        `/api/v1/workspaces/${workspaceId}/channels/${channelId}/artifacts`,
+        `/api/v1/workspaces/${workspaceId}/topics/${topicId}/artifacts`,
         { token: alice }
       )
     )
@@ -566,7 +561,7 @@ test("a place is its owner's until they share it, and only members see the map",
 });
 
 test("a JSON body over 1 MB gets 413 before the route reads it", async () => {
-  const large = await golem.call(`/api/v1/workspaces/${workspaceId}/channels`, {
+  const large = await golem.call(`/api/v1/workspaces/${workspaceId}/topics`, {
     token: alice,
     body: { name: "x".repeat(2 * 1024 ** 2) },
   });
@@ -576,26 +571,26 @@ test("a JSON body over 1 MB gets 413 before the route reads it", async () => {
   });
 });
 
-test("thread events stream every change until the client leaves", async () => {
+test("chat events stream every change until the client leaves", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Saturday works.")]);
-  const thread = await body(
-    await golem.call(`/api/v1/workspaces/${workspaceId}/threads`, {
+  const chat = await body(
+    await golem.call(`/api/v1/workspaces/${workspaceId}/chats`, {
       token: alice,
-      body: { channelId, text: "Plan the cabin trip" },
+      body: { topicId, text: "Plan the cabin trip" },
     })
   );
-  const events = await golem.call(`/api/v1/threads/${thread.id}/events`, {
+  const events = await golem.call(`/api/v1/chats/${chat.id}/events`, {
     token: bob,
   });
   expect(events.headers.get("content-type")).toBe("text/event-stream");
-  const stream = threadEvents(events);
+  const stream = chatEvents(events);
   const first = await stream.until(
     (state) => state.messages.length === 2 && !state.running
   );
-  expect(first.thread).toEqual(thread);
+  expect(first.chat).toEqual(chat);
 
   golem.faux.setResponses([fauxAssistantMessage("Then Sunday.")]);
-  const sent = await golem.call(`/api/v1/threads/${thread.id}/messages`, {
+  const sent = await golem.call(`/api/v1/chats/${chat.id}/messages`, {
     token: bob,
     body: { text: "Saturday I work" },
   });
@@ -614,41 +609,39 @@ test("thread events stream every change until the client leaves", async () => {
     ["Bob", "Saturday I work"],
     ["Golem", "Then Sunday."],
   ]);
-  // A new message moves the thread up.
-  const { channels } = await body(
+  // A new message moves the chat up.
+  const { topics } = await body(
     await golem.call(`/api/v1/workspaces/${workspaceId}`, { token: bob })
   );
-  const general = channels.find(
-    (channel: { id: string }) => channel.id === channelId
-  );
-  expect(general.threads[0].id).toBe(thread.id);
-  expect(general.threads[0].updatedAt).toBeGreaterThan(thread.updatedAt);
+  const general = topics.find((topic: { id: string }) => topic.id === topicId);
+  expect(general.chats[0].id).toBe(chat.id);
+  expect(general.chats[0].updatedAt).toBeGreaterThan(chat.updatedAt);
   await stream.stop();
 
   expect(
-    (await golem.call(`/api/v1/threads/${thread.id}/events`, { token: "nope" }))
+    (await golem.call(`/api/v1/chats/${chat.id}/events`, { token: "nope" }))
       .status
   ).toBe(401);
 });
 
-test("a person who leaves a workspace stops getting its thread's events", async () => {
+test("a person who leaves a workspace stops getting its chat's events", async () => {
   golem.faux.setResponses([fauxAssistantMessage("Noted.")]);
   const leaving = await workspaceOf(alice, "Leaving");
   await golem.call(`/api/v1/workspaces/${leaving.id}/members`, {
     token: alice,
     body: { email: "bob@example.com" },
   });
-  const { channels } = await body(
+  const { topics } = await body(
     await golem.call(`/api/v1/workspaces/${leaving.id}`, { token: alice })
   );
-  const thread = await body(
-    await golem.call(`/api/v1/workspaces/${leaving.id}/threads`, {
+  const chat = await body(
+    await golem.call(`/api/v1/workspaces/${leaving.id}/chats`, {
       token: alice,
-      body: { channelId: channels[0].id, text: "A secret plan" },
+      body: { topicId: topics[0].id, text: "A secret plan" },
     })
   );
-  const stream = threadEvents(
-    await golem.call(`/api/v1/threads/${thread.id}/events`, { token: bob })
+  const stream = chatEvents(
+    await golem.call(`/api/v1/chats/${chat.id}/events`, { token: bob })
   );
   await stream.until((state) => state.messages.length === 2 && !state.running);
   const bobId = (
@@ -660,7 +653,7 @@ test("a person who leaves a workspace stops getting its thread's events", async 
     .query("DELETE FROM member WHERE organizationId = ? AND userId = ?")
     .run(leaving.id, bobId);
   golem.faux.setResponses([fauxAssistantMessage("The new plan.")]);
-  await golem.call(`/api/v1/threads/${thread.id}/messages`, {
+  await golem.call(`/api/v1/chats/${chat.id}/messages`, {
     token: alice,
     body: { text: "The new secret" },
   });
@@ -688,14 +681,14 @@ test("the recall tool says when the workspace has nothing", async () => {
   const emptyDetail = await body(
     await golem.call(`/api/v1/workspaces/${empty.id}`, { token: alice })
   );
-  const thread = await body(
-    await golem.call(`/api/v1/workspaces/${empty.id}/threads`, {
+  const chat = await body(
+    await golem.call(`/api/v1/workspaces/${empty.id}/chats`, {
       token: alice,
-      body: { channelId: emptyDetail.channels[0].id, text: "Any zebras?" },
+      body: { topicId: emptyDetail.topics[0].id, text: "Any zebras?" },
     })
   );
-  const stream = threadEvents(
-    await golem.call(`/api/v1/threads/${thread.id}/events`, { token: alice })
+  const stream = chatEvents(
+    await golem.call(`/api/v1/chats/${chat.id}/events`, { token: alice })
   );
   const done = await stream.until(
     (state) => !state.running && state.messages.length === 2
@@ -733,8 +726,8 @@ test("the LLM login and logout answer with the provider status", async () => {
   ).toBe(401);
 });
 
-/** Reads `event: thread` messages from a server-sent events response. */
-function threadEvents(response: Response) {
+/** Reads `event: chat` messages from a server-sent events response. */
+function chatEvents(response: Response) {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -752,7 +745,7 @@ function threadEvents(response: Response) {
         }
         const block = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
-        if (!block.startsWith("event: thread\n")) {
+        if (!block.startsWith("event: chat\n")) {
           continue;
         }
         const state = JSON.parse(block.slice(block.indexOf("data: ") + 6));
@@ -824,7 +817,7 @@ test("only an owner renames the workspace, and nobody makes or deletes one", asy
   expect(golem.app.workspaces.ids()).toHaveLength(before);
 });
 
-test("a private channel and its search results are private, and neither orchestrator copies its messages", async () => {
+test("a private topic and its search results are private, and neither orchestrator copies its messages", async () => {
   golem.faux.setResponses([
     fauxAssistantMessage("Noted."),
     fauxAssistantMessage("Noted."),
@@ -840,48 +833,48 @@ test("a private channel and its search results are private, and neither orchestr
       body(await golem.call(`${base}/orchestrator`, { token }))
     )
   );
-  const channel = await body(
-    await golem.call(`${base}/channels`, {
+  const topic = await body(
+    await golem.call(`${base}/topics`, {
       token: alice,
       body: { name: "surprise", private: true },
     })
   );
-  expect(channel.ownerId).toBeString();
+  expect(topic.ownerId).toBeString();
   const shared = await body(
-    await golem.call(`${base}/channels`, {
+    await golem.call(`${base}/topics`, {
       token: alice,
       body: { name: "together" },
     })
   );
   expect(shared.ownerId).toBeNull();
   const listed = async (token: string) =>
-    (await body(await golem.call(base, { token }))).channels.map(
+    (await body(await golem.call(base, { token }))).topics.map(
       (candidate: { name: string }) => candidate.name
     );
   expect(await listed(alice)).toContain("surprise");
   expect(await listed(bob)).not.toContain("surprise");
   expect(await listed(bob)).toContain("together");
 
-  const thread = await body(
-    await golem.call(`${base}/threads`, {
+  const chat = await body(
+    await golem.call(`${base}/chats`, {
       token: alice,
-      body: { channelId: channel.id, text: "A zebrafish tank for Bob" },
+      body: { topicId: topic.id, text: "A zebrafish tank for Bob" },
     })
   );
   expect(
-    (await golem.call(`/api/v1/threads/${thread.id}`, { token: bob })).status
+    (await golem.call(`/api/v1/chats/${chat.id}`, { token: bob })).status
   ).toBe(404);
   expect(
     (
-      await golem.call(`${base}/threads`, {
+      await golem.call(`${base}/chats`, {
         token: bob,
-        body: { channelId: channel.id, text: "Let me in" },
+        body: { topicId: topic.id, text: "Let me in" },
       })
     ).status
   ).toBe(404);
   expect(
     (
-      await golem.call(`${base}/channels/${channel.id}`, {
+      await golem.call(`${base}/topics/${topic.id}`, {
         token: bob,
         method: "DELETE",
       })
@@ -892,8 +885,8 @@ test("a private channel and its search results are private, and neither orchestr
   const found = async (token: string) =>
     (
       await body(await golem.call(`${base}/search?q=zebrafish`, { token }))
-    ).results.map((result: { threadId: string }) => result.threadId);
-  expect(await found(alice)).toContain(thread.id);
+    ).results.map((result: { chatId: string }) => result.chatId);
+  expect(await found(alice)).toContain(chat.id);
   expect(await found(bob)).toEqual([]);
 
   const linesOf = (orchestratorId: string) => {
@@ -901,7 +894,7 @@ test("a private channel and its search results are private, and neither orchestr
       golem.dataDirectory,
       "workspaces",
       workspaceId,
-      "threads",
+      "chats",
       orchestratorId,
       "memory.sqlite"
     );
@@ -910,10 +903,10 @@ test("a private channel and its search results are private, and neither orchestr
     }
     const memory = new Database(path);
     const rows = memory
-      .query("SELECT thread_id AS threadId FROM line WHERE level = 0")
-      .all() as { threadId: string }[];
+      .query("SELECT chat_id AS chatId FROM line WHERE level = 0")
+      .all() as { chatId: string }[];
     memory.close();
-    return rows.map((row) => row.threadId);
+    return rows.map((row) => row.chatId);
   };
   await until(
     async () =>
@@ -923,7 +916,7 @@ test("a private channel and its search results are private, and neither orchestr
             golem.dataDirectory,
             "workspaces",
             workspaceId,
-            "threads",
+            "chats",
             orchestrator.id,
             "memory.sqlite"
           )
@@ -931,11 +924,11 @@ test("a private channel and its search results are private, and neither orchestr
       ),
     Boolean
   );
-  expect(linesOf(orchestrators[0].id)).not.toContain(thread.id);
-  expect(linesOf(orchestrators[1].id)).not.toContain(thread.id);
+  expect(linesOf(orchestrators[0].id)).not.toContain(chat.id);
+  expect(linesOf(orchestrators[1].id)).not.toContain(chat.id);
 });
 
-test("in a channel every member sees, a turn finds the private threads of the person it answers, and only theirs", async () => {
+test("in a topic every member sees, a turn finds the private chats of the person it answers, and only theirs", async () => {
   const base = `/api/v1/workspaces/${workspaceId}`;
   await golem.call(`${base}/members`, {
     token: alice,
@@ -957,45 +950,45 @@ test("in a channel every member sees, a turn finds the private threads of the pe
   ];
   golem.faux.setResponses([fauxAssistantMessage("Noted.")]);
   const secret = await body(
-    await golem.call(`${base}/channels`, {
+    await golem.call(`${base}/topics`, {
       token: alice,
       body: { name: "okapi-plans", private: true },
     })
   );
   const hidden = await body(
-    await golem.call(`${base}/threads`, {
+    await golem.call(`${base}/chats`, {
       token: alice,
-      body: { channelId: secret.id, text: "An okapi plush for Bob" },
+      body: { topicId: secret.id, text: "An okapi plush for Bob" },
     })
   );
   await until(
     async () =>
-      body(await golem.call(`/api/v1/threads/${hidden.id}`, { token: alice })),
+      body(await golem.call(`/api/v1/chats/${hidden.id}`, { token: alice })),
     (state) => !state.running && state.messages.length === 2
   );
   await golem.app.indexer.scan(workspaceId);
 
-  const { channels } = await body(await golem.call(base, { token: alice }));
-  const general = channels.find(
-    (channel: { name: string }) => channel.name === "general"
+  const { topics } = await body(await golem.call(base, { token: alice }));
+  const general = topics.find(
+    (topic: { name: string }) => topic.name === "general"
   );
   golem.faux.setResponses(echoRecall());
   const shared = await body(
-    await golem.call(`${base}/threads`, {
+    await golem.call(`${base}/chats`, {
       token: alice,
-      body: { channelId: general.id, text: "What about the okapi?" },
+      body: { topicId: general.id, text: "What about the okapi?" },
     })
   );
   const answered = async (count: number) =>
     until(
       async () =>
-        body(await golem.call(`/api/v1/threads/${shared.id}`, { token: bob })),
+        body(await golem.call(`/api/v1/chats/${shared.id}`, { token: bob })),
       (state) => !state.running && state.messages.length === count
     );
   expect((await answered(2)).messages[1].text).toContain(hidden.id);
 
   golem.faux.setResponses(echoRecall());
-  await golem.call(`/api/v1/threads/${shared.id}/messages`, {
+  await golem.call(`/api/v1/chats/${shared.id}/messages`, {
     token: bob,
     body: { text: "And for me, the okapi?" },
   });

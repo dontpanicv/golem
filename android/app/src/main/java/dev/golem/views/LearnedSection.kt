@@ -33,8 +33,8 @@ import dev.golem.design.golemText
 import kotlinx.coroutines.CancellationException
 
 /**
- * What Golem learned from quiet threads that the person sees: facts about each member, then the how-tos of each
- * channel and of the person's own Golem. A lock marks an entry only the person sees. A change shows at once and goes
+ * What Golem learned from quiet chats that the person sees: facts about each member, then the how-tos of each
+ * topic and of the person's own Golem. A lock marks an entry only the person sees. A change shows at once and goes
  * back when the server refuses it.
  */
 @Composable
@@ -63,7 +63,7 @@ fun LearnedSection(workspaceId: String) {
 
     fun title(entry: Learned): String = when (entry.kind) {
         "about" -> "About ${session.members.firstOrNull { it.userId == entry.personId }?.name ?: "a former member"}"
-        else -> entry.channelId?.let { id -> "#${session.channels.firstOrNull { it.id == id }?.name ?: "deleted channel"}" } ?: "Your Golem"
+        else -> entry.topicId?.let { id -> "#${session.topics.firstOrNull { it.id == id }?.name ?: "deleted topic"}" } ?: "Your Golem"
     }
 
     SettingsGroup("What Golem learned") {

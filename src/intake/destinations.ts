@@ -3,14 +3,14 @@ import { randomUUIDv5 } from "bun";
 import type { User } from "../platform/auth.ts";
 import { HttpError, notFound } from "../platform/errors.ts";
 import type { Assessment } from "./assess.ts";
-import type { Delivery, IntakeThreads, IntakeWorkspaces } from "./intake.ts";
+import type { Delivery, IntakeChats, IntakeWorkspaces } from "./intake.ts";
 
 /** Creates a destination only after its queued review has passed the final assessment. */
 export class IntakeDestinations {
   constructor(
     private readonly database: Database,
     private readonly workspaces: IntakeWorkspaces,
-    private readonly threads: Pick<IntakeThreads, "startAgentThread">
+    private readonly chats: Pick<IntakeChats, "startAgentChat">
   ) {}
 
   async bind(
@@ -21,31 +21,30 @@ export class IntakeDestinations {
   ): Promise<void> {
     const workspaceId = delivery.workspace_id;
     this.workspaces.requireMember(workspaceId, owner);
-    const available = this.workspaces.threadsIn(workspaceId, owner.id);
+    const available = this.workspaces.chatsIn(workspaceId, owner.id);
     const requestId = `intake:subject:${delivery.id}`;
-    let thread = available.find(
+    let chat = available.find(
       (candidate) =>
-        candidate.id === (decision.threadId ?? randomUUIDv5(requestId, "url"))
+        candidate.id === (decision.chatId ?? randomUUIDv5(requestId, "url"))
     );
-    if (!thread && decision.startThread) {
-      const channel = this.channel(workspaceId, owner, decision);
-      thread =
+    if (!chat && decision.startChat) {
+      const topic = this.topic(workspaceId, owner, decision);
+      chat =
         available.find(
           (candidate) =>
-            candidate.channelId === channel.id &&
-            candidate.title === decision.title
+            candidate.topicId === topic.id && candidate.title === decision.title
         ) ??
-        (await this.threads.startAgentThread(
+        (await this.chats.startAgentChat(
           workspaceId,
-          channel.id,
+          topic.id,
           decision.title,
           { id: requestId, personId: owner.id }
         ));
     }
-    if (!thread) {
+    if (!chat) {
       throw notFound();
     }
-    const target = thread;
+    const target = chat;
     const evidence = [
       ...new Set([
         ...(JSON.parse(delivery.evidence_ids) as string[]),
@@ -55,7 +54,7 @@ export class IntakeDestinations {
     this.database.transaction(() => {
       this.database
         .query(
-          "UPDATE intake_delivery SET thread_id=?,body=?,attention=?,evidence_ids=?,notification=?,subject=?,cancelled_at=NULL WHERE id=? AND workspace_id=? AND owner_id=?"
+          "UPDATE intake_delivery SET chat_id=?,body=?,attention=?,evidence_ids=?,notification=?,subject=?,cancelled_at=NULL WHERE id=? AND workspace_id=? AND owner_id=?"
         )
         .run(
           target.id,
@@ -70,12 +69,12 @@ export class IntakeDestinations {
         );
       this.database
         .query(
-          "UPDATE intake_check SET thread_id=? WHERE workspace_id=? AND owner_id=? AND thread_id IS NULL AND id IN (SELECT value FROM json_each(?))"
+          "UPDATE intake_check SET chat_id=? WHERE workspace_id=? AND owner_id=? AND chat_id IS NULL AND id IN (SELECT value FROM json_each(?))"
         )
         .run(target.id, workspaceId, owner.id, delivery.check_ids);
       this.database
         .query(
-          "UPDATE intake_item SET thread_id=coalesce(thread_id,?) WHERE workspace_id=? AND owner_id=? AND id IN (SELECT value FROM json_each(?))"
+          "UPDATE intake_item SET chat_id=coalesce(chat_id,?) WHERE workspace_id=? AND owner_id=? AND id IN (SELECT value FROM json_each(?))"
         )
         .run(target.id, workspaceId, owner.id, JSON.stringify(evidence));
       if (decision.summary) {
@@ -93,33 +92,32 @@ export class IntakeDestinations {
           );
       }
     })();
-    delivery.thread_id = target.id;
+    delivery.chat_id = target.id;
     delivery.attention = decision.attention;
     delivery.evidence_ids = JSON.stringify(evidence);
     delivery.cancelled_at = null;
   }
 
-  private channel(workspaceId: string, owner: User, decision: Assessment) {
+  private topic(workspaceId: string, owner: User, decision: Assessment) {
     this.workspaces.requireMember(workspaceId, owner);
-    if (decision.channelId) {
-      // A new matter of the person's sources starts only in their own private channel.
+    if (decision.topicId) {
+      // A new matter of the person's sources starts only in their own private topic.
       const existing = this.workspaces
-        .channelsIn(workspaceId, owner.id)
+        .topicsIn(workspaceId, owner.id)
         .find(
-          (channel) =>
-            channel.id === decision.channelId && channel.ownerId === owner.id
+          (topic) => topic.id === decision.topicId && topic.ownerId === owner.id
         );
       if (!existing) {
         throw notFound();
       }
       return existing;
     }
-    const proposed = decision.newChannel!;
+    const proposed = decision.newTopic!;
     for (let suffix = 1; ; suffix += 1) {
       const name = suffix === 1 ? proposed.name : `${proposed.name}-${suffix}`;
       const existing = this.workspaces
-        .channelsIn(workspaceId, owner.id)
-        .find((channel) => channel.name === name);
+        .topicsIn(workspaceId, owner.id)
+        .find((topic) => topic.name === name);
       if (existing?.ownerId === owner.id) {
         return existing;
       }
@@ -127,18 +125,18 @@ export class IntakeDestinations {
         continue;
       }
       try {
-        const channel = this.workspaces.addChannel(
+        const topic = this.workspaces.addTopic(
           workspaceId,
           name,
           "golem",
           owner.id
         );
-        this.workspaces.setChannelSummary(
+        this.workspaces.setTopicSummary(
           workspaceId,
-          channel.id,
+          topic.id,
           proposed.summary
         );
-        return channel;
+        return topic;
       } catch (error) {
         if (!(error instanceof HttpError && error.status === 409)) {
           throw error;

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { Chats } from "../chats/chats.ts";
 import { HttpError } from "../platform/errors.ts";
-import type { Threads } from "../threads/threads.ts";
 import { phoneTools } from "./tools.ts";
 
 /** One call of an agent's phone tool, as the app gets it. */
@@ -41,10 +41,10 @@ export class Phone {
   private readonly links = new Map<string, Link[]>();
   private readonly pending = new Map<string, Pending>();
 
-  constructor(private readonly threads: Pick<Threads, "requester">) {}
+  constructor(private readonly chats: Pick<Chats, "requester">) {}
 
   tools(workspaceId: string) {
-    return phoneTools(this, this.threads, workspaceId);
+    return phoneTools(this, this.chats, workspaceId);
   }
 
   /** Sends the person's calls to `send` until the returned function closes the stream; its waiting calls then fail. */

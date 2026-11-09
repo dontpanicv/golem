@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// All that Golem holds for the person from the accounts it reads: the thread updates that wait, the matters it
+/// All that Golem holds for the person from the accounts it reads: the chat updates that wait, the matters it
 /// follows, its sources, what it keeps, and what it did. Each row opens its detail, where the person gives feedback.
 struct FollowingView: View {
     let open: (Destination) -> Void
@@ -187,9 +187,9 @@ struct FollowingView: View {
                 SettingsCard {
                     SettingsRow(Date(milliseconds: item.timestamp).formatted(), description: item.location)
                     DetailText(text: item.text)
-                    if let threadID = item.threadId {
-                        Button { leave(.thread(threadID)) } label: {
-                            ListRow("Open thread", pixel: .chat)
+                    if let chatID = item.chatId {
+                        Button { leave(.chat(chatID)) } label: {
+                            ListRow("Open chat", pixel: .chat)
                         }
                         .buttonStyle(.row)
                     }

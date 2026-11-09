@@ -44,7 +44,7 @@ import dev.golem.design.pressable
 import kotlinx.coroutines.launch
 
 /**
- * What the agents reported about Golem, newest first, for the server's owner: a tap opens the report's thread when
+ * What the agents reported about Golem, newest first, for the server's owner: a tap opens the report's chat when
  * the owner sees it; the check dismisses it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,7 +102,7 @@ private fun FeedbackRow(feedback: Feedback, modifier: Modifier = Modifier, dismi
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Row(
             Modifier.weight(1f)
-                .then(feedback.threadId?.let { thread -> Modifier.pressable({ open(Destination.Thread(thread)) }) } ?: Modifier.alpha(0.6f))
+                .then(feedback.chatId?.let { chat -> Modifier.pressable({ open(Destination.Chat(chat)) }) } ?: Modifier.alpha(0.6f))
                 .padding(start = Tokens.Mobile.Size.margin, top = Tokens.Space.lg, bottom = Tokens.Space.lg),
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.md),
         ) {

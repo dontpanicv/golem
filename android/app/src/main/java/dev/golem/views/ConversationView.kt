@@ -49,7 +49,7 @@ import dev.golem.api.Destination
 import dev.golem.api.FileRef
 import dev.golem.api.Message
 import dev.golem.api.Session
-import dev.golem.api.ThreadState
+import dev.golem.api.ChatState
 import dev.golem.design.Pixel
 import dev.golem.design.vector
 import dev.golem.design.ButtonSize
@@ -73,37 +73,37 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * One thread, as a Slack thread: messages with their author's avatar, the approvals after them, and the title with the
- * thread's menu. Loads its state, then follows the server-sent events while the screen shows.
+ * One chat, as a Slack thread: messages with their author's avatar, the approvals after them, and the title with the
+ * chat's menu. Loads its state, then follows the server-sent events while the screen shows.
  */
 @Composable
-fun ConversationView(threadId: String, artifactId: String? = null) {
+fun ConversationView(chatId: String, artifactId: String? = null) {
     val session = LocalSession.current
     val open = LocalOpen.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
-    var state by remember(threadId) { mutableStateOf<ThreadState?>(null) }
+    var state by remember(chatId) { mutableStateOf<ChatState?>(null) }
     var failure by remember { mutableStateOf<String?>(null) }
-    var draft by rememberSaveable(threadId) { mutableStateOf("") }
+    var draft by rememberSaveable(chatId) { mutableStateOf("") }
     var files by remember { mutableStateOf<List<File>>(emptyList()) }
     var sending by remember { mutableStateOf(false) }
     var panel by remember { mutableStateOf(artifactId != null) }
     var linkedArtifact by remember { mutableStateOf(artifactId) }
-    val orchestrator = threadId == session.orchestrator?.id
-    val thread = state?.thread
-    val channelName = session.channels.firstOrNull { it.id == thread?.channelId }?.name ?: ""
+    val orchestrator = chatId == session.orchestrator?.id
+    val chat = state?.chat
+    val topicName = session.topics.firstOrNull { it.id == chat?.topicId }?.name ?: ""
     val approvals = state?.approvals.orEmpty().filter { it.approverId == null || it.approverId == session.user?.id }
     val working = state?.messages?.lastOrNull { it.streaming || (it.work != null && it.work.endedAt == null) }
     val opener = rememberFileOpener()
 
-    // In the background the stream closes, so Golem keeps this thread's notifications unread.
-    LaunchedEffect(threadId) {
+    // In the background the stream closes, so Golem keeps this chat's notifications unread.
+    LaunchedEffect(chatId) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            session.threadOnScreen = threadId
+            session.chatOnScreen = chatId
             try {
-                follow(session, threadId, { state = it; failure = null }, { failure = it })
+                follow(session, chatId, { state = it; failure = null }, { failure = it })
             } finally {
-                if (session.threadOnScreen == threadId) session.threadOnScreen = null
+                if (session.chatOnScreen == chatId) session.chatOnScreen = null
             }
         }
     }
@@ -114,7 +114,7 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
         sending = true
         scope.launch {
             session.run {
-                session.api.sendMessage(threadId, text, files)
+                session.api.sendMessage(chatId, text, files)
                 draft = ""
                 files = emptyList()
             }
@@ -124,16 +124,16 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
 
     val menu = buildList {
         add(MenuAction("Files and artifacts", Pixel.Folder.vector) { panel = true })
-        if (!orchestrator && thread != null) {
-            add(MenuAction("Open #$channelName", Pixel.Hash.vector) { open(Destination.Channel(thread.channelId)) })
-            add(MenuAction("Move to", Pixel.Right.vector, children = session.channels.filter { it.id != thread.channelId }.map { channel ->
-                MenuAction(channel.name, if (channel.ownerId == null) Pixel.Hash.vector else Pixel.Lock.vector) {
-                    session.launch { session.moveThread(threadId, channel.id) }
+        if (!orchestrator && chat != null) {
+            add(MenuAction("Open #$topicName", Pixel.Hash.vector) { open(Destination.Topic(chat.topicId)) })
+            add(MenuAction("Move to", Pixel.Right.vector, children = session.topics.filter { it.id != chat.topicId }.map { topic ->
+                MenuAction(topic.name, if (topic.ownerId == null) Pixel.Hash.vector else Pixel.Lock.vector) {
+                    session.launch { session.moveChat(chatId, topic.id) }
                 }
             }))
-            val settled = thread.settledAt != null
-            add(MenuAction(if (settled) "Un-settle thread" else "Settle thread", if (settled) Pixel.Inbox.vector else Pixel.Check.vector) {
-                session.launch { session.setThreadSettled(threadId, !settled) }
+            val settled = chat.settledAt != null
+            add(MenuAction(if (settled) "Un-settle chat" else "Settle chat", if (settled) Pixel.Inbox.vector else Pixel.Check.vector) {
+                session.launch { session.setChatSettled(chatId, !settled) }
             })
         }
     }
@@ -146,7 +146,7 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
                 val scheme = uri.substringBefore(':')
                 val id = uri.substringAfter(':')
                 when (scheme) {
-                    "thread" -> open(Destination.Thread(id))
+                    "chat" -> open(Destination.Chat(id))
                     // The server names the file when it sends it.
                     "file" -> opener(FileRef(id, ""))
                     "artifact" -> {
@@ -166,7 +166,7 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
                 ScreenBar("Golem", caption = if (state?.running == true) "Working" else null, menu = menu,
                     leading = { GolemMark(28.dp) })
             } else {
-                ScreenBar(thread?.title ?: "", caption = channelName.takeIf { it.isNotEmpty() }?.let { "# $it" }, menu = menu)
+                ScreenBar(chat?.title ?: "", caption = topicName.takeIf { it.isNotEmpty() }?.let { "# $it" }, menu = menu)
             }
         },
         bottomBar = {
@@ -174,10 +174,10 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
                 Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.sm)) {
                     if (orchestrator) Suggestions(state?.running)
                     Composer(
-                        owner = threadId, placeholder = if (orchestrator) "Message Golem" else "Reply",
+                        owner = chatId, placeholder = if (orchestrator) "Message Golem" else "Reply",
                         draft = draft, onDraft = { draft = it }, files = files, onFiles = { files = it },
                         sending = sending, send = ::send,
-                        stop = if (state?.running == true) ({ session.launch { session.api.stopThread(threadId) } }) else null,
+                        stop = if (state?.running == true) ({ session.launch { session.api.stopChat(chatId) } }) else null,
                     )
                 }
             }
@@ -190,13 +190,13 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
                 current == null -> Loading()
                 current.messages.isEmpty() -> EmptyState("Ask Golem anything", { GolemGlyph(24.dp, Golem.colors.textQuaternary) },
                     Modifier.padding(padding))
-                else -> Messages(current, approvals, working, threadId, padding, opener)
+                else -> Messages(current, approvals, working, chatId, padding, opener)
             }
         }
     }
     if (panel) {
         ArtifactsPanel(
-            channelId = if (orchestrator) null else thread?.channelId, changes = state?.messages?.size ?: 0,
+            topicId = if (orchestrator) null else chat?.topicId, changes = state?.messages?.size ?: 0,
             artifactId = linkedArtifact, onDismiss = { panel = false; linkedArtifact = null },
         )
     }
@@ -205,7 +205,7 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
 /** The messages, the newest at the bottom over the composer, with the approvals in line with the answer that asks. */
 @Composable
 private fun Messages(
-    state: ThreadState, approvals: List<Approval>, working: Message?, threadId: String, padding: PaddingValues,
+    state: ChatState, approvals: List<Approval>, working: Message?, chatId: String, padding: PaddingValues,
     openFile: (FileRef) -> Unit,
 ) {
     val messages = state.messages
@@ -222,7 +222,7 @@ private fun Messages(
         ),
     ) {
         items(approvals.reversed(), key = { "approval:${it.id}" }) { approval ->
-            ApprovalCard(approval, threadId, Modifier.padding(start = Tokens.Mobile.Size.avatar + Tokens.Space.lg, top = Tokens.Space.md).animateItem())
+            ApprovalCard(approval, chatId, Modifier.padding(start = Tokens.Mobile.Size.avatar + Tokens.Space.lg, top = Tokens.Space.md).animateItem())
         }
         items(messages.indices.reversed().toList(), key = { messages[it].id }) { index ->
             val message = messages[index]
@@ -238,17 +238,17 @@ private fun Messages(
     }
 }
 
-/** Reloads the thread and reads its events again after each error, with a backoff of 1 to 16 seconds. */
-private suspend fun follow(session: Session, threadId: String, onState: (ThreadState) -> Unit, onFailure: (String) -> Unit) {
+/** Reloads the chat and reads its events again after each error, with a backoff of 1 to 16 seconds. */
+private suspend fun follow(session: Session, chatId: String, onState: (ChatState) -> Unit, onFailure: (String) -> Unit) {
     var delayMs = 1000L
     while (true) {
         try {
-            onState(session.api.thread(threadId))
+            onState(session.api.chat(chatId))
             var opened = false
-            session.api.threadEvents(threadId) { next ->
+            session.api.chatEvents(chatId) { next ->
                 onState(next)
                 delayMs = 1000L
-                // The stream reads the thread's notifications before its first event.
+                // The stream reads the chat's notifications before its first event.
                 if (!opened) {
                     opened = true
                     session.launch { session.loadInbox() }
@@ -269,14 +269,14 @@ private suspend fun follow(session: Session, threadId: String, onState: (ThreadS
  * that, or not; `gold` at its side. A long text, such as the body of an email, scrolls.
  */
 @Composable
-private fun ApprovalCard(approval: Approval, threadId: String, modifier: Modifier = Modifier) {
+private fun ApprovalCard(approval: Approval, chatId: String, modifier: Modifier = Modifier) {
     val session = LocalSession.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     fun answer(allow: Boolean, scope_: String = "once") {
         busy = true
         scope.launch {
-            session.run { session.api.answerApproval(threadId, approval.id, allow, scope_) }
+            session.run { session.api.answerApproval(chatId, approval.id, allow, scope_) }
             busy = false
         }
     }

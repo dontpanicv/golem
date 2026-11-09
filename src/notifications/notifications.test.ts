@@ -18,8 +18,8 @@ const TOKEN = "ab".repeat(32);
 const answer = {
   workspaceId: "home",
   userId: alice.id,
-  channelId: "general",
-  threadId: "flights",
+  topicId: "general",
+  chatId: "flights",
   title: "Flights",
   text: "## Found\n- **Prague → Rome**: 89 EUR, see [the offer](https://example.com) ![chart](file:1)",
 };
@@ -89,7 +89,7 @@ test("a notification goes to the inbox and to the person's devices as a push", a
   });
 });
 
-test("a person who has the thread open gets no push, and opening a thread reads its notifications", async () => {
+test("a person who has the chat open gets no push, and opening a chat reads its notifications", async () => {
   const { notifications, pushes } = setup();
   notifications.addDevice(alice, TOKEN, "production");
   notifications.notify(answer);
@@ -131,8 +131,8 @@ test("people read one notification or all, only their own", () => {
   const first = notifications.notify(answer);
   notifications.notify({
     ...answer,
-    threadId: null,
-    text: "Look at the channel",
+    chatId: null,
+    text: "Look at the topic",
   });
   expect(notifications.read("home", alice, first.id).unread).toBe(1);
   expect(() => notifications.read("home", alice, "missing")).toThrow(
@@ -176,13 +176,13 @@ test("plain text keeps what a person reads of Markdown", () => {
   expect(plainText("# Title\n\n1. one\n2. `two`\n> quoted <b>bold</b>")).toBe(
     "Title one two quoted bold"
   );
-  expect(plainText("See [Rome](thread:abc) | 3 |")).toBe("See Rome 3");
+  expect(plainText("See [Rome](chat:abc) | 3 |")).toBe("See Rome 3");
   expect(
     plainText('Done.\n\n```card\n[{"value":"78 %"}]\n```\n\nTake the umbrella.')
   ).toBe("Done. Take the umbrella.");
 });
 
-test("APNs gets a provider token signed with the key, and a push that opens the thread", () => {
+test("APNs gets a provider token signed with the key, and a push that opens the chat", () => {
   const { privateKey, publicKey } = generateKeyPairSync("ec", {
     namedCurve: "P-256",
   });
@@ -233,8 +233,8 @@ test("APNs gets a provider token signed with the key, and a push that opens the 
     },
     notificationId: "n1",
     workspaceId: "home",
-    channelId: "general",
-    threadId: "flights",
+    topicId: "general",
+    chatId: "flights",
   });
   expect(
     apnsPayload({ ...push, approvalId: "a1", timeSensitive: true })
@@ -245,11 +245,11 @@ test("APNs gets a provider token signed with the key, and a push that opens the 
   expect(
     apnsPayload({ ...push, approvalId: "a1", timeSensitive: true }).aps
   ).not.toHaveProperty("mutable-content");
-  // A push that opens a channel has no thread to reply to, so it has no buttons.
+  // A push that opens a topic has no chat to reply to, so it has no buttons.
   expect(
     apnsPayload({
       ...push,
-      notification: { ...notification, threadId: null },
+      notification: { ...notification, chatId: null },
       approvalId: null,
       timeSensitive: false,
     }).aps
@@ -290,11 +290,11 @@ test("a Live Activity gets each new state once, alerts only for a wait, and ends
     }
   );
   expect(() =>
-    notifications.startActivity(alice, "home", "thread", "not hex", "sandbox")
+    notifications.startActivity(alice, "home", "chat", "not hex", "sandbox")
   ).toThrow();
-  notifications.startActivity(alice, "home", "thread", TOKEN, "sandbox");
+  notifications.startActivity(alice, "home", "chat", TOKEN, "sandbox");
   const [activity] = notifications.activities("home");
-  const working = { status: "working" as const, title: "Lunch", threads: 1 };
+  const working = { status: "working" as const, title: "Lunch", chats: 1 };
   notifications.updateActivity(activity!, working);
   notifications.updateActivity(activity!, working);
   notifications.updateActivity(activity!, { ...working, status: "waiting" });
@@ -310,9 +310,9 @@ test("a Live Activity gets each new state once, alerts only for a wait, and ends
     ],
   ]);
 
-  // A newer activity for the same thread ends the older one at once.
+  // A newer activity for the same chat ends the older one at once.
   const newer = "ef".repeat(32);
-  notifications.startActivity(alice, "home", "thread", newer, "sandbox");
+  notifications.startActivity(alice, "home", "chat", newer, "sandbox");
   await Bun.sleep(0);
   expect(sent.at(-1)!.token).toBe(TOKEN);
   expect(sent.at(-1)!.payload.aps).toMatchObject({

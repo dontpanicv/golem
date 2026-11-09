@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// One thread, as a Slack thread: messages with their author's avatar, the approvals after them, and
-/// the title capsule with the thread's menu. Loads its state, then follows the server-sent events until the view
+/// One chat, as a Slack thread: messages with their author's avatar, the approvals after them, and
+/// the title capsule with the chat's menu. Loads its state, then follows the server-sent events until the view
 /// disappears.
 struct ConversationView: View {
-    let threadID: String
+    let chatID: String
     /// An artifact to open in the panel, as a search result does.
     var artifactID: String?
     @Binding var showArtifacts: Bool
     let open: (Destination) -> Void
     @Environment(Session.self) private var session
-    @State private var state: ThreadState?
+    @State private var state: ChatState?
     @State private var failure: String?
     @State private var draft = ""
     @State private var files: [URL] = []
@@ -20,7 +20,7 @@ struct ConversationView: View {
     @State private var linkedArtifact: String?
     /// The routines and reminders Golem suggests to the person, in their orchestrator only.
     @State private var suggestions: [Suggestion] = []
-    /// How many of the newest messages show. Every update measures each row, so showing a whole long thread makes it
+    /// How many of the newest messages show. Every update measures each row, so showing a whole long chat makes it
     /// stutter while the agent works; older messages join as the person scrolls up.
     @State private var shown = Self.page
     private static let page = 40
@@ -33,12 +33,12 @@ struct ConversationView: View {
 
     private var talk: VoiceChat { VoiceSession.shared.talk }
 
-    private var channelName: String {
-        session.channels.first { $0.id == state?.thread.channelId }?.name ?? ""
+    private var topicName: String {
+        session.topics.first { $0.id == state?.chat.topicId }?.name ?? ""
     }
 
-    /// The workspace's thread that never ends belongs to no channel and stays open.
-    private var isOrchestrator: Bool { threadID == session.orchestrator?.id }
+    /// The workspace's chat that never ends belongs to no topic and stays open.
+    private var isOrchestrator: Bool { chatID == session.orchestrator?.id }
 
     var body: some View {
         ScrollView {
@@ -65,7 +65,7 @@ struct ConversationView: View {
                 }
                 // In line with the text of the answer that asks.
                 ForEach(approvals) { approval in
-                    ApprovalCard(approval: approval, threadID: threadID)
+                    ApprovalCard(approval: approval, chatID: chatID)
                         .padding(.leading, Tokens.Mobile.Size.avatar + Tokens.Space.lg)
                         .padding(.top, Tokens.Space.md)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -108,7 +108,7 @@ struct ConversationView: View {
             Group {
                 if isOrchestrator || state != nil {
                     ArtifactsPanel(
-                        channelID: isOrchestrator ? nil : state?.thread.channelId,
+                        topicID: isOrchestrator ? nil : state?.chat.topicId,
                         changes: state?.messages.count ?? 0, artifactID: linkedArtifact ?? artifactID,
                         close: tabBar == nil ? nil : { showArtifacts = false }
                     )
@@ -120,7 +120,7 @@ struct ConversationView: View {
                 .inspectorColumnWidth(Tokens.Size.artifacts)
         }
         // After the inspector: in a navigation stack, a title and toolbar set before it do not show.
-        .pushedScreen(isOrchestrator ? "Golem" : state?.thread.title ?? "")
+        .pushedScreen(isOrchestrator ? "Golem" : state?.chat.title ?? "")
         .toolbar {
             if let youMenu {
                 ToolbarItem(placement: .topBarLeading) { YouMenu(open: youMenu) }
@@ -129,25 +129,25 @@ struct ConversationView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     Button("Files and artifacts", pixel: .panel) { showArtifacts = true }
-                    if !isOrchestrator, let thread = state?.thread {
-                        Button("Open #\(channelName)", pixel: .hash) { open(.channel(thread.channelId)) }
+                    if !isOrchestrator, let chat = state?.chat {
+                        Button("Open #\(topicName)", pixel: .hash) { open(.topic(chat.topicId)) }
                         Menu("Move to", pixel: .right) {
-                            ForEach(session.channels.filter { $0.id != thread.channelId }) { channel in
-                                Button(channel.name, pixel: channel.ownerId == nil ? .hash : .lock) {
+                            ForEach(session.topics.filter { $0.id != chat.topicId }) { topic in
+                                Button(topic.name, pixel: topic.ownerId == nil ? .hash : .lock) {
                                     Task {
                                         await session.run {
-                                            try await session.moveThread(threadID: threadID, channelID: channel.id)
+                                            try await session.moveChat(chatID: chatID, topicID: topic.id)
                                         }
                                     }
                                 }
                             }
                         }
-                        Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
-                               pixel: thread.settledAt == nil ? .check : .inbox) {
+                        Button(chat.settledAt == nil ? "Settle chat" : "Un-settle chat",
+                               pixel: chat.settledAt == nil ? .check : .inbox) {
                             Task {
                                 await session.run {
-                                    try await session.setThreadSettled(
-                                        threadID: threadID, settled: thread.settledAt == nil
+                                    try await session.setChatSettled(
+                                        chatID: chatID, settled: chat.settledAt == nil
                                     )
                                 }
                             }
@@ -162,24 +162,24 @@ struct ConversationView: View {
                         .padding(.leading, Tokens.Space.sm)
                     } else {
                         HeaderTitle(
-                            title: state?.thread.title ?? "", caption: channelName.isEmpty ? nil : "# \(channelName)"
+                            title: state?.chat.title ?? "", caption: topicName.isEmpty ? nil : "# \(topicName)"
                         )
                     }
                 }
-                .accessibilityHint("Shows the thread's menu")
+                .accessibilityHint("Shows the chat's menu")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Talk with Golem", pixel: .sound, action: startTalk)
-                    .disabled(talk.isOn && talk.thread == threadID)
+                    .disabled(talk.isOn && talk.chat == chatID)
             }
         }
         .filePreview($opening)
         .onAppear { if artifactID != nil { showArtifacts = true } }
-        // In the background the stream closes, so Golem sends this thread's notifications as pushes.
+        // In the background the stream closes, so Golem sends this chat's notifications as pushes.
         .task(id: scenePhase == .background) {
             if scenePhase != .background { await follow() }
         }
-        // Golem suggests from quiet threads, so the orchestrator looks again when its own work ends.
+        // Golem suggests from quiet chats, so the orchestrator looks again when its own work ends.
         .task(id: state?.running) {
             guard isOrchestrator, state?.running != true, let workspace = session.workspace else { return }
             if let upcoming = try? await session.api.upcoming(workspaceID: workspace.id) {
@@ -188,12 +188,12 @@ struct ConversationView: View {
         }
         // Golem's links in messages open here instead of leaving the app.
         .environment(\.openURL, OpenURLAction { url in
-            guard let scheme = url.scheme, ["thread", "file", "artifact"].contains(scheme) else {
+            guard let scheme = url.scheme, ["chat", "file", "artifact"].contains(scheme) else {
                 return .systemAction
             }
             let id = String(url.absoluteString.dropFirst(scheme.count + 1))
             switch scheme {
-            case "thread": open(.thread(id))
+            case "chat": open(.chat(id))
             // The server names the file when it sends it.
             case "file": openFile(FileRef(id: id, name: ""))
             default:
@@ -237,13 +237,13 @@ struct ConversationView: View {
                     SuggestionCard(suggestion: suggestion) { suggestions.removeAll { $0.id == suggestion.id } }
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                if talk.isOn, talk.thread == threadID {
+                if talk.isOn, talk.chat == chatID {
                     TalkDock(talk: talk).transition(.opacity.combined(with: .scale(scale: 0.95)))
                 } else {
                     Composer(
-                        owner: threadID, placeholder: isOrchestrator ? "Message Golem" : "Reply",
+                        owner: chatID, placeholder: isOrchestrator ? "Message Golem" : "Reply",
                         draft: $draft, files: $files, sending: sending,
-                        stop: state?.running == true ? { stopThread() } : nil, send: send
+                        stop: state?.running == true ? { stopChat() } : nil, send: send
                     )
                 }
             }
@@ -253,22 +253,22 @@ struct ConversationView: View {
         }
     }
 
-    /// Reloads the thread and reads its events again after each error, with a backoff of 1 to 16 seconds.
+    /// Reloads the chat and reads its events again after each error, with a backoff of 1 to 16 seconds.
     private func follow() async {
         var delay = Duration.seconds(1)
         while !Task.isCancelled {
             do {
-                let loaded = try await session.api.thread(threadID)
+                let loaded = try await session.api.chat(chatID)
                 // The first messages show at once, so the list does not measure its rows while they slide in.
                 var transaction = Transaction()
                 transaction.disablesAnimations = state == nil
                 withTransaction(transaction) { state = loaded }
                 failure = nil
                 var opened = false
-                try await session.api.threadEvents(threadID) { next in
+                try await session.api.chatEvents(chatID) { next in
                     state = next
                     delay = .seconds(1)
-                    // The stream reads the thread's notifications before its first event.
+                    // The stream reads the chat's notifications before its first event.
                     if !opened {
                         opened = true
                         Task { try? await session.loadInbox() }
@@ -290,13 +290,13 @@ extension ConversationView {
         sending = true
         Task {
             await session.run {
-                try await session.api.sendMessage(threadID: threadID, text: text, files: files)
+                try await session.api.sendMessage(chatID: chatID, text: text, files: files)
                 draft = ""
                 files = []
                 if let workspace = session.workspace {
                     Push.followWork(
-                        workspaceID: workspace.id, threadID: threadID,
-                        title: isOrchestrator ? "Golem" : state?.thread.title ?? "", api: session.api
+                        workspaceID: workspace.id, chatID: chatID,
+                        title: isOrchestrator ? "Golem" : state?.chat.title ?? "", api: session.api
                     )
                 }
             }
@@ -304,13 +304,13 @@ extension ConversationView {
         }
     }
 
-    private func stopThread() {
-        Task { await session.run { try await session.api.stopThread(threadID) } }
+    private func stopChat() {
+        Task { await session.run { try await session.api.stopChat(chatID) } }
     }
 
     private func startTalk() {
         Task {
-            await talk.start(thread: threadID, api: session.api)
+            await talk.start(chat: chatID, api: session.api)
             if !talk.isOn, let error = talk.error { session.show(error, .error) }
         }
     }
@@ -323,7 +323,7 @@ extension ConversationView {
 /// composer's Send. A long text, such as the body of an email, scrolls.
 private struct ApprovalCard: View {
     let approval: Approval
-    let threadID: String
+    let chatID: String
     @Environment(Session.self) private var session
     @State private var busy = false
 
@@ -366,7 +366,7 @@ private struct ApprovalCard: View {
         Task {
             await session.run {
                 try await session.api.answerApproval(
-                    threadID: threadID, approvalID: approval.id, allow: allow, scope: scope
+                    chatID: chatID, approvalID: approval.id, allow: allow, scope: scope
                 )
             }
             busy = false

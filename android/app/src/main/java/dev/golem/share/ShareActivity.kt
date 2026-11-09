@@ -37,8 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.golem.GolemApp
-import dev.golem.api.Channel
-import dev.golem.api.ThreadSummary
+import dev.golem.api.Topic
+import dev.golem.api.ChatSummary
 import dev.golem.api.Workspace
 import dev.golem.design.Pixel
 import dev.golem.design.vector
@@ -82,7 +82,7 @@ class ShareActivity : ComponentActivity() {
 }
 
 /**
- * What was shared, as a message to the workspace's Golem thread or as a new thread in one of its channels. Links and
+ * What was shared, as a message to the workspace's Golem chat or as a new chat in one of its topics. Links and
  * text go in the message, to edit; anything else is a file. It remembers the last workspace and place.
  */
 @Composable
@@ -94,8 +94,8 @@ private fun ShareView(shared: List<String>, streams: List<Uri>, done: () -> Unit
     var text by remember { mutableStateOf(shared.joinToString("\n")) }
     var files by remember { mutableStateOf<List<File>>(emptyList()) }
     var workspaces by remember { mutableStateOf<List<Workspace>>(emptyList()) }
-    var channels by remember { mutableStateOf<List<Channel>>(emptyList()) }
-    var orchestrator by remember { mutableStateOf<ThreadSummary?>(null) }
+    var topics by remember { mutableStateOf<List<Topic>>(emptyList()) }
+    var orchestrator by remember { mutableStateOf<ChatSummary?>(null) }
     var failure by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     /** What was shared is still being copied, such as a long video. */
@@ -103,28 +103,28 @@ private fun ShareView(shared: List<String>, streams: List<Uri>, done: () -> Unit
     /** The share of the upload sent so far, from 0 to 1. */
     var sent by remember { mutableDoubleStateOf(0.0) }
     var workspaceId by remember { mutableStateOf(preferences.getString("workspaceId", "").orEmpty()) }
-    /** A channel's id, or empty for the Golem thread. */
-    var channelId by remember { mutableStateOf(preferences.getString("channelId", "").orEmpty()) }
+    /** A topic's id, or empty for the Golem chat. */
+    var topicId by remember { mutableStateOf(preferences.getString("topicId", "").orEmpty()) }
 
     fun finish() {
         files.forEach { it.parentFile?.deleteRecursively() }
         done()
     }
-    val canSend = !sending && !preparing && (orchestrator != null || channelId.isNotEmpty()) &&
+    val canSend = !sending && !preparing && (orchestrator != null || topicId.isNotEmpty()) &&
         (text.isNotBlank() || files.isNotEmpty())
 
     fun send() {
         sending = true
         sent = 0.0
         failure = null
-        preferences.edit().putString("workspaceId", workspaceId).putString("channelId", channelId).apply()
+        preferences.edit().putString("workspaceId", workspaceId).putString("topicId", topicId).apply()
         scope.launch {
             try {
                 val golem = orchestrator
-                if (channelId.isEmpty() && golem != null) {
+                if (topicId.isEmpty() && golem != null) {
                     api.sendMessage(golem.id, text.trim(), files, progress = { sent = it })
                 } else {
-                    api.createThread(workspaceId, channelId, text.trim(), files, progress = { sent = it })
+                    api.createChat(workspaceId, topicId, text.trim(), files, progress = { sent = it })
                 }
                 finish()
             } catch (error: CancellationException) {
@@ -155,9 +155,9 @@ private fun ShareView(shared: List<String>, streams: List<Uri>, done: () -> Unit
     LaunchedEffect(workspaceId) {
         if (workspaceId.isEmpty()) return@LaunchedEffect
         try {
-            channels = api.workspace(workspaceId).channels
+            topics = api.workspace(workspaceId).topics
             orchestrator = api.orchestrator(workspaceId)
-            if (channels.none { it.id == channelId }) channelId = ""
+            if (topics.none { it.id == topicId }) topicId = ""
             failure = null
         } catch (error: CancellationException) {
             throw error
@@ -203,9 +203,9 @@ private fun ShareView(shared: List<String>, streams: List<Uri>, done: () -> Unit
                     )
                 }
                 Choice(
-                    "Send to", channels.firstOrNull { it.id == channelId }?.let { "${it.icon ?: "#"} ${it.name}" } ?: "Golem",
-                    listOf(MenuAction("Golem", checked = channelId.isEmpty()) { channelId = "" }) +
-                        channels.map { MenuAction("${it.icon ?: "#"} ${it.name}", checked = it.id == channelId) { channelId = it.id } },
+                    "Send to", topics.firstOrNull { it.id == topicId }?.let { "${it.icon ?: "#"} ${it.name}" } ?: "Golem",
+                    listOf(MenuAction("Golem", checked = topicId.isEmpty()) { topicId = "" }) +
+                        topics.map { MenuAction("${it.icon ?: "#"} ${it.name}", checked = it.id == topicId) { topicId = it.id } },
                 )
                 failure?.let {
                     Text(

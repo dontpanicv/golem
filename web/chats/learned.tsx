@@ -12,25 +12,25 @@ import {
 import { Icon } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
 import {
-  channelsOf,
   membersQuery,
   orchestratorQuery,
+  topicsOf,
 } from "../workspaces/data.ts";
 import { learnedOf } from "./data.ts";
 
 /**
- * What Golem learned from the threads: facts about each person, then the how-tos of each channel and of the person's
+ * What Golem learned from the chats: facts about each person, then the how-tos of each topic and of the person's
  * own Golem. Each person corrects or deletes what they see.
  */
 export function LearnedSection({ workspaceId }: { workspaceId: string }) {
   const { data: entries = [], isReady } = useLiveQuery({
     query: (q) => q.from({ entry: learnedOf(workspaceId) }),
   });
-  const { data: channels = [] } = useLiveQuery({
+  const { data: topics = [] } = useLiveQuery({
     query: (q) =>
       q
-        .from({ channel: channelsOf(workspaceId) })
-        .orderBy(({ channel }) => channel.order),
+        .from({ topic: topicsOf(workspaceId) })
+        .orderBy(({ topic }) => topic.order),
   });
   const members = useQuery(membersQuery(workspaceId)).data ?? [];
   const orchestrator = useQuery(orchestratorQuery(workspaceId)).data;
@@ -58,13 +58,13 @@ export function LearnedSection({ workspaceId }: { workspaceId: string }) {
     {
       title: orchestrator?.title ?? "Golem",
       entries: entries.filter(
-        (entry) => entry.kind === "howto" && entry.channelId === null
+        (entry) => entry.kind === "howto" && entry.topicId === null
       ),
     },
-    ...channels.map((channel) => ({
-      title: `#${channel.name}`,
+    ...topics.map((topic) => ({
+      title: `#${topic.name}`,
       entries: entries.filter(
-        (entry) => entry.kind === "howto" && entry.channelId === channel.id
+        (entry) => entry.kind === "howto" && entry.topicId === topic.id
       ),
     })),
   ];

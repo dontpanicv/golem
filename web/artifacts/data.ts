@@ -7,11 +7,11 @@ import { queryClient } from "../app/query.ts";
 import type { Artifact, ArtifactRecord } from "../app/types.ts";
 
 /**
- * The artifacts of a place, `<workspace id>/<channel id>`, or `<workspace id>/` for the workspace's own. Changing who
+ * The artifacts of a place, `<workspace id>/<topic id>`, or `<workspace id>/` for the workspace's own. Changing who
  * sees one, or deleting it, shows at once.
  */
 export const artifactsOf = keyed((key: string) => {
-  const [workspaceId, channelId] = key.split("/") as [string, string];
+  const [workspaceId, topicId] = key.split("/") as [string, string];
   return createCollection(
     queryCollectionOptions({
       id: `artifacts:${key}`,
@@ -19,8 +19,8 @@ export const artifactsOf = keyed((key: string) => {
       queryClient,
       queryFn: ({ signal }) =>
         request<{ artifacts: Artifact[] }>(
-          channelId
-            ? `/workspaces/${workspaceId}/channels/${channelId}/artifacts`
+          topicId
+            ? `/workspaces/${workspaceId}/topics/${topicId}/artifacts`
             : `/workspaces/${workspaceId}/artifacts`,
           { signal }
         ),

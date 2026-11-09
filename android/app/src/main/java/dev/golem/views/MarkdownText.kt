@@ -53,8 +53,8 @@ import org.intellij.markdown.MarkdownTokenTypes
 
 /**
  * Markdown that an agent wrote, as the web shows it: headings, lists, quotes, code blocks, tables, and rules, with the
- * inline Markdown in each. A link takes the accent; a link to `thread:<id>` is followed by "working" while the agent
- * of that thread works. A fenced `card` block shows its cards, as the web's `cards.tsx` does.
+ * inline Markdown in each. A link takes the accent; a link to `chat:<id>` is followed by "working" while the agent
+ * of that chat works. A fenced `card` block shows its cards, as the web's `cards.tsx` does.
  */
 @Composable
 fun MarkdownText(
@@ -106,19 +106,19 @@ fun MarkdownText(
     )
 }
 
-/** Each thread link of a thread whose agent works, followed by "· working". */
+/** Each chat link of a chat whose agent works, followed by "· working". */
 fun withWorkingNotes(text: String, working: Set<String>): String {
-    if (working.isEmpty() || !text.contains("thread:")) return text
-    return THREAD_LINK.replace(text) { match ->
+    if (working.isEmpty() || !text.contains("chat:")) return text
+    return CHAT_LINK.replace(text) { match ->
         if (match.groupValues[2] in working) "${match.value} *· working*" else match.value
     }
 }
 
-/** `[title](thread:<id>)`, as the agents write a link to a thread. */
-val THREAD_LINK = Regex("""\[([^\]\n]+)\]\(thread:([\w-]+)\)""")
+/** `[title](chat:<id>)`, as the agents write a link to a chat. */
+val CHAT_LINK = Regex("""\[([^\]\n]+)\]\(chat:([\w-]+)\)""")
 
-/** One line with the thread links as their titles, as a work step's text shows. */
-fun linkedText(text: String): String = THREAD_LINK.replace(text) { it.groupValues[1] }
+/** One line with the chat links as their titles, as a work step's text shows. */
+fun linkedText(text: String): String = CHAT_LINK.replace(text) { it.groupValues[1] }
 
 /** A long press shows Copy, which copies `text`; the text is not selectable, so its links answer every tap. */
 @Composable

@@ -87,8 +87,8 @@ fun ComposerRow(content: @Composable () -> Unit) {
 
 /**
  * A message box with the files picked to send with it, and dictation into it, as T3's: a rounded field with the add
- * button at the start, then the mic and the round send button. `owner` keys the dictation: the thread, or the channel
- * of a new thread. While `sending`, the send button spins. With `stop`, while the agent works, an empty composer
+ * button at the start, then the mic and the round send button. `owner` keys the dictation: the chat, or the topic
+ * of a new chat. While `sending`, the send button spins. With `stop`, while the agent works, an empty composer
  * shows Stop in the send button's place, and the send button steers.
  */
 @Composable

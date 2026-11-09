@@ -39,40 +39,40 @@
       "id": "golem",
       "type": "frontend",
       "label": "Golem",
-      "sublabel": "own endless thread",
+      "sublabel": "own endless chat",
       "tag": "memory tree",
       "stage": 1,
       "row": 0,
       "sources": [
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 240,
           "end_line": 242,
           "label": "ORCHESTRATOR"
         },
         {
-          "path": "src/threads/memory.ts",
+          "path": "src/chats/memory.ts",
           "line": 45,
           "label": "zoom"
         }
       ]
     },
     {
-      "id": "threads",
+      "id": "chats",
       "type": "backend",
-      "label": "Channel threads",
+      "label": "Topic chats",
       "sublabel": "one per topic",
       "tag": "Pi Durable",
       "stage": 1,
       "row": 2,
       "sources": [
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 2266,
           "label": "Harness.open"
         },
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 1574,
           "label": "createConversation"
         }
@@ -87,7 +87,7 @@
       "row": 0,
       "sources": [
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 2373,
           "end_line": 2376,
           "label": "sections"
@@ -108,7 +108,7 @@
           "label": "factsOf"
         },
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 2124,
           "label": "factsSection"
         }
@@ -124,12 +124,12 @@
       "row": 3,
       "sources": [
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 207,
           "label": "NAMESPACES"
         },
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 2250,
           "label": "codemode"
         }
@@ -138,18 +138,18 @@
     {
       "id": "brief",
       "type": "database",
-      "label": "Channel brief",
+      "label": "Topic brief",
       "sublabel": "rewritten when quiet",
       "stage": 3,
       "row": 0,
       "sources": [
         {
-          "path": "src/threads/brief.ts",
+          "path": "src/chats/brief.ts",
           "line": 15,
           "label": "brief prompt"
         },
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 1808,
           "label": "briefWhenQuiet"
         }
@@ -164,12 +164,12 @@
       "row": 1,
       "sources": [
         {
-          "path": "src/threads/learned.ts",
+          "path": "src/chats/learned.ts",
           "line": 20,
           "label": "learning loop"
         },
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 1928,
           "label": "reviewWhenQuiet"
         }
@@ -189,7 +189,7 @@
           "label": "search"
         },
         {
-          "path": "src/threads/threads.ts",
+          "path": "src/chats/chats.ts",
           "line": 2561,
           "label": "recall"
         }
@@ -205,48 +205,48 @@
       "variant": "emphasis"
     },
     {
-      "id": "ask-channel",
+      "id": "ask-topic",
       "from": "person",
-      "to": "threads",
-      "label": "or a channel"
+      "to": "chats",
+      "label": "or a topic"
     },
     {
       "id": "delegate",
       "from": "golem",
-      "to": "threads",
-      "label": "send_to_thread",
+      "to": "chats",
+      "label": "send_to_chat",
       "variant": "emphasis"
     },
     {
       "id": "relay-back",
-      "from": "threads",
+      "from": "chats",
       "to": "golem",
       "label": "answer relayed",
       "variant": "dashed"
     },
     {
       "id": "run-tools",
-      "from": "threads",
+      "from": "chats",
       "to": "tools",
       "label": "codemode script"
     },
     {
       "id": "keep-brief",
-      "from": "threads",
+      "from": "chats",
       "to": "brief",
       "label": "quiet 10 min",
       "variant": "dashed"
     },
     {
       "id": "learn",
-      "from": "threads",
+      "from": "chats",
       "to": "learned",
       "label": "learning loop",
       "variant": "dashed"
     },
     {
       "id": "index-messages",
-      "from": "threads",
+      "from": "chats",
       "to": "index",
       "label": "indexed",
       "variant": "dashed"
@@ -255,7 +255,7 @@
       "id": "brief-in",
       "from": "brief",
       "to": "sections",
-      "label": "channel brief"
+      "label": "topic brief"
     },
     {
       "id": "learned-in",
@@ -277,9 +277,9 @@
       "variant": "emphasis"
     },
     {
-      "id": "prompt-threads",
+      "id": "prompt-chats",
       "from": "sections",
-      "to": "threads",
+      "to": "chats",
       "label": "every turn",
       "variant": "emphasis"
     }
@@ -287,18 +287,18 @@
   "cards": [
     {
       "dot": "emerald",
-      "title": "Golem, the endless thread",
+      "title": "Golem, the endless chat",
       "items": [
-        "Each person has one thread that never ends",
-        "It answers simple things and hands the rest to a channel thread",
+        "Each person has one chat that never ends",
+        "It answers simple things and hands the rest to a topic chat",
         "A memory tree of 512-byte summaries; zoom opens older messages"
       ]
     },
     {
       "dot": "cyan",
-      "title": "Channels and threads",
+      "title": "Topics and chats",
       "items": [
-        "A thread is one Pi Durable conversation",
+        "A chat is one Pi Durable conversation",
         "Answers come back to Golem at most two hops away",
         "Code mode scripts call machines, services, the browser and artifacts"
       ]
@@ -307,7 +307,7 @@
       "dot": "orange",
       "title": "What carries over",
       "items": [
-        "The channel brief is rewritten after 10 quiet minutes",
+        "The topic brief is rewritten after 10 quiet minutes",
         "The learning loop keeps facts about people and how-tos",
         "Workspace facts are what the family writes itself"
       ]

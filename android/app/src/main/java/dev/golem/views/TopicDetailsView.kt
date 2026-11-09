@@ -45,21 +45,21 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * A channel's name, its summary and brief, its routines, and their newest runs. People create routines by asking an
- * agent; the model writes the summary and the brief from the channel's threads.
+ * A topic's name, its summary and brief, its routines, and their newest runs. People create routines by asking an
+ * agent; the model writes the summary and the brief from the topic's chats.
  */
 @Composable
-fun ChannelDetailsView(id: String) {
+fun TopicDetailsView(id: String) {
     val session = LocalSession.current
     val open = LocalOpen.current
     val opener = rememberFileOpener()
-    val channel = session.channels.firstOrNull { it.id == id }
+    val topic = session.topics.firstOrNull { it.id == id }
     val workspaceId = session.workspace?.id ?: return
     var routines by remember { mutableStateOf<List<Routine>>(emptyList()) }
     var runs by remember { mutableStateOf<List<RoutineRun>>(emptyList()) }
     var brief by remember { mutableStateOf<Brief?>(null) }
-    var name by remember(channel?.name) { mutableStateOf(channel?.name ?: "") }
-    val renamed = name.isNotBlank() && name.trim() != channel?.name
+    var name by remember(topic?.name) { mutableStateOf(topic?.name ?: "") }
+    val renamed = name.isNotBlank() && name.trim() != topic?.name
 
     suspend fun load() {
         session.reloadWorkspace()
@@ -75,7 +75,7 @@ fun ChannelDetailsView(id: String) {
         if (!renamed) return
         val newName = name.trim()
         session.launch {
-            session.renameChannel(id, newName)
+            session.renameTopic(id, newName)
             session.show("Saved", Toast.Tone.Success)
         }
     }
@@ -95,14 +95,14 @@ fun ChannelDetailsView(id: String) {
         }
     }
 
-    // The brief's links open here instead of leaving the app, as a thread's do.
+    // The brief's links open here instead of leaving the app, as a chat's do.
     val system = LocalUriHandler.current
     val links = remember(system) {
         object : UriHandler {
             override fun openUri(uri: String) {
                 val target = uri.substringAfter(':')
                 when (uri.substringBefore(':')) {
-                    "thread" -> open(Destination.Thread(target))
+                    "chat" -> open(Destination.Chat(target))
                     "file" -> opener(FileRef(target, ""))
                     "artifact" -> open(Destination.Artifact(id, target))
                     else -> runCatching { system.openUri(uri) }
@@ -111,14 +111,14 @@ fun ChannelDetailsView(id: String) {
         }
     }
 
-    SettingsScreen("# ${channel?.name ?: ""}") {
-        DetailTitle("# ${channel?.name ?: ""}", caption = "Channel details",
+    SettingsScreen("# ${topic?.name ?: ""}") {
+        DetailTitle("# ${topic?.name ?: ""}", caption = "Topic details",
             modifier = Modifier.padding(horizontal = Tokens.Mobile.Size.margin, vertical = Tokens.Space.md))
-        SettingsGroup("Channel") {
+        SettingsGroup("Topic") {
             FieldWithButton(name, { name = it }, "Name", "Save", enabled = renamed, ::rename,
                 KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Done))
         }
-        channel?.summary?.let { summary ->
+        topic?.summary?.let { summary ->
             SettingsGroup("Summary") {
                 Text(summary, style = golemText(Tokens.Mobile.FontSize.row), color = Golem.mobile.text,
                     modifier = Modifier.padding(horizontal = Tokens.Mobile.Size.margin, vertical = Tokens.Space.sm))
@@ -145,8 +145,8 @@ fun ChannelDetailsView(id: String) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         GolemSwitch(routine.enabled, { setEnabled(routine, it) }, label = "Run ${routine.name}")
                         SettingsRowMenu("${routine.name} actions", buildList {
-                            routine.threadId?.let { thread ->
-                                add(MenuAction("Open thread", Pixel.Edit.vector) { open(Destination.Thread(thread)) })
+                            routine.chatId?.let { chat ->
+                                add(MenuAction("Open chat", Pixel.Edit.vector) { open(Destination.Chat(chat)) })
                             }
                             add(MenuAction("Run now", Pixel.Play.vector) {
                                 session.launch {

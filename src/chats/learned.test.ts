@@ -22,9 +22,9 @@ async function open(): Promise<Learned> {
 
 function input(changes: Partial<ReviewInput> = {}): ReviewInput {
   return {
-    threadId: "thread-1",
-    threadTitle: "Lunch",
-    channel: { id: "food", name: "food" },
+    chatId: "chat-1",
+    chatTitle: "Lunch",
+    topic: { id: "food", name: "food" },
     realm: null,
     people: [ALICE, BOB],
     automations: "",
@@ -48,7 +48,7 @@ function model(...answers: string[]) {
 
 const { signal } = new AbortController();
 
-test("what a private thread teaches stays in its person's realm, and a shared thread sees only what everyone sees", async () => {
+test("what a private chat teaches stays in its person's realm, and a shared chat sees only what everyone sees", async () => {
   const learned = await open();
   await learned.review(
     input(),
@@ -59,8 +59,8 @@ test("what a private thread teaches stays in its person's realm, and a shared th
   );
   await learned.review(
     input({
-      threadId: "orchestrator",
-      channel: null,
+      chatId: "orchestrator",
+      topic: null,
       realm: "alice",
       people: [ALICE],
     }),
@@ -72,10 +72,10 @@ test("what a private thread teaches stays in its person's realm, and a shared th
     ).summarize,
     signal
   );
-  expect(learned.forThread(null, "food").map((item) => item.text)).toEqual([
+  expect(learned.forChat(null, "food").map((item) => item.text)).toEqual([
     "Eats no meat",
   ]);
-  expect(learned.forThread("alice", null).map((item) => item.text)).toEqual([
+  expect(learned.forChat("alice", null).map((item) => item.text)).toEqual([
     "Eats no meat",
     "Plans a surprise for Bob",
     "Book the restaurant by phone",
@@ -92,7 +92,7 @@ test("what a private thread teaches stays in its person's realm, and a shared th
   expect(learned.through("orchestrator")).toBe(4);
 });
 
-test("a review never writes for someone outside the thread, and sees what people removed", async () => {
+test("a review never writes for someone outside the chat, and sees what people removed", async () => {
   const learned = await open();
   await learned.review(
     input({ people: [ALICE] }),
@@ -100,7 +100,7 @@ test("a review never writes for someone outside the thread, and sees what people
       JSON.stringify({
         about: [
           { person: "Alice", text: "Eats no meat" },
-          { person: "Bob", text: "Not in this thread" },
+          { person: "Bob", text: "Not in this chat" },
         ],
         suggest: [
           {
@@ -164,7 +164,7 @@ test("a list that grows too long goes back to the model, which merges it", async
   ]);
 });
 
-test("suggestions keep only the people of the thread and the fields their kind needs", async () => {
+test("suggestions keep only the people of the chat and the fields their kind needs", async () => {
   const learned = await open();
   const suggestions = await learned.review(
     input(),

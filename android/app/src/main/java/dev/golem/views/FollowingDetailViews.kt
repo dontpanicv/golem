@@ -57,7 +57,7 @@ import dev.golem.design.golemText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** A waiting or done thread update: what Golem will post, its sources, and Send now, Don't send, or Delete and block. */
+/** A waiting or done chat update: what Golem will post, its sources, and Send now, Don't send, or Delete and block. */
 @Composable
 fun UpdateDetailView(update: IntakeUpdate, earlier: List<IntakeFeedback>, open: (Destination) -> Unit, close: () -> Unit) {
     val session = LocalSession.current
@@ -86,7 +86,7 @@ fun UpdateDetailView(update: IntakeUpdate, earlier: List<IntakeFeedback>, open: 
             ActionRow("Don't send", Pixel.Close.vector, busy) { change("cancel") }
             ActionRow("Delete and block", Pixel.Trash.vector, busy) { confirmDelete = true }
         }
-        current.threadId?.let { ActionRow("Open thread", Pixel.Chat.vector) { open(Destination.Thread(it)) } }
+        current.chatId?.let { ActionRow("Open chat", Pixel.Chat.vector) { open(Destination.Chat(it)) } }
         SourcesSection(current.evidence)
     }
     if (confirmDelete) {
@@ -102,13 +102,13 @@ fun UpdateDetailView(update: IntakeUpdate, earlier: List<IntakeFeedback>, open: 
     }
 }
 
-/** One observation that intake keeps: when, where it went, its text, its thread, and its source. */
+/** One observation that intake keeps: when, where it went, its text, its chat, and its source. */
 @Composable
 fun KeptDetailView(item: IntakeKept, earlier: List<IntakeFeedback>, open: (Destination) -> Unit, close: () -> Unit) {
     IntakeDetail(item.name, "item:${item.id}", earlier, close) {
         SettingsRow(dateAndTime(item.at), description = item.location)
         DetailText(item.text)
-        item.threadId?.let { ActionRow("Open thread", Pixel.Chat.vector) { open(Destination.Thread(it)) } }
+        item.chatId?.let { ActionRow("Open chat", Pixel.Chat.vector) { open(Destination.Chat(it)) } }
         SourceLink(item.url)
     }
 }
@@ -179,7 +179,7 @@ fun FollowingDetailView(checkId: String, open: (Destination) -> Unit) {
         if (loaded.history.firstOrNull()?.previous != null) {
             ActionRow("Undo last change", Pixel.Undo.vector, busy) { change("undo", "Undo last change") }
         }
-        check.threadId?.let { ActionRow("Open thread", Pixel.Chat.vector) { open(Destination.Thread(it)) } }
+        check.chatId?.let { ActionRow("Open chat", Pixel.Chat.vector) { open(Destination.Chat(it)) } }
         SourcesSection(loaded.evidence)
         if (loaded.history.isNotEmpty()) {
             ListSeparator()

@@ -27,8 +27,8 @@ struct UpcomingTests {
             )
         }
         return Routine(
-            id: id, channelId: "general", name: id, schedule: place == nil ? "0 8 * * *" : nil, place: place,
-            instructions: "", script: nil, enabled: enabled, nextRunAt: enabled ? next : nil, threadId: nil,
+            id: id, topicId: "general", name: id, schedule: place == nil ? "0 8 * * *" : nil, place: place,
+            instructions: "", script: nil, enabled: enabled, nextRunAt: enabled ? next : nil, chatId: nil,
             lastRun: run
         )
     }
@@ -37,7 +37,7 @@ struct UpcomingTests {
         _ id: String, at due: Double, place: ReminderPlace? = nil, from: Double? = nil, until: Double? = nil
     ) -> Reminder {
         Reminder(
-            id: id, threadId: "thread", recipientId: "me", createdBy: "me", text: id, dueAt: due, timeZone: "UTC",
+            id: id, chatId: "chat", recipientId: "me", createdBy: "me", text: id, dueAt: due, timeZone: "UTC",
             place: place, triggeredAt: nil, notBefore: from, notAfter: until, deliveredAt: nil, cancelledAt: nil
         )
     }
@@ -59,8 +59,8 @@ struct UpcomingTests {
             id: "allow", tool: "hands_exec", text: "Run", approverId: nil, allowsTurn: true, expiresAt: 0
         )
         let suggestion = Suggestion(
-            id: "idea", kind: .reminder, name: "Call", text: "Call", schedule: nil, time: hours(30), channelId: "general",
-            threadId: "thread", createdAt: 0
+            id: "idea", kind: .reminder, name: "Call", text: "Call", schedule: nil, time: hours(30), topicId: "general",
+            chatId: "chat", createdAt: 0
         )
         let upcoming = Upcoming(
             routines: [
@@ -86,7 +86,7 @@ struct UpcomingTests {
                 ),
             ],
             suggestions: [suggestion],
-            approvals: [WaitingApproval(threadId: "thread", approval: approval)]
+            approvals: [WaitingApproval(chatId: "chat", approval: approval)]
         )
 
         let groups = upcoming.groups(now: now, calendar: calendar)

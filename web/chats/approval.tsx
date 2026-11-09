@@ -11,15 +11,15 @@ import { answerApproval } from "./data.ts";
  */
 export function ApprovalRequest({
   approval,
-  threadId,
+  chatId,
 }: {
   approval: Approval;
-  threadId: string;
+  chatId: string;
 }) {
   const [busy, setBusy] = useState(false);
   const answer = (allow: boolean, scope?: "once" | "turn") => {
     setBusy(true);
-    answerApproval(threadId, approval.id, allow, scope).catch((error) => {
+    answerApproval(chatId, approval.id, allow, scope).catch((error) => {
       setBusy(false);
       showError(error);
     });

@@ -29,7 +29,7 @@ class Notifier(private val context: Context) {
     }
 
     /**
-     * Shows each unread notification not seen before, except those of the thread on screen; `silently` only notes
+     * Shows each unread notification not seen before, except those of the chat on screen; `silently` only notes
      * them, as at the first look after the app starts. A notification that was read goes from the phone.
      */
     fun show(inbox: Inbox, workspaceId: String, silently: Boolean, onScreen: String?) {
@@ -40,12 +40,12 @@ class Notifier(private val context: Context) {
                 manager.cancel(notification.id, 0)
                 continue
             }
-            if (!seen.add(notification.id) || silently || !allowed || notification.threadId == onScreen) continue
+            if (!seen.add(notification.id) || silently || !allowed || notification.chatId == onScreen) continue
             val intent = Intent(context, MainActivity::class.java)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(MainActivity.WORKSPACE, workspaceId)
                 .putExtra(MainActivity.CHANNEL, notification.channelId)
-                .putExtra(MainActivity.THREAD, notification.threadId)
+                .putExtra(MainActivity.CHAT, notification.chatId)
             val open = PendingIntent.getActivity(
                 context, notification.id.hashCode(), intent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
