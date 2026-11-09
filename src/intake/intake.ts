@@ -25,6 +25,7 @@ import {
   type Evidence,
   type FutureCheck,
   type IntakeNotification,
+  type Knowledge,
 } from "./assess.ts";
 import { Audit } from "./audit.ts";
 import { IntakeDestinations } from "./destinations.ts";
@@ -78,6 +79,7 @@ export type IntakeThreads = Pick<
   | "place"
   | "startAgentThread"
   | "orchestrator"
+  | "learnedFor"
 >;
 export type IntakeWorkspaces = Pick<
   Workspaces,
@@ -89,6 +91,7 @@ export type IntakeWorkspaces = Pick<
   | "channelsIn"
   | "addChannel"
   | "setChannelSummary"
+  | "factsOf"
 >;
 export type IntakeSearch = Pick<Indexer, "search">;
 export type IntakeLlm = Pick<Llm, "complete">;
@@ -714,6 +717,7 @@ export class Intake {
       return cached;
     }
     input.corrections = corrections;
+    input.knowledge = this.knowledge(workspaceId, owner);
     this.record(
       assessmentTrace,
       "assessment.input",
@@ -1221,7 +1225,30 @@ export class Intake {
       channels: this.recall.channels(workspaceId, owner),
       checks,
       corrections: this.following.corrections(workspaceId, owner),
+      knowledge: this.knowledge(workspaceId, owner),
       coverage,
+    };
+  }
+
+  /** The family's own facts and what Golem learned that the owner sees, for the judge that acts for them. */
+  private knowledge(workspaceId: string, owner: User): Knowledge {
+    const names = new Map(
+      this.workspaces
+        .members(workspaceId, owner)
+        .map((member) => [member.userId, member.name])
+    );
+    const learned = this.threads.learnedFor(workspaceId, owner);
+    return {
+      facts: this.workspaces.factsOf(workspaceId),
+      about: learned.flatMap((item) => {
+        const person = names.get(item.personId ?? "");
+        return item.kind === "about" && person
+          ? [{ person, text: item.text }]
+          : [];
+      }),
+      howto: learned
+        .filter((item) => item.kind === "howto")
+        .map((item) => item.text),
     };
   }
 

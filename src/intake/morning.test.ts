@@ -22,6 +22,7 @@ const input: MorningInput = {
   channels: [{ id: "work", name: "work", summary: null, private: false }],
   checks: [],
   corrections: [],
+  knowledge: { facts: "", about: [], howto: [] },
   coverage: [],
 };
 

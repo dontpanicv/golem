@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import {
   mkdir,
   mkdtemp,
@@ -1819,6 +1819,45 @@ test("the orchestrator compacts after its turn without notifying about the same 
   expect(
     golem.app.notifications.inbox(home.id, alice).notifications
   ).toHaveLength(5);
+}, 15_000);
+
+test("a quiet orchestrator teaches Golem what stays private to its person", async () => {
+  golem.faux.appendResponses(Array.from({ length: 4 }, () => agent));
+  const home = await golem.app.workspaces.create(alice, "Orchestrator memory");
+  await golem.app.workspaces.addMember(home.id, alice, bob.email);
+  const orchestrator = await golem.app.threads.orchestrator(home.id, alice);
+  await golem.app.threads.send(
+    orchestrator.id,
+    alice,
+    "I am vegetarian, what is for lunch?"
+  );
+  await until(
+    () => golem.app.threads.messages(orchestrator),
+    (state) => !state.running && state.messages.length === 2
+  );
+  // An orchestrator never settles, so only its quiet time starts a review.
+  const realNow = Date.now.bind(Date);
+  const clock = spyOn(Date, "now").mockImplementation(
+    () => realNow() + 11 * 60_000
+  );
+  try {
+    await golem.app.threads.orchestrator(home.id, bob);
+    const started = realNow();
+    let learned = golem.app.threads.learnedFor(home.id, alice);
+    while (learned.length < 2 && realNow() - started < 10_000) {
+      await Bun.sleep(50);
+      learned = golem.app.threads.learnedFor(home.id, alice);
+    }
+    expect(
+      learned.map((item) => [item.kind, item.text, item.realm, item.channelId])
+    ).toEqual([
+      ["about", "Alice is vegetarian", alice.id, null],
+      ["howto", "Groceries come from the corner shop", alice.id, null],
+    ]);
+    expect(golem.app.threads.learnedFor(home.id, bob)).toEqual([]);
+  } finally {
+    clock.mockRestore();
+  }
 }, 15_000);
 
 test("a quiet thread teaches Golem about its people and its channel, and Golem suggests an automation that waits for its person", async () => {

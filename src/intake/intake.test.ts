@@ -5,7 +5,7 @@ import { HttpRouter } from "effect/http";
 import { startTestApp, type TestApp, until } from "../../test/harness.ts";
 import { routes } from "../app/http.ts";
 import type { WatchedItem } from "../integrations/integrations.ts";
-import type { ThreadMessages } from "../threads/threads.ts";
+import type { LearnedItem, ThreadMessages } from "../threads/threads.ts";
 import { intakeApiRoutes } from "./api.ts";
 import {
   type Assessment,
@@ -54,6 +54,7 @@ async function setup(
     silent?: boolean;
     failAfterThreadStart?: boolean;
     plan?: (input: MorningInput) => MorningPlan;
+    learned?: (ownerId: string) => LearnedItem[];
     /** Fails a post to a thread, as when the conversation is not reachable. */
     postFails?: (threadId: string) => boolean;
   } = {}
@@ -164,6 +165,7 @@ async function setup(
     },
     file: app.app.threads.file.bind(app.app.threads),
     orchestrator: app.app.threads.orchestrator.bind(app.app.threads),
+    learnedFor: (_workspaceId, person) => options.learned?.(person.id) ?? [],
     writeFile: app.app.threads.writeFile.bind(app.app.threads),
     deleteFile: app.app.threads.deleteFile.bind(app.app.threads),
     realm: async () => owner.id,
@@ -1308,6 +1310,47 @@ test("the morning review puts the updates of one matter into one new thread, sta
   });
   await intake.tick(Date.parse("2026-10-06T08:00:00+02:00"));
   expect(run.posts).toHaveLength(posted + 1);
+});
+
+test("the judge reads the family's facts and what Golem learned, in every assessment and in the morning review", async () => {
+  const run = await setup({
+    initialNotice: "brief",
+    learned: (ownerId) =>
+      [
+        {
+          kind: "about",
+          personId: ownerId,
+          text: "Alice dislikes newsletters",
+        },
+        { kind: "about", personId: "gone", text: "About a former member" },
+        {
+          kind: "howto",
+          personId: null,
+          text: "Bills go to the shared folder",
+        },
+      ].map((entry, id) => ({
+        ...entry,
+        id,
+        kind: entry.kind as LearnedItem["kind"],
+        channelId: null,
+        realm: null,
+        threadId: null,
+        updatedAt: 0,
+      })),
+  });
+  app.app.workspaces.setFacts(run.workspaceId, run.owner, "We live in Prague");
+  const knowledge = {
+    facts: "We live in Prague",
+    about: [{ person: "Alice", text: "Alice dislikes newsletters" }],
+    howto: ["Bills go to the shared folder"],
+  };
+  await intake.tick(START + 1000);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  expect(run.snapshots.length).toBeGreaterThan(0);
+  for (const input of run.snapshots) {
+    expect(input.knowledge).toEqual(knowledge);
+  }
+  expect(run.plans[0]!.knowledge).toEqual(knowledge);
 });
 
 test("a morning plan that leaves an update out changes nothing and is tried again", async () => {

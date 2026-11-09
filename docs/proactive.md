@@ -18,6 +18,8 @@ They do not need to maintain a task list or set a routine for each expected repl
    context. Latest thread messages come before prior summaries, so clipping
    preserves the latest state.
    The configured judge receives original text, direction, source IDs, bulk metadata, and attachment names/types/sizes.
+   It also receives the facts that the family wrote and what Golem learned that the owner sees. These explain the
+   evidence and carry the owner's wishes about what to watch or report; they are never evidence.
    There is no Qwen reader. Code validates destinations, evidence IDs, exact quotes, and times. A failed batch does
    not prevent unrelated batches from being assessed. Source text never gives tool instructions.
 4. **Keep state.** Useful context goes into the existing private thread's stable prompt section. A useful new
