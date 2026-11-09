@@ -40,7 +40,7 @@ struct GolemSelect<Value: Hashable>: View {
                     .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book))
                     .foregroundStyle(Tokens.Mobile.Colors.text)
                     .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
+                Image(pixel: .updown)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
             }
@@ -55,17 +55,17 @@ struct GolemSelect<Value: Hashable>: View {
 /// A menu row: optional leading icon, title, and a check when it is the selected option.
 struct MenuItem: View {
     let title: String
-    var systemImage: String?
+    var pixel: Pixel?
     var checked = false
     var role: ButtonRole?
     let action: @MainActor () -> Void
 
     init(
-        _ title: String, systemImage: String? = nil, checked: Bool = false, role: ButtonRole? = nil,
+        _ title: String, pixel: Pixel? = nil, checked: Bool = false, role: ButtonRole? = nil,
         action: @escaping @MainActor () -> Void
     ) {
         self.title = title
-        self.systemImage = systemImage
+        self.pixel = pixel
         self.checked = checked
         self.role = role
         self.action = action
@@ -73,8 +73,8 @@ struct MenuItem: View {
 
     var body: some View {
         Button(role: role, action: action) {
-            if let icon = checked ? "checkmark" : systemImage {
-                Label(title, systemImage: icon)
+            if let icon = checked ? Pixel.check : pixel {
+                Label(title, pixel: icon)
             } else {
                 Text(title)
             }

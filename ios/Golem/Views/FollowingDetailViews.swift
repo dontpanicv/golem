@@ -28,14 +28,14 @@ struct UpdateDetailView: View {
                 SettingsRow(update.state, description: update.notice.map { "Golem will also notify you: \($0)" })
                 DetailText(text: update.message)
                 if update.waits {
-                    if update.attention == "brief" { action("Send now", systemImage: "paperplane", change: "now") }
-                    action("Don't send", systemImage: "xmark", change: "cancel")
-                    Button { confirmDelete = true } label: { ListRow("Delete and block", systemImage: "trash") }
+                    if update.attention == "brief" { action("Send now", pixel: .send, change: "now") }
+                    action("Don't send", pixel: .close, change: "cancel")
+                    Button { confirmDelete = true } label: { ListRow("Delete and block", pixel: .trash) }
                         .buttonStyle(.row)
                         .disabled(busy)
                 }
                 if let threadID = update.threadId {
-                    Button { open(.thread(threadID)) } label: { ListRow("Open thread", systemImage: "bubble.left") }
+                    Button { open(.thread(threadID)) } label: { ListRow("Open thread", pixel: .chat) }
                         .buttonStyle(.row)
                 }
             }
@@ -63,7 +63,7 @@ struct UpdateDetailView: View {
         }
     }
 
-    private func action(_ title: String, systemImage: String, change: String) -> some View {
+    private func action(_ title: String, pixel: Pixel, change: String) -> some View {
         Button {
             guard let workspace = session.workspace else { return }
             busy = true
@@ -75,7 +75,7 @@ struct UpdateDetailView: View {
                 }
                 busy = false
             }
-        } label: { ListRow(title, systemImage: systemImage) }
+        } label: { ListRow(title, pixel: pixel) }
             .buttonStyle(.row)
             .disabled(busy)
     }
@@ -178,7 +178,7 @@ struct SourceLink: View {
 
     var body: some View {
         if let url, let address = URL(string: url), address.scheme == "https" {
-            Link(destination: address) { ListRow("Open source", systemImage: "arrow.up.right") }
+            Link(destination: address) { ListRow("Open source", pixel: .open) }
                 .buttonStyle(.row)
         }
     }
@@ -225,16 +225,16 @@ struct FollowingDetailView: View {
                 SettingsRow(detail.check.stateLabel, description: time(detail.check.updatedAt))
             }
             if detail.check.state == "open" {
-                action("Handled", systemImage: "checkmark", change: "handled")
-                action("Stop following", systemImage: "stop", change: "stop")
+                action("Handled", pixel: .check, change: "handled")
+                action("Stop following", pixel: .stop, change: "stop")
             } else {
-                action("Follow again", systemImage: "arrow.clockwise", change: "reopen")
+                action("Follow again", pixel: .refresh, change: "reopen")
             }
             if detail.history.first?.previous != nil {
-                action("Undo last change", systemImage: "arrow.uturn.backward", change: "undo")
+                action("Undo last change", pixel: .undo, change: "undo")
             }
             if let threadID = detail.check.threadId {
-                Button { open(.thread(threadID)) } label: { ListRow("Open thread", systemImage: "bubble.left") }
+                Button { open(.thread(threadID)) } label: { ListRow("Open thread", pixel: .chat) }
                     .buttonStyle(.row)
             }
         }
@@ -269,8 +269,8 @@ struct FollowingDetailView: View {
         }
     }
 
-    private func action(_ title: String, systemImage: String, change: String) -> some View {
-        Button { self.change(change, quote: title) } label: { ListRow(title, systemImage: systemImage) }
+    private func action(_ title: String, pixel: Pixel, change: String) -> some View {
+        Button { self.change(change, quote: title) } label: { ListRow(title, pixel: pixel) }
             .buttonStyle(.row)
             .disabled(busy)
     }

@@ -7,14 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.Block
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
@@ -41,6 +33,8 @@ import dev.golem.api.IntakeUpdate
 import dev.golem.api.following
 import dev.golem.api.followingOverview
 import dev.golem.api.unblock
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Badge
 import dev.golem.design.EmptyState
 import dev.golem.design.FullScreen
@@ -152,7 +146,7 @@ fun FollowingList(header: @Composable () -> Unit) {
                         ListSectionHeader("Blocked")
                     }
                     items(blocked, key = { "block:${it.id}" }) { block ->
-                        ListRow(block.label, icon = Icons.Outlined.Block, subtitle = if (block.kind == "sender") "Sender" else "Chat",
+                        ListRow(block.label, icon = Pixel.Blocked.vector, subtitle = if (block.kind == "sender") "Sender" else "Chat",
                             onClick = { unblocking = block })
                     }
                 }
@@ -184,12 +178,12 @@ fun FollowingList(header: @Composable () -> Unit) {
                         ListSectionHeader("Your feedback")
                     }
                     items(feedback, key = { "feedback:${it.id}" }) {
-                        ListRow(it.quote, icon = Icons.Outlined.ChatBubbleOutline, subtitle = it.about)
+                        ListRow(it.quote, icon = Pixel.Chat.vector, subtitle = it.about)
                     }
                 }
             }
             if (overview?.sources?.isEmpty() == true) {
-                EmptyState("Golem reads no account for you", { Icon(Icons.Outlined.Inbox, null, tint = Golem.colors.textQuaternary) })
+                EmptyState("Golem reads no account for you")
             }
         }
     }
@@ -239,21 +233,21 @@ private fun LazyListScope.section(title: String, rows: List<Selected>, select: (
 private fun FollowingRowView(row: Selected, select: (Selected) -> Unit) {
     when (row) {
         is Selected.Update -> ListRow(
-            row.update.title, icon = if (row.update.deliveredAt == null) Icons.Outlined.Schedule else Icons.Outlined.Check,
+            row.update.title, icon = if (row.update.deliveredAt == null) Pixel.Clock.vector else Pixel.Check.vector,
             subtitle = "${updateState(row.update)} · ${row.update.message}", onClick = { select(row) },
         )
         is Selected.Check -> ListRow(
-            row.check.text, icon = if (row.check.state == "open") Icons.Outlined.Visibility else Icons.Outlined.Check,
+            row.check.text, icon = if (row.check.state == "open") Pixel.Eye.vector else Pixel.Check.vector,
             subtitle = checkState(row.check), onClick = { select(row) },
         )
         is Selected.Source -> ListRow(
-            row.source.name, icon = Icons.Outlined.Inbox, subtitle = row.source.error ?: sourceState(row.source),
+            row.source.name, icon = Pixel.Inbox.vector, subtitle = row.source.error ?: sourceState(row.source),
             onClick = { select(row) },
         ) {
             if (row.source.error != null) Badge("Error", Tone.Danger)
         }
         is Selected.Kept -> ListRow(
-            row.item.name, icon = if (row.item.fromOwner) Icons.Outlined.ArrowUpward else Icons.Outlined.Inbox,
+            row.item.name, icon = if (row.item.fromOwner) Pixel.Send.vector else Pixel.Inbox.vector,
             subtitle = "${dateAndTime(row.item.at)} · ${row.item.text}", onClick = { select(row) },
         ) {
             Badge(row.item.badge, if (row.item.outcome == "context") Tone.Neutral else Tone.Success)

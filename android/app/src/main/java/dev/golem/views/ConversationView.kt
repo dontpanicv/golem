@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -21,14 +22,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowForward
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Tag
-import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -41,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
@@ -56,8 +50,12 @@ import dev.golem.api.FileRef
 import dev.golem.api.Message
 import dev.golem.api.Session
 import dev.golem.api.ThreadState
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
+import dev.golem.design.Dither
+import dev.golem.design.DitherView
 import dev.golem.design.EmptyState
 import dev.golem.design.Golem
 import dev.golem.design.GolemButton
@@ -125,16 +123,16 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
     }
 
     val menu = buildList {
-        add(MenuAction("Files and artifacts", Icons.Outlined.FolderOpen) { panel = true })
+        add(MenuAction("Files and artifacts", Pixel.Folder.vector) { panel = true })
         if (!orchestrator && thread != null) {
-            add(MenuAction("Open #$channelName", Icons.Outlined.Tag) { open(Destination.Channel(thread.channelId)) })
-            add(MenuAction("Move to", Icons.AutoMirrored.Outlined.ArrowForward, children = session.channels.filter { it.id != thread.channelId }.map { channel ->
-                MenuAction(channel.name, if (channel.ownerId == null) Icons.Outlined.Tag else Icons.Outlined.Lock) {
+            add(MenuAction("Open #$channelName", Pixel.Hash.vector) { open(Destination.Channel(thread.channelId)) })
+            add(MenuAction("Move to", Pixel.Right.vector, children = session.channels.filter { it.id != thread.channelId }.map { channel ->
+                MenuAction(channel.name, if (channel.ownerId == null) Pixel.Hash.vector else Pixel.Lock.vector) {
                     session.launch { session.moveThread(threadId, channel.id) }
                 }
             }))
             val settled = thread.settledAt != null
-            add(MenuAction(if (settled) "Un-settle thread" else "Settle thread", if (settled) Icons.Outlined.Inbox else Icons.Outlined.Check) {
+            add(MenuAction(if (settled) "Un-settle thread" else "Settle thread", if (settled) Pixel.Inbox.vector else Pixel.Check.vector) {
                 session.launch { session.setThreadSettled(threadId, !settled) }
             })
         }
@@ -188,7 +186,7 @@ fun ConversationView(threadId: String, artifactId: String? = null) {
         CompositionLocalProvider(LocalUriHandler provides links) {
             val current = state
             when {
-                current == null && failure != null -> EmptyState(failure!!, { Icon(Icons.Outlined.WifiOff, null, tint = Golem.colors.textQuaternary) })
+                current == null && failure != null -> EmptyState(failure!!)
                 current == null -> Loading()
                 current.messages.isEmpty() -> EmptyState("Ask Golem anything", { GolemGlyph(24.dp, Golem.colors.textQuaternary) },
                     Modifier.padding(padding))
@@ -215,6 +213,7 @@ private fun Messages(
     val focus = LocalFocusManager.current
     // The list starts at its end, and new messages and approvals keep the newest in view while the person is there.
     LaunchedEffect(messages.size, approvals.size) { if (list.firstVisibleItemIndex <= 2) list.animateScrollToItem(0) }
+    Box {
     LazyColumn(
         Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { focus.clearFocus() } }, state = list, reverseLayout = true,
         contentPadding = PaddingValues(
@@ -232,6 +231,10 @@ private fun Messages(
                 MessageRow(message, continued, waiting = message.id == working?.id && approvals.isNotEmpty(), openFile = openFile)
             }
         }
+    }
+    // Messages dissolve at both ends of the transcript, as on the web.
+    DitherView(Dither.FadeTop, Golem.mobile.background, Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding()).fillMaxWidth().height(28.dp))
+    DitherView(Dither.FadeBottom, Golem.mobile.background, Modifier.align(Alignment.BottomCenter).padding(bottom = padding.calculateBottomPadding()).fillMaxWidth().height(56.dp))
     }
 }
 
@@ -263,7 +266,7 @@ private suspend fun follow(session: Session, threadId: String, onState: (ThreadS
 
 /**
  * An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows
- * that, or not; the gold of the icon's eyes at its side. A long text, such as the body of an email, scrolls.
+ * that, or not; `gold` at its side. A long text, such as the body of an email, scrolls.
  */
 @Composable
 private fun ApprovalCard(approval: Approval, threadId: String, modifier: Modifier = Modifier) {

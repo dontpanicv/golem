@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +43,8 @@ import dev.golem.api.FileRef
 import dev.golem.api.Message
 import dev.golem.api.Step
 import dev.golem.api.Work
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.FileChip
 import dev.golem.design.FileChips
 import dev.golem.design.Golem
@@ -55,6 +55,7 @@ import dev.golem.design.Mood
 import dev.golem.design.PersonAvatar
 import dev.golem.design.PixelSpinner
 import dev.golem.design.Tokens
+import dev.golem.design.golemMono
 import dev.golem.design.golemText
 import dev.golem.design.shimmer
 import dev.golem.design.ticking
@@ -81,7 +82,7 @@ fun MessageRow(message: Message, continued: Boolean, waiting: Boolean, openFile:
             if (!continued) {
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.sm)) {
                     Text(message.author, style = golemText(Tokens.Mobile.FontSize.row, Tokens.FontWeight.semibold), color = Golem.mobile.title)
-                    Text(time(message.time), style = golemText(Tokens.Mobile.FontSize.caption), color = Golem.mobile.textQuaternary,
+                    Text(time(message.time), style = golemMono(Tokens.Mobile.FontSize.mono), color = Golem.mobile.textQuaternary,
                         modifier = Modifier.padding(bottom = 1.dp))
                 }
             }
@@ -169,7 +170,7 @@ fun WorkLog(work: Work) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.xs),
         ) {
-            val style = golemText(Tokens.FontSize.md).copy(color = Golem.colors.textTertiary)
+            val style = golemMono(Tokens.FontSize.mono).copy(color = Golem.colors.textTertiary)
             if (working) PixelSpinner(Modifier.padding(end = Tokens.Space.xs))
             val span = duration(((work.endedAt ?: now.toDouble()) - work.startedAt) / 1000)
             Text(label(work, span), style = if (working) shimmer(style) else style, maxLines = 1)
@@ -180,7 +181,7 @@ fun WorkLog(work: Work) {
                 }
             }
             if (work.steps.isNotEmpty()) {
-                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, if (open) "Fold" else "Open", Modifier.size(16.dp).rotate(turn),
+                Icon(Pixel.Forward.vector, if (open) "Fold" else "Open", Modifier.rotate(turn),
                     tint = Golem.colors.textTertiary)
             }
             if (!working) StepStrip(work.steps)

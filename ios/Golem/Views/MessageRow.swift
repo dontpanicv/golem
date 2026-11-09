@@ -35,7 +35,7 @@ struct MessageRow: View {
                             .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.semibold))
                             .foregroundStyle(Tokens.Mobile.Colors.title)
                         Text(Date(milliseconds: message.time), format: .dateTime.hour().minute())
-                            .font(.golem(Tokens.Mobile.FontSize.caption))
+                            .font(.mono(Tokens.Mobile.FontSize.mono))
                             .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                     }
                 }

@@ -19,11 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.EditLocationAlt
-import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -62,6 +57,8 @@ import dev.golem.api.mapTileUrl
 import dev.golem.api.places
 import dev.golem.api.removePlace
 import dev.golem.api.savePlace
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Golem
 import dev.golem.design.GolemSwitch
 import dev.golem.design.GolemTextField
@@ -110,8 +107,8 @@ fun PlacesSection(workspaceId: String) {
                         }
                     }, label = "Private")
                     SettingsRowMenu("Place actions", listOf(
-                        MenuAction("Change place", Icons.Outlined.EditLocationAlt) { editing = place },
-                        MenuAction("Remove place", Icons.Outlined.Delete, danger = true) {
+                        MenuAction("Change place", Pixel.Place.vector) { editing = place },
+                        MenuAction("Remove place", Pixel.Trash.vector, danger = true) {
                             session.launch {
                                 session.api.removePlace(workspaceId, place.id)
                                 places = places.filter { it.id != place.id }
@@ -270,7 +267,7 @@ private fun PlaceMap(camera: MapCamera, radius: Int) {
             drawCircle(accent, 7.dp.toPx())
         }
         Column(Modifier.align(Alignment.TopEnd).padding(Tokens.Space.xs)) {
-            listOf(Icons.Outlined.Add to 2f, Icons.Outlined.Remove to 0.5f).forEach { (icon, factor) ->
+            listOf(Pixel.Plus.vector to 2f, Pixel.Minus.vector to 0.5f).forEach { (icon, factor) ->
                 IconButton({ camera.zoomBy(factor) }) {
                     Box(Modifier.size(Tokens.Size.control).background(Golem.colors.surfaceRaised, RoundedCornerShape(Tokens.Radius.md)),
                         contentAlignment = Alignment.Center) {

@@ -151,7 +151,7 @@ export function SearchPage() {
                   />
                 ))
               ) : (
-                <Empty icon="search" title="Nothing found" />
+                <Empty title="Nothing found" />
               )}
             </div>
           ) : null}

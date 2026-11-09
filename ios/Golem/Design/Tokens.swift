@@ -3,53 +3,51 @@ import SwiftUI
 
 enum Tokens {
 	enum Colors {
-		static let canvas = Color(light: "#efeff0", dark: "#09090a")
-		static let surface = Color(light: "#f9f9fa", dark: "#121213")
-		static let surfaceRaised = Color(light: "#ffffff", dark: "#1a1a1b")
-		static let surfaceHover = Color(light: "#f3f3f3", dark: "#252527")
-		static let surfaceControl = Color(light: "#ffffff", dark: "#232325")
-		static let surfaceControlHover = Color(light: "#f3f3f3", dark: "#2c2d2f")
-		static let surfaceMenu = Color(light: "#ffffff", dark: "#212122")
-		static let menuHover = Color(light: "#f3f3f3", dark: "#313234")
-		static let surfaceListbox = Color(light: "#ffffff", dark: "#28292b")
-		static let listboxHover = Color(light: "#f3f3f3", dark: "#3c3d40")
-		static let surfaceComposer = Color(light: "#ffffff", dark: "#161617")
+		static let canvas = Color(light: "#d9d9d9", dark: "#000000")
+		static let surface = Color(light: "#ffffff", dark: "#0a0a0a")
+		static let surfaceRaised = Color(light: "#f5f5f5", dark: "#151515")
+		static let surfaceHover = Color(light: "#ebebeb", dark: "#202020")
+		static let surfaceControl = Color(light: "#f5f5f5", dark: "#151515")
+		static let surfaceControlHover = Color(light: "#ebebeb", dark: "#202020")
+		static let surfaceMenu = Color(light: "#f5f5f5", dark: "#151515")
+		static let menuHover = Color(light: "#ebebeb", dark: "#202020")
+		static let surfaceListbox = Color(light: "#f5f5f5", dark: "#151515")
+		static let listboxHover = Color(light: "#ebebeb", dark: "#202020")
+		static let surfaceComposer = Color(light: "#f5f5f5", dark: "#151515")
 		static let ghostHover = Color(light: "#00000009", dark: "#ffffff12")
-		static let fillSubtle = Color(light: "#efeff0", dark: "#1a1a1b")
-		static let fillHover = Color(light: "#e7e7e8", dark: "#18181a")
-		static let fillActive = Color(light: "#e1e1e2", dark: "#232325")
-		static let fillSelected = Color(light: "#ececed", dark: "#29292b")
-		static let fillIcon = Color(light: "#efefef", dark: "#1d1e1f")
-		static let switchTrack = Color(light: "#cdcdcd", dark: "#707172")
-		static let switchTrackHover = Color(light: "#bebebe", dark: "#868789")
-		static let border = Color(light: "#e2e2e2", dark: "#212224")
-		static let borderSubtle = Color(light: "#e8e8e8", dark: "#303134")
-		static let borderMenu = Color(light: "#e8e8e8", dark: "#3c3d40")
-		static let borderDialog = Color(light: "#e8e8e8", dark: "#343538")
-		static let borderStrong = Color(light: "#d8d8d8", dark: "#48494c")
-		static let borderHover = Color(light: "#c2c2c2", dark: "#3e424d")
-		static let borderControl = Color(light: "#7c7c7c", dark: "#858689")
-		static let ring = Color(light: "#00000017", dark: "#ffffff15")
-		static let ringControl = Color(light: "#00000017", dark: "#ffffff23")
-		static let ringHover = Color(light: "#00000026", dark: "#ffffff3a")
-		static let ringListbox = Color(light: "#d8d8d8", dark: "#585a5d")
-		static let text = Color(light: "#1b1b1b", dark: "#ffffff")
-		static let textSecondary = Color(light: "#2f2f31", dark: "#e3e4e6")
-		static let textTertiary = Color(light: "#5c5c5e", dark: "#959597")
-		static let textQuaternary = Color(light: "#a0a0a2", dark: "#5c5d5f")
-		static let accent = Color(light: "#a35d2f", dark: "#a8622f")
-		static let accentHover = Color(light: "#8f5128", dark: "#b8703f")
-		static let accentSubtle = Color(light: "#a35d2f14", dark: "#b8703f29")
-		static let onAccent = Color(light: "#ffffff", dark: "#ffffff")
-		static let gold = Color(light: "#b07a10", dark: "#ffd27a")
+		static let fillSubtle = Color(light: "#f5f5f5", dark: "#151515")
+		static let fillHover = Color(light: "#ebebeb", dark: "#202020")
+		static let fillActive = Color(light: "#ebebeb", dark: "#202020")
+		static let fillSelected = Color(light: "#ebebeb", dark: "#202020")
+		static let fillIcon = Color(light: "#ebebeb", dark: "#202020")
+		static let switchTrack = Color(light: "#a1a1a1", dark: "#575757")
+		static let switchTrackHover = Color(light: "#676767", dark: "#8a8a8a")
+		static let border = Color(light: "#d4d4d4", dark: "#2b2b2b")
+		static let borderSubtle = Color(light: "#d4d4d4", dark: "#2b2b2b")
+		static let borderMenu = Color(light: "#d4d4d4", dark: "#2b2b2b")
+		static let borderDialog = Color(light: "#d4d4d4", dark: "#2b2b2b")
+		static let borderStrong = Color(light: "#d4d4d4", dark: "#2b2b2b")
+		static let borderHover = Color(light: "#a1a1a1", dark: "#575757")
+		static let borderControl = Color(light: "#676767", dark: "#8a8a8a")
+		static let ring = Color(light: "#00000014", dark: "#ffffff14")
+		static let ringControl = Color(light: "#0000001c", dark: "#ffffff1c")
+		static let ringHover = Color(light: "#00000030", dark: "#ffffff30")
+		static let ringListbox = Color(light: "#d4d4d4", dark: "#2b2b2b")
+		static let text = Color(light: "#000000", dark: "#ffffff")
+		static let textSecondary = Color(light: "#242424", dark: "#d0d0d0")
+		static let textTertiary = Color(light: "#676767", dark: "#8a8a8a")
+		static let textQuaternary = Color(light: "#a1a1a1", dark: "#575757")
+		static let accent = Color(light: "#ef3a0b", dark: "#ff4a1c")
+		static let accentHover = Color(light: "#ef3a0b", dark: "#ff4a1c")
+		static let accentSubtle = Color(light: "#ef3a0b22", dark: "#ff4a1c22")
+		static let onAccent = Color(light: "#ffffff", dark: "#000000")
+		static let gold = Color(light: "#ef3a0b", dark: "#ff4a1c")
 		static let success = Color(light: "#4cb782", dark: "#4cb782")
 		static let warning = Color(light: "#f2994a", dark: "#f2994a")
 		static let danger = Color(light: "#e2253b", dark: "#ff8683")
 		static let dangerSubtle = Color(light: "#fde9e9", dark: "#361d1e")
 		static let overlay = Color(light: "#0000003d", dark: "#00000066")
 	}
-
-	static let avatarColors: [Color] = [Color(light: "#5e6ad2", dark: "#5e6ad2"), Color(light: "#4cb782", dark: "#4cb782"), Color(light: "#f2994a", dark: "#f2994a"), Color(light: "#eb5757", dark: "#eb5757"), Color(light: "#b0af35", dark: "#b0af35"), Color(light: "#26b5ce", dark: "#26b5ce"), Color(light: "#bb87fc", dark: "#bb87fc"), Color(light: "#e2649b", dark: "#e2649b"), Color(light: "#0f7488", dark: "#0f7488"), Color(light: "#95a2b3", dark: "#95a2b3")]
 
 	enum FontSize {
 		static let xs: CGFloat = 11
@@ -58,6 +56,8 @@ enum Tokens {
 		static let lg: CGFloat = 15
 		static let xl: CGFloat = 20
 		static let xxl: CGFloat = 24
+		static let mono: CGFloat = 11.5
+		static let pixel: CGFloat = 8
 	}
 
 	enum FontWeight {
@@ -85,12 +85,12 @@ enum Tokens {
 	}
 
 	enum Radius {
-		static let xxs: CGFloat = 3
-		static let xs: CGFloat = 4
-		static let sm: CGFloat = 6
-		static let md: CGFloat = 8
-		static let lg: CGFloat = 10
-		static let xl: CGFloat = 12
+		static let xxs: CGFloat = 0
+		static let xs: CGFloat = 0
+		static let sm: CGFloat = 0
+		static let md: CGFloat = 0
+		static let lg: CGFloat = 0
+		static let xl: CGFloat = 0
 		static let full: CGFloat = 9999
 	}
 
@@ -120,25 +120,25 @@ enum Tokens {
 		static let avatar: CGFloat = 24
 		static let dot: CGFloat = 9
 		static let icon: CGFloat = 16
-		static let iconSmall: CGFloat = 14
+		static let iconSmall: CGFloat = 16
 		static let inset: CGFloat = 8
 	}
 
 	/// The iOS app's own values, measured from Linear's iOS app.
 	enum Mobile {
 		enum Colors {
-			static let background = Color(light: "#ffffff", dark: "#0d0d0d")
+			static let background = Color(light: "#ffffff", dark: "#0a0a0a")
 			static let title = Color(light: "#000000", dark: "#ffffff")
-			static let text = Color(light: "#303030", dark: "#e3e3e3")
-			static let textSecondary = Color(light: "#5c5d5c", dark: "#979897")
-			static let textTertiary = Color(light: "#818281", dark: "#767776")
-			static let textQuaternary = Color(light: "#9c9d9c", dark: "#5a5b5a")
-			static let placeholder = Color(light: "#b0b0b0", dark: "#707170")
-			static let separator = Color(light: "#f1f1f1", dark: "#171717")
-			static let fill = Color(light: "#f1f1f1", dark: "#292929")
+			static let text = Color(light: "#242424", dark: "#d0d0d0")
+			static let textSecondary = Color(light: "#676767", dark: "#8a8a8a")
+			static let textTertiary = Color(light: "#676767", dark: "#8a8a8a")
+			static let textQuaternary = Color(light: "#a1a1a1", dark: "#575757")
+			static let placeholder = Color(light: "#a1a1a1", dark: "#575757")
+			static let separator = Color(light: "#d4d4d4", dark: "#2b2b2b")
+			static let fill = Color(light: "#f5f5f5", dark: "#151515")
 			static let danger = Color(light: "#ea5756", dark: "#ea5756")
-			static let tabSelected = Color(light: "#e9e9e9", dark: "#454545")
-			static let menuSelected = Color(light: "#f0f0f0", dark: "#333333")
+			static let tabSelected = Color(light: "#00000012", dark: "#ffffff1c")
+			static let menuSelected = Color(light: "#ebebeb", dark: "#202020")
 		}
 
 		enum FontSize {
@@ -151,6 +151,8 @@ enum Tokens {
 			static let sheetTitle: CGFloat = 17
 			static let detailTitle: CGFloat = 22
 			static let title: CGFloat = 25.5
+			static let mono: CGFloat = 12
+			static let pixel: CGFloat = 8
 		}
 
 		enum Size {

@@ -13,6 +13,8 @@
       "!public/tokens.css",
       "!ios/Golem/Assets.xcassets",
       "!design/icon.svg",
+      "!public/icon.svg",
+      "!web/ui/pixels.ts",
       "!docs/assets/*.svg"
     ]
   },

@@ -10,6 +10,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,16 +29,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Redo
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.PhotoCamera
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -51,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -62,6 +54,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.CircleButton
 import dev.golem.design.FileChips
 import dev.golem.design.Golem
@@ -117,7 +111,7 @@ fun Composer(
     val view = LocalView.current
     val listening = dictation.owner == owner && dictation.state == Dictation.State.Listening
     val canSend = draft.isNotBlank() || files.isNotEmpty() || listening
-    val shape = RoundedCornerShape(Tokens.Mobile.Size.voice / 2)
+    val shape = RectangleShape
     val context = LocalContext.current
     val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) dictation.start(owner, draft.trim()) else session.show("Golem needs the microphone to dictate.")
@@ -162,6 +156,7 @@ fun Composer(
     Column(
         Modifier.fillMaxWidth()
             .golemShadow(Tokens.Shadows.composer, shape)
+            .border(1.dp, Golem.colors.textTertiary, shape)
             .clip(shape)
             .background(Golem.colors.surfaceComposer),
     ) {
@@ -192,13 +187,13 @@ fun Composer(
                 )
             }
             if (!listening && dictation.available) {
-                IconButton(::startListening) { Icon(Icons.Outlined.Mic, "Dictate", tint = Golem.mobile.title) }
+                IconButton(::startListening) { Icon(Pixel.Mic.vector, "Dictate", tint = Golem.mobile.title) }
             }
             if (stop != null && !canSend) {
-                CircleButton(Icons.Outlined.Stop, "Stop", stop, tint = Golem.mobile.danger)
+                CircleButton(Pixel.Stop.vector, "Stop", stop, tint = Golem.mobile.danger)
             } else {
                 CircleButton(
-                    if (stop == null) Icons.Outlined.ArrowUpward else Icons.AutoMirrored.Outlined.Redo,
+                    if (stop == null) Pixel.Send.vector else Pixel.Redo.vector,
                     if (sending) "Sending" else if (stop == null) "Send" else "Steer",
                     ::submit, enabled = canSend, busy = sending,
                 )
@@ -214,8 +209,8 @@ private fun RecordingBar(dictation: Dictation, cancel: () -> Unit, keep: () -> U
     val level by animateFloatAsState(dictation.level, label = "level")
     val words = listOf(dictation.prefix, dictation.text).filter { it.isNotBlank() }.joinToString(" ")
     Row(modifier.heightIn(min = Tokens.Mobile.Size.voice), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(cancel) { Icon(Icons.Outlined.Close, "Cancel dictation", tint = Golem.mobile.textSecondary) }
-        Box(Modifier.size(8.dp + 8.dp * level).clip(RoundedCornerShape(50)).background(Golem.mobile.danger))
+        IconButton(cancel) { Icon(Pixel.Close.vector, "Cancel dictation", tint = Golem.mobile.textSecondary) }
+        Box(Modifier.size(8.dp + 8.dp * level).clip(RectangleShape).background(Golem.mobile.danger))
         Text(
             words.ifEmpty { "Listening…" }, style = golemText(Tokens.Mobile.FontSize.body),
             color = if (words.isEmpty()) Golem.mobile.placeholder else Golem.mobile.text,
@@ -246,18 +241,18 @@ fun AttachMenu(add: (List<File>) -> Unit) {
     }
     Box {
         IconButton({ expanded = true }, Modifier.size(Tokens.Mobile.Size.voice)) {
-            Icon(Icons.Outlined.Add, "Attach file", tint = Golem.mobile.title)
+            Icon(Pixel.Plus.vector, "Attach file", tint = Golem.mobile.title)
         }
         GolemMenu(expanded, { expanded = false }, listOf(
-            MenuAction("Photos", Icons.Outlined.PhotoLibrary) {
+            MenuAction("Photos", Pixel.Photo.vector) {
                 photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
             },
-            MenuAction("Camera", Icons.Outlined.PhotoCamera) {
+            MenuAction("Camera", Pixel.Camera.vector) {
                 val file = File(File(context.cacheDir, UUID.randomUUID().toString()).apply { mkdirs() }, "Photo.jpg")
                 photo = file
                 camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.files", file))
             },
-            MenuAction("Files", Icons.Outlined.Folder) { documents.launch(arrayOf("*/*")) },
+            MenuAction("Files", Pixel.Folder.vector) { documents.launch(arrayOf("*/*")) },
         ))
     }
 }

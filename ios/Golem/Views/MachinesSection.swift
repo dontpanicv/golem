@@ -18,9 +18,9 @@ struct MachinesSection: View {
                             .toggleStyle(.golemSwitch)
                             .labelsHidden()
                         GolemMenu {
-                            MenuItem("Remove machine", systemImage: "trash", role: .destructive) { remove(machine) }
+                            MenuItem("Remove machine", pixel: .trash, role: .destructive) { remove(machine) }
                         } label: {
-                            Label("Machine actions", systemImage: "ellipsis")
+                            Label("Machine actions", pixel: .more)
                         }
                         .buttonStyle(.golem(.ghost, .icon))
                     }
@@ -32,7 +32,7 @@ struct MachinesSection: View {
                 PairingCommand(pairing: pairing).padding(Tokens.Space.xl)
             } else {
                 HStack {
-                    Button("Add machine", systemImage: "plus", action: startPairing)
+                    Button("Add machine", pixel: .plus, action: startPairing)
                         .buttonStyle(.golem(.ghost, .small))
                     Spacer()
                 }

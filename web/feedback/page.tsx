@@ -31,7 +31,7 @@ export function FeedbackPage() {
       <div className="page">
         <div className="page-content">
           {isReady && reports.length === 0 ? (
-            <Empty icon="info" title="No feedback" />
+            <Empty title="No feedback" />
           ) : (
             <div className="search-results">
               {reports.map((feedback) => (

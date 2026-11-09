@@ -27,19 +27,19 @@ struct MicButton: View {
     private var holding: Bool { gesture == .hold }
 
     var body: some View {
-        Image(systemName: recording && !holding ? "stop.fill" : "mic")
+        Image(pixel: recording && !holding ? .stop : .mic)
             .font(.system(size: Tokens.FontSize.lg, weight: .medium))
             .foregroundStyle(recording ? Tokens.Colors.onAccent : Tokens.Colors.textSecondary)
             .frame(width: Tokens.Size.controlSmall, height: Tokens.Size.controlSmall)
             .background {
-                Circle()
+                Rectangle()
                     .fill(recording ? Tokens.Colors.danger : .clear)
                     .scaleEffect(holding ? 1.4 + level * 0.4 : 1)
                     .animation(Tokens.Easing.out(Tokens.Duration.fast), value: level)
             }
             .overlay(alignment: .top) {
                 if holding {
-                    Image(systemName: "lock")
+                    Image(pixel: .lock)
                         .font(.system(size: Tokens.FontSize.sm, weight: .medium))
                         .foregroundStyle(Tokens.Colors.textTertiary)
                         .offset(y: -Tokens.Size.listRow)
@@ -99,15 +99,15 @@ struct RecordingBar: View {
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
             if holding {
-                Image(systemName: "chevron.left")
+                Image(pixel: .back)
                     .foregroundStyle(Tokens.Colors.textQuaternary)
                     .accessibilityHidden(true)
             } else {
-                Button("Cancel dictation", systemImage: "trash", action: cancel)
+                Button("Cancel dictation", pixel: .trash, action: cancel)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.golem(.danger, .icon))
             }
-            Circle().fill(Tokens.Colors.danger).frame(width: 8, height: 8)
+            Rectangle().fill(Tokens.Colors.danger).frame(width: 8, height: 8)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let seconds = Int(startedAt.map { context.date.timeIntervalSince($0) } ?? 0)
                 Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
@@ -176,13 +176,13 @@ struct TalkDock: View {
             }
             HStack(spacing: Tokens.Space.xxl) {
                 Spacer()
-                Button(talk.muted ? "Unmute" : "Mute", systemImage: talk.muted ? "mic.slash" : "mic") {
+                Button(talk.muted ? "Unmute" : "Mute", pixel: talk.muted ? .blocked : .mic) {
                     talk.mute(!talk.muted)
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.golem(talk.muted ? .danger : .secondary, .icon))
                 Button(action: talk.tap) {
-                    Circle()
+                    Rectangle()
                         .fill(talk.phase == .speaking ? Tokens.Colors.accent : Tokens.Colors.accentSubtle)
                         .frame(width: 56, height: 56)
                         .scaleEffect(1 + talk.level * 0.3)
@@ -190,7 +190,7 @@ struct TalkDock: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(orbLabel)
-                Button("End conversation", systemImage: "xmark", action: talk.end)
+                Button("End conversation", pixel: .close, action: talk.end)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.golem(.secondary, .icon))
                 Spacer()

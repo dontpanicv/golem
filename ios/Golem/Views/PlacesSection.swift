@@ -25,12 +25,12 @@ struct PlacesSection: View {
                             .toggleStyle(.golemSwitch)
                             .labelsHidden()
                         GolemMenu {
-                            MenuItem("Change place", systemImage: "mappin.and.ellipse") {
+                            MenuItem("Change place", pixel: .place) {
                                 editing = Editing(place: place)
                             }
-                            MenuItem("Remove place", systemImage: "trash", role: .destructive) { remove(place) }
+                            MenuItem("Remove place", pixel: .trash, role: .destructive) { remove(place) }
                         } label: {
-                            Label("Place actions", systemImage: "ellipsis")
+                            Label("Place actions", pixel: .more)
                         }
                         .buttonStyle(.golem(.ghost, .icon))
                     }
@@ -39,7 +39,7 @@ struct PlacesSection: View {
                 }
             }
             HStack {
-                Button("Add place", systemImage: "plus") { editing = Editing(place: nil) }
+                Button("Add place", pixel: .plus) { editing = Editing(place: nil) }
                     .buttonStyle(.golem(.ghost, .small))
                 Spacer()
             }

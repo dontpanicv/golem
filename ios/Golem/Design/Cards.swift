@@ -112,7 +112,7 @@ struct Dialog<Content: View, Actions: View>: View {
                     .padding(.horizontal, 56)
                     .accessibilityAddTraits(.isHeader)
                 HStack {
-                    GlassCircleButton(label: "Close", systemImage: "xmark", size: 40) { dismiss() }
+                    GlassCircleButton(label: "Close", pixel: .close, size: 40) { dismiss() }
                     Spacer()
                 }
             }
@@ -184,11 +184,11 @@ private struct ToastHost: View {
 struct ToastView: View {
     let toast: Toast
 
-    private var symbol: String {
+    private var symbol: Pixel {
         switch toast.tone {
-        case .neutral: "info.circle.fill"
-        case .success: "checkmark.circle.fill"
-        case .error: "exclamationmark.circle.fill"
+        case .neutral: .info
+        case .success: .check
+        case .error: .info
         }
     }
 
@@ -202,8 +202,7 @@ struct ToastView: View {
 
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
-            Image(systemName: symbol)
-                .font(.system(size: 14))
+            Image(pixel: symbol)
                 .foregroundStyle(color)
                 .frame(width: Tokens.Size.icon, height: Tokens.Size.icon)
             Text(toast.message)

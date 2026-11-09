@@ -20,7 +20,7 @@ struct FeedbackView: View {
         }
         .returnsToEnd()
         .overlay {
-            if reports?.isEmpty == true { EmptyState(title: "No feedback", systemImage: "info.circle") }
+            if reports?.isEmpty == true { EmptyState(title: "No feedback") }
         }
         .task { await session.run { try await load() } }
         .refreshable { await session.run { try await load() } }
@@ -40,7 +40,7 @@ struct FeedbackView: View {
                 if let threadID = feedback.threadId { open(.thread(threadID)) }
             } label: {
                 HStack(alignment: .top, spacing: Tokens.Space.md) {
-                    Image(systemName: feedback.kind.systemImage)
+                    Image(pixel: feedback.kind.pixel)
                         .font(.system(size: 15))
                         .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                         .frame(width: 21)
@@ -68,7 +68,7 @@ struct FeedbackView: View {
             }
             .buttonStyle(.row)
             .disabled(feedback.threadId == nil)
-            Button("Dismiss", systemImage: "checkmark") { dismiss(feedback) }
+            Button("Dismiss", pixel: .check) { dismiss(feedback) }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.golem(.ghost, .icon))
                 .padding(.horizontal, Tokens.Mobile.Size.margin)
@@ -98,11 +98,11 @@ private extension Feedback.Kind {
     }
 
     /// The SF Symbols of the web's icons.
-    var systemImage: String {
+    var pixel: Pixel {
         switch self {
-        case .error: "info.circle"
-        case .missing: "plus"
-        case .better: "chevron.right"
+        case .error: .info
+        case .missing: .plus
+        case .better: .forward
         }
     }
 }

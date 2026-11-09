@@ -230,7 +230,7 @@ export function ChannelDetails() {
             ))}
           </SettingsCard>
         ) : (
-          <Empty icon="play" title="No routines yet" />
+          <Empty title="No routines yet" />
         )}
       </PageSection>
       <PageSection title="Runs">
@@ -253,7 +253,7 @@ export function ChannelDetails() {
             ))}
           </SettingsCard>
         ) : (
-          <Empty icon="inbox" title="No runs yet" />
+          <Empty title="No runs yet" />
         )}
       </PageSection>
       {brief ? (

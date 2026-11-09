@@ -30,7 +30,7 @@ export function InboxPage() {
       <div className="page">
         <div className="page-content">
           {inbox?.notifications.length === 0 ? (
-            <Empty icon="bell" title="No notifications" />
+            <Empty title="No notifications" />
           ) : (
             <div className="search-results">
               {inbox?.notifications.map((notification) => (

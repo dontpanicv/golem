@@ -13,12 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +34,8 @@ import androidx.core.content.FileProvider
 import dev.golem.api.Artifact
 import dev.golem.api.FileRef
 import dev.golem.api.SavedFile
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.EmptyState
 import dev.golem.design.Golem
 import dev.golem.design.GolemMenu
@@ -87,25 +83,25 @@ fun ArtifactsPanel(channelId: String?, changes: Int, artifactId: String?, onDism
             Row(Modifier.fillMaxWidth().padding(vertical = Tokens.Space.xs), verticalAlignment = Alignment.CenterVertically) {
                 if (openArtifact != null) {
                     IconButton({ openArtifact = null; tab = "Artifacts" }, Modifier.padding(start = Tokens.Space.sm)) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to artifacts", tint = Golem.mobile.title)
+                        Icon(Pixel.Back.vector, "Back to artifacts", tint = Golem.mobile.title)
                     }
                     Box(Modifier.weight(1f))
                 } else {
                     Box(Modifier.weight(1f)) { PillBar(tab, listOf("Files", "Artifacts"), { it }, { tab = it }) }
                 }
                 IconButton(onDismiss, Modifier.padding(end = Tokens.Space.sm)) {
-                    Icon(Icons.Outlined.Close, "Close", tint = Golem.mobile.title)
+                    Icon(Pixel.Close.vector, "Close", tint = Golem.mobile.title)
                 }
             }
             val shown = openArtifact
             when {
                 shown != null -> ArtifactView(shown, changes) { artifactChanges++ }
                 tab == "Artifacts" -> if (artifacts.isEmpty()) {
-                    EmptyState("No artifacts yet", { Icon(Icons.Outlined.Inventory2, null, tint = Golem.colors.textQuaternary) })
+                    EmptyState("No artifacts yet")
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
                         items(artifacts, key = { it.id }) { artifact ->
-                            ListRow(artifact.title, icon = Icons.Outlined.Inventory2, onClick = { openArtifact = artifact.id }) {
+                            ListRow(artifact.title, icon = Pixel.Artifact.vector, onClick = { openArtifact = artifact.id }) {
                                 Text("${artifact.visitors}", style = golemText(Tokens.Mobile.FontSize.small), color = Golem.mobile.textQuaternary)
                             }
                         }
@@ -120,7 +116,7 @@ fun ArtifactsPanel(channelId: String?, changes: Int, artifactId: String?, onDism
                         }
                     }
                     if (files.isEmpty()) {
-                        EmptyState("No files yet", { Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, tint = Golem.colors.textQuaternary) })
+                        EmptyState("No files yet")
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
                             items(files.reversed(), key = { it.id }) { file -> FileRow(file, { opener(file.ref) }) {
@@ -138,8 +134,8 @@ fun ArtifactsPanel(channelId: String?, changes: Int, artifactId: String?, onDism
 private fun FileRow(file: SavedFile, open: () -> Unit, delete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
-        ListRow(file.name, icon = Icons.AutoMirrored.Outlined.InsertDriveFile, onClick = open, onLongClick = { menu = true })
-        GolemMenu(menu, { menu = false }, listOf(MenuAction("Delete file", Icons.Outlined.DeleteOutline, danger = true, action = delete)))
+        ListRow(file.name, icon = Pixel.File.vector, onClick = open, onLongClick = { menu = true })
+        GolemMenu(menu, { menu = false }, listOf(MenuAction("Delete file", Pixel.Trash.vector, danger = true, action = delete)))
     }
 }
 

@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +23,8 @@ import dev.golem.api.machines
 import dev.golem.api.removeMachine
 import dev.golem.api.setMachineShared
 import dev.golem.api.startPairing
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Golem
 import dev.golem.design.GolemButton
 import dev.golem.design.GolemSwitch
@@ -67,7 +67,7 @@ fun MachinesSection(workspaceId: String) {
                         }
                     }, label = "Private")
                     SettingsRowMenu("Machine actions", listOf(
-                        MenuAction("Remove machine", Icons.Outlined.Delete, danger = true) {
+                        MenuAction("Remove machine", Pixel.Trash.vector, danger = true) {
                             session.launch {
                                 session.api.removeMachine(workspaceId, machine.id)
                                 machines = machines.filter { it.id != machine.id }

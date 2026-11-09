@@ -214,8 +214,8 @@ struct YouMenu: View {
     var body: some View {
         Menu {
             Section(session.user?.name ?? "") {
-                Button("Settings", systemImage: "gearshape") { open(.settings) }
-                Button("Workspace settings", systemImage: "person.2") { open(.workspaceSettings) }
+                Button("Settings", pixel: .settings) { open(.settings) }
+                Button("Workspace settings", pixel: .members) { open(.workspaceSettings) }
             }
         } label: {
             PersonAvatar(name: session.user?.name ?? "", picture: session.user?.picture)
@@ -251,13 +251,13 @@ extension PhoneShell.Tab {
     }
 
     /// Golem's tab shows its face (``GolemGlyph``) instead of a symbol.
-    var systemImage: String? {
+    var pixel: Pixel? {
         switch self {
-        case .home: "house"
+        case .home: .home
         case .golem: nil
-        case .activity: "bell"
-        case .search: "magnifyingglass"
-        case .agenda: "calendar"
+        case .activity: .bell
+        case .search: .search
+        case .agenda: .agenda
         }
     }
 }
@@ -279,7 +279,7 @@ private struct TabBar: View {
         }
         .padding(Tokens.Space.xs)
         .frame(height: Tokens.Mobile.Size.tabBar)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .glassEffect(.regular.interactive(), in: .rect)
         .padding(.horizontal, Tokens.Mobile.Size.margin)
         .padding(.bottom, Tokens.Mobile.Size.tabBarBottom - Tokens.Mobile.Size.homeIndicator)
         .animation(.snappy, value: bar.tab)
@@ -294,11 +294,9 @@ private struct TabBar: View {
         } label: {
             VStack(spacing: Tokens.Space.xxs) {
                 Group {
-                    if let systemImage = tab.systemImage {
-                        Image(systemName: systemImage)
-                            .font(.system(size: 18, weight: .medium))
-                            .symbolVariant(selected ? .fill : .none)
-                            .symbolEffect(.bounce, value: taps[tab, default: 0])
+                    if let pixel = tab.pixel {
+                        Image(pixel: pixel)
+                            .foregroundStyle(selected ? Tokens.Colors.accent : Tokens.Mobile.Colors.textSecondary)
                     } else {
                         GolemGlyph(size: 16)
                     }
@@ -307,12 +305,12 @@ private struct TabBar: View {
                     .overlay(alignment: .topTrailing) {
                         if tab == .activity, unread > 0 {
                             Text("\(unread)")
-                                .font(.golem(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.semibold))
+                                .font(.mono(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.semibold))
                                 .foregroundStyle(Tokens.Colors.onAccent)
                                 .contentTransition(.numericText(value: Double(unread)))
                                 .padding(.horizontal, Tokens.Space.xs)
                                 .frame(minWidth: 16, minHeight: 16)
-                                .background(Tokens.Colors.accent, in: .capsule)
+                                .background(Tokens.Colors.accent, in: .rect)
                                 .offset(x: 10, y: -4)
                                 .transition(.scale.combined(with: .opacity))
                         }
@@ -322,12 +320,12 @@ private struct TabBar: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
                 if selected {
-                    Capsule()
+                    Rectangle()
                         .fill(Tokens.Mobile.Colors.tabSelected)
                         .matchedGeometryEffect(id: "selection", in: selection)
                 }
             }
-            .contentShape(.capsule)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .foregroundStyle(selected ? Tokens.Mobile.Colors.title : Tokens.Mobile.Colors.textSecondary)

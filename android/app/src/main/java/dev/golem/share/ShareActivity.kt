@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -42,6 +40,8 @@ import dev.golem.GolemApp
 import dev.golem.api.Channel
 import dev.golem.api.ThreadSummary
 import dev.golem.api.Workspace
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
 import dev.golem.design.FileChips
@@ -241,7 +241,7 @@ private fun Choice(label: String, value: String, options: List<MenuAction>) {
     Box {
         SettingsRow(label, onClick = { open = true }) {
             Text(value, style = golemText(Tokens.Mobile.FontSize.row), color = Golem.mobile.textSecondary, maxLines = 1)
-            Icon(Icons.Outlined.UnfoldMore, null, Modifier.size(16.dp), tint = Golem.mobile.textTertiary)
+            Icon(Pixel.Updown.vector, null, tint = Golem.mobile.textTertiary)
         }
         GolemMenu(open, { open = false }, options)
     }

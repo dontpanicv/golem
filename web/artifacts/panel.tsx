@@ -48,7 +48,7 @@ export function ArtifactList({
           ))}
         </div>
       ) : (
-        <Empty icon="artifact" title="No artifacts yet" />
+        <Empty title="No artifacts yet" />
       )}
     </div>
   );
@@ -79,7 +79,7 @@ export function ArtifactPreview({
   if (!artifact) {
     return (
       <div className="artifact-preview">
-        {isReady ? <Empty icon="preview" title="Nothing to preview" /> : null}
+        {isReady ? <Empty title="Nothing to preview" /> : null}
       </div>
     );
   }
@@ -205,7 +205,7 @@ function ArtifactData({ artifact }: { artifact: Artifact }) {
           ))}
         </SettingsCard>
       ) : (
-        <Empty icon="inbox" title="No data yet" />
+        <Empty title="No data yet" />
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import {
   useRef,
 } from "react";
 import { Icon, type IconName } from "./icon.tsx";
+import { letters } from "./pixels.ts";
 
 // The design system's components. Looks are in public/styles.css, and the spec for each is in design/components.md.
 // Menus, selects, and tooltips are Radix primitives with our looks.
@@ -322,10 +323,7 @@ export function Switch({
   );
 }
 
-/** The number of colors in `avatar` of design/tokens.json. */
-const AVATAR_COLORS = 10;
-
-/** A person's picture, or their initial on a color picked by the sum of their name's code points, as iOS's `Avatar` picks it, or an agent's on the accent. */
+/** A person's picture, or their initial on an accent tile whose corner dissolves. */
 export function Avatar({
   name,
   picture,
@@ -352,25 +350,23 @@ export function Avatar({
       />
     );
   }
-  let sum = 0;
-  for (const character of name) {
-    sum += character.codePointAt(0)!;
-  }
   return (
-    <span
-      aria-hidden="true"
-      className={className}
-      style={
-        agent
-          ? undefined
-          : ({
-              "--avatar": `var(--avatar-${sum % AVATAR_COLORS})`,
-            } as React.CSSProperties)
-      }
-    >
-      {name.slice(0, 1).toUpperCase()}
+    <span aria-hidden="true" className={className}>
+      <svg
+        aria-hidden="true"
+        fill="currentColor"
+        shapeRendering="crispEdges"
+        viewBox="0 0 12 12"
+      >
+        <path d={letters[initial(name)] ?? letters["?"]} />
+      </svg>
     </span>
   );
+}
+
+/** The first letter of a name without its accent, in capitals. */
+function initial(name: string): string {
+  return name.normalize("NFD").slice(0, 1).toUpperCase();
 }
 
 /** What Golem's face shows: it works, it waits for a person, it finished its work, or it failed. */
@@ -390,7 +386,13 @@ const FACES: Record<Mood, { eyes: string; mouth: string }> = {
   },
 };
 
-/** Golem's own face, the app icon, where Golem speaks or greets; with a `mood`, the face shows it. */
+/** The face without a mood. */
+const RESTING_FACE = {
+  eyes: "M1 2H3V3H1ZM5 2H7V3H5Z",
+  mouth: "M2 5H6V6H2Z",
+};
+
+/** Golem's face in the 8 × 8 pixels of the icon, with a `mood` if given. A `large` one is the dissolving logo. */
 export function Mark({
   size,
   mood,
@@ -399,31 +401,49 @@ export function Mark({
   mood?: Mood;
 }) {
   const className = ["avatar", "agent", size].filter(Boolean).join(" ");
-  if (mood) {
-    const face = FACES[mood];
+  if (size === "large") {
     return (
-      <svg
-        aria-hidden="true"
-        className={`${className} face ${mood}`}
-        shapeRendering="crispEdges"
-        viewBox="-1 -1 10 10"
-      >
-        <rect fill="#09090a" height="10" width="10" x="-1" y="-1" />
-        <path d="M0 0H8V7H7V8H1V7H0Z" fill="#b8703f" />
-        <path d={`M3 1H5V2H3Z${face.mouth}`} fill="#3a1d0c" />
-        <path className="face-eyes" d={face.eyes} fill="#ffd27a" />
-      </svg>
+      <img
+        alt=""
+        className={className}
+        height={48}
+        src="/assets/mark-1x.png"
+        srcSet="/assets/mark-2x.png 2x, /assets/mark-3x.png 3x"
+        width={48}
+      />
     );
   }
+  const face = mood ? FACES[mood] : RESTING_FACE;
   return (
-    <img
-      alt=""
-      className={className}
-      // The avatar classes set the shown size.
-      height={48}
-      src="/assets/icon.svg"
-      width={48}
-    />
+    <svg
+      aria-hidden="true"
+      className={`${className} face ${mood ?? ""}`}
+      shapeRendering="crispEdges"
+      viewBox="-1 -1 10 10"
+    >
+      <rect className="face-tile" height="10" width="10" x="-1" y="-1" />
+      <path className="face-skin" d="M0 0H8V7H7V8H1V7H0Z" />
+      <path className="face-marks" d={`M3 1H5V2H3Z${face.mouth}`} />
+      <path className="face-eyes" d={face.eyes} />
+    </svg>
+  );
+}
+
+/** A day of 24 cells: the hours gone, and the hour of `at` in the accent. */
+export function DayStrip({ at }: { at: number }) {
+  const hour = new Date(at).getHours();
+  const hours = Array.from({ length: 24 }, (_, index) => index);
+  return (
+    <span aria-hidden="true" className="day-strip">
+      {hours.map((index) => (
+        <i
+          className={
+            (index === hour && "current") || (index < hour && "past") || ""
+          }
+          key={index}
+        />
+      ))}
+    </span>
   );
 }
 
@@ -442,10 +462,9 @@ export function Badge({
   );
 }
 
-export function Empty({ icon, title }: { icon: IconName; title: string }) {
+export function Empty({ title }: { title: string }) {
   return (
     <div className="empty">
-      <Icon name={icon} />
       <strong>{title}</strong>
     </div>
   );

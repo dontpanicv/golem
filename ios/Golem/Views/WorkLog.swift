@@ -27,11 +27,11 @@ struct WorkLog: View {
                         Text("· \(step)").foregroundStyle(Tokens.Colors.textQuaternary).lineLimit(1)
                     }
                     if !work.steps.isEmpty {
-                        Image(systemName: "chevron.right").imageScale(.small).rotationEffect(.degrees(open ? 90 : 0))
+                        Image(pixel: .forward, size: 8).rotationEffect(.degrees(open ? 90 : 0))
                     }
                     if !working { StepStrip(steps: work.steps).padding(.leading, Tokens.Space.xs) }
                 }
-                .font(.golem(Tokens.FontSize.md))
+                .font(.mono(Tokens.FontSize.mono))
                 .foregroundStyle(Tokens.Colors.textTertiary)
                 .frame(minHeight: Tokens.Size.listRow)
                 .contentShape(.rect)
@@ -134,7 +134,7 @@ private struct StepPixel: View {
     }
 }
 
-/// One pixel for each tool call of a finished work, in the gold of the icon's eyes, or `danger` where a call failed.
+/// One pixel for each tool call of a finished work, in `gold`, or `danger` where a call failed.
 private struct StepStrip: View {
     let steps: [Step]
 

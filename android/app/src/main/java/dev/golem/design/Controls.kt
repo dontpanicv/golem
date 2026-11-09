@@ -29,11 +29,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -51,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -180,8 +176,8 @@ fun GolemMenu(expanded: Boolean, onDismiss: () -> Unit, items: List<MenuAction>,
                         item.action()
                     }
                 },
-                leadingIcon = item.icon?.let { { Icon(it, null, Modifier.size(20.dp)) } },
-                trailingIcon = if (item.checked) ({ Icon(Icons.Outlined.CheckCircle, "Current", Modifier.size(18.dp)) }) else null,
+                leadingIcon = item.icon?.let { { Icon(it, null) } },
+                trailingIcon = if (item.checked) ({ Icon(Pixel.Check.vector, "Current") }) else null,
                 colors = MenuDefaults.itemColors(textColor = color, leadingIconColor = color, trailingIconColor = Golem.colors.accent),
             )
         }
@@ -201,7 +197,7 @@ fun GolemDialog(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     BasicAlertDialog(onDismissRequest = onDismiss) {
-        val shape = RoundedCornerShape(Tokens.Radius.xl + 8.dp)
+        val shape = RectangleShape
         Column(
             Modifier.widthIn(max = Tokens.Size.dialog).fillMaxWidth()
                 .golemShadow(Tokens.Shadows.modal, shape)
@@ -245,9 +241,9 @@ fun BoxScope.Toasts() {
         val current = shown ?: return@AnimatedVisibility
         val shape = RoundedCornerShape(Tokens.Radius.xl)
         val (icon, tint) = when (current.tone) {
-            Toast.Tone.Neutral -> Icons.Outlined.Info to Golem.colors.textSecondary
-            Toast.Tone.Success -> Icons.Outlined.CheckCircle to Golem.colors.success
-            Toast.Tone.Error -> Icons.Outlined.ErrorOutline to Golem.colors.danger
+            Toast.Tone.Neutral -> Pixel.Info.vector to Golem.colors.textSecondary
+            Toast.Tone.Success -> Pixel.Check.vector to Golem.colors.success
+            Toast.Tone.Error -> Pixel.Info.vector to Golem.colors.danger
         }
         Row(
             Modifier.widthIn(max = Tokens.Size.toast).fillMaxWidth()
@@ -259,10 +255,10 @@ fun BoxScope.Toasts() {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.md),
         ) {
-            Icon(icon, null, Modifier.size(16.dp), tint = tint)
+            Icon(icon, null, tint = tint)
             Text(current.message, style = golemText(Tokens.FontSize.md, Tokens.FontWeight.medium), color = Golem.colors.text,
                 modifier = Modifier.weight(1f))
-            Icon(Icons.Outlined.Close, "Close", Modifier.size(12.dp), tint = Golem.colors.textTertiary)
+            Icon(Pixel.Close.vector, "Close", tint = Golem.colors.textTertiary)
         }
     }
 }

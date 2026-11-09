@@ -23,20 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +50,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -73,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import dev.golem.api.Destination
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Golem
 import dev.golem.design.GolemGlyph
 import dev.golem.design.GolemMenu
@@ -255,9 +244,9 @@ private fun TabBar(tab: Tab, unread: Int, select: (Tab) -> Unit) {
                     }) {
                         when (item) {
                             Tab.Golem -> Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
-                                GolemGlyph(16.dp, if (selected) Golem.mobile.title else Golem.mobile.textSecondary)
+                                GolemGlyph(16.dp, if (selected) Golem.colors.accent else Golem.mobile.textSecondary)
                             }
-                            else -> Icon(item.icon(selected), null, Modifier.size(22.dp))
+                            else -> Icon(item.icon(), null)
                         }
                     }
                 },
@@ -265,7 +254,7 @@ private fun TabBar(tab: Tab, unread: Int, select: (Tab) -> Unit) {
                     contentDescription = if (item == Tab.Activity && unread > 0) "${item.title}, $unread unread" else item.title
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Golem.mobile.title, selectedTextColor = Golem.mobile.title,
+                    selectedIconColor = Golem.colors.accent, selectedTextColor = Golem.mobile.title,
                     unselectedIconColor = Golem.mobile.textSecondary, unselectedTextColor = Golem.mobile.textSecondary,
                     indicatorColor = Golem.mobile.tabSelected,
                 ),
@@ -274,12 +263,12 @@ private fun TabBar(tab: Tab, unread: Int, select: (Tab) -> Unit) {
     }
 }
 
-private fun Tab.icon(selected: Boolean) = when (this) {
-    Tab.Home -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
-    Tab.Search -> if (selected) Icons.Filled.Search else Icons.Outlined.Search
-    Tab.Activity -> if (selected) Icons.Filled.Notifications else Icons.Outlined.Notifications
-    Tab.Agenda -> if (selected) Icons.Filled.CalendarMonth else Icons.Outlined.CalendarMonth
-    Tab.Golem -> Icons.Outlined.Home
+private fun Tab.icon() = when (this) {
+    Tab.Home -> Pixel.Home.vector
+    Tab.Search -> Pixel.Search.vector
+    Tab.Activity -> Pixel.Bell.vector
+    Tab.Agenda -> Pixel.Agenda.vector
+    Tab.Golem -> Pixel.Golem.vector
 }
 
 /**
@@ -304,10 +293,10 @@ fun ScreenBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Golem.mobile.background, scrolledContainerColor = Golem.mobile.background),
         navigationIcon = {
             when {
-                close != null -> IconButton(close) { Icon(Icons.Outlined.Close, "Close", tint = Golem.mobile.title) }
+                close != null -> IconButton(close) { Icon(Pixel.Close.vector, "Close", tint = Golem.mobile.title) }
                 root -> YouMenu()
                 else -> IconButton({ back?.onBackPressed() }) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = Golem.mobile.title)
+                    Icon(Pixel.Back.vector, "Back", tint = Golem.mobile.title)
                 }
             }
         },
@@ -336,7 +325,7 @@ fun ScreenBar(
             actions()
             if (menu.isNotEmpty()) {
                 Box {
-                    IconButton({ menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "Menu", tint = Golem.mobile.title) }
+                    IconButton({ menuOpen = true }) { Icon(Pixel.More.vector, "Menu", tint = Golem.mobile.title) }
                     GolemMenu(menuOpen, { menuOpen = false }, menu)
                 }
             }
@@ -352,7 +341,7 @@ private fun YouMenu() {
     var expanded by remember { mutableStateOf(false) }
     Box(Modifier.padding(start = Tokens.Space.sm)) {
         Box(
-            Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable { expanded = true }
+            Modifier.size(48.dp).clip(RectangleShape).clickable { expanded = true }
                 .semantics { contentDescription = "You" },
             contentAlignment = Alignment.Center,
         ) {
@@ -361,8 +350,8 @@ private fun YouMenu() {
         GolemMenu(
             expanded, { expanded = false },
             listOf(
-                MenuAction("Settings", Icons.Outlined.Settings) { open(Destination.Settings) },
-                MenuAction("Workspace settings", Icons.Outlined.Groups) { open(Destination.WorkspaceSettings) },
+                MenuAction("Settings", Pixel.Settings.vector) { open(Destination.Settings) },
+                MenuAction("Workspace settings", Pixel.Members.vector) { open(Destination.WorkspaceSettings) },
             ),
         )
     }

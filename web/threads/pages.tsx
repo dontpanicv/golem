@@ -75,7 +75,7 @@ export function ThreadPage({
     return isReady && orchestrator ? (
       <section className="conversation">
         <PanelHeader title="" />
-        <Empty icon="hash" title="Not found" />
+        <Empty title="Not found" />
       </section>
     ) : null;
   }
@@ -314,7 +314,7 @@ export function ChannelPage({ details }: { details: ReactNode }) {
     return isReady ? (
       <section className="conversation">
         <PanelHeader title="" />
-        <Empty icon="hash" title="Not found" />
+        <Empty title="Not found" />
       </section>
     ) : null;
   }
@@ -401,7 +401,7 @@ export function ChannelPage({ details }: { details: ReactNode }) {
                 ) : null}
               </div>
             ) : (
-              <Empty icon="compose" title="No threads yet" />
+              <Empty title="No threads yet" />
             )}
           </div>
           <div className="channel-details">{details}</div>
@@ -700,7 +700,7 @@ function FileList({ place }: { place: Place }) {
           ))}
         </div>
       ) : (
-        <Empty icon="file" title="No files yet" />
+        <Empty title="No files yet" />
       )}
     </div>
   );

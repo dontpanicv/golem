@@ -31,7 +31,7 @@ struct UpcomingView: View {
         }
         .returnsToEnd()
         .overlay {
-            if upcoming != nil, groups.isEmpty { EmptyState(title: "Nothing upcoming", systemImage: "calendar") }
+            if upcoming != nil, groups.isEmpty { EmptyState(title: "Nothing upcoming") }
         }
         // Approvals come and go as agents work.
         .task(id: session.working) { await session.run { try await load() } }
@@ -51,7 +51,7 @@ struct UpcomingView: View {
         switch item {
         case let .approval(threadID, approval):
             Button { open(.thread(threadID)) } label: {
-                ListRow(approval.text, systemImage: "hand.raised", subtitle: threadTitle(threadID))
+                ListRow(approval.text, pixel: .hand, subtitle: threadTitle(threadID))
             }
             .buttonStyle(.row)
         case let .routine(routine):
@@ -59,23 +59,27 @@ struct UpcomingView: View {
                 open(routine.threadId.map { .thread($0) } ?? .channel(routine.channelId))
             } label: {
                 ListRow(
-                    routine.name, systemImage: routine.place == nil ? "arrow.clockwise" : "mappin.and.ellipse",
+                    title: routine.name, pixel: routine.place == nil ? .refresh : .place,
                     subtitle: subtitle(routine, kind)
-                )
+                ) {
+                    if let next = routine.nextRunAt { DayStrip(date: Date(milliseconds: next)) }
+                }
             } actions: {
                 MenuItem(
                     routine.enabled ? "Pause routine" : "Resume routine",
-                    systemImage: routine.enabled ? "pause" : "play"
+                    pixel: routine.enabled ? .pause : .play
                 ) { setEnabled(routine, !routine.enabled) }
             }
         case let .reminder(reminder):
             actionRow { open(.thread(reminder.threadId)) } label: {
                 ListRow(
-                    reminder.text, systemImage: reminder.place == nil ? "bell" : "mappin.and.ellipse",
+                    title: reminder.text, pixel: reminder.place == nil ? .bell : .place,
                     subtitle: reminder.waitsForPlace ? reminder.placeWindow : when(reminder.dueAt, kind)
-                )
+                ) {
+                    if !reminder.waitsForPlace { DayStrip(date: Date(milliseconds: reminder.dueAt)) }
+                }
             } actions: {
-                MenuItem("Cancel reminder", systemImage: "xmark", role: .destructive) { cancel(reminder) }
+                MenuItem("Cancel reminder", pixel: .close, role: .destructive) { cancel(reminder) }
             }
         case let .suggestion(suggestion):
             SuggestionCard(suggestion: suggestion, card: false) {
@@ -92,7 +96,7 @@ struct UpcomingView: View {
         HStack(spacing: 0) {
             Button(action: open, label: label).buttonStyle(.row)
             GolemMenu(content: actions) {
-                Label("Actions", systemImage: "ellipsis")
+                Label("Actions", pixel: .more)
             }
             .buttonStyle(.golem(.ghost, .icon))
             .padding(.trailing, Tokens.Mobile.Size.margin)
@@ -159,7 +163,7 @@ struct SuggestionCard: View {
         } else {
             // As a `ListRow`, with the kind's icon of the routine and reminder rows.
             HStack(spacing: Tokens.Space.md) {
-                Image(systemName: suggestion.kind == .routine ? "arrow.clockwise" : "bell")
+                Image(pixel: suggestion.kind == .routine ? .refresh : .bell)
                     .font(.system(size: 15))
                     .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                     .frame(width: 21)

@@ -22,7 +22,7 @@ struct ListSectionHeader: View {
             }
             Spacer()
             if let add {
-                Button(add.label, systemImage: "plus", action: add.action)
+                Button(add.label, pixel: .plus, action: add.action)
                     .labelStyle(.iconOnly)
                     .font(.system(size: 15))
                     .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
@@ -35,8 +35,9 @@ struct ListSectionHeader: View {
 
     private var label: some View {
         Text(title)
-            .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
-            .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
+            .font(.pixel)
+            .textCase(.uppercase)
+            .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
             .frame(minHeight: Tokens.Size.listRow)
             .contentShape(.rect)
     }
@@ -62,7 +63,7 @@ struct ListSubheading: View {
 /// 10 pt further in, as Linear's.
 struct ListRow<Trailing: View>: View {
     let title: String
-    var systemImage: String?
+    var pixel: Pixel?
     var subtitle: String?
     var working = false
     /// Shows in place of the symbol when set.
@@ -81,8 +82,8 @@ struct ListRow<Trailing: View>: View {
                 Text(emoji)
                     .font(.system(size: 15))
                     .frame(width: 21)
-            } else if let systemImage {
-                Image(systemName: systemImage)
+            } else if let pixel {
+                Image(pixel: pixel)
                     .font(.system(size: 15))
                     .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                     .frame(width: 21)
@@ -92,13 +93,13 @@ struct ListRow<Trailing: View>: View {
                 HStack(spacing: Tokens.Space.md) {
                     Text(title)
                         .font(.golem(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book))
-                        .foregroundStyle(Tokens.Mobile.Colors.text)
+                        .foregroundStyle(Tokens.Mobile.Colors.title)
                         .lineLimit(1)
                     if working { PixelSpinner() }
                 }
                 if let subtitle {
                     Text(subtitle)
-                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
+                        .font(.mono(Tokens.Mobile.FontSize.mono))
                         .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
                         .lineLimit(1)
                 }
@@ -115,14 +116,16 @@ struct ListRow<Trailing: View>: View {
 }
 
 extension ListRow where Trailing == EmptyView {
-    init(_ title: String, systemImage: String? = nil, subtitle: String? = nil, working: Bool = false) {
-        self.init(title: title, systemImage: systemImage, subtitle: subtitle, working: working) { EmptyView() }
+    init(_ title: String, pixel: Pixel? = nil, subtitle: String? = nil, working: Bool = false) {
+        self.init(title: title, pixel: pixel, subtitle: subtitle, working: working) { EmptyView() }
     }
 }
 
 /// The full-width hairline between groups of rows.
 struct ListSeparator: View {
     var body: some View {
-        Rectangle().fill(Tokens.Mobile.Colors.separator).frame(height: 1).padding(.vertical, Tokens.Space.sm)
+        DottedLine()
+            .padding(.horizontal, Tokens.Mobile.Size.margin)
+            .padding(.vertical, Tokens.Space.sm)
     }
 }

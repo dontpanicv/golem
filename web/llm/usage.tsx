@@ -47,7 +47,7 @@ export function UsageSection({ workspaceId }: { workspaceId: string }) {
     return <SettingsCard>{null}</SettingsCard>;
   }
   if (tokens(usage.total) === 0) {
-    return <Empty icon="clock" title="No usage yet" />;
+    return <Empty title="No usage yet" />;
   }
   const { total } = usage;
   const read = total.input + total.cacheRead;

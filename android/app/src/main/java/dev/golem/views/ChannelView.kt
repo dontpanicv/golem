@@ -17,13 +17,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.CallMerge
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -44,6 +37,8 @@ import android.text.format.DateUtils
 import dev.golem.api.Channel
 import dev.golem.api.Destination
 import dev.golem.api.ThreadSummary
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.EmptyState
 import dev.golem.design.FoldingSection
 import dev.golem.design.Golem
@@ -105,10 +100,10 @@ fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String?
             ScreenBar(
                 "# ${channel?.name ?: ""}", caption = if (active.size == 1) "1 open thread" else "${active.size} open threads",
                 menu = buildList {
-                    add(MenuAction("Files and artifacts", Icons.Outlined.FolderOpen) { panel = true })
-                    add(MenuAction("Channel details", Icons.Outlined.Info) { open(Destination.ChannelDetails(channelId)) })
+                    add(MenuAction("Files and artifacts", Pixel.Folder.vector) { panel = true })
+                    add(MenuAction("Channel details", Pixel.Info.vector) { open(Destination.ChannelDetails(channelId)) })
                     if (mergeTargets.isNotEmpty()) {
-                        add(MenuAction("Merge into", Icons.AutoMirrored.Outlined.CallMerge, children = mergeTargets.map { target ->
+                        add(MenuAction("Merge into", Pixel.Merge.vector, children = mergeTargets.map { target ->
                             MenuAction("# ${target.name}") { mergeInto = target }
                         }))
                     }
@@ -125,7 +120,7 @@ fun ChannelView(channelId: String, compose: Boolean = false, artifactId: String?
         },
     ) { padding ->
         if (channel?.threads.isNullOrEmpty()) {
-            EmptyState("Ask Golem anything", { GolemGlyph(24.dp, Golem.colors.textQuaternary) }, Modifier.padding(padding))
+            EmptyState("Ask Golem anything", Modifier.padding(padding))
         } else {
             // The newest thread sits at the bottom over the composer.
             val list = rememberLazyListState()
@@ -181,7 +176,7 @@ private fun ThreadRow(thread: ThreadSummary, modifier: Modifier = Modifier) {
                 Modifier.size(Tokens.Mobile.Size.avatar).clip(RoundedCornerShape(Tokens.Radius.lg)).background(Golem.mobile.fill),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(if (isSettled) Icons.Outlined.Check else Icons.AutoMirrored.Outlined.Chat, null, Modifier.size(17.dp),
+                Icon(if (isSettled) Pixel.Check.vector else Pixel.Chat.vector, null,
                     tint = Golem.mobile.textSecondary)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Tokens.Space.xs)) {
@@ -198,7 +193,7 @@ private fun ThreadRow(thread: ThreadSummary, modifier: Modifier = Modifier) {
             }
         }
         GolemMenu(menu, { menu = false }, listOf(
-            MenuAction(if (isSettled) "Un-settle thread" else "Settle thread", if (isSettled) Icons.Outlined.Inbox else Icons.Outlined.Check) {
+            MenuAction(if (isSettled) "Un-settle thread" else "Settle thread", if (isSettled) Pixel.Inbox.vector else Pixel.Check.vector) {
                 session.launch { session.setThreadSettled(thread.id, !isSettled) }
             },
         ))

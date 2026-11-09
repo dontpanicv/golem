@@ -23,7 +23,6 @@ compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-compose-material-icons = { group = "androidx.compose.material", name = "material-icons-extended" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity" }
 lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycle" }

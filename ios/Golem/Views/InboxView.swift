@@ -28,7 +28,7 @@ struct InboxView: View {
         .returnsToEnd()
         .overlay {
             if notifications.isEmpty, session.inbox != nil {
-                EmptyState(title: shown == .all ? "No notifications" : "All read", systemImage: "bell")
+                EmptyState(title: shown == .all ? "No notifications" : "All read")
             }
         }
         .task { await session.run { try await session.loadInbox() } }
@@ -38,7 +38,7 @@ struct InboxView: View {
         .screenTitle("Activity")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Mark all read", systemImage: "checkmark") {
+                Button("Mark all read", pixel: .check) {
                     Task { await session.run { try await session.readNotifications(nil) } }
                 }
                 .disabled((session.inbox?.unread ?? 0) == 0)
@@ -78,7 +78,7 @@ struct InboxView: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
-                Circle()
+                Rectangle()
                     .fill(unread ? Tokens.Colors.accent : .clear)
                     .frame(width: Tokens.Size.dot * 1.5, height: Tokens.Size.dot * 1.5)
                     .padding(.top, Tokens.Space.sm)

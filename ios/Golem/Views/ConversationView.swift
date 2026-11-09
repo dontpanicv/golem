@@ -79,11 +79,14 @@ struct ConversationView: View {
             .animation(.snappy, value: approvals)
         }
         .scrollDismissesKeyboard(.interactively)
+        // Messages dissolve at both ends of the transcript, as on the web.
+        .overlay(alignment: .top) { fade(.fadeTop) }
+        .overlay(alignment: .bottom) { fade(.fadeBottom) }
         .overlay {
             if let state {
-                if state.messages.isEmpty { EmptyState(title: "Ask Golem anything") { GolemGlyph(size: 24) } }
+                if state.messages.isEmpty { EmptyState(title: "Ask Golem anything") }
             } else if let failure {
-                EmptyState(title: failure, systemImage: "wifi.exclamationmark")
+                EmptyState(title: failure)
             } else {
                 ProgressView()
             }
@@ -125,12 +128,12 @@ struct ConversationView: View {
             }
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
-                    Button("Files and artifacts", systemImage: "sidebar.right") { showArtifacts = true }
+                    Button("Files and artifacts", pixel: .panel) { showArtifacts = true }
                     if !isOrchestrator, let thread = state?.thread {
-                        Button("Open #\(channelName)", systemImage: "number") { open(.channel(thread.channelId)) }
-                        Menu("Move to", systemImage: "arrow.right") {
+                        Button("Open #\(channelName)", pixel: .hash) { open(.channel(thread.channelId)) }
+                        Menu("Move to", pixel: .right) {
                             ForEach(session.channels.filter { $0.id != thread.channelId }) { channel in
-                                Button(channel.name, systemImage: channel.ownerId == nil ? "number" : "lock") {
+                                Button(channel.name, pixel: channel.ownerId == nil ? .hash : .lock) {
                                     Task {
                                         await session.run {
                                             try await session.moveThread(threadID: threadID, channelID: channel.id)
@@ -140,7 +143,7 @@ struct ConversationView: View {
                             }
                         }
                         Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
-                               systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
+                               pixel: thread.settledAt == nil ? .check : .inbox) {
                             Task {
                                 await session.run {
                                     try await session.setThreadSettled(
@@ -166,7 +169,7 @@ struct ConversationView: View {
                 .accessibilityHint("Shows the thread's menu")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Talk with Golem", systemImage: "waveform", action: startTalk)
+                Button("Talk with Golem", pixel: .sound, action: startTalk)
                     .disabled(talk.isOn && talk.thread == threadID)
             }
         }
@@ -220,6 +223,13 @@ struct ConversationView: View {
     }
 
     /// The suggestions over the composer; a conversation takes the composer's place.
+    private func fade(_ pattern: Dither) -> some View {
+        DitherView(pattern: pattern)
+            .foregroundStyle(Tokens.Mobile.Colors.background)
+            .frame(height: pattern.size.height)
+            .allowsHitTesting(false)
+    }
+
     private var bottomBar: some View {
         ComposerRow {
             VStack(alignment: .leading, spacing: Tokens.Space.sm) {
@@ -309,7 +319,7 @@ extension ConversationView {
 }
 
 /// An action the agent waits for the person to allow: once, for the rest of the turn on that machine when it allows
-/// that, or not; the gold of the icon's eyes at its side, and the buttons at the start of the line, far from the
+/// that, or not; `gold` at its side, and the buttons at the start of the line, far from the
 /// composer's Send. A long text, such as the body of an email, scrolls.
 private struct ApprovalCard: View {
     let approval: Approval

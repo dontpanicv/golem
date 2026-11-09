@@ -13,17 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.PanTool
-import androidx.compose.material.icons.outlined.Place
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +42,9 @@ import dev.golem.api.deleteRoutine
 import dev.golem.api.runRoutine
 import dev.golem.api.setRoutine
 import dev.golem.api.upcoming
+import dev.golem.design.DayStrip
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
 import dev.golem.design.EmptyState
@@ -137,7 +129,7 @@ fun UpcomingList(header: @Composable () -> Unit) {
                 }
             }
             if (upcoming != null && groups.isEmpty()) {
-                EmptyState("Nothing upcoming", { Icon(Icons.Outlined.CalendarMonth, null, tint = Golem.colors.textQuaternary) })
+                EmptyState("Nothing upcoming")
             }
         }
     }
@@ -149,7 +141,7 @@ private fun ApprovalRow(threadId: String, approval: Approval) {
     val open = LocalOpen.current
     val title = if (threadId == session.orchestrator?.id) "Golem"
     else session.channels.flatMap { it.threads }.firstOrNull { it.id == threadId }?.title
-    ListRow(approval.text, icon = Icons.Outlined.PanTool, subtitle = title, onClick = { open(Destination.Thread(threadId)) })
+    ListRow(approval.text, icon = Pixel.Hand.vector, subtitle = title, onClick = { open(Destination.Thread(threadId)) })
 }
 
 /** A routine: it opens its thread, or its channel before its first run; the switch pauses it, the menu runs or deletes it. */
@@ -165,10 +157,11 @@ private fun RoutineRow(routine: Routine, kind: UpcomingKind, changed: (Routine) 
         else -> routine.nextRunAt?.let { upcomingTime(it, kind) } ?: routine.schedule
     }
     ListRow(
-        routine.name, icon = if (routine.place == null) Icons.Outlined.Refresh else Icons.Outlined.Place,
+        routine.name, icon = if (routine.place == null) Pixel.Refresh.vector else Pixel.Place.vector,
         subtitle = listOfNotNull(channel, detail).joinToString(" · "),
         onClick = { open(routine.threadId?.let { Destination.Thread(it) } ?: Destination.Channel(routine.channelId)) },
     ) {
+        routine.nextRunAt?.let { DayStrip(it) }
         GolemSwitch(routine.enabled, { enabled ->
             changed(routine.copy(enabled = enabled))
             session.launch {
@@ -181,13 +174,13 @@ private fun RoutineRow(routine: Routine, kind: UpcomingKind, changed: (Routine) 
             }
         }, label = "Run ${routine.name}")
         RowMenu("${routine.name} actions", listOf(
-            MenuAction("Run now", Icons.Outlined.PlayArrow) {
+            MenuAction("Run now", Pixel.Play.vector) {
                 session.launch {
                     session.api.runRoutine(routine.id)
                     session.show("${routine.name} runs now", dev.golem.api.Toast.Tone.Success)
                 }
             },
-            MenuAction("Delete", Icons.Outlined.Delete, danger = true) {
+            MenuAction("Delete", Pixel.Trash.vector, danger = true) {
                 session.launch {
                     session.api.deleteRoutine(routine.id)
                     deleted()
@@ -203,12 +196,13 @@ private fun ReminderRow(reminder: Reminder, kind: UpcomingKind, cancelled: () ->
     val session = LocalSession.current
     val open = LocalOpen.current
     ListRow(
-        reminder.text, icon = if (reminder.place == null) Icons.Outlined.Notifications else Icons.Outlined.Place,
+        reminder.text, icon = if (reminder.place == null) Pixel.Bell.vector else Pixel.Place.vector,
         subtitle = if (reminder.waitsForPlace) placeWindow(reminder) else upcomingTime(reminder.dueAt, kind),
         onClick = { open(Destination.Thread(reminder.threadId)) },
     ) {
+        if (!reminder.waitsForPlace) DayStrip(reminder.dueAt)
         RowMenu("Reminder actions", listOf(
-            MenuAction("Cancel reminder", Icons.Outlined.Close, danger = true) {
+            MenuAction("Cancel reminder", Pixel.Close.vector, danger = true) {
                 val workspace = session.workspace ?: return@MenuAction
                 session.launch {
                     session.api.cancelReminder(workspace.id, reminder.id)
@@ -224,7 +218,7 @@ private fun ReminderRow(reminder: Reminder, kind: UpcomingKind, cancelled: () ->
 private fun RowMenu(label: String, items: List<MenuAction>) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton({ expanded = true }) { Icon(Icons.Outlined.MoreVert, label, Modifier.size(18.dp), tint = Golem.mobile.textTertiary) }
+        IconButton({ expanded = true }) { Icon(Pixel.More.vector, label, tint = Golem.mobile.textTertiary) }
         GolemMenu(expanded, { expanded = false }, items)
     }
 }
@@ -308,12 +302,12 @@ fun SuggestionCard(suggestion: Suggestion, card: Boolean = true, answered: () ->
     ) {
         if (!card) {
             val icon = when (suggestion.kind) {
-                "routine" -> Icons.Outlined.Refresh
-                "reminder" -> Icons.Outlined.Notifications
-                else -> Icons.Outlined.Tag
+                "routine" -> Pixel.Refresh.vector
+                "reminder" -> Pixel.Bell.vector
+                else -> Pixel.Hash.vector
             }
             Box(Modifier.width(21.dp), contentAlignment = Alignment.Center) {
-                Icon(icon, null, Modifier.size(18.dp), tint = Golem.mobile.textSecondary)
+                Icon(icon, null, tint = Golem.mobile.textSecondary)
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

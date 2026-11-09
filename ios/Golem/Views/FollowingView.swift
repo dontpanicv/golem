@@ -57,7 +57,7 @@ struct FollowingView: View {
                     ForEach(blocked) { block in
                         Button { unblocking = block } label: {
                             ListRow(
-                                block.label, systemImage: "nosign",
+                                block.label, pixel: .blocked,
                                 subtitle: block.kind == "sender" ? "Sender" : "Chat"
                             )
                         }
@@ -70,7 +70,7 @@ struct FollowingView: View {
                     ListSeparator()
                     ListSectionHeader(title: "Your feedback")
                     ForEach(feedback) { each in
-                        ListRow(each.quote, systemImage: "text.bubble", subtitle: each.about)
+                        ListRow(each.quote, pixel: .chat, subtitle: each.about)
                     }
                 }
             }
@@ -78,7 +78,7 @@ struct FollowingView: View {
         }
         .overlay {
             if let overview, overview.sources.isEmpty {
-                EmptyState(title: "Golem reads no account for you", systemImage: "tray")
+                EmptyState(title: "Golem reads no account for you")
             }
         }
         .task(id: scenePhase) {
@@ -149,20 +149,20 @@ struct FollowingView: View {
         switch row {
         case let .update(update):
             ListRow(
-                update.title, systemImage: update.deliveredAt == nil ? "clock" : "checkmark",
+                update.title, pixel: update.deliveredAt == nil ? .clock : .check,
                 subtitle: "\(update.state) · \(update.message)"
             )
         case let .check(check):
             ListRow(
-                check.text, systemImage: check.state == "open" ? "eye" : "checkmark", subtitle: checkState(check)
+                check.text, pixel: check.state == "open" ? .eye : .check, subtitle: checkState(check)
             )
         case let .source(source):
-            ListRow(title: source.name, systemImage: "tray", subtitle: source.error ?? source.state) {
+            ListRow(title: source.name, pixel: .inbox, subtitle: source.error ?? source.state) {
                 if source.error != nil { Badge(label: "Error", tone: .danger) }
             }
         case let .kept(item):
             ListRow(
-                title: item.evidence.name, systemImage: item.fromOwner ? "arrow.up" : "tray",
+                title: item.evidence.name, pixel: item.fromOwner ? .send : .inbox,
                 subtitle: "\(Date(milliseconds: item.timestamp).formatted()) · \(item.text)"
             ) {
                 Badge(label: item.badge, tone: item.outcome == "context" ? .neutral : .success)
@@ -189,7 +189,7 @@ struct FollowingView: View {
                     DetailText(text: item.text)
                     if let threadID = item.threadId {
                         Button { leave(.thread(threadID)) } label: {
-                            ListRow("Open thread", systemImage: "bubble.left")
+                            ListRow("Open thread", pixel: .chat)
                         }
                         .buttonStyle(.row)
                     }

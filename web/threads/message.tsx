@@ -370,7 +370,7 @@ function WorkStep({ step, workspaceId }: { step: Step; workspaceId: string }) {
   );
 }
 
-/** One pixel for each tool call of a finished work, in the gold of the icon's eyes, or `danger` where a call failed. */
+/** One pixel for each tool call of a finished work, in `gold`, or `danger` where a call failed. */
 function StepStrip({ steps }: { steps: readonly Step[] }) {
   // shortcut: a long work shows only its last 24 calls; open the log for all of them.
   const calls = steps

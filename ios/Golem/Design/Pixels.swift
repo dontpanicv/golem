@@ -39,18 +39,73 @@ nonisolated struct PixelShape: Shape {
     }
 }
 
-/// The colors of the icon: its dark tile, clay face, dark-clay marks, and gold eyes.
-enum Clay {
-    static let ink = Color(light: "#09090a", dark: "#09090a")
-    static let face = Color(light: "#b8703f", dark: "#b8703f")
-    static let mark = Color(light: "#3a1d0c", dark: "#3a1d0c")
-    static let eyes = Color(light: "#ffd27a", dark: "#ffd27a")
+extension Image {
+    /// An icon of the 8 × 8 pixel set as a template image, 2 pt a pixel by default, so that native menus and buttons
+    /// can show it.
+    init(pixel: Pixel, size: CGFloat = 16) {
+        self.init(uiImage: PixelImages.image(pixel, size: size))
+    }
+}
+
+extension Label where Title == Text, Icon == Image {
+    init(_ title: LocalizedStringKey, pixel: Pixel) {
+        self.init { Text(title) } icon: { Image(pixel: pixel) }
+    }
+
+    @_disfavoredOverload
+    init(_ title: some StringProtocol, pixel: Pixel) {
+        self.init { Text(title) } icon: { Image(pixel: pixel) }
+    }
+}
+
+extension Button where Label == SwiftUI.Label<Text, Image> {
+    init(_ title: LocalizedStringKey, pixel: Pixel, role: ButtonRole? = nil, action: @escaping () -> Void) {
+        self.init(role: role, action: action) { SwiftUI.Label(title, pixel: pixel) }
+    }
+
+    @_disfavoredOverload
+    init(_ title: some StringProtocol, pixel: Pixel, role: ButtonRole? = nil, action: @escaping () -> Void) {
+        self.init(role: role, action: action) { SwiftUI.Label(title, pixel: pixel) }
+    }
+}
+
+extension Menu where Label == SwiftUI.Label<Text, Image> {
+    init(_ title: some StringProtocol, pixel: Pixel, @ViewBuilder content: () -> Content) {
+        self.init(content: content) { SwiftUI.Label(title, pixel: pixel) }
+    }
+}
+
+private enum PixelImages {
+    private static var cache: [String: UIImage] = [:]
+
+    static func image(_ pixel: Pixel, size: CGFloat) -> UIImage {
+        let key = "\(pixel.rawValue)@\(size)"
+        if let image = cache[key] { return image }
+        let rect = CGRect(x: 0, y: 0, width: size, height: size)
+        let image = UIGraphicsImageRenderer(size: rect.size).image { context in
+            context.cgContext.setShouldAntialias(false)
+            context.cgContext.addPath(PixelShape(path: pixel.rawValue).path(in: rect).cgPath)
+            context.cgContext.fillPath()
+        }.withRenderingMode(.alwaysTemplate)
+        cache[key] = image
+        return image
+    }
+}
+
+/// The colors of Golem's face: a white face, black marks, and eyes in the accent. In light, a black tile keeps the
+/// white face apart from the white surface.
+enum Ember {
+    static let ink = Color(light: "#000000", dark: "#000000")
+    static let tile = Color(light: "#000000", dark: "#00000000")
+    static let face = Color(light: "#ffffff", dark: "#ffffff")
+    static let mark = Color(light: "#000000", dark: "#000000")
+    static let eyes = Tokens.Colors.accent
 }
 
 /// Golem's face drawn from the icon's pixels, with a mood: it works (its eyes blink), waits for a person, finished its
 /// work, or failed. The web's `Mark` has the same faces.
 struct GolemFace: View {
-    enum Mood { case working, waiting, done, failed }
+    enum Mood { case resting, working, waiting, done, failed }
 
     let mood: Mood
     var size = Tokens.Size.avatar
@@ -61,19 +116,19 @@ struct GolemFace: View {
             let blinking = mood == .working && !reduceMotion
                 && context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2) > 2.94
             ZStack {
-                Clay.ink
-                PixelShape(path: "M0 0H8V7H7V8H1V7H0Z", cells: 10, inset: 1).fill(Clay.face)
-                PixelShape(path: "M3 1H5V2H3Z" + face.mouth, cells: 10, inset: 1).fill(Clay.mark)
-                if !blinking { PixelShape(path: face.eyes, cells: 10, inset: 1).fill(Clay.eyes) }
+                Ember.tile
+                PixelShape(path: "M0 0H8V7H7V8H1V7H0Z", cells: 10, inset: 1).fill(Ember.face)
+                PixelShape(path: "M3 1H5V2H3Z" + face.mouth, cells: 10, inset: 1).fill(Ember.mark)
+                if !blinking { PixelShape(path: face.eyes, cells: 10, inset: 1).fill(Ember.eyes) }
             }
         }
         .frame(width: size, height: size)
-        .clipShape(.rect(cornerRadius: Tokens.Radius.sm))
         .accessibilityHidden(true)
     }
 
     private var face: (eyes: String, mouth: String) {
         switch mood {
+        case .resting: ("M1 2H3V3H1ZM5 2H7V3H5Z", "M2 5H6V6H2Z")
         case .working: ("M2 2H3V3H2ZM6 2H7V3H6Z", "M2 5H6V6H2Z")
         case .waiting: ("M1 2H3V3H1ZM5 2H7V3H5Z", "M3 4H5V6H3Z")
         case .done: ("M1 2H3V3H1ZM5 2H7V3H5Z", "M1 4H2V5H1ZM6 4H7V5H6ZM2 5H6V6H2Z")
@@ -139,7 +194,7 @@ struct Shimmer: ViewModifier {
     }
 }
 
-/// The pixel icons of an agent's cards, in the gold of the icon's eyes on its dark tile. The web's `cards.tsx` has the
+/// The pixel icons of an agent's cards, in the accent on a black tile. The web's `cards.tsx` has the
 /// same paths.
 struct PixelIcon: View {
     static let paths: [String: String] = [
@@ -159,9 +214,9 @@ struct PixelIcon: View {
 
     var body: some View {
         PixelShape(path: path, cells: 12, inset: 2)
-            .fill(Clay.eyes, style: FillStyle(eoFill: true))
+            .fill(Ember.eyes, style: FillStyle(eoFill: true))
             .frame(width: size, height: size)
-            .background(Clay.ink, in: .rect(cornerRadius: Tokens.Radius.sm))
+            .background(Ember.ink)
             .accessibilityHidden(true)
     }
 }

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { confirmPerson, queryClient, restoreCache } from "./app/query.ts";
 import { router } from "./app/router.tsx";
 import { startOutbox } from "./threads/outbox.ts";
+import { installDither } from "./ui/dither.ts";
 
 // The app opens on the copy it saved last, before any request, unless a sign-in may have brought another person.
 await restoreCache();
@@ -15,6 +16,7 @@ window.addEventListener("storage", (event) => {
   }
 });
 startOutbox();
+installDither();
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>

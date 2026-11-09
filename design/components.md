@@ -1,22 +1,33 @@
 # Golem components
 
-Every value is measured from Linear's light and dark themes (Inter 4.1, the same font file) and lives in
-`tokens.json`. The colors of the icon (`design/icon.svg`) are Golem's own: the clay of its face is the `accent`, and the
-gold of its eyes is `gold`, which marks steps and what waits for a person. Golem's work shows in the icon's pixels.
+The look is Ember: black, white, and one accent, square corners, pixel icons, and a 1 pt dither. Every value lives in
+`tokens.json`; layouts and motion are measured from Linear's light and dark themes (Inter 4.1, the same font file).
+`accent` is the only color of Golem; `gold` takes its value and marks steps and what waits for a person. Golem's work
+shows in the pixels of its face.
 Every component exists on the web (`public/styles.css`, `web/ui/`) and on iOS
 (`ios/Golem/Design/`) with the same behavior. The web looks like Linear's web app: native selects and pickers are never
 used there; menus, selects, switches, and checkboxes are our own. iOS looks like Linear's iOS app; see [iOS](#ios).
 
 ## Type and color
 
-- Inter Variable, line height `normal` for controls, `font-display: block`. Pages link styles and scripts with a hash
+- Inter Variable for body text, Geist Mono for times, counts, and values (Markdown bold inside an agent's reply is
+  Geist Mono 500, 0.94 em, `text`), Silkscreen `fontSize.pixel` in capitals for section labels. All three are in the
+  repository (`public/fonts/`, `ios/Golem/Resources/`, `android/.../assets/fonts/`): the app's content policy loads
+  fonts only from Golem. Inter line height `normal` for controls, `font-display: block`. Pages link styles and scripts with a hash
   of their content, and the server keeps them and the font in the browser for good, so text never paints in a
   fallback font first.
 - Text: `text` for titles and values, `textSecondary` for controls and body, `textTertiary` for descriptions,
   inactive navigation, and meta, `textQuaternary` for placeholders and times.
 - Weights: `book` (450) for body and menus, `medium` (500) for labels, navigation, and buttons, `strong` (550) for
   the workspace name, `regular` (400) for field and select values.
-- Icons: 16 px in menus and lists, 14 px in buttons and navigation; strokes stay 1.5 px at every size.
+- Icons: the 8 × 8 pixel set in `icon` of `tokens.json`, 2 pt a pixel (16 pt), on every platform: `bun run tokens`
+  writes `web/ui/pixels.ts`, `ios/Golem/Design/PixelArt.swift`, and Android's `PixelArt.kt`. A new icon is drawn there
+  on the same grid. A section's chevron is 8 pt, 1 pt a pixel.
+- Dither: 1 pt cells, an 8 × 8 Bayer threshold, on or off (`web/ui/dither.ts`, `ios/Golem/Design/Dither.swift`,
+  Android's `Dither.kt`). Used only for: the right edge of a selected row (48 pt wide, `accent`; its label stops 36 pt
+  before the end), the top (28 pt) and bottom (56 pt) of a transcript, a faint band at the top of a panel header
+  (16 pt), the 96 pt Golem face of an empty state, and the corner of an avatar tile. Never over text. iOS and Android
+  make each pattern at the screen's scale, so a cell is exactly 1 pt or 1 dp.
 - Dark theme: Linear lifts each layer, so roles that share one light color split in dark. Cards, fields, buttons,
   and dialogs use `surfaceRaised`; a select trigger on a card `surfaceControl`; action menus, tooltips, and toasts
   `surfaceMenu`; select menus `surfaceListbox`; the composer `surfaceComposer`. Controls take `ringControl`, cards
@@ -37,14 +48,15 @@ used there; menus, selects, switches, and checkboxes are our own. iOS looks like
 | Variant | Look | Hover |
 | --- | --- | --- |
 | secondary | `surfaceRaised`, `textSecondary`, a 0.5 px `ringControl` and shadow `low` | `surfaceHover`, `ringHover` |
-| primary | `accent`, `onAccent`, shadow `low` | `accentHover` |
+| primary | `text`, `surface`, shadow `low` | `textSecondary` |
+| send | `accent`, `onAccent` | `accentHover` |
 | ghost | transparent, `textTertiary` | `ghostHover`; `text` |
 | danger | ghost with `danger` text | `dangerSubtle` |
 
-- All are pills (`radius.full`): 32 high, 12 px side padding, `fontSize.md` `medium`. A leading 14 px icon takes the
+- All are square: 32 high, 12 px side padding, `fontSize.md` `medium`. A leading 16 px pixel icon takes the
   left padding to 10 px and sits 6 px from the label.
 - `small`: 28 high, 10 px padding (8 px before an icon), `fontSize.sm`. `large`: 40 high, full width.
-- Icon buttons are circles: 28 (`icon`) or 24 (`tiny`), with a 14 px icon.
+- Icon buttons are squares: 28 (`icon`) or 24 (`tiny`), with a 16 px pixel icon.
 - Pressed (`aria-pressed`) and open (`aria-expanded`) ghost buttons keep the hover look. Disabled: 60 % opacity.
 - Busy: while a message sends or files upload, the send or upload button shows a 14 px spinner in place of its icon
   and takes no clicks.
@@ -154,7 +166,7 @@ Used by the workspace switcher and action menus.
 
 ## Tabs
 
-- Pills 28 high, padding 0 × 10, `fontSize.sm` `medium`, 8 px apart. Unselected: `surfaceRaised`, `ringControl`, shadow
+- Tabs 28 high, square, padding 0 × 10, `fontSize.sm` `medium`, 8 px apart. Unselected: `surfaceRaised`, `ringControl`, shadow
   `low`, `textTertiary`; hover `ghostHover` and `ringHover`. Selected: `fillSelected`, `ringControl` without
   shadow, `text`.
 
@@ -187,13 +199,17 @@ Used by the workspace switcher and action menus.
 
 ## Badge, keycap, and avatar
 
-- Badge: a pill 24 high, padding 0 × 8, 0.5 px `borderStrong`, a 9 px dot (`textQuaternary`, or the tone's color)
+- Badge: square, 24 high, padding 0 × 8, 0.5 px `borderStrong`, a 9 px dot (`textQuaternary`, or the tone's color)
   6 px before the label in `fontSize.sm` `book` `textTertiary`.
 - Keycap: min 18 × 17, padding 2, `radius.xs`, 0.5 px `borderSubtle`, `fontSize.xs` `regular` `textTertiary`,
   slashed zero. In menus a shortcut is plain text.
-- Avatar: a 24 px circle with the person's profile picture, cropped to fill it; without one, the initial in
-  `fontSize.xs` `medium` `onAccent` on one of the `avatar` colors, picked by the sum of the name's code points. Workspaces use `accent` in a `radius.sm` square;
-  Golem shows its face, `design/icon.svg`, in that square.
+- Avatar: a 24 px square with the person's profile picture, cropped to fill it; without one, the first letter of their
+  name on an `accent` tile, in the 5 × 7 pixel letters of `letter` in `tokens.json`, 2 pt a pixel, in `onAccent`, whose
+  bottom right corner dissolves into `canvas`.
+- Golem's face: the 8 × 8 pixels, a white face, black marks, and eyes in `accent`, on a transparent tile; in light, on
+  a black tile, so the white face stays apart from a white surface. From 48 pt it is the logo, `design/icon.svg`: the
+  face dissolves to the right through interleaved-gradient noise, one device pixel a cell at each output size
+  (`bun scripts/icon.ts`), and the forehead mark stays solid `accent`.
 
 ## Lists
 
@@ -268,7 +284,7 @@ Used by the workspace switcher and action menus.
 - Cards: an agent writes a fenced `card` block with a JSON object, or a list of them (`value`, and optionally `title`,
   `detail`, and `icon`). Each shows as a card: `surfaceRaised`, a 0.5 px `ringControl`, shadow `low`, `radius.md`,
   padding 8 × 12, in a grid of equal columns at least 160 px wide, 8 px apart; a 28 px pixel icon (temperature, heat, rain, sun,
-  battery, bolt, car, home, lock) in `gold` on the icon's dark tile, the title in `fontSize.xs` `medium` capitals
+  battery, bolt, car, home, lock) in `accent` on a black tile, the title in `fontSize.xs` `medium` capitals
   `textTertiary`, the value in `fontSize.lg` `semibold` `text` with tabular numbers, and the detail in `fontSize.sm`
   `textTertiary`. A block that is not valid shows as code. iOS shows one card in a row on a phone.
 - The sidebar shows the threads and channels that agents start while they work, without a reload.
@@ -333,7 +349,7 @@ tokens. The layout and navigation follow Slack's iOS app, as Golem's channels an
 was one step below the default size, so the font sizes are the measured ones × 17/16; Inter scales with Dynamic Type.
 iPad keeps the sidebar with the same screens.
 
-- Page: `background` (white, #0d0d0d dark). Text: `title` for screen titles, `text` for rows and messages,
+- Page: `background` (white, #0a0a0a dark). Text: `title` for screen titles, `text` for rows and messages,
   `textSecondary` for unselected pills and icons, `textTertiary` for captions, `textQuaternary` for section titles and
   chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
 - Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt glass capsule 20 pt
@@ -350,16 +366,16 @@ iPad keeps the sidebar with the same screens.
   button.
 - Home: as Slack's, with the workspace's name as its title. The three newest open threads with their channel under the title, and
   Show more for the rest, then the channels with their count of open threads, then the private
-  channels, each with a lock, in sections whose title folds them. A 48 pt accent glass circle over the bar opens a
+  channels, each with a lock, in sections whose title folds them. A 48 pt accent glass square over the bar opens a
   native menu: New thread in a channel, or New channel.
 - Screen title: top-level screens put it in the navigation bar at its leading edge, 12 pt from the screen edge, level
-  with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Channels and threads show the round
+  with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Channels and threads show the square
   glass back button and a title capsule beside it, as Slack's: the title in `fontSize.row` `semibold` over a `caption`
   (the count of open threads, or the thread's channel). The capsule opens the screen's native menu.
 - Pills: 34 high, padding 12, 7 apart, from 12 pt; the selected one is glass with `text`, the others plain
   `textSecondary`; a count in `textQuaternary` 8 pt after the title.
 - Lists: rows 46 pt apart, 10 pt in from the screen with their content 10 pt further in, a 21 pt wide icon, the title in
-  `fontSize.row` `book`. A row lights up on a `fill` rounded rectangle under a finger at once and fades in 150 ms. A
+  `fontSize.row` `book`. A row lights up on a `fill` rectangle under a finger at once and fades in 150 ms. A
   folding section title is `fontSize.small` `medium` `textSecondary` 20 pt in, with a chevron that turns.
 - Channel: as a Slack channel. Its open threads read as messages, the newest at the bottom over the composer: a 36 pt
   `fill` tile with an icon, the title in `fontSize.body`, then "View thread" in the accent, or the working line (the
@@ -370,10 +386,10 @@ iPad keeps the sidebar with the same screens.
   Golem that another thread's answer started, shows only its text. Text is `fontSize.body` with inline Markdown; links take the accent. A long press on the text shows Copy, which copies its Markdown; the
   text is not selectable, so its links answer every tap. A work step and a channel's brief do the same. A list that
   rests past its end, as when rows at its end fold or go away, scrolls back to its end. New messages slide up and fade in, and
-  the newest stays in view. The round voice button is in the bar at the trailing edge.
+  the newest stays in view. The square voice button is in the bar at the trailing edge.
 - Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it
   shows. The composer is a glass field, radius 24, with the `composer` shadow, as T3's: add (+), the text, the mic,
-  and a `send` (30 pt) circle in a 44 pt touch target: `fill` with a `textQuaternary` arrow while there is nothing to
+  and a `send` (30 pt) square in a 44 pt touch target: `fill` with a `textQuaternary` arrow while there is nothing to
   send, else the accent; Stop in `danger`. While the text fits one line, all sit in one row; else the text spans the
   field, up to 4 lines, over the row of buttons. Content fades under the glass bars at the top and bottom. Dragging the content closes the
   keyboard.
@@ -390,7 +406,7 @@ iPad keeps the sidebar with the same screens.
   the right (a 44 pt control reaches over the row's padding and does not make it taller); a group inside a section,
   such as "By model" in Usage, has a sub-heading in `caption` `medium` `textTertiary`; a select is the value and an
   up-and-down chevron opening a native menu. Sign out is a `danger` row with its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.
-- Menus: native. Sheets: a 40 pt round glass close button at the left and the title in the middle,
+- Menus: native. Sheets: a 40 pt square glass close button at the left and the title in the middle,
   `fontSize.sheetTitle` `semibold`; fields are `fill` with radius 12 and a 1 pt accent outline when focused.
 - Live Activity: on the Lock Screen, a status symbol, the working thread's title in `fontSize.row` `semibold`, the
   status in words (Working, Waiting for you, Done, Failed) in `caption`, and the elapsed time; in the Dynamic Island,

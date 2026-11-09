@@ -88,7 +88,7 @@ struct Composer: View {
     private var canSend: Bool { !draft.isEmpty || !files.isEmpty || active }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Tokens.Mobile.Size.voice / 2)
+        let shape = Rectangle()
         VStack(alignment: .leading, spacing: 0) {
             if !files.isEmpty {
                 FileChips(names: files.map(\.lastPathComponent)) { files.remove(at: $0) }
@@ -107,8 +107,7 @@ struct Composer: View {
                     .layoutValue(key: ComposerLayout.Fills.self, value: true)
                 } else {
                     AttachMenu { files += $0 } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 18, weight: .medium))
+                        Image(pixel: .plus)
                             .foregroundStyle(Tokens.Mobile.Colors.title)
                             .frame(width: Tokens.Mobile.Size.voice, height: Tokens.Mobile.Size.voice)
                             .contentShape(.rect)
@@ -127,6 +126,7 @@ struct Composer: View {
             }
         }
         .glassEffect(.regular.interactive(), in: shape)
+        .overlay(shape.strokeBorder(Tokens.Colors.textTertiary, lineWidth: 1))
         // T3's soft shadow, only outside the field, so that the glass stays clear.
         .background {
             shape.fill(.black).shadow(Tokens.Shadows.composer)
@@ -195,14 +195,14 @@ struct Composer: View {
     /// works and there is nothing to send.
     @ViewBuilder private var sendButton: some View {
         if let stop, !canSend {
-            Button("Stop", systemImage: "stop.fill", action: stop)
+            Button("Stop", pixel: .stop, action: stop)
                 .buttonStyle(.send(Tokens.Mobile.Colors.danger))
         } else {
             Button(action: submit) {
                 if sending {
                     ProgressView().controlSize(.mini).tint(Tokens.Colors.onAccent)
                 } else {
-                    Image(systemName: stop == nil ? "arrow.up" : "arrow.turn.left.up")
+                    Image(pixel: stop == nil ? .send : .steer)
                 }
             }
             .accessibilityLabel(sending ? "Sending" : stop == nil ? "Send" : "Steer")
@@ -313,8 +313,8 @@ struct AttachMenu<Label: View>: View {
 
     var body: some View {
         GolemMenu {
-            MenuItem("Photo library", systemImage: "photo.on.rectangle") { pickingPhotos = true }
-            MenuItem("Files", systemImage: "folder") { pickingFiles = true }
+            MenuItem("Photo library", pixel: .photo) { pickingPhotos = true }
+            MenuItem("Files", pixel: .folder) { pickingFiles = true }
         } label: {
             label
         }

@@ -6,6 +6,7 @@ import type { Reminder, Routine, Suggestion } from "../app/types.ts";
 import {
   Badge,
   Button,
+  DayStrip,
   Empty,
   PageSection,
   SettingsCard,
@@ -54,7 +55,7 @@ export function UpcomingPage() {
         <div className="page">
           <div className="page-content">
             {upcoming && groups.length === 0 ? (
-              <Empty icon="clock" title="Nothing upcoming" />
+              <Empty title="Nothing upcoming" />
             ) : null}
             {groups.map((group) => (
               <PageSection key={group.title} title={group.title}>
@@ -140,6 +141,9 @@ function AgendaRow({
             />
           }
         >
+          {item.suggestion.at === null ? null : (
+            <DayStrip at={item.suggestion.at} />
+          )}
           <SuggestionActions
             suggestion={item.suggestion}
             workspaceId={workspaceId}
@@ -206,6 +210,7 @@ function RoutineRow({
       label={routine.name}
       lead={<Icon name={routine.place ? "place" : "play"} />}
     >
+      {routine.nextRunAt === null ? null : <DayStrip at={routine.nextRunAt} />}
       {children}
       <Switch
         checked={
@@ -240,6 +245,9 @@ function ReminderRow({
       label={reminder.text}
       lead={<Icon name={reminder.place ? "place" : "clock"} />}
     >
+      {reminder.place && reminder.triggeredAt === null ? null : (
+        <DayStrip at={reminder.dueAt} />
+      )}
       <Button
         disabled={cancel.isPending}
         label="Cancel"

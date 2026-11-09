@@ -42,29 +42,29 @@ struct ArtifactView: View {
                 .buttonStyle(.golem(.ghost, .small))
                 .accessibilityAddTraits(showData ? .isSelected : [])
             if let url = URL(string: artifact.url) {
-                ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+                ShareLink(item: url) { Label("Share", pixel: .share) }
                     .buttonStyle(.golem(.ghost, .icon))
             }
             GolemMenu {
                 if let url = URL(string: artifact.url) {
-                    MenuItem("Open", systemImage: "globe") { openURL(url) }
+                    MenuItem("Open", pixel: .preview) { openURL(url) }
                 }
-                MenuItem("Copy link", systemImage: "link") {
+                MenuItem("Copy link", pixel: .link) {
                     UIPasteboard.general.string = artifact.url
                     session.show("Copied", .success)
                 }
                 if artifact.visibility == .public {
-                    MenuItem("Make members only", systemImage: "lock") { setVisibility(.members) }
+                    MenuItem("Make members only", pixel: .lock) { setVisibility(.members) }
                 } else {
-                    MenuItem("Make public", systemImage: "globe") { setVisibility(.public) }
+                    MenuItem("Make public", pixel: .preview) { setVisibility(.public) }
                 }
                 MenuSeparator()
-                MenuItem("Clear data", systemImage: "tray") {
+                MenuItem("Clear data", pixel: .inbox) {
                     act { try await session.api.clearArtifactData(artifactID) }
                 }
-                MenuItem("Delete", systemImage: "trash", role: .destructive) { delete() }
+                MenuItem("Delete", pixel: .trash, role: .destructive) { delete() }
             } label: {
-                Label("\(artifact.title) actions", systemImage: "ellipsis")
+                Label("\(artifact.title) actions", pixel: .more)
             }
             .buttonStyle(.golem(.ghost, .icon))
         }
@@ -76,13 +76,13 @@ struct ArtifactView: View {
     @ViewBuilder
     private func data(_ detail: ArtifactDetail) -> some View {
         if detail.records.isEmpty {
-            EmptyState(title: "No data yet", systemImage: "tray")
+            EmptyState(title: "No data yet")
         } else {
             ScrollView {
                 SettingsCard {
                     ForEach(detail.records) { record in
                         SettingsRow(record.key, description: describe(record)) {
-                            Button("Delete \(record.key)", systemImage: "trash") {
+                            Button("Delete \(record.key)", pixel: .trash) {
                                 act {
                                     try await session.api.deleteArtifactRecord(
                                         artifactID: artifactID, recordID: record.id

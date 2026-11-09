@@ -57,45 +57,45 @@ class Colors(
 )
 
 val LightColors = Colors(
-    canvas = Color(0xFFEFEFF0),
-    surface = Color(0xFFF9F9FA),
-    surfaceRaised = Color(0xFFFFFFFF),
-    surfaceHover = Color(0xFFF3F3F3),
-    surfaceControl = Color(0xFFFFFFFF),
-    surfaceControlHover = Color(0xFFF3F3F3),
-    surfaceMenu = Color(0xFFFFFFFF),
-    menuHover = Color(0xFFF3F3F3),
-    surfaceListbox = Color(0xFFFFFFFF),
-    listboxHover = Color(0xFFF3F3F3),
-    surfaceComposer = Color(0xFFFFFFFF),
+    canvas = Color(0xFFD9D9D9),
+    surface = Color(0xFFFFFFFF),
+    surfaceRaised = Color(0xFFF5F5F5),
+    surfaceHover = Color(0xFFEBEBEB),
+    surfaceControl = Color(0xFFF5F5F5),
+    surfaceControlHover = Color(0xFFEBEBEB),
+    surfaceMenu = Color(0xFFF5F5F5),
+    menuHover = Color(0xFFEBEBEB),
+    surfaceListbox = Color(0xFFF5F5F5),
+    listboxHover = Color(0xFFEBEBEB),
+    surfaceComposer = Color(0xFFF5F5F5),
     ghostHover = Color(0x09000000),
-    fillSubtle = Color(0xFFEFEFF0),
-    fillHover = Color(0xFFE7E7E8),
-    fillActive = Color(0xFFE1E1E2),
-    fillSelected = Color(0xFFECECED),
-    fillIcon = Color(0xFFEFEFEF),
-    switchTrack = Color(0xFFCDCDCD),
-    switchTrackHover = Color(0xFFBEBEBE),
-    border = Color(0xFFE2E2E2),
-    borderSubtle = Color(0xFFE8E8E8),
-    borderMenu = Color(0xFFE8E8E8),
-    borderDialog = Color(0xFFE8E8E8),
-    borderStrong = Color(0xFFD8D8D8),
-    borderHover = Color(0xFFC2C2C2),
-    borderControl = Color(0xFF7C7C7C),
-    ring = Color(0x17000000),
-    ringControl = Color(0x17000000),
-    ringHover = Color(0x26000000),
-    ringListbox = Color(0xFFD8D8D8),
-    text = Color(0xFF1B1B1B),
-    textSecondary = Color(0xFF2F2F31),
-    textTertiary = Color(0xFF5C5C5E),
-    textQuaternary = Color(0xFFA0A0A2),
-    accent = Color(0xFFA35D2F),
-    accentHover = Color(0xFF8F5128),
-    accentSubtle = Color(0x14A35D2F),
+    fillSubtle = Color(0xFFF5F5F5),
+    fillHover = Color(0xFFEBEBEB),
+    fillActive = Color(0xFFEBEBEB),
+    fillSelected = Color(0xFFEBEBEB),
+    fillIcon = Color(0xFFEBEBEB),
+    switchTrack = Color(0xFFA1A1A1),
+    switchTrackHover = Color(0xFF676767),
+    border = Color(0xFFD4D4D4),
+    borderSubtle = Color(0xFFD4D4D4),
+    borderMenu = Color(0xFFD4D4D4),
+    borderDialog = Color(0xFFD4D4D4),
+    borderStrong = Color(0xFFD4D4D4),
+    borderHover = Color(0xFFA1A1A1),
+    borderControl = Color(0xFF676767),
+    ring = Color(0x14000000),
+    ringControl = Color(0x1C000000),
+    ringHover = Color(0x30000000),
+    ringListbox = Color(0xFFD4D4D4),
+    text = Color(0xFF000000),
+    textSecondary = Color(0xFF242424),
+    textTertiary = Color(0xFF676767),
+    textQuaternary = Color(0xFFA1A1A1),
+    accent = Color(0xFFEF3A0B),
+    accentHover = Color(0xFFEF3A0B),
+    accentSubtle = Color(0x22EF3A0B),
     onAccent = Color(0xFFFFFFFF),
-    gold = Color(0xFFB07A10),
+    gold = Color(0xFFEF3A0B),
     success = Color(0xFF4CB782),
     warning = Color(0xFFF2994A),
     danger = Color(0xFFE2253B),
@@ -104,45 +104,45 @@ val LightColors = Colors(
 )
 
 val DarkColors = Colors(
-    canvas = Color(0xFF09090A),
-    surface = Color(0xFF121213),
-    surfaceRaised = Color(0xFF1A1A1B),
-    surfaceHover = Color(0xFF252527),
-    surfaceControl = Color(0xFF232325),
-    surfaceControlHover = Color(0xFF2C2D2F),
-    surfaceMenu = Color(0xFF212122),
-    menuHover = Color(0xFF313234),
-    surfaceListbox = Color(0xFF28292B),
-    listboxHover = Color(0xFF3C3D40),
-    surfaceComposer = Color(0xFF161617),
+    canvas = Color(0xFF000000),
+    surface = Color(0xFF0A0A0A),
+    surfaceRaised = Color(0xFF151515),
+    surfaceHover = Color(0xFF202020),
+    surfaceControl = Color(0xFF151515),
+    surfaceControlHover = Color(0xFF202020),
+    surfaceMenu = Color(0xFF151515),
+    menuHover = Color(0xFF202020),
+    surfaceListbox = Color(0xFF151515),
+    listboxHover = Color(0xFF202020),
+    surfaceComposer = Color(0xFF151515),
     ghostHover = Color(0x12FFFFFF),
-    fillSubtle = Color(0xFF1A1A1B),
-    fillHover = Color(0xFF18181A),
-    fillActive = Color(0xFF232325),
-    fillSelected = Color(0xFF29292B),
-    fillIcon = Color(0xFF1D1E1F),
-    switchTrack = Color(0xFF707172),
-    switchTrackHover = Color(0xFF868789),
-    border = Color(0xFF212224),
-    borderSubtle = Color(0xFF303134),
-    borderMenu = Color(0xFF3C3D40),
-    borderDialog = Color(0xFF343538),
-    borderStrong = Color(0xFF48494C),
-    borderHover = Color(0xFF3E424D),
-    borderControl = Color(0xFF858689),
-    ring = Color(0x15FFFFFF),
-    ringControl = Color(0x23FFFFFF),
-    ringHover = Color(0x3AFFFFFF),
-    ringListbox = Color(0xFF585A5D),
+    fillSubtle = Color(0xFF151515),
+    fillHover = Color(0xFF202020),
+    fillActive = Color(0xFF202020),
+    fillSelected = Color(0xFF202020),
+    fillIcon = Color(0xFF202020),
+    switchTrack = Color(0xFF575757),
+    switchTrackHover = Color(0xFF8A8A8A),
+    border = Color(0xFF2B2B2B),
+    borderSubtle = Color(0xFF2B2B2B),
+    borderMenu = Color(0xFF2B2B2B),
+    borderDialog = Color(0xFF2B2B2B),
+    borderStrong = Color(0xFF2B2B2B),
+    borderHover = Color(0xFF575757),
+    borderControl = Color(0xFF8A8A8A),
+    ring = Color(0x14FFFFFF),
+    ringControl = Color(0x1CFFFFFF),
+    ringHover = Color(0x30FFFFFF),
+    ringListbox = Color(0xFF2B2B2B),
     text = Color(0xFFFFFFFF),
-    textSecondary = Color(0xFFE3E4E6),
-    textTertiary = Color(0xFF959597),
-    textQuaternary = Color(0xFF5C5D5F),
-    accent = Color(0xFFA8622F),
-    accentHover = Color(0xFFB8703F),
-    accentSubtle = Color(0x29B8703F),
-    onAccent = Color(0xFFFFFFFF),
-    gold = Color(0xFFFFD27A),
+    textSecondary = Color(0xFFD0D0D0),
+    textTertiary = Color(0xFF8A8A8A),
+    textQuaternary = Color(0xFF575757),
+    accent = Color(0xFFFF4A1C),
+    accentHover = Color(0xFFFF4A1C),
+    accentSubtle = Color(0x22FF4A1C),
+    onAccent = Color(0xFF000000),
+    gold = Color(0xFFFF4A1C),
     success = Color(0xFF4CB782),
     warning = Color(0xFFF2994A),
     danger = Color(0xFFFF8683),
@@ -169,31 +169,31 @@ class MobileColors(
 val LightMobileColors = MobileColors(
     background = Color(0xFFFFFFFF),
     title = Color(0xFF000000),
-    text = Color(0xFF303030),
-    textSecondary = Color(0xFF5C5D5C),
-    textTertiary = Color(0xFF818281),
-    textQuaternary = Color(0xFF9C9D9C),
-    placeholder = Color(0xFFB0B0B0),
-    separator = Color(0xFFF1F1F1),
-    fill = Color(0xFFF1F1F1),
+    text = Color(0xFF242424),
+    textSecondary = Color(0xFF676767),
+    textTertiary = Color(0xFF676767),
+    textQuaternary = Color(0xFFA1A1A1),
+    placeholder = Color(0xFFA1A1A1),
+    separator = Color(0xFFD4D4D4),
+    fill = Color(0xFFF5F5F5),
     danger = Color(0xFFEA5756),
-    tabSelected = Color(0xFFE9E9E9),
-    menuSelected = Color(0xFFF0F0F0),
+    tabSelected = Color(0x12000000),
+    menuSelected = Color(0xFFEBEBEB),
 )
 
 val DarkMobileColors = MobileColors(
-    background = Color(0xFF0D0D0D),
+    background = Color(0xFF0A0A0A),
     title = Color(0xFFFFFFFF),
-    text = Color(0xFFE3E3E3),
-    textSecondary = Color(0xFF979897),
-    textTertiary = Color(0xFF767776),
-    textQuaternary = Color(0xFF5A5B5A),
-    placeholder = Color(0xFF707170),
-    separator = Color(0xFF171717),
-    fill = Color(0xFF292929),
+    text = Color(0xFFD0D0D0),
+    textSecondary = Color(0xFF8A8A8A),
+    textTertiary = Color(0xFF8A8A8A),
+    textQuaternary = Color(0xFF575757),
+    placeholder = Color(0xFF575757),
+    separator = Color(0xFF2B2B2B),
+    fill = Color(0xFF151515),
     danger = Color(0xFFEA5756),
-    tabSelected = Color(0xFF454545),
-    menuSelected = Color(0xFF333333),
+    tabSelected = Color(0x1CFFFFFF),
+    menuSelected = Color(0xFF202020),
 )
 
 /** One layer of a shadow: black at `alpha`. */
@@ -203,8 +203,6 @@ class ShadowLayer(val y: Dp, val blur: Dp, val spread: Dp, val alpha: Float)
 class ThemedShadow(val light: List<ShadowLayer>, val dark: List<ShadowLayer>)
 
 object Tokens {
-    val avatarColors = listOf(Color(0xFF5E6AD2), Color(0xFF4CB782), Color(0xFFF2994A), Color(0xFFEB5757), Color(0xFFB0AF35), Color(0xFF26B5CE), Color(0xFFBB87FC), Color(0xFFE2649B), Color(0xFF0F7488), Color(0xFF95A2B3))
-
     object FontSize {
         val xs = 11.sp
         val sm = 12.sp
@@ -212,6 +210,8 @@ object Tokens {
         val lg = 15.sp
         val xl = 20.sp
         val xxl = 24.sp
+        val mono = 11.5f.sp
+        val pixel = 8.sp
     }
 
     object FontWeight {
@@ -239,12 +239,12 @@ object Tokens {
     }
 
     object Radius {
-        val xxs = 3.dp
-        val xs = 4.dp
-        val sm = 6.dp
-        val md = 8.dp
-        val lg = 10.dp
-        val xl = 12.dp
+        val xxs = 0.dp
+        val xs = 0.dp
+        val sm = 0.dp
+        val md = 0.dp
+        val lg = 0.dp
+        val xl = 0.dp
         val full = 9999.dp
     }
 
@@ -274,7 +274,7 @@ object Tokens {
         val avatar = 24.dp
         val dot = 9.dp
         val icon = 16.dp
-        val iconSmall = 14.dp
+        val iconSmall = 16.dp
         val inset = 8.dp
     }
 
@@ -290,6 +290,8 @@ object Tokens {
             val sheetTitle = 17.sp
             val detailTitle = 22.sp
             val title = 25.5f.sp
+            val mono = 12.sp
+            val pixel = 8.sp
         }
 
         object Size {

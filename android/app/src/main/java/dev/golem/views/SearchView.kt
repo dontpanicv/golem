@@ -16,13 +16,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
-import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -46,6 +39,8 @@ import dev.golem.api.FileRef
 import dev.golem.api.RecentSearch
 import dev.golem.api.SearchResponse
 import dev.golem.api.SearchResult
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.EmptyState
 import dev.golem.design.Golem
 import dev.golem.design.GolemTextField
@@ -129,7 +124,7 @@ fun SearchView() {
                 LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = dev.golem.design.ListPadding) {
                     if (blank) {
                         items(recent, key = { "recent:${it.query}" }) { search ->
-                            ListRow(search.query, icon = Icons.Outlined.Schedule, onClick = { query = search.query }) {
+                            ListRow(search.query, icon = Pixel.Clock.vector, onClick = { query = search.query }) {
                                 Text(relative(search.searchedAt), style = golemText(Tokens.Mobile.FontSize.caption),
                                     color = Golem.mobile.textQuaternary)
                             }
@@ -158,7 +153,7 @@ fun SearchView() {
                     }
                 }
                 if (!blank && response?.results?.isEmpty() == true) {
-                    EmptyState("Nothing found", { Icon(Icons.Outlined.Search, null, tint = Golem.colors.textQuaternary) })
+                    EmptyState("Nothing found")
                 }
             }
         }
@@ -183,10 +178,10 @@ fun savedFile(uri: String): FileRef? = SAVED_FILE.find(uri)?.let { FileRef(it.gr
 @Composable
 private fun SearchRow(result: SearchResult, channel: String?, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     val icon = when (result.kind) {
-        "thread" -> Icons.Outlined.EditNote
-        "artifact" -> Icons.Outlined.Inventory2
-        "capture" -> Icons.Outlined.Inbox
-        else -> Icons.AutoMirrored.Outlined.InsertDriveFile
+        "thread" -> Pixel.Compose.vector
+        "artifact" -> Pixel.Artifact.vector
+        "capture" -> Pixel.Inbox.vector
+        else -> Pixel.File.vector
     }
     val day = shortDay(result.updatedAt)
     Row(
@@ -197,7 +192,7 @@ private fun SearchRow(result: SearchResult, channel: String?, onClick: (() -> Un
         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.md),
     ) {
         Box(Modifier.width(21.dp).padding(top = 2.dp), contentAlignment = Alignment.Center) {
-            Icon(icon, null, Modifier.size(18.dp), tint = Golem.mobile.textSecondary)
+            Icon(icon, null, tint = Golem.mobile.textSecondary)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(result.title, style = golemText(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book), color = Golem.mobile.text)

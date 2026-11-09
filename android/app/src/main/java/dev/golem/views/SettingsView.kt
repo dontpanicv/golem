@@ -23,13 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.MoreHoriz
-import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +51,8 @@ import dev.golem.api.llmLogout
 import dev.golem.api.restartServer
 import dev.golem.api.setEffort
 import dev.golem.api.setModel
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Badge
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
@@ -132,7 +127,7 @@ fun SettingsView() {
         SettingsRow(
             "Sign out", labelColor = Golem.mobile.danger, onClick = { session.launch { session.signOut() } },
         ) {
-            Icon(Icons.AutoMirrored.Outlined.Logout, null, Modifier.size(18.dp), tint = Golem.mobile.danger)
+            Icon(Pixel.Logout.vector, null, tint = Golem.mobile.danger)
         }
     }
 }
@@ -213,10 +208,10 @@ private fun PictureMenu(hasPicture: Boolean) {
         if (uri != null) session.launch { session.setPicture(squarePicture(context, uri)) }
     }
     SettingsRowMenu("Picture actions", buildList {
-        add(MenuAction("Upload picture", Icons.Outlined.PhotoLibrary) {
+        add(MenuAction("Upload picture", Pixel.Photo.vector) {
             picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         })
-        if (hasPicture) add(MenuAction("Remove picture", Icons.Outlined.Delete, danger = true) { session.launch { session.setPicture(null) } })
+        if (hasPicture) add(MenuAction("Remove picture", Pixel.Trash.vector, danger = true) { session.launch { session.setPicture(null) } })
     })
 }
 
@@ -290,7 +285,7 @@ fun SettingsEmptyRow(text: String) {
 @Composable
 fun SettingsAddButton(label: String, onClick: () -> Unit) {
     Row(Modifier.padding(horizontal = Tokens.Space.md)) {
-        GolemButton(label, onClick, variant = ButtonVariant.Ghost, size = ButtonSize.Small, icon = Icons.Outlined.Add)
+        GolemButton(label, onClick, variant = ButtonVariant.Ghost, size = ButtonSize.Small, icon = Pixel.Plus.vector)
     }
 }
 
@@ -299,7 +294,7 @@ fun SettingsAddButton(label: String, onClick: () -> Unit) {
 fun SettingsRowMenu(label: String, items: List<MenuAction>) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton({ expanded = true }) { Icon(Icons.Outlined.MoreHoriz, label, tint = Golem.mobile.textSecondary) }
+        IconButton({ expanded = true }) { Icon(Pixel.More.vector, label, tint = Golem.mobile.textSecondary) }
         GolemMenu(expanded, { expanded = false }, items)
     }
 }
@@ -316,7 +311,7 @@ fun SettingsSelect(current: String, options: List<MenuAction>) {
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.xs),
         ) {
             SettingsValue(current)
-            Icon(Icons.Outlined.ExpandMore, null, Modifier.size(16.dp), tint = Golem.mobile.textTertiary)
+            Icon(Pixel.Chevron.vector, null, tint = Golem.mobile.textTertiary)
         }
         GolemMenu(expanded, { expanded = false }, options)
     }

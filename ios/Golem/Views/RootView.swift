@@ -52,7 +52,7 @@ private struct LoadingView: View {
     var body: some View {
         VStack(spacing: Tokens.Space.lg) {
             if let error = session.loadError {
-                EmptyState(title: error, systemImage: "wifi.exclamationmark")
+                EmptyState(title: error)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Retry") { Task { await session.load() } }.buttonStyle(.primary)
                 Button("Sign out") { Task { await session.signOut() } }.buttonStyle(.ghost)
@@ -194,7 +194,7 @@ private struct SplitView: View {
                 case .settings:
                     SettingsView(open: open)
                 case nil:
-                    EmptyState(title: "Choose a thread", systemImage: "bubble.left.and.bubble.right")
+                    EmptyState(title: "Choose a thread")
                 }
             }
         }
@@ -266,19 +266,19 @@ private struct Sidebar: View {
         ScrollView {
             VStack(spacing: 1) {
                 if let orchestrator = session.orchestrator {
-                    row("Golem", systemImage: "", destination: .thread(orchestrator.id),
+                    row("Golem", pixel: .golem, destination: .thread(orchestrator.id),
                         working: session.working.contains(orchestrator.id), golem: true)
                 }
-                row("Inbox", systemImage: "bell", destination: .inbox, count: session.inbox?.unread)
-                row("Search", systemImage: "magnifyingglass", destination: .search)
-                row("Upcoming", systemImage: "calendar", destination: .upcoming)
-                row("Following", systemImage: "eye", destination: .following)
+                row("Inbox", pixel: .bell, destination: .inbox, count: session.inbox?.unread)
+                row("Search", pixel: .search, destination: .search)
+                row("Upcoming", pixel: .agenda, destination: .upcoming)
+                row("Following", pixel: .eye, destination: .following)
                 SectionHeader(title: "Channels")
                 ForEach(session.channels.filter { $0.ownerId == nil }) { channelRow($0) }
                 Button {
                     newChannel = true
                 } label: {
-                    NavRow(title: "New channel", systemImage: "plus")
+                    NavRow(title: "New channel", pixel: .plus)
                 }
                 .buttonStyle(.plain)
                 let privateChannels = session.channels.filter { $0.ownerId != nil }
@@ -286,12 +286,12 @@ private struct Sidebar: View {
                     SectionHeader(title: "Private")
                     ForEach(privateChannels) { channelRow($0) }
                     if session.owner {
-                        row("Feedback", systemImage: "info.circle", destination: .feedback)
+                        row("Feedback", pixel: .info, destination: .feedback)
                     }
                 }
                 SectionHeader(title: "Golem")
-                row("Workspace settings", systemImage: "person.2", destination: .workspaceSettings)
-                row("Settings", systemImage: "gearshape", destination: .settings)
+                row("Workspace settings", pixel: .members, destination: .workspaceSettings)
+                row("Settings", pixel: .settings, destination: .settings)
             }
             .padding(.horizontal, Tokens.Space.lg)
         }
@@ -300,7 +300,7 @@ private struct Sidebar: View {
             if !settledThreads.isEmpty {
                 VStack(spacing: Tokens.Space.xs) {
                     Button { showSettled.toggle() } label: {
-                        NavRow(title: "Settled", systemImage: "tray", count: settledThreads.count)
+                        NavRow(title: "Settled", pixel: .inbox, count: settledThreads.count)
                     }
                     .buttonStyle(.plain)
                     if showSettled {
@@ -328,14 +328,14 @@ private struct Sidebar: View {
     }
 
     private func row(
-        _ title: String, systemImage: String, destination: Destination, working: Bool = false, count: Int? = nil,
+        _ title: String, pixel: Pixel, destination: Destination, working: Bool = false, count: Int? = nil,
         emoji: String? = nil, locked: Bool = false, golem: Bool = false
     ) -> some View {
         Button {
             open(destination)
         } label: {
             NavRow(
-                title: title, systemImage: systemImage, selected: selection == destination,
+                title: title, pixel: pixel, selected: selection == destination,
                 count: count == 0 ? nil : count, working: working, emoji: emoji, locked: locked, golem: golem
             )
         }
@@ -347,11 +347,11 @@ private struct Sidebar: View {
         let open = !folded.split(separator: ",").contains { $0 == channel.id }
         return VStack(spacing: 1) {
             HStack(spacing: Tokens.Space.xs) {
-                row(channel.name, systemImage: "number", destination: .channel(channel.id), emoji: channel.icon,
+                row(channel.name, pixel: .hash, destination: .channel(channel.id), emoji: channel.icon,
                     locked: channel.ownerId != nil)
                     .frame(maxWidth: .infinity)
                 if !threads.isEmpty {
-                    Button(open ? "Fold threads" : "Unfold threads", systemImage: "chevron.right") {
+                    Button(open ? "Fold threads" : "Unfold threads", pixel: .forward) {
                         withAnimation(.snappy) { toggleFolded(channel.id) }
                     }
                     .labelStyle(.iconOnly)
@@ -381,12 +381,12 @@ private struct Sidebar: View {
 
     private func threadRow(_ thread: ThreadSummary) -> some View {
         HStack(spacing: Tokens.Space.xs) {
-            row(thread.title, systemImage: "square.and.pencil", destination: .thread(thread.id),
+            row(thread.title, pixel: .compose, destination: .thread(thread.id),
                 working: session.working.contains(thread.id))
                 .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.book))
                 .frame(maxWidth: .infinity)
             Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
-                   systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
+                   pixel: thread.settledAt == nil ? .check : .inbox) {
                 Task {
                     await session.run {
                         try await session.setThreadSettled(threadID: thread.id, settled: thread.settledAt == nil)

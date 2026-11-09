@@ -148,6 +148,11 @@ struct MarkdownText: View {
         var piece = AttributedString(run)
         piece.presentationIntent = nil
         // Inter has no monospaced form, so Text does not show code as code by itself.
+        if piece.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+            // Times, counts, and values in bold.
+            piece.font = .mono(size * 0.94, Tokens.FontWeight.medium)
+            piece.foregroundColor = Tokens.Mobile.Colors.title
+        }
         if piece.inlinePresentationIntent?.contains(.code) == true {
             piece.font = .system(size: size * 0.9, design: .monospaced)
             piece.backgroundColor = Tokens.Colors.fillSubtle
@@ -281,7 +286,7 @@ extension View {
     /// taps on its links at other places than it draws them, so most taps miss.
     func copyable(_ text: String) -> some View {
         contextMenu {
-            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+            Button("Copy", pixel: .copy) { UIPasteboard.general.string = text }
         }
     }
 }

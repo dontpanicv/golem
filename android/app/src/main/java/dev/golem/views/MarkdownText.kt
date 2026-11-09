@@ -21,13 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -36,6 +35,9 @@ import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.markdownAnnotator
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Golem
 import dev.golem.design.GolemMenu
 import dev.golem.design.MenuAction
@@ -46,6 +48,8 @@ import dev.golem.design.golemText
 import dev.golem.design.raisedCard
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.MarkdownTokenTypes
 
 /**
  * Markdown that an agent wrote, as the web shows it: headings, lists, quotes, code blocks, tables, and rules, with the
@@ -64,7 +68,21 @@ fun MarkdownText(
     val mono = base.copy(fontFamily = FontFamily.Monospace, fontSize = Tokens.FontSize.md)
     val heading = base.copy(color = Golem.mobile.title, fontWeight = Tokens.FontWeight.semibold)
     val link = TextLinkStyles(SpanStyle(color = Golem.colors.accent))
+    // Times, counts, and values in bold. Bold around a link keeps the library's own bold.
+    val strong = SpanStyle(fontFamily = Golem.mono, fontWeight = Tokens.FontWeight.medium, fontSize = size * 0.94f, color = Golem.mobile.title)
+    val annotator = remember(strong) {
+        markdownAnnotator(annotate = { content, child ->
+            val inner = child.children.filter { it.type != MarkdownTokenTypes.EMPH }
+            if (child.type != MarkdownElementTypes.STRONG || inner.isEmpty() || inner.any { it.children.isNotEmpty() }) {
+                false
+            } else {
+                withStyle(strong) { append(content.substring(inner.first().startOffset, inner.last().endOffset)) }
+                true
+            }
+        })
+    }
     Markdown(
+        annotator = annotator,
         content = withWorkingNotes(text, working),
         colors = markdownColor(
             text = color, codeBackground = Golem.colors.fillSubtle, inlineCodeBackground = Golem.colors.fillSubtle,
@@ -109,7 +127,7 @@ fun Copyable(text: String, content: @Composable () -> Unit) {
     val clipboard = LocalClipboardManager.current
     Box(Modifier.pointerInput(text) { detectTapGestures(onLongPress = { menu = true }) }) {
         content()
-        GolemMenu(menu, { menu = false }, listOf(MenuAction("Copy", Icons.Outlined.ContentCopy) {
+        GolemMenu(menu, { menu = false }, listOf(MenuAction("Copy", Pixel.Copy.vector) {
             clipboard.setText(AnnotatedString(text))
         }))
     }

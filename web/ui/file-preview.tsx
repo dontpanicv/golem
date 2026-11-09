@@ -338,7 +338,7 @@ function Fetched({ file, kind }: { file: Named; kind: FileKind }) {
 function NoPreview({ file }: { file: Named }) {
   return (
     <div className="file-preview-none">
-      <Empty icon="file" title="No preview" />
+      <Empty title="No preview" />
       <Button
         icon="download"
         label="Download"

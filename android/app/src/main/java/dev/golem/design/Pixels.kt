@@ -7,13 +7,13 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,19 +21,25 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.golem.R
 import kotlinx.coroutines.delay
 
 /**
@@ -65,33 +71,48 @@ fun pixelPath(path: String, size: Float, cells: Float = 8f, inset: Float = 0f, e
     return result
 }
 
-/** The colors of the icon: its dark tile, clay face, dark-clay marks, and gold eyes. */
-object Clay {
-    val ink = Color(0xFF09090A)
-    val face = Color(0xFFB8703F)
-    val mark = Color(0xFF3A1D0C)
-    val eyes = Color(0xFFFFD27A)
+/** The colors of Golem's face: a white face and black marks. The eyes take the accent. */
+object Ember {
+    val ink = Color(0xFF000000)
+    val face = Color(0xFFFFFFFF)
+    val mark = Color(0xFF000000)
 }
 
+/** An icon of the 8 × 8 pixel set: 2 dp a pixel, for Material's `Icon`. */
+val Pixel.vector: ImageVector
+    get() = vectors.getOrPut(this) {
+        ImageVector.Builder(name, 16.dp, 16.dp, 8f, 8f)
+            .addPath(addPathNodes(path), fill = SolidColor(Color.Black))
+            .build()
+    }
+
+private val vectors = mutableMapOf<Pixel, ImageVector>()
+
 /** Golem's face with a mood: it works (its eyes blink), waits for a person, finished its work, or failed. */
-enum class Mood { Working, Waiting, Done, Failed }
+enum class Mood { Resting, Working, Waiting, Done, Failed }
 
 private const val FACE = "M0 0H8V7H7V8H1V7H0Z"
 private const val ALEPH = "M3 1H5V2H3Z"
 
-private fun DrawScope.face(eyes: String?, mouth: String) {
+private fun DrawScope.face(tile: Color, eyeColor: Color, eyes: String?, mouth: String) {
     val side = size.minDimension
-    drawRect(Clay.ink)
-    drawPath(pixelPath(FACE, side, 10f, 1f), Clay.face)
-    drawPath(pixelPath(ALEPH + mouth, side, 10f, 1f), Clay.mark)
-    eyes?.let { drawPath(pixelPath(it, side, 10f, 1f), Clay.eyes) }
+    drawRect(tile)
+    drawPath(pixelPath(FACE, side, 10f, 1f), Ember.face)
+    drawPath(pixelPath(ALEPH + mouth, side, 10f, 1f), Ember.mark)
+    eyes?.let { drawPath(pixelPath(it, side, 10f, 1f), eyeColor) }
 }
 
-/** Golem's own face, the app icon, where Golem speaks or greets. */
+/** In light, a black tile keeps the white face apart from the white surface. */
+@Composable
+private fun faceTile(): Color = if (Golem.colors === DarkColors) Color.Transparent else Ember.ink
+
+/** Golem's face: the 8 × 8 pixels at the small sizes; from 48 dp it is the dissolving logo. */
 @Composable
 fun GolemMark(size: Dp = Tokens.Size.avatar, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(size).clip(RoundedCornerShape(Tokens.Radius.sm))) {
-        face("M1 2H3V3H1ZM5 2H7V3H5Z", "M2 5H6V6H2Z")
+    if (size >= 48.dp) {
+        Image(ImageBitmap.imageResource(R.drawable.golem_logo), null, modifier.size(size), filterQuality = FilterQuality.None)
+    } else {
+        GolemFace(Mood.Resting, size, modifier)
     }
 }
 
@@ -99,6 +120,7 @@ fun GolemMark(size: Dp = Tokens.Size.avatar, modifier: Modifier = Modifier) {
 @Composable
 fun GolemFace(mood: Mood, size: Dp = Tokens.Size.avatar, modifier: Modifier = Modifier) {
     val (eyes, mouth) = when (mood) {
+        Mood.Resting -> "M1 2H3V3H1ZM5 2H7V3H5Z" to "M2 5H6V6H2Z"
         Mood.Working -> "M2 2H3V3H2ZM6 2H7V3H6Z" to "M2 5H6V6H2Z"
         Mood.Waiting -> "M1 2H3V3H1ZM5 2H7V3H5Z" to "M3 4H5V6H3Z"
         Mood.Done -> "M1 2H3V3H1ZM5 2H7V3H5Z" to "M1 4H2V5H1ZM6 4H7V5H6ZM2 5H6V6H2Z"
@@ -112,8 +134,10 @@ fun GolemFace(mood: Mood, size: Dp = Tokens.Size.avatar, modifier: Modifier = Mo
     } else {
         false
     }
-    Canvas(modifier.size(size).clip(RoundedCornerShape(Tokens.Radius.sm))) {
-        face(if (blinking) null else eyes, mouth)
+    val tile = faceTile()
+    val eyeColor = Golem.colors.accent
+    Canvas(modifier.size(size)) {
+        face(tile, eyeColor, if (blinking) null else eyes, mouth)
     }
 }
 
@@ -142,13 +166,13 @@ fun PixelSpinner(modifier: Modifier = Modifier) {
         }
     }
     Column(modifier.semantics { contentDescription = "Working" }, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) { Pixel(accent, lit == 0); Pixel(accent, lit == 1) }
-        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) { Pixel(accent, lit == 3); Pixel(accent, lit == 2) }
+        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) { SpinnerCell(accent, lit == 0); SpinnerCell(accent, lit == 1) }
+        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) { SpinnerCell(accent, lit == 3); SpinnerCell(accent, lit == 2) }
     }
 }
 
 @Composable
-private fun Pixel(color: Color, lit: Boolean) {
+private fun SpinnerCell(color: Color, lit: Boolean) {
     Box(Modifier.size(4.dp).graphicsLayer { alpha = if (lit) 1f else 0.25f }.background(color))
 }
 
@@ -193,7 +217,7 @@ fun animate(): Boolean {
     }
 }
 
-/** The pixel icons of an agent's cards, in the gold of the icon's eyes on its dark tile. */
+/** The pixel icons of an agent's cards, in the accent on a black tile. */
 object PixelIcons {
     val paths = mapOf(
         "temperature" to "M3 0H5V5H6V7H5V8H3V7H2V5H3Z",
@@ -210,7 +234,8 @@ object PixelIcons {
 
 @Composable
 fun PixelIcon(path: String, size: Dp = 32.dp) {
-    Canvas(Modifier.size(size).clip(RoundedCornerShape(Tokens.Radius.sm)).background(Clay.ink)) {
-        drawPath(pixelPath(path, this.size.minDimension, 12f, 2f, evenOdd = true), Clay.eyes)
+    val accent = Golem.colors.accent
+    Canvas(Modifier.size(size).background(Ember.ink)) {
+        drawPath(pixelPath(path, this.size.minDimension, 12f, 2f, evenOdd = true), accent)
     }
 }

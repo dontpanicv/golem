@@ -6,17 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -31,10 +20,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
 import dev.golem.api.Channel
 import dev.golem.api.Destination
 import dev.golem.api.ThreadSummary
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.FoldingSection
 import dev.golem.design.Golem
 import dev.golem.design.GolemMenu
@@ -89,7 +81,7 @@ fun HomeView() {
                             if (openThreads.size > 3) {
                                 ListRow(
                                     if (allThreads) "Show less" else "Show more",
-                                    icon = if (allThreads) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                    icon = if (allThreads) Pixel.ChevronUp.vector else Pixel.Chevron.vector,
                                     onClick = { allThreads = !allThreads },
                                 )
                             }
@@ -107,7 +99,7 @@ fun HomeView() {
                         ListSeparator()
                         FoldingSection("Private", privateFolded, { privateFolded = it }) {
                             privateChannels.forEach { ChannelRow(it) }
-                            if (session.owner) ListRow("Feedback", icon = Icons.Outlined.Info, onClick = { open(Destination.Feedback) })
+                            if (session.owner) ListRow("Feedback", icon = Pixel.Info.vector, onClick = { open(Destination.Feedback) })
                         }
                     }
                 }
@@ -129,15 +121,15 @@ private fun NewMenu(newChannel: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         FloatingActionButton(
-            { expanded = true }, shape = CircleShape, containerColor = Golem.colors.accent,
+            { expanded = true }, shape = RectangleShape, containerColor = Golem.colors.accent,
             contentColor = Golem.colors.onAccent, modifier = Modifier.size(Tokens.Mobile.Size.voice + 8.dp),
-        ) { Icon(Icons.Outlined.Add, "New") }
+        ) { Icon(Pixel.Plus.vector, "New") }
         GolemMenu(
             expanded, { expanded = false },
             buildList {
-                add(MenuAction("New channel", Icons.Outlined.Tag, action = newChannel))
+                add(MenuAction("New channel", Pixel.Hash.vector, action = newChannel))
                 if (session.channels.isNotEmpty()) {
-                    add(MenuAction("New thread", Icons.Outlined.EditNote, children = session.channels.map { channel ->
+                    add(MenuAction("New thread", Pixel.Compose.vector, children = session.channels.map { channel ->
                         MenuAction("# ${channel.name}") { open(Destination.NewThread(channel.id)) }
                     }))
                 }
@@ -153,14 +145,14 @@ private fun ThreadRow(thread: ThreadSummary) {
     var menu by remember { mutableStateOf(false) }
     Box {
         ListRow(
-            thread.title, icon = Icons.AutoMirrored.Outlined.Chat,
+            thread.title, icon = Pixel.Chat.vector,
             subtitle = session.channels.firstOrNull { it.id == thread.channelId }?.let { "# ${it.name}" },
             working = thread.id in session.working,
             onClick = { open(Destination.Thread(thread.id)) },
             onLongClick = { menu = true },
         )
         GolemMenu(menu, { menu = false }, listOf(
-            MenuAction("Settle thread", Icons.Outlined.Check) { session.launch { session.setThreadSettled(thread.id, true) } },
+            MenuAction("Settle thread", Pixel.Check.vector) { session.launch { session.setThreadSettled(thread.id, true) } },
         ))
     }
 }
@@ -171,11 +163,11 @@ private fun ChannelRow(channel: Channel) {
     val open = LocalOpen.current
     val openThreads = channel.threads.filter { it.settledAt == null }
     ListRow(
-        channel.name, icon = Icons.Outlined.Tag, emoji = channel.icon,
+        channel.name, icon = Pixel.Hash.vector, emoji = channel.icon,
         working = openThreads.any { it.id in session.working },
         onClick = { open(Destination.Channel(channel.id)) },
     ) {
-        if (channel.ownerId != null) Icon(Icons.Outlined.Lock, "Private", Modifier.size(14.dp), tint = Golem.mobile.textQuaternary)
+        if (channel.ownerId != null) Icon(Pixel.Lock.vector, "Private", tint = Golem.mobile.textQuaternary)
         if (openThreads.isNotEmpty()) {
             Text("${openThreads.size}", style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book),
                 color = Golem.mobile.textQuaternary)

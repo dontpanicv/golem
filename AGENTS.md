@@ -119,9 +119,10 @@ addresses, or code and data from employers or clients.
 
 ## Design System
 
-- Change colors, type, spacing, radii, sizes, and shadows only in `design/tokens.json`, then run `bun run tokens`.
-  Never edit `public/tokens.css`, `ios/Golem/Design/Tokens.swift`, or `android/app/src/main/java/dev/golem/design/Tokens.kt`
-  by hand.
+- Change colors, type, spacing, radii, sizes, shadows, and pixel icons only in `design/tokens.json`, then run
+  `bun run tokens`. Never edit `public/tokens.css`, `web/ui/pixels.ts`, `ios/Golem/Design/Tokens.swift`,
+  `ios/Golem/Design/PixelArt.swift`, or the `Tokens.kt` and `PixelArt.kt` of `android/app/src/main/java/dev/golem/design/`
+  by hand. `bun scripts/icon.ts` makes the logo at each size; it is never a scaled copy of another size.
 - A component change on one platform needs the same change in function on the others: `public/styles.css` and
   `web/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS, `android/app/src/main/java/dev/golem/design/`
   and `.../views/` for Android. Each platform keeps the look of Linear's app on it; Android uses Material 3's own

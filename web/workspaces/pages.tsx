@@ -28,7 +28,7 @@ export function Home() {
     <Shell workspaceId={undefined}>
       <section className="conversation">
         <FloatingSidebarButton />
-        <Empty icon="members" title="Ask a family member to add you" />
+        <Empty title="Ask a family member to add you" />
       </section>
     </Shell>
   );

@@ -19,8 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +45,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import dev.golem.GolemApp
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
 import dev.golem.design.Golem
@@ -166,7 +166,7 @@ private fun LoadingView() {
         Modifier.fillMaxSize().padding(Tokens.Space.xxl), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Tokens.Space.lg, Alignment.CenterVertically),
     ) {
-        Icon(Icons.Outlined.WifiOff, null, tint = Golem.colors.textQuaternary)
+        Icon(Pixel.Offline.vector, null, tint = Golem.colors.textQuaternary)
         Text(error, style = golemText(Tokens.FontSize.md, Tokens.FontWeight.medium), color = Golem.colors.textSecondary,
             textAlign = TextAlign.Center)
         GolemButton("Retry", { session.launch { session.load() } }, variant = ButtonVariant.Primary)

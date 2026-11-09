@@ -6,10 +6,10 @@ struct ArtifactsPanel: View {
     enum Tab: String, CaseIterable {
         case files = "Files", artifacts = "Artifacts"
 
-        var empty: (title: String, systemImage: String) {
+        var empty: String {
             switch self {
-            case .files: ("No files yet", "doc")
-            case .artifacts: ("No artifacts yet", "shippingbox")
+            case .files: "No files yet"
+            case .artifacts: "No artifacts yet"
             }
         }
     }
@@ -44,7 +44,7 @@ struct ArtifactsPanel: View {
         VStack(spacing: 0) {
             HStack(spacing: Tokens.Space.md) {
                 if openArtifact != nil {
-                    GlassCircleButton(label: "Back to artifacts", systemImage: "chevron.left") {
+                    GlassCircleButton(label: "Back to artifacts", pixel: .back) {
                         openArtifact = nil
                         tab = .artifacts
                     }
@@ -54,7 +54,7 @@ struct ArtifactsPanel: View {
                     PillBar(selection: $tab, options: Tab.allCases) { $0.rawValue }
                 }
                 if let close {
-                    GlassCircleButton(label: "Close", systemImage: "xmark", action: close)
+                    GlassCircleButton(label: "Close", pixel: .close, action: close)
                         .padding(.trailing, Tokens.Space.lg)
                 }
             }
@@ -93,7 +93,7 @@ struct ArtifactsPanel: View {
     @ViewBuilder
     private var artifactsTab: some View {
         if artifacts.isEmpty {
-            EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+            EmptyState(title: tab.empty)
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -101,7 +101,7 @@ struct ArtifactsPanel: View {
                         Button {
                             openArtifact = artifact.id
                         } label: {
-                            ListRow(title: artifact.title, systemImage: "shippingbox") {
+                            ListRow(title: artifact.title, pixel: .artifact) {
                                 Text("\(artifact.visitors)")
                                     .font(.golem(Tokens.Mobile.FontSize.small))
                                     .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
@@ -124,20 +124,20 @@ struct ArtifactsPanel: View {
                 Label {
                     Text("Upload files")
                 } icon: {
-                    if uploading { ProgressView().controlSize(.mini) } else { Image(systemName: "plus") }
+                    if uploading { ProgressView().controlSize(.mini) } else { Image(pixel: .plus) }
                 }
             }
                 .buttonStyle(.secondary)
             if files.isEmpty {
-                EmptyState(title: tab.empty.title, systemImage: tab.empty.systemImage)
+                EmptyState(title: tab.empty)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(files.reversed()) { file in
-                            Button { opening = file.ref } label: { ListRow(file.name, systemImage: "doc") }
+                            Button { opening = file.ref } label: { ListRow(file.name, pixel: .file) }
                                 .buttonStyle(.plain)
                                 .contextMenu {
-                                    Button("Delete file", systemImage: "trash", role: .destructive) { delete(file) }
+                                    Button("Delete file", pixel: .trash, role: .destructive) { delete(file) }
                                 }
                         }
                     }

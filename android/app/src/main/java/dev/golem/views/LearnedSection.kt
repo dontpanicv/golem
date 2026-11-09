@@ -6,10 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +21,8 @@ import dev.golem.api.Learned
 import dev.golem.api.deleteLearned
 import dev.golem.api.learned
 import dev.golem.api.setLearned
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Golem
 import dev.golem.design.GolemTextField
 import dev.golem.design.ListSubheading
@@ -82,11 +80,11 @@ fun LearnedSection(workspaceId: String) {
                     Text(entry.text, style = golemText(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book), color = Golem.mobile.text,
                         modifier = Modifier.weight(1f).padding(vertical = Tokens.Space.md))
                     if (entry.realm != null) {
-                        Icon(Icons.Outlined.Lock, "Only you see this", Modifier.size(14.dp), tint = Golem.mobile.textQuaternary)
+                        Icon(Pixel.Lock.vector, "Only you see this", tint = Golem.mobile.textQuaternary)
                     }
                     SettingsRowMenu("Entry actions", listOf(
-                        MenuAction("Edit", Icons.Outlined.Edit) { editing = entry },
-                        MenuAction("Delete", Icons.Outlined.Delete, danger = true) {
+                        MenuAction("Edit", Pixel.Edit.vector) { editing = entry },
+                        MenuAction("Delete", Pixel.Trash.vector, danger = true) {
                             optimistic(learned.filter { it.id != entry.id }) { session.api.deleteLearned(workspaceId, entry.id) }
                         },
                     ))

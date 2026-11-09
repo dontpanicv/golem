@@ -2,10 +2,6 @@ package dev.golem.views
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -31,6 +27,8 @@ import dev.golem.api.deleteRoutine
 import dev.golem.api.routines
 import dev.golem.api.runRoutine
 import dev.golem.api.setRoutine
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Badge
 import dev.golem.design.DetailTitle
 import dev.golem.design.Golem
@@ -148,16 +146,16 @@ fun ChannelDetailsView(id: String) {
                         GolemSwitch(routine.enabled, { setEnabled(routine, it) }, label = "Run ${routine.name}")
                         SettingsRowMenu("${routine.name} actions", buildList {
                             routine.threadId?.let { thread ->
-                                add(MenuAction("Open thread", Icons.Outlined.Edit) { open(Destination.Thread(thread)) })
+                                add(MenuAction("Open thread", Pixel.Edit.vector) { open(Destination.Thread(thread)) })
                             }
-                            add(MenuAction("Run now", Icons.Outlined.PlayArrow) {
+                            add(MenuAction("Run now", Pixel.Play.vector) {
                                 session.launch {
                                     session.api.runRoutine(routine.id)
                                     session.show("${routine.name} runs now", Toast.Tone.Success)
                                     load()
                                 }
                             })
-                            add(MenuAction("Delete", Icons.Outlined.Delete, danger = true) {
+                            add(MenuAction("Delete", Pixel.Trash.vector, danger = true) {
                                 session.launch {
                                     session.api.deleteRoutine(routine.id)
                                     routines = routines.filter { it.id != routine.id }

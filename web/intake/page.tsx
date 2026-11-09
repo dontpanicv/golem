@@ -99,7 +99,7 @@ export function FollowingPage() {
       <div className="page">
         <div className="page-content">
           {overview && overview.sources.length === 0 ? (
-            <Empty icon="inbox" title="Golem reads no account for you" />
+            <Empty title="Golem reads no account for you" />
           ) : null}
           {waiting.length > 0 ? (
             <PageSection title="Waiting">
@@ -266,7 +266,7 @@ function KeptSection({
           ))}
         </SettingsCard>
       ) : (
-        <Empty icon="search" title="Nothing found" />
+        <Empty title="Nothing found" />
       )}
       {!all && kept.length > KEPT_ROWS ? (
         <Button

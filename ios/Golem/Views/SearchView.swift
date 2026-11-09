@@ -16,7 +16,7 @@ struct SearchView: View {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
                     ForEach(recent) { search in
                         Button { query = search.query } label: {
-                            ListRow(title: search.query, systemImage: "clock") {
+                            ListRow(title: search.query, pixel: .clock) {
                                 Text(Date(milliseconds: search.searchedAt), format: .relative(presentation: .named))
                                     .font(.golem(Tokens.Mobile.FontSize.caption))
                                     .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
@@ -54,7 +54,7 @@ struct SearchView: View {
         .returnsToEnd()
         .overlay {
             if response?.results.isEmpty == true, !query.trimmingCharacters(in: .whitespaces).isEmpty {
-                EmptyState(title: "Nothing found", systemImage: "magnifyingglass")
+                EmptyState(title: "Nothing found")
             }
         }
         .animation(.snappy, value: response?.results.map(\.id))
@@ -134,7 +134,7 @@ private struct SearchRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Tokens.Space.md) {
-            Image(systemName: icon)
+            Image(pixel: icon)
                 .font(.system(size: 15))
                 .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                 .frame(width: 21)
@@ -164,14 +164,14 @@ private struct SearchRow: View {
         return channel.map { "#\($0) · \(date)" } ?? date
     }
 
-    private var icon: String {
+    private var icon: Pixel {
         switch (result.modality, result.kind) {
-        case ("image", _): "photo"
-        case ("audio", _): "waveform"
-        case (_, "thread"): "square.and.pencil"
-        case (_, "artifact"): "shippingbox"
-        case (_, "capture"): "tray"
-        default: "doc"
+        case ("image", _): .photo
+        case ("audio", _): .sound
+        case (_, "thread"): .compose
+        case (_, "artifact"): .artifact
+        case (_, "capture"): .inbox
+        default: .file
         }
     }
 }

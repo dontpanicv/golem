@@ -127,7 +127,7 @@ struct SettingsView: View {
             }
             Button { Task { await session.signOut() } } label: {
                 SettingsRow("Sign out", labelColor: Tokens.Mobile.Colors.danger) {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    Image(pixel: .logout)
                         .font(.system(size: 15))
                         .foregroundStyle(Tokens.Mobile.Colors.danger)
                 }
@@ -220,14 +220,14 @@ private struct PictureMenu: View {
 
     var body: some View {
         GolemMenu {
-            MenuItem("Upload picture", systemImage: "photo.on.rectangle") { picking = true }
+            MenuItem("Upload picture", pixel: .photo) { picking = true }
             if picture != nil {
-                MenuItem("Remove picture", systemImage: "trash", role: .destructive) {
+                MenuItem("Remove picture", pixel: .trash, role: .destructive) {
                     Task { await session.run { try await session.setPicture(nil) } }
                 }
             }
         } label: {
-            Label("Picture actions", systemImage: "ellipsis")
+            Label("Picture actions", pixel: .more)
         }
         .buttonStyle(.golem(.ghost, .icon))
         .photosPicker(isPresented: $picking, selection: $photo, matching: .images)

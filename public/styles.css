@@ -9,12 +9,24 @@
   /* The font is cached for good, so text never paints in a fallback font and then jumps. */
   font-display: block;
 }
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: block;
+}
+@font-face {
+  font-family: Silkscreen;
+  src: url("./fonts/Silkscreen-Regular.woff2") format("woff2");
+  font-display: block;
+}
 
 :root {
   --font-sans:
     "Inter Variable", "SF Pro Display", -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-pixel: Silkscreen, var(--font-mono);
   --ring: 0 0 0 0.5px var(--color-ring);
   --ring-control: 0 0 0 0.5px var(--color-ring-control);
   --ring-hover: 0 0 0 0.5px var(--color-ring-hover);
@@ -89,12 +101,7 @@ a {
   width: var(--size-icon);
   height: var(--size-icon);
 }
-/* Strokes stay 1.5 px at every icon size, as heavy as Linear's glyphs. */
-.icon * {
-  vector-effect: non-scaling-stroke;
-}
-
-/* Buttons: pills with a 14 px icon. Secondary carries a hairline ring and the low shadow. */
+/* Buttons: square with a 16 px pixel icon. Secondary carries a hairline ring and the low shadow. */
 
 .button {
   display: inline-flex;
@@ -105,7 +112,6 @@ a {
   height: var(--size-control);
   padding: 0 var(--space-lg);
   border: 0;
-  border-radius: var(--radius-full);
   background: var(--color-surface-raised);
   box-shadow: var(--ring-control), var(--shadow-low);
   font-size: var(--font-size-md);
@@ -135,8 +141,12 @@ a {
 }
 
 .button.primary {
-  background: var(--color-accent);
+  background: var(--color-text);
   box-shadow: var(--shadow-low);
+  color: var(--color-surface);
+}
+.composer .button.primary {
+  background: var(--color-accent);
   color: var(--color-on-accent);
 }
 .button.ghost,
@@ -183,8 +193,11 @@ a {
     transition-duration: 0s;
   }
   .button.primary:hover {
-    background: var(--color-accent-hover);
+    background: var(--color-text-secondary);
     box-shadow: var(--shadow-low);
+  }
+  .composer .button.primary:hover {
+    background: var(--color-accent-hover);
   }
   .button.ghost:hover {
     background: var(--color-ghost-hover);
@@ -222,7 +235,6 @@ a {
   height: var(--size-control-tiny);
   padding: 0 var(--space-md);
   border: 0.5px solid var(--color-border-strong);
-  border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-book);
   color: var(--color-text-tertiary);
@@ -231,7 +243,6 @@ a {
 .badge .dot {
   width: var(--size-dot);
   height: var(--size-dot);
-  border-radius: var(--radius-full);
   background: var(--color-text-quaternary);
 }
 .badge.success .dot {
@@ -248,32 +259,61 @@ a {
 }
 
 .avatar {
+  position: relative;
   display: inline-grid;
   flex: none;
   place-items: center;
   width: var(--size-avatar);
   height: var(--size-avatar);
-  border-radius: var(--radius-full);
-  background: var(--avatar, var(--color-fill-active));
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
   color: var(--color-on-accent);
   user-select: none;
+}
+span.avatar {
+  isolation: isolate;
+  background: var(--color-accent);
+}
+/* Under the letter, which keeps 2 px a pixel at every tile size. */
+span.avatar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--color-canvas);
+  mask: var(--dither-corner-24) center / 100% 100% no-repeat;
+  image-rendering: pixelated;
+}
+span.avatar svg {
+  width: 24px;
+  height: 24px;
+}
+span.avatar.large svg {
+  width: 48px;
+  height: 48px;
 }
 img.avatar {
   object-fit: cover;
 }
-.avatar.agent {
-  border-radius: var(--radius-sm);
-  background: var(--color-accent);
-}
 .avatar.small {
   width: 20px;
   height: 20px;
-  border-radius: var(--radius-sm);
-  font-size: 10px;
 }
-/* Golem's face with a mood (Mark): the pixels of the icon, whose eyes blink while it works. */
+span.avatar.small::after {
+  mask-image: var(--dither-corner-20);
+}
+/* Golem's face (Mark): the pixels of the icon, whose eyes blink while it works. In light, a black tile keeps the
+   white face apart from the white surface. */
+.face-tile {
+  fill: light-dark(#000000, transparent);
+}
+.face-skin {
+  fill: #ffffff;
+}
+.face-marks {
+  fill: #000000;
+}
+.face-eyes {
+  fill: var(--color-accent);
+}
 .face.working .face-eyes {
   animation: face-blink 3.2s steps(1) infinite;
 }
@@ -285,8 +325,10 @@ img.avatar {
 .avatar.large {
   width: 48px;
   height: 48px;
-  border-radius: var(--radius-lg);
-  font-size: var(--font-size-xl);
+  image-rendering: pixelated;
+}
+span.avatar.large::after {
+  mask-image: var(--dither-corner-48);
 }
 
 /* Text fields */
@@ -849,13 +891,30 @@ img.avatar {
 }
 
 .panel-header {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
   gap: var(--space-xs);
   height: var(--size-header);
   padding: 0 var(--space-md) 0 18px;
-  border-bottom: 0.5px solid var(--color-border);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--color-text) 0 2px,
+      transparent 2px 4px
+    )
+    bottom / 100% 2px no-repeat;
+}
+.panel-header::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 16px;
+  background: var(--color-text-quaternary);
+  mask: var(--dither-header) top left / 8px 16px repeat-x;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .panel-header .title {
@@ -917,9 +976,11 @@ img.avatar {
   align-items: center;
   height: var(--size-nav-row);
   padding: 0 var(--space-xxs) 0 9px;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-pixel);
+  letter-spacing: 0.01em;
   color: var(--color-text-tertiary);
+  text-transform: uppercase;
 }
 .nav-section .button {
   margin-left: auto;
@@ -930,6 +991,7 @@ img.avatar {
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -946,6 +1008,11 @@ img.avatar {
 .nav-item .icon {
   width: var(--size-icon-small);
   height: var(--size-icon-small);
+  margin: 0 -2px 0 -1px;
+  color: var(--color-text-quaternary);
+}
+.nav-item:where([aria-current="page"]) .icon {
+  color: inherit;
 }
 .nav-item .emoji {
   flex: none;
@@ -967,12 +1034,29 @@ img.avatar {
   color: var(--color-text-tertiary);
 }
 .nav-item .count {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-book);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--color-accent);
 }
+/* The row's content stops before the dither, which is never under text. */
 .nav-item[aria-current="page"] {
   background: var(--color-fill-active);
   color: var(--color-text);
+}
+.nav-item[aria-current="page"] > :last-child {
+  margin-right: 36px;
+}
+.nav-item[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 48px;
+  background: var(--color-accent);
+  mask: var(--dither-selected) right center / 48px 8px repeat-y;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 .nav-item:focus-visible {
   outline-offset: -1px;
@@ -1064,6 +1148,9 @@ img.avatar {
 }
 
 @media (any-hover: hover) and (any-pointer: fine) {
+  .nav-item:hover .icon {
+    color: inherit;
+  }
   .nav-item:hover {
     background: var(--color-fill-hover);
     color: var(--color-text);
@@ -1100,6 +1187,10 @@ img.avatar {
   gap: var(--space-xxl);
   padding: var(--space-xxl) var(--space-xxl) var(--space-xl);
   overflow-y: auto;
+  mask:
+    linear-gradient(#000, #000) center / 100% calc(100% - 84px) no-repeat,
+    var(--dither-fade-top) top / 8px 28px repeat-x,
+    var(--dither-fade-bottom) bottom / 8px 56px repeat-x;
 }
 
 /* A channel's threads take what they need, up to half; its details fill the rest. */
@@ -1155,7 +1246,9 @@ img.avatar {
   color: var(--color-text);
 }
 .message-time {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  letter-spacing: -0.01em;
   color: var(--color-text-quaternary);
 }
 .message-text {
@@ -1197,7 +1290,10 @@ img.avatar {
   font-size: var(--font-size-xl);
 }
 .prose :is(strong, b) {
-  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+  font-size: 0.94em;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: -0.02em;
   color: var(--color-text);
 }
 .prose :is(ul, ol) {
@@ -1294,8 +1390,8 @@ img.avatar {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  background: #09090a;
-  fill: #ffd27a;
+  background: #000000;
+  fill: var(--color-accent);
 }
 .card-text {
   display: flex;
@@ -1342,7 +1438,9 @@ img.avatar {
   list-style: none;
   user-select: none;
   cursor: pointer;
-  font-size: var(--font-size-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  letter-spacing: -0.01em;
   line-height: 24px;
   color: var(--color-text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -1552,11 +1650,10 @@ img.avatar {
   padding: var(--space-lg);
   border-radius: var(--radius-lg);
   background: var(--color-surface-composer);
-  box-shadow: var(--shadow-low);
+  box-shadow: 0 0 0 1px var(--color-text-tertiary);
 }
 
-/* An action that waits for the person, in the transcript under the answer that asks, in line with its text: the gold of
-   the icon's eyes at its side. */
+/* An action that waits for the person, in the transcript under the answer that asks, in line with its text: `gold` at its side. */
 .approval {
   display: flex;
   align-self: flex-start;
@@ -1730,7 +1827,6 @@ img.avatar {
   height: var(--size-control-small);
   padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-full);
   background: var(--color-surface-raised);
   box-shadow: var(--ring-control), var(--shadow-low);
   font-size: var(--font-size-sm);
@@ -1895,10 +1991,14 @@ img.avatar {
   text-align: center;
   color: var(--color-text-tertiary);
 }
-.empty .icon {
-  width: 24px;
-  height: 24px;
-  color: var(--color-text-quaternary);
+.empty::before {
+  content: "";
+  width: 96px;
+  height: 96px;
+  margin-bottom: var(--space-md);
+  background: var(--color-text-tertiary);
+  mask: var(--dither-empty) center / 96px 96px no-repeat;
+  image-rendering: pixelated;
 }
 .empty strong {
   font-weight: var(--font-weight-medium);
@@ -2094,10 +2194,13 @@ img.avatar {
 }
 .page-section > h2 {
   padding: 0 var(--space-xl);
-  font-size: var(--font-size-lg);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+  letter-spacing: 0.02em;
   line-height: 23px;
-  color: var(--color-text);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
 }
 .muted {
   color: var(--color-text-tertiary);
@@ -2189,8 +2292,28 @@ button.settings-row:focus-visible {
   color: var(--color-text);
 }
 .settings-text span {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  letter-spacing: -0.01em;
   color: var(--color-text-tertiary);
+}
+.day-strip {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(24, 2px);
+  gap: 1px;
+  height: 10px;
+  margin-right: var(--space-lg);
+}
+.day-strip i {
+  background: var(--color-border);
+}
+.day-strip i.past {
+  background: var(--color-text-quaternary);
+}
+.day-strip i.current {
+  margin: -2px 0;
+  background: var(--color-accent);
 }
 .settings-lead {
   display: grid;
@@ -2402,7 +2525,6 @@ button.settings-row:focus-visible {
   width: var(--size-dot);
   height: var(--size-dot);
   margin-top: 5px;
-  border-radius: var(--radius-full);
   background: var(--color-accent);
 }
 .inbox-row .unread.is-read {

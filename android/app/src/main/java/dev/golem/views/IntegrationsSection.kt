@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -37,6 +34,8 @@ import dev.golem.api.integrations
 import dev.golem.api.linkIntegration
 import dev.golem.api.setCredential
 import dev.golem.api.setIntegrationClient
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
 import dev.golem.design.Golem
@@ -100,7 +99,7 @@ fun IntegrationsSection(workspaceId: String) {
                 }
                 if (integration.guide.isNotEmpty()) {
                     IconButton({ dialog = IntegrationDialog.Guide(integration) }) {
-                        Icon(Icons.Outlined.Info, "Set up ${integration.name}", tint = Golem.mobile.textSecondary)
+                        Icon(Pixel.Info.vector, "Set up ${integration.name}", tint = Golem.mobile.textSecondary)
                     }
                 }
             }
@@ -111,7 +110,7 @@ fun IntegrationsSection(workspaceId: String) {
                             session.launch { replace(session.api.setCredential(workspaceId, credential.id, "shared" to !private)) }
                         }, label = "Private")
                         SettingsRowMenu("Credential actions", listOf(
-                            MenuAction("Delete credential", Icons.Outlined.Delete, danger = true) {
+                            MenuAction("Delete credential", Pixel.Trash.vector, danger = true) {
                                 session.launch {
                                     session.api.deleteCredential(workspaceId, credential.id)
                                     integrations = integrations.map { it.copy(credentials = it.credentials.filter { c -> c.id != credential.id }) }

@@ -25,7 +25,7 @@ struct HomeView: View {
                         if openThreads.count > 3 {
                             Button { withAnimation(.snappy) { allThreads.toggle() } } label: {
                                 ListRow(allThreads ? "Show less" : "Show more",
-                                        systemImage: allThreads ? "chevron.up" : "chevron.down")
+                                        pixel: allThreads ? .chevronUp : .chevron)
                             }
                             .buttonStyle(.row)
                         }
@@ -41,7 +41,7 @@ struct HomeView: View {
                     FoldingSection(title: "Private", folded: $privateFolded) {
                         ForEach(privateChannels) { channelRow($0) }
                         if session.owner {
-                            Button { open(.feedback) } label: { ListRow("Feedback", systemImage: "info.circle") }
+                            Button { open(.feedback) } label: { ListRow("Feedback", pixel: .info) }
                                 .buttonStyle(.row)
                         }
                     }
@@ -67,23 +67,22 @@ struct HomeView: View {
         }
     }
 
-    /// The round button over the bar, as Slack's: a new thread in a channel, or a new channel.
+    /// The square button over the bar, as Slack's: a new thread in a channel, or a new channel.
     private var newMenu: some View {
         Menu {
-            Button("New channel", systemImage: "number") { newChannel = true }
+            Button("New channel", pixel: .hash) { newChannel = true }
             if !session.channels.isEmpty {
-                Menu("New thread", systemImage: "square.and.pencil") {
+                Menu("New thread", pixel: .compose) {
                     ForEach(session.channels) { channel in
                         Button("# \(channel.name)") { open(.newThread(channel.id)) }
                     }
                 }
             }
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .semibold))
+            Image(pixel: .plus)
                 .foregroundStyle(Tokens.Colors.onAccent)
                 .frame(width: Tokens.Mobile.Size.voice, height: Tokens.Mobile.Size.voice)
-                .glassEffect(.regular.tint(Tokens.Colors.accent).interactive(), in: .circle)
+                .glassEffect(.regular.tint(Tokens.Colors.accent).interactive(), in: .rect)
         }
         .accessibilityLabel("New")
         .padding(.trailing, Tokens.Mobile.Size.margin)
@@ -94,13 +93,13 @@ struct HomeView: View {
         Button { open(.thread(thread.id)) } label: {
             let channel = session.channels.first { $0.id == thread.channelId }?.name
             ListRow(
-                thread.title, systemImage: "bubble.left", subtitle: channel.map { "# \($0)" },
+                thread.title, pixel: .chat, subtitle: channel.map { "# \($0)" },
                 working: session.working.contains(thread.id)
             )
         }
         .buttonStyle(.row)
         .contextMenu {
-            Button("Settle thread", systemImage: "checkmark") {
+            Button("Settle thread", pixel: .check) {
                 Task { await session.run { try await session.setThreadSettled(threadID: thread.id, settled: true) } }
             }
         }
@@ -110,10 +109,10 @@ struct HomeView: View {
     private func channelRow(_ channel: Channel) -> some View {
         let open = channel.threads.filter { $0.settledAt == nil }
         return Button { self.open(.channel(channel.id)) } label: {
-            ListRow(title: channel.name, systemImage: "number",
+            ListRow(title: channel.name, pixel: .hash,
                     working: open.contains { session.working.contains($0.id) }, emoji: channel.icon) {
                 if channel.ownerId != nil {
-                    Image(systemName: "lock")
+                    Image(pixel: .lock)
                         .font(.system(size: 12))
                         .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                         .accessibilityLabel("Private")

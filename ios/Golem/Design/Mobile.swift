@@ -73,7 +73,7 @@ private struct ScreenTitle: ViewModifier {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Close", systemImage: "xmark", action: closeSheet)
+                        Button("Close", pixel: .close, action: closeSheet)
                     }
                     ToolbarItem(placement: .principal) {
                         Text(title)
@@ -157,10 +157,10 @@ struct PillBar<Value: Hashable>: View {
                         .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
                         .padding(.horizontal, Tokens.Space.lg)
                         .frame(height: Tokens.Mobile.Size.pill)
-                        .contentShape(.capsule)
+                        .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(selected ? .regular.interactive() : .identity, in: .capsule)
+                    .glassEffect(selected ? .regular.interactive() : .identity, in: .rect)
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
@@ -171,24 +171,23 @@ struct PillBar<Value: Hashable>: View {
     }
 }
 
-/// A round glass button with a symbol: the close buttons of sheets and the buttons of the artifacts panel.
+/// A square glass button with a pixel icon: the close buttons of sheets and the buttons of the artifacts panel.
 struct GlassCircleButton: View {
     let label: String
-    let systemImage: String
+    let pixel: Pixel
     var size: CGFloat = Tokens.Mobile.Size.header
     var tint: Color?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: size * 0.4, weight: .semibold))
+            Image(pixel: pixel)
                 .foregroundStyle(tint == nil ? Tokens.Mobile.Colors.title : Tokens.Colors.onAccent)
                 .frame(width: size, height: size)
-                .contentShape(.circle)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .glassEffect(tint.map { .regular.tint($0).interactive() } ?? .regular.interactive(), in: .circle)
+        .glassEffect(tint.map { .regular.tint($0).interactive() } ?? .regular.interactive(), in: .rect)
         .accessibilityLabel(label)
     }
 }
@@ -225,11 +224,11 @@ struct FoldingSection<Content: View>: View {
             } label: {
                 HStack {
                     Text(title)
-                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium))
+                        .font(.pixel)
+                        .textCase(.uppercase)
                         .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                     Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                    Image(pixel: .chevron, size: 8)
                         .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                         .rotationEffect(.degrees(folded ? -90 : 0))
                 }

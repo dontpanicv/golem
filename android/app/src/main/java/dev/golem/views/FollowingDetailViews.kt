@@ -14,18 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.automirrored.outlined.Undo
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -53,6 +41,8 @@ import dev.golem.api.changeUpdate
 import dev.golem.api.deleteUpdate
 import dev.golem.api.followingDetail
 import dev.golem.api.sendFeedback
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.GolemButton
 import dev.golem.design.Golem
 import dev.golem.design.GolemTextField
@@ -92,11 +82,11 @@ fun UpdateDetailView(update: IntakeUpdate, earlier: List<IntakeFeedback>, open: 
         SettingsRow(updateState(current), description = current.notice?.let { "Golem will also notify you: $it" })
         DetailText(current.message)
         if (current.waits) {
-            if (current.attention == "brief") ActionRow("Send now", Icons.AutoMirrored.Outlined.Send, busy) { change("now") }
-            ActionRow("Don't send", Icons.Outlined.Close, busy) { change("cancel") }
-            ActionRow("Delete and block", Icons.Outlined.Delete, busy) { confirmDelete = true }
+            if (current.attention == "brief") ActionRow("Send now", Pixel.Send.vector, busy) { change("now") }
+            ActionRow("Don't send", Pixel.Close.vector, busy) { change("cancel") }
+            ActionRow("Delete and block", Pixel.Trash.vector, busy) { confirmDelete = true }
         }
-        current.threadId?.let { ActionRow("Open thread", Icons.AutoMirrored.Outlined.Chat) { open(Destination.Thread(it)) } }
+        current.threadId?.let { ActionRow("Open thread", Pixel.Chat.vector) { open(Destination.Thread(it)) } }
         SourcesSection(current.evidence)
     }
     if (confirmDelete) {
@@ -118,7 +108,7 @@ fun KeptDetailView(item: IntakeKept, earlier: List<IntakeFeedback>, open: (Desti
     IntakeDetail(item.name, "item:${item.id}", earlier, close) {
         SettingsRow(dateAndTime(item.at), description = item.location)
         DetailText(item.text)
-        item.threadId?.let { ActionRow("Open thread", Icons.AutoMirrored.Outlined.Chat) { open(Destination.Thread(it)) } }
+        item.threadId?.let { ActionRow("Open thread", Pixel.Chat.vector) { open(Destination.Thread(it)) } }
         SourceLink(item.url)
     }
 }
@@ -181,15 +171,15 @@ fun FollowingDetailView(checkId: String, open: (Destination) -> Unit) {
         }
         // An action's quote is its own title, as the person's words for the change.
         if (check.state == "open") {
-            ActionRow("Handled", Icons.Outlined.Check, busy) { change("handled", "Handled") }
-            ActionRow("Stop following", Icons.Outlined.StopCircle, busy) { change("stop", "Stop following") }
+            ActionRow("Handled", Pixel.Check.vector, busy) { change("handled", "Handled") }
+            ActionRow("Stop following", Pixel.Stop.vector, busy) { change("stop", "Stop following") }
         } else {
-            ActionRow("Follow again", Icons.Outlined.Refresh, busy) { change("reopen", "Follow again") }
+            ActionRow("Follow again", Pixel.Refresh.vector, busy) { change("reopen", "Follow again") }
         }
         if (loaded.history.firstOrNull()?.previous != null) {
-            ActionRow("Undo last change", Icons.AutoMirrored.Outlined.Undo, busy) { change("undo", "Undo last change") }
+            ActionRow("Undo last change", Pixel.Undo.vector, busy) { change("undo", "Undo last change") }
         }
-        check.threadId?.let { ActionRow("Open thread", Icons.AutoMirrored.Outlined.Chat) { open(Destination.Thread(it)) } }
+        check.threadId?.let { ActionRow("Open thread", Pixel.Chat.vector) { open(Destination.Thread(it)) } }
         SourcesSection(loaded.evidence)
         if (loaded.history.isNotEmpty()) {
             ListSeparator()
@@ -282,7 +272,7 @@ private fun SourcesSection(evidence: List<FollowingEvidence>) {
         ) {
             Text("${each.name} · ${dateAndTime(each.at)}", style = golemText(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book),
                 color = Golem.mobile.text, modifier = Modifier.weight(1f))
-            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Fold" else "Open",
+            Icon(if (expanded) Pixel.ChevronUp.vector else Pixel.Chevron.vector, if (expanded) "Fold" else "Open",
                 Modifier.size(18.dp), tint = Golem.mobile.textQuaternary)
         }
         if (expanded) {
@@ -309,5 +299,5 @@ private fun DetailText(text: String) {
 private fun SourceLink(url: String?) {
     val uri = LocalUriHandler.current
     if (url == null || !url.startsWith("https://")) return
-    ActionRow("Open source", Icons.AutoMirrored.Outlined.OpenInNew) { runCatching { uri.openUri(url) } }
+    ActionRow("Open source", Pixel.Open.vector) { runCatching { uri.openUri(url) } }
 }

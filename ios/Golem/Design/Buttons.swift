@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Buttons per design/components.md: four variants in five sizes, all pills; secondary buttons are glass, as Linear's
-/// iOS pills are. The visual height follows the spec; the touch target always reaches 44 pt. A press shows at once and
-/// fades out in 150 ms, as a hover does on the web.
+/// Buttons per design/components.md: four variants in five sizes, all square; secondary buttons are glass. The visual
+/// height follows the spec; the touch target always reaches 44 pt. A press shows at once and fades out in 150 ms, as a
+/// hover does on the web.
 struct GolemButtonStyle: ButtonStyle {
     enum Variant { case primary, secondary, ghost, danger }
     enum Size { case regular, small, icon, tiny, large }
@@ -21,13 +21,13 @@ struct GolemButtonStyle: ButtonStyle {
             .foregroundStyle(foreground(pressed: pressed))
             .padding(.horizontal, iconOnly ? 0 : size == .small ? 10 : Tokens.Space.lg)
             .frame(minWidth: height, maxWidth: size == .large ? .infinity : nil, minHeight: height, maxHeight: height)
-            .background(background(pressed: pressed), in: .capsule)
-            .glassEffect(variant == .secondary ? .regular.interactive() : .identity, in: .capsule)
+            .background(background(pressed: pressed), in: .rect)
+            .glassEffect(variant == .secondary ? .regular.interactive() : .identity, in: .rect)
             .shadow(variant == .primary ? Tokens.Shadows.low : [])
             .opacity(isEnabled ? 1 : 0.6)
             // The visual size stays; the hit area grows to 44 pt.
             .contentShape(.interaction, Rectangle().inset(by: -max(0, (Tokens.Size.listRow - height) / 2)))
-            .contentShape(.hoverEffect, .capsule)
+            .contentShape(.hoverEffect, .rect)
             .animation(pressed ? nil : Tokens.Easing.ease(Tokens.Duration.fast), value: pressed)
     }
 
@@ -42,7 +42,7 @@ struct GolemButtonStyle: ButtonStyle {
 
     private func foreground(pressed: Bool) -> Color {
         switch variant {
-        case .primary: Tokens.Colors.onAccent
+        case .primary: Tokens.Colors.surface
         case .secondary: Tokens.Mobile.Colors.text
         case .ghost: pressed ? Tokens.Colors.text : Tokens.Colors.textTertiary
         case .danger: Tokens.Colors.danger
@@ -51,7 +51,7 @@ struct GolemButtonStyle: ButtonStyle {
 
     private func background(pressed: Bool) -> Color {
         switch variant {
-        case .primary: pressed ? Tokens.Colors.accentHover : Tokens.Colors.accent
+        case .primary: pressed ? Tokens.Colors.textSecondary : Tokens.Colors.text
         case .secondary: .clear
         // Translucent, so it fits every surface.
         case .ghost: pressed ? Tokens.Colors.ghostHover : .clear
@@ -88,7 +88,7 @@ extension ButtonStyle where Self == GolemButtonStyle {
     }
 }
 
-/// The composer's send button, as T3's: a 30 pt circle of `tint` in a 44 pt touch target, gray while disabled.
+/// The composer's send button: a 30 pt square of `tint` in a 44 pt touch target, gray while disabled.
 struct SendButtonStyle: ButtonStyle {
     var tint = Tokens.Colors.accent
     @Environment(\.isEnabled) private var isEnabled
@@ -96,10 +96,9 @@ struct SendButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .labelStyle(.iconOnly)
-            .font(.system(size: Tokens.Size.icon, weight: .semibold))
             .foregroundStyle(isEnabled ? Tokens.Colors.onAccent : Tokens.Mobile.Colors.textQuaternary)
             .frame(width: Tokens.Mobile.Size.send, height: Tokens.Mobile.Size.send)
-            .background(isEnabled ? tint : Tokens.Mobile.Colors.fill, in: .circle)
+            .background(isEnabled ? tint : Tokens.Mobile.Colors.fill, in: .rect)
             .frame(minWidth: Tokens.Size.listRow, minHeight: Tokens.Size.listRow)
             .contentShape(.rect)
             .opacity(configuration.isPressed ? 0.7 : 1)

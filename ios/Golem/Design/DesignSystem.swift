@@ -34,6 +34,15 @@ extension Font {
     static func golem(_ size: CGFloat, _ weight: Font.Weight = Tokens.FontWeight.regular) -> Font {
         .custom("Inter Variable", size: size, relativeTo: .body).weight(weight)
     }
+
+    /// Geist Mono at a token size, for times, counts, and values: regular, or medium and heavier as medium.
+    static func mono(_ size: CGFloat, _ weight: Font.Weight = Tokens.FontWeight.regular) -> Font {
+        .custom(weight == Tokens.FontWeight.regular ? "GeistMono-Regular" : "GeistMono-Medium", size: size,
+                relativeTo: .caption)
+    }
+
+    /// Silkscreen at its one size, for section labels. Pixel type does not scale with Dynamic Type.
+    static var pixel: Font { .custom("Silkscreen-Regular", fixedSize: Tokens.FontSize.pixel) }
 }
 
 struct Shadow {
@@ -69,8 +78,7 @@ extension View {
 
 // MARK: - Small components
 
-/// A person's picture, or their initial on a color picked by the sum of their name's code points, as the web picks
-/// it, or an agent's on the accent.
+/// A person's picture, or their initial on an accent tile whose corner dissolves.
 struct Avatar: View {
     let name: String
     var image: UIImage?
@@ -83,7 +91,7 @@ struct Avatar: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
-                .clipShape(.circle)
+                .clipped()
                 .accessibilityHidden(true)
         } else {
             initial
@@ -91,33 +99,35 @@ struct Avatar: View {
     }
 
     private var initial: some View {
-        Text(name.prefix(1).uppercased())
-            .font(.golem(size * 0.45, Tokens.FontWeight.medium))
-            .foregroundStyle(Tokens.Colors.onAccent)
-            .frame(width: size, height: size)
-            .background(
-                agent ? Tokens.Colors.accent : color,
-                in: .rect(cornerRadius: agent ? Tokens.Radius.sm : Tokens.Radius.full)
-            )
-            .accessibilityHidden(true)
-    }
-
-    private var color: Color {
-        let sum = name.unicodeScalars.reduce(0) { $0 + Int($1.value) }
-        return Tokens.avatarColors[sum % Tokens.avatarColors.count]
+        let cell = max(1, (size / 12).rounded(.down))
+        let cells = size / cell
+        // The first letter without its accent, 2 pt or 3 pt a pixel; an initial outside the set shows as `?`.
+        let letter = String(name.prefix(1)).decomposedStringWithCanonicalMapping.uppercased().first ?? "?"
+        return ZStack {
+            Tokens.Colors.accent
+            DitherView(pattern: .corner(Int(size))).foregroundStyle(Tokens.Colors.canvas)
+            PixelShape(path: pixelLetters[letter] ?? pixelLetters["?"]!, cells: cells, inset: (cells - 12) / 2)
+                .fill(Tokens.Colors.onAccent)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 
-/// Golem's own face, the app icon, where Golem speaks or greets.
+/// Golem's face, the 8 × 8 pixels at the small sizes; from 48 pt it is the dissolving logo.
 struct GolemMark: View {
     var size = Tokens.Size.avatar
 
     var body: some View {
-        Image("Mark")
-            .resizable()
-            .frame(width: size, height: size)
-            .clipShape(.rect(cornerRadius: Tokens.Radius.sm))
-            .accessibilityHidden(true)
+        if size >= 48 {
+            Image("Mark")
+                .resizable()
+                .interpolation(.none)
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        } else {
+            GolemFace(mood: .resting, size: size)
+        }
     }
 }
 
@@ -129,7 +139,7 @@ struct Badge: View {
 
     var body: some View {
         HStack(spacing: Tokens.Space.sm) {
-            Circle().fill(color).frame(width: Tokens.Size.dot, height: Tokens.Size.dot)
+            Rectangle().fill(color).frame(width: Tokens.Size.dot, height: Tokens.Size.dot)
             Text(label)
         }
         .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
@@ -155,10 +165,10 @@ struct FileChip: View {
 
     var body: some View {
         HStack(spacing: Tokens.Space.xs) {
-            Image(systemName: "paperclip").foregroundStyle(Tokens.Colors.textTertiary)
+            Image(pixel: .attach).foregroundStyle(Tokens.Colors.textTertiary)
             Text(name).lineLimit(1).truncationMode(.middle)
             if let remove {
-                Button("Remove \(name)", systemImage: "xmark", action: remove)
+                Button("Remove \(name)", pixel: .close, action: remove)
                     .labelStyle(.iconOnly)
                     .foregroundStyle(Tokens.Colors.textTertiary)
                     .frame(minWidth: Tokens.Size.listRow, minHeight: Tokens.Size.listRow)
@@ -201,7 +211,7 @@ struct Keycap: View {
 /// A sidebar or list row: icon, label, optional count. Selected rows use the active fill.
 struct NavRow: View {
     let title: String
-    let systemImage: String
+    let pixel: Pixel
     var selected = false
     var count: Int?
     /// A thread whose agent works shows a spinner.
@@ -221,21 +231,20 @@ struct NavRow: View {
                 } else if let emoji {
                     Text(emoji).font(.system(size: Tokens.Size.icon * 0.8))
                 } else {
-                    Image(systemName: systemImage)
-                        .font(.system(size: Tokens.Size.icon * 0.8, weight: .medium))
+                    Image(pixel: pixel)
                 }
             }
             .frame(width: Tokens.Size.icon)
             Text(title).lineLimit(1)
             if locked {
-                Image(systemName: "lock")
-                    .font(.system(size: Tokens.Size.icon * 0.6, weight: .medium))
+                Image(pixel: .lock, size: 8)
                     .accessibilityLabel("Private")
             }
             if working { PixelSpinner() }
             Spacer(minLength: 0)
             if let count {
-                Text("\(count)").font(.golem(Tokens.FontSize.xs, Tokens.FontWeight.book))
+                Text("\(count)").font(.mono(Tokens.FontSize.mono, Tokens.FontWeight.semibold))
+                    .foregroundStyle(Tokens.Colors.accent)
             }
         }
         .font(.golem(Tokens.FontSize.lg, Tokens.FontWeight.medium))
@@ -243,7 +252,14 @@ struct NavRow: View {
         .padding(.horizontal, Tokens.Space.sm)
         // Touch target: 44 pt on iOS where the web row is 28 px.
         .frame(minHeight: Tokens.Size.listRow)
-        .background(selected ? Tokens.Colors.fillActive : .clear, in: .rect(cornerRadius: Tokens.Radius.md))
+        // The content stops before the dither, which is never under text.
+        .padding(.trailing, selected ? 36 : 0)
+        .background(alignment: .trailing) {
+            if selected {
+                DitherView(pattern: .selected).foregroundStyle(Tokens.Colors.accent).frame(width: 48)
+            }
+        }
+        .background(selected ? Tokens.Colors.fillActive : .clear)
         .contentShape(.rect)
     }
 }
@@ -253,7 +269,8 @@ struct SectionHeader: View {
 
     var body: some View {
         Text(title)
-            .font(.golem(Tokens.FontSize.sm, Tokens.FontWeight.medium))
+            .font(.pixel)
+            .textCase(.uppercase)
             .foregroundStyle(Tokens.Colors.textTertiary)
             .padding(.horizontal, Tokens.Space.sm)
             .padding(.top, Tokens.Space.lg)
@@ -261,26 +278,20 @@ struct SectionHeader: View {
     }
 }
 
-struct EmptyState<Icon: View>: View {
+/// A dithered Golem face over the title.
+struct EmptyState: View {
     let title: String
-    @ViewBuilder let icon: Icon
 
     var body: some View {
-        VStack(spacing: Tokens.Space.sm) {
-            icon
-                .font(.system(size: 22, weight: .light))
-                .foregroundStyle(Tokens.Colors.textQuaternary)
+        VStack(spacing: Tokens.Space.md) {
+            DitherView(pattern: .emptyFace)
+                .foregroundStyle(Tokens.Colors.textTertiary)
+                .frame(width: 96, height: 96)
             Text(title)
                 .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
                 .foregroundStyle(Tokens.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Tokens.Space.xxxl)
-    }
-}
-
-extension EmptyState where Icon == Image {
-    init(title: String, systemImage: String) {
-        self.init(title: title) { Image(systemName: systemImage) }
     }
 }

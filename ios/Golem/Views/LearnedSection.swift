@@ -59,14 +59,14 @@ struct LearnedSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, Tokens.Space.md)
             if entry.realm != nil {
-                Image(systemName: "lock")
+                Image(pixel: .lock)
                     .font(.system(size: 12))
                     .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                     .frame(minHeight: Tokens.Size.listRow)
                     .accessibilityLabel("Only you see this")
             }
             GolemMenu { actions(entry) } label: {
-                Label("Entry actions", systemImage: "ellipsis")
+                Label("Entry actions", pixel: .more)
             }
             .buttonStyle(.golem(.ghost, .icon))
         }
@@ -77,8 +77,8 @@ struct LearnedSection: View {
 
     @ViewBuilder
     private func actions(_ entry: Learned) -> some View {
-        MenuItem("Edit", systemImage: "pencil") { editing = entry }
-        MenuItem("Delete", systemImage: "trash", role: .destructive) { delete(entry) }
+        MenuItem("Edit", pixel: .edit) { editing = entry }
+        MenuItem("Delete", pixel: .trash, role: .destructive) { delete(entry) }
     }
 
     private func load() async throws {

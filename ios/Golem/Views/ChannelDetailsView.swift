@@ -118,12 +118,12 @@ struct ChannelDetailsView: View {
                     .accessibilityLabel("Run \(value.name)")
                 GolemMenu {
                     if let threadID = value.threadId {
-                        MenuItem("Open thread", systemImage: "square.and.pencil") { open(.thread(threadID)) }
+                        MenuItem("Open thread", pixel: .compose) { open(.thread(threadID)) }
                     }
-                    MenuItem("Run now", systemImage: "play") { run(value) }
-                    MenuItem("Delete", systemImage: "trash", role: .destructive) { delete(value) }
+                    MenuItem("Run now", pixel: .play) { run(value) }
+                    MenuItem("Delete", pixel: .trash, role: .destructive) { delete(value) }
                 } label: {
-                    Label("\(value.name) actions", systemImage: "ellipsis")
+                    Label("\(value.name) actions", pixel: .more)
                 }
                 .buttonStyle(.golem(.ghost, .icon))
             }

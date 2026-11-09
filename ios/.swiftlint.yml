@@ -3,5 +3,6 @@ included:
 excluded:
   # Generated from design/tokens.json by `bun run tokens`; its names follow the token names
   - Golem/Design/Tokens.swift
+  - Golem/Design/PixelArt.swift
 identifier_name:
   excluded: [id, on, x, y]

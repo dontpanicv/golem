@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -30,12 +31,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -62,6 +59,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import java.text.Normalizer
 import dev.golem.api.Session
 
 /** The session of the app, which every screen reads the server through. */
@@ -93,12 +91,12 @@ fun Modifier.raisedCard(radius: Dp = Tokens.Radius.lg, fill: Color? = null, ring
 
 // People
 
-/** A person's picture, or their initial on a color picked by the sum of their name's code points, as the web does. */
+/** A person's picture, or their initial on an accent tile whose corner dissolves. */
 @Composable
 fun PersonAvatar(name: String, picture: String?, size: Dp = Tokens.Size.avatar, modifier: Modifier = Modifier) {
     val session = LocalSession.current
     val url = picture?.let { session.api.profilePictureUrl(it) }
-    Box(modifier.size(size).clip(CircleShape), contentAlignment = Alignment.Center) {
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
         Initial(name, size)
         if (url != null) {
             AsyncImage(url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -108,15 +106,19 @@ fun PersonAvatar(name: String, picture: String?, size: Dp = Tokens.Size.avatar, 
 
 @Composable
 private fun Initial(name: String, size: Dp) {
-    val sum = name.codePoints().toArray().sum()
-    val color = Tokens.avatarColors[sum % Tokens.avatarColors.size]
-    Box(Modifier.fillMaxSize().background(color), contentAlignment = Alignment.Center) {
-        Text(
-            name.take(1).uppercase(),
-            style = golemText(with(androidx.compose.ui.platform.LocalDensity.current) { (size * 0.45f).toSp() },
-                Tokens.FontWeight.medium),
-            color = Golem.colors.onAccent,
-        )
+    val colors = Golem.colors
+    // The first letter without its accent, a whole number of dp a pixel.
+    val letter = Normalizer.normalize(name.take(1), Normalizer.Form.NFD).uppercase().firstOrNull() ?: '?'
+    val cell = (size.value / 12).toInt().coerceAtLeast(1).toFloat()
+    val cells = size.value / cell
+    Box(Modifier.fillMaxSize().background(colors.accent)) {
+        DitherView(Dither.corner(size.value.toInt()), colors.canvas, Modifier.fillMaxSize())
+        Canvas(Modifier.fillMaxSize()) {
+            drawPath(
+                pixelPath(pixelLetters[letter] ?: pixelLetters.getValue('?'), this.size.minDimension, cells, (cells - 12) / 2),
+                colors.onAccent,
+            )
+        }
     }
 }
 
@@ -154,21 +156,21 @@ fun ListRow(
             when {
                 golem -> GolemGlyph(16.dp, Golem.mobile.textSecondary)
                 emoji != null -> Text(emoji, style = golemText(Tokens.FontSize.lg))
-                icon != null -> Icon(icon, null, Modifier.size(18.dp), tint = Golem.mobile.textSecondary)
+                icon != null -> Icon(icon, null, tint = Golem.mobile.textSecondary)
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.md)) {
                 Text(
                     title, style = golemText(Tokens.Mobile.FontSize.row, Tokens.FontWeight.book),
-                    color = Golem.mobile.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = Golem.mobile.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 if (working) PixelSpinner()
             }
             if (subtitle != null) {
                 Text(
-                    subtitle, style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book),
+                    subtitle, style = golemMono(Tokens.Mobile.FontSize.mono),
                     color = Golem.mobile.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -182,10 +184,10 @@ fun Modifier.pressable(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): 
     if (onLongClick == null) clickable(role = Role.Button, onClick = onClick)
     else combinedClickable(onClick = onClick, onLongClick = onLongClick, role = Role.Button)
 
-/** The full-width hairline between groups of rows. */
+/** The dotted line between groups of rows. */
 @Composable
 fun ListSeparator() {
-    Box(Modifier.padding(vertical = Tokens.Space.sm).fillMaxWidth().height(1.dp).background(Golem.mobile.separator))
+    DottedLine(modifier = Modifier.padding(horizontal = Tokens.Mobile.Size.margin, vertical = Tokens.Space.sm))
 }
 
 /** The heading of a list section, as Linear's "In Progress": small and dim, with an optional action at the end. */
@@ -196,8 +198,8 @@ fun ListSectionHeader(title: String, action: (@Composable () -> Unit)? = null) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            title, style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book),
-            color = Golem.mobile.textQuaternary, modifier = Modifier.weight(1f).semantics { heading() },
+            title.uppercase(), style = golemPixel(),
+            color = Golem.mobile.textTertiary, modifier = Modifier.weight(1f).semantics { heading() },
         )
         action?.invoke()
     }
@@ -225,10 +227,10 @@ fun FoldingSection(title: String, folded: Boolean, onFold: (Boolean) -> Unit, co
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                title, style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.medium),
+                title.uppercase(), style = golemPixel(),
                 color = Golem.mobile.textSecondary, modifier = Modifier.weight(1f),
             )
-            Icon(Icons.Outlined.ExpandMore, if (folded) "Folded" else "Open", Modifier.size(18.dp).rotate(turn),
+            Icon(Pixel.Chevron.vector, if (folded) "Folded" else "Open", Modifier.rotate(turn),
                 tint = Golem.mobile.textQuaternary)
         }
         AnimatedVisibility(!folded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
@@ -261,13 +263,13 @@ fun WorkingLabel(text: String = "Golem is working") {
 }
 
 @Composable
-fun EmptyState(title: String, icon: @Composable () -> Unit = {}, modifier: Modifier = Modifier) {
+fun EmptyState(title: String, modifier: Modifier = Modifier) {
     Column(
         modifier.fillMaxSize().padding(Tokens.Space.xxxl),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Tokens.Space.sm, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(Tokens.Space.md, Alignment.CenterVertically),
     ) {
-        icon()
+        DitherView(Dither.EmptyFace, Golem.colors.textTertiary, Modifier.size(96.dp))
         Text(title, style = golemText(Tokens.FontSize.md, Tokens.FontWeight.medium), color = Golem.colors.textSecondary)
     }
 }
@@ -288,7 +290,7 @@ fun Badge(label: String, tone: Tone = Tone.Neutral) {
         Modifier.heightIn(min = Tokens.Size.controlTiny), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.sm),
     ) {
-        Box(Modifier.size(Tokens.Size.dot).background(color, CircleShape))
+        Box(Modifier.size(Tokens.Size.dot).background(color, RectangleShape))
         Text(label, style = golemText(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book), color = Golem.mobile.textSecondary)
     }
 }
@@ -308,14 +310,14 @@ fun FileChip(name: String, onClick: (() -> Unit)? = null, remove: (() -> Unit)? 
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.xs),
         ) {
-            Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(14.dp), tint = Golem.colors.textTertiary)
+            Icon(Pixel.File.vector, null, tint = Golem.colors.textTertiary)
             Text(
                 name, style = golemText(Tokens.FontSize.sm), color = Golem.colors.textSecondary, maxLines = 1,
                 overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.weight(1f, fill = false),
             )
             if (remove != null) {
                 Box(Modifier.size(Tokens.Size.controlSmall).clickable(onClick = remove), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.Close, "Remove $name", Modifier.size(14.dp), tint = Golem.colors.textTertiary)
+                    Icon(Pixel.Close.vector, "Remove $name", tint = Golem.colors.textTertiary)
                 }
             }
         }
@@ -357,10 +359,10 @@ fun GolemButton(
         ButtonSize.Small -> Tokens.Size.controlSmall
         ButtonSize.Large -> Tokens.Size.controlLarge
     }
-    val shape = RoundedCornerShape(50)
+    val shape = RectangleShape
     val colors = Golem.colors
     val (fill, text) = when (variant) {
-        ButtonVariant.Primary -> colors.accent to colors.onAccent
+        ButtonVariant.Primary -> colors.text to colors.surface
         ButtonVariant.Secondary -> Golem.mobile.fill to Golem.mobile.text
         ButtonVariant.Ghost -> Color.Transparent to colors.textTertiary
         ButtonVariant.Danger -> Color.Transparent to colors.danger
@@ -385,7 +387,7 @@ fun GolemButton(
             if (busy) {
                 CircularProgressIndicator(Modifier.size(14.dp), color = text, strokeWidth = 1.5.dp)
             } else if (icon != null) {
-                Icon(icon, null, Modifier.size(14.dp), tint = text)
+                Icon(icon, null, tint = text)
             }
             Text(
                 label, maxLines = 1, color = text,
@@ -409,12 +411,12 @@ fun CircleButton(
 ) {
     Box(
         modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            .clip(CircleShape)
+            .clip(RectangleShape)
             .clickable(enabled = enabled && !busy, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier.size(size).background(if (enabled) tint else Golem.mobile.fill, CircleShape),
+            Modifier.size(size).background(if (enabled) tint else Golem.mobile.fill, RectangleShape),
             contentAlignment = Alignment.Center,
         ) {
             if (busy) {
@@ -440,7 +442,7 @@ fun <T> PillBar(selection: T, options: List<T>, title: (T) -> String, onSelect: 
         options.forEach { option ->
             val selected = option == selection
             Row(
-                Modifier.height(Tokens.Mobile.Size.pill).clip(RoundedCornerShape(50))
+                Modifier.height(Tokens.Mobile.Size.pill).clip(RectangleShape)
                     .background(if (selected) Golem.mobile.fill else Color.Transparent)
                     .clickable(role = Role.Tab) { onSelect(option) }
                     .padding(horizontal = Tokens.Space.lg),

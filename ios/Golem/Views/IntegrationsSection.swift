@@ -47,7 +47,7 @@ struct IntegrationsSection: View {
                             .fixedSize()
                     }
                     if !integration.guide.isEmpty {
-                        Button("Set up \(integration.name)", systemImage: "info.circle") { guiding = integration }
+                        Button("Set up \(integration.name)", pixel: .info) { guiding = integration }
                             .labelStyle(.iconOnly)
                             .buttonStyle(.golem(.ghost, .icon))
                     }
@@ -62,11 +62,11 @@ struct IntegrationsSection: View {
                             .toggleStyle(.golemSwitch)
                             .labelsHidden()
                             GolemMenu {
-                                MenuItem("Delete credential", systemImage: "trash", role: .destructive) {
+                                MenuItem("Delete credential", pixel: .trash, role: .destructive) {
                                     delete(credential, from: $integration)
                                 }
                             } label: {
-                                Label("Credential actions", systemImage: "ellipsis")
+                                Label("Credential actions", pixel: .more)
                             }
                             .buttonStyle(.golem(.ghost, .icon))
                         }

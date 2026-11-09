@@ -50,7 +50,7 @@ struct ChannelView: View {
         .defaultScrollAnchor(.bottom)
         .scrollDismissesKeyboard(.interactively)
         .overlay {
-            if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything") { GolemGlyph(size: 24) } }
+            if channel?.threads.isEmpty ?? true { EmptyState(title: "Ask Golem anything") }
         }
         .dismissesKeyboardOnTap()
         .safeAreaBar(edge: .bottom) {
@@ -74,11 +74,11 @@ struct ChannelView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
-                    Button("Files and artifacts", systemImage: "sidebar.right") { showArtifacts = true }
-                    Button("Channel details", systemImage: "info.circle") { open(.channelDetails(channelID)) }
+                    Button("Files and artifacts", pixel: .panel) { showArtifacts = true }
+                    Button("Channel details", pixel: .info) { open(.channelDetails(channelID)) }
                     if !mergeTargets.isEmpty {
                         Divider()
-                        Menu("Merge into", systemImage: "arrow.triangle.merge") {
+                        Menu("Merge into", pixel: .merge) {
                             ForEach(mergeTargets) { target in
                                 Button("# \(target.name)") { mergeInto = target }
                             }
@@ -113,7 +113,7 @@ struct ChannelView: View {
     private func threadRow(_ thread: ThreadSummary) -> some View {
         Button { open(.thread(thread.id)) } label: {
             HStack(alignment: .top, spacing: Tokens.Space.lg) {
-                Image(systemName: thread.settledAt == nil ? "bubble.left" : "checkmark")
+                Image(pixel: thread.settledAt == nil ? .chat : .check)
                     .font(.system(size: 15))
                     .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                     .frame(width: Tokens.Mobile.Size.avatar, height: Tokens.Mobile.Size.avatar)
@@ -146,7 +146,7 @@ struct ChannelView: View {
         .buttonStyle(.row)
         .contextMenu {
             Button(thread.settledAt == nil ? "Settle thread" : "Un-settle thread",
-                   systemImage: thread.settledAt == nil ? "checkmark" : "tray") {
+                   pixel: thread.settledAt == nil ? .check : .inbox) {
                 Task {
                     await session.run {
                         try await session.setThreadSettled(threadID: thread.id, settled: thread.settledAt == nil)

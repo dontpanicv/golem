@@ -38,7 +38,7 @@ export function LearnedSection({ workspaceId }: { workspaceId: string }) {
     return <SettingsCard>{null}</SettingsCard>;
   }
   if (entries.length === 0) {
-    return <Empty icon="info" title="Nothing learned yet" />;
+    return <Empty title="Nothing learned yet" />;
   }
   const groups = [
     ...members.map((member) => ({

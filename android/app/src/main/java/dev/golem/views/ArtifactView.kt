@@ -15,14 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -46,6 +38,8 @@ import androidx.webkit.WebViewFeature
 import dev.golem.api.Api
 import dev.golem.api.Artifact
 import dev.golem.api.ArtifactDetail
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.Badge
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
@@ -101,14 +95,14 @@ fun ArtifactView(artifactId: String, changes: Int, changed: () -> Unit) {
         )
         if (showData) {
             if (current.records.isEmpty()) {
-                EmptyState("No data yet", { Icon(Icons.Outlined.Inbox, null, tint = Golem.colors.textQuaternary) })
+                EmptyState("No data yet")
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(current.records, key = { it.id }) { record ->
                         val who = if (record.visitor == null) "Shared" else record.name ?: "Visitor"
                         SettingsRow(record.key, description = "$who · ${record.value.toString().take(200)}") {
                             IconButton({ act { session.api.deleteArtifactRecord(artifactId, record.id) } }) {
-                                Icon(Icons.Outlined.DeleteOutline, "Delete ${record.key}", tint = Golem.colors.textTertiary)
+                                Icon(Pixel.Trash.vector, "Delete ${record.key}", tint = Golem.colors.textTertiary)
                             }
                         }
                     }
@@ -141,21 +135,21 @@ private fun ArtifactBar(
         IconButton({
             context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
                 .putExtra(Intent.EXTRA_TEXT, artifact.url), null))
-        }) { Icon(Icons.Outlined.Share, "Share", tint = Golem.colors.textTertiary) }
+        }) { Icon(Pixel.Share.vector, "Share", tint = Golem.colors.textTertiary) }
         Box {
-            IconButton({ menu = true }) { Icon(Icons.Outlined.MoreVert, "${artifact.title} actions", tint = Golem.colors.textTertiary) }
+            IconButton({ menu = true }) { Icon(Pixel.More.vector, "${artifact.title} actions", tint = Golem.colors.textTertiary) }
             GolemMenu(menu, { menu = false }, listOf(
-                MenuAction("Open", Icons.Outlined.Language) {
+                MenuAction("Open", Pixel.Preview.vector) {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(artifact.url))) }
                 },
-                MenuAction("Copy link", Icons.Outlined.Link) {
+                MenuAction("Copy link", Pixel.Link.vector) {
                     clipboard.setText(AnnotatedString(artifact.url))
                     session.show("Copied", dev.golem.api.Toast.Tone.Success)
                 },
-                if (public) MenuAction("Make members only", Icons.Outlined.Lock) { setVisibility("members") }
-                else MenuAction("Make public", Icons.Outlined.Language) { setVisibility("public") },
-                MenuAction("Clear data", Icons.Outlined.Inbox, action = clearData),
-                MenuAction("Delete", Icons.Outlined.DeleteOutline, danger = true, action = delete),
+                if (public) MenuAction("Make members only", Pixel.Lock.vector) { setVisibility("members") }
+                else MenuAction("Make public", Pixel.Preview.vector) { setVisibility("public") },
+                MenuAction("Clear data", Pixel.Inbox.vector, action = clearData),
+                MenuAction("Delete", Pixel.Trash.vector, danger = true, action = delete),
             ))
         }
     }

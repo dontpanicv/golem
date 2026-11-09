@@ -11,10 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.DoneAll
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
@@ -30,12 +26,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import dev.golem.api.Destination
 import dev.golem.api.InboxNotification
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.EmptyState
 import dev.golem.design.Golem
 import dev.golem.design.GolemMark
@@ -69,7 +68,7 @@ fun InboxView() {
         topBar = {
             ScreenBar(
                 "Activity",
-                menu = if (unread > 0) listOf(MenuAction("Mark all read", Icons.Outlined.DoneAll) {
+                menu = if (unread > 0) listOf(MenuAction("Mark all read", Pixel.Check.vector) {
                     session.launch { session.readNotifications(null) }
                 }) else emptyList(),
             )
@@ -93,8 +92,7 @@ fun InboxView() {
                 items(notifications, key = { it.id }) { NotificationRow(it, Modifier.animateItem()) }
             }
             if (notifications.isEmpty() && session.inbox != null) {
-                EmptyState(if (unreadOnly) "All read" else "No notifications",
-                    { Icon(Icons.Outlined.Notifications, null, tint = Golem.colors.textQuaternary) })
+                EmptyState(if (unreadOnly) "All read" else "No notifications")
             }
         }
     }
@@ -135,7 +133,7 @@ private fun NotificationRow(notification: InboxNotification, modifier: Modifier 
         }
         Box(
             Modifier.padding(top = Tokens.Space.sm).size(Tokens.Size.dot * 1.5f)
-                .background(if (unread) Golem.colors.accent else Color.Transparent, CircleShape)
+                .background(if (unread) Golem.colors.accent else Color.Transparent, RectangleShape)
                 .then(if (unread) Modifier.semantics { contentDescription = "Unread" } else Modifier),
         )
     }

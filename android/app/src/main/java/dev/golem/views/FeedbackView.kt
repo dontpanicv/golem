@@ -11,11 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +32,8 @@ import dev.golem.api.Destination
 import dev.golem.api.Feedback
 import dev.golem.api.dismissFeedback
 import dev.golem.api.feedback
+import dev.golem.design.Pixel
+import dev.golem.design.vector
 import dev.golem.design.EmptyState
 import dev.golem.design.Golem
 import dev.golem.design.ListPadding
@@ -88,7 +85,7 @@ fun FeedbackView() {
                 }
             }
             if (reports?.isEmpty() == true) {
-                EmptyState("No feedback", { Icon(Icons.Outlined.Info, null, tint = Golem.colors.textQuaternary) })
+                EmptyState("No feedback")
             }
         }
     }
@@ -98,9 +95,9 @@ fun FeedbackView() {
 private fun FeedbackRow(feedback: Feedback, modifier: Modifier = Modifier, dismiss: () -> Unit) {
     val open = LocalOpen.current
     val (label, icon) = when (feedback.kind) {
-        "error" -> "Error" to Icons.Outlined.Info
-        "missing" -> "Missing" to Icons.Outlined.Add
-        else -> "Better way" to Icons.AutoMirrored.Outlined.KeyboardArrowRight
+        "error" -> "Error" to Pixel.Info.vector
+        "missing" -> "Missing" to Pixel.Plus.vector
+        else -> "Better way" to Pixel.Forward.vector
     }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Row(
@@ -110,7 +107,7 @@ private fun FeedbackRow(feedback: Feedback, modifier: Modifier = Modifier, dismi
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.md),
         ) {
             Box(Modifier.width(21.dp), contentAlignment = Alignment.Center) {
-                Icon(icon, null, Modifier.size(18.dp), tint = Golem.mobile.textSecondary)
+                Icon(icon, null, tint = Golem.mobile.textSecondary)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Tokens.Space.xxs)) {
                 Text(feedback.summary, style = golemText(Tokens.Mobile.FontSize.row, Tokens.FontWeight.medium), color = Golem.mobile.title)
@@ -122,7 +119,7 @@ private fun FeedbackRow(feedback: Feedback, modifier: Modifier = Modifier, dismi
             Text(shortDay(feedback.createdAt), style = golemText(Tokens.Mobile.FontSize.caption), color = Golem.mobile.textQuaternary)
         }
         IconButton(dismiss, Modifier.padding(horizontal = Tokens.Space.sm, vertical = Tokens.Space.xs)) {
-            Icon(Icons.Outlined.Check, "Dismiss", Modifier.size(18.dp), tint = Golem.mobile.textTertiary)
+            Icon(Pixel.Check.vector, "Dismiss", tint = Golem.mobile.textTertiary)
         }
     }
 }
