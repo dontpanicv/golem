@@ -44,7 +44,7 @@ struct ArtifactsPanel: View {
         VStack(spacing: 0) {
             HStack(spacing: Tokens.Space.md) {
                 if openArtifact != nil {
-                    GlassCircleButton(label: "Back to artifacts", pixel: .back) {
+                    SquareIconButton(label: "Back to artifacts", pixel: .back) {
                         openArtifact = nil
                         tab = .artifacts
                     }
@@ -54,7 +54,7 @@ struct ArtifactsPanel: View {
                     PillBar(selection: $tab, options: Tab.allCases) { $0.rawValue }
                 }
                 if let close {
-                    GlassCircleButton(label: "Close", pixel: .close, action: close)
+                    SquareIconButton(label: "Close", pixel: .close, action: close)
                         .padding(.trailing, Tokens.Space.lg)
                 }
             }

@@ -150,7 +150,7 @@ struct MarkdownText: View {
         // Inter has no monospaced form, so Text does not show code as code by itself.
         if piece.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
             // Times, counts, and values in bold.
-            piece.font = .mono(size * 0.94, Tokens.FontWeight.medium)
+            piece.font = .golem(size, Tokens.FontWeight.semibold)
             piece.foregroundColor = Tokens.Mobile.Colors.title
         }
         if piece.inlinePresentationIntent?.contains(.code) == true {

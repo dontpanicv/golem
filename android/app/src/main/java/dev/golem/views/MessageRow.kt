@@ -48,10 +48,8 @@ import dev.golem.design.vector
 import dev.golem.design.FileChip
 import dev.golem.design.FileChips
 import dev.golem.design.Golem
-import dev.golem.design.GolemFace
 import dev.golem.design.GolemMark
 import dev.golem.design.LocalSession
-import dev.golem.design.Mood
 import dev.golem.design.PersonAvatar
 import dev.golem.design.PixelSpinner
 import dev.golem.design.Tokens
@@ -65,17 +63,16 @@ import java.util.Date
 
 /**
  * One message, as Slack shows it: the author's avatar at the side, their name and the time over the text. A message
- * that follows one of the same author within five minutes shows only its text. Golem's face shows the mood of its
- * answer; `waiting` says that it waits for a person to allow an action of this answer's work.
+ * that follows one of the same author within five minutes shows only its text.
  */
 @Composable
-fun MessageRow(message: Message, continued: Boolean, waiting: Boolean, openFile: (FileRef) -> Unit) {
+fun MessageRow(message: Message, continued: Boolean, openFile: (FileRef) -> Unit) {
     val session = LocalSession.current
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Tokens.Space.lg)) {
         val avatar = Tokens.Mobile.Size.avatar
         when {
             continued -> Spacer(Modifier.width(avatar))
-            message.agent -> mood(message, waiting)?.let { GolemFace(it, avatar) } ?: GolemMark(avatar)
+            message.agent -> GolemMark(avatar)
             else -> PersonAvatar(message.author, message.authorId?.let { session.pictures[it] }, avatar)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Tokens.Space.xs)) {
@@ -101,14 +98,6 @@ fun MessageRow(message: Message, continued: Boolean, waiting: Boolean, openFile:
             if (others.isNotEmpty()) FileChips(others.map { it.name }, open = { openFile(others[it]) })
         }
     }
-}
-
-/** The face of an agent's message: it failed, it works or waits for a person, or it finished its work. */
-fun mood(message: Message, waiting: Boolean): Mood? = when {
-    message.failed -> Mood.Failed
-    message.streaming || (message.work != null && message.work.endedAt == null) -> if (waiting) Mood.Waiting else Mood.Working
-    message.work != null -> if (message.work.stopped) null else Mood.Done
-    else -> null
 }
 
 /** The step of a turn that another chat's message started. */

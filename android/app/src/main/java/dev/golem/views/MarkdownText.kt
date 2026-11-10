@@ -69,7 +69,7 @@ fun MarkdownText(
     val heading = base.copy(color = Golem.mobile.title, fontWeight = Tokens.FontWeight.semibold)
     val link = TextLinkStyles(SpanStyle(color = Golem.colors.accent))
     // Times, counts, and values in bold. Bold around a link keeps the library's own bold.
-    val strong = SpanStyle(fontFamily = Golem.mono, fontWeight = Tokens.FontWeight.medium, fontSize = size * 0.94f, color = Golem.mobile.title)
+    val strong = SpanStyle(fontWeight = Tokens.FontWeight.semibold, color = Golem.mobile.title)
     val annotator = remember(strong) {
         markdownAnnotator(annotate = { content, child ->
             val inner = child.children.filter { it.type != MarkdownTokenTypes.EMPH }

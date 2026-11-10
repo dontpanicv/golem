@@ -63,7 +63,6 @@ import dev.golem.api.Destination
 import dev.golem.design.Pixel
 import dev.golem.design.vector
 import dev.golem.design.Golem
-import dev.golem.design.GolemGlyph
 import dev.golem.design.GolemMenu
 import dev.golem.design.LocalSession
 import dev.golem.design.MenuAction
@@ -247,7 +246,7 @@ private fun TabBar(tab: Tab, unread: Int, select: (Tab) -> Unit) {
                     }) {
                         when (item) {
                             Tab.Golem -> Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
-                                GolemGlyph(16.dp, if (selected) Golem.colors.accent else Golem.mobile.textSecondary)
+                                Icon(Pixel.Golem.vector, null, tint = if (selected) Golem.colors.accent else Golem.mobile.textSecondary)
                             }
                             else -> Icon(item.icon(), null)
                         }

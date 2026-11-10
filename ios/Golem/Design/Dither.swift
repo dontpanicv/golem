@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The 1 pt, 8 × 8 Bayer dither, on or off. The images are made at the screen's scale, so a cell is exactly 1 pt, and
+/// The fine 8 × 8 Bayer dither, on or off: a cell is 1 device pixel at 2x and 2 at 3x, about 0.5 pt. The images
 /// are templates that take the foreground style. The web's `dither.ts` has the same patterns.
 nonisolated enum Dither: Hashable, Sendable {
-    case selected, fadeTop, fadeBottom, emptyFace
+    case selected
     case corner(Int)
 
     private static let ranks = [
@@ -17,16 +17,9 @@ nonisolated enum Dither: Hashable, Sendable {
         [63, 31, 55, 23, 61, 29, 53, 21]
     ]
 
-    private static let face = [
-        "########", "###..###", "#..##..#", "########", "########", "##....##", "########", ".######."
-    ].map { Array($0) }
-
     var size: CGSize {
         switch self {
-        case .selected: CGSize(width: 48, height: 8)
-        case .fadeTop: CGSize(width: 8, height: 28)
-        case .fadeBottom: CGSize(width: 8, height: 56)
-        case .emptyFace: CGSize(width: 96, height: 96)
+        case .selected: CGSize(width: 48, height: 16)
         case let .corner(side): CGSize(width: side, height: side)
         }
     }
@@ -34,9 +27,6 @@ nonisolated enum Dither: Hashable, Sendable {
     private func value(_ across: Double, _ down: Double) -> Double {
         switch self {
         case .selected: pow(across, 1.25)
-        case .fadeTop: 1 - down
-        case .fadeBottom: down
-        case .emptyFace: Self.face[Int(down * 8)][Int(across * 8)] == "#" ? 0.1 + 0.75 * (1 - down) : 0
         case .corner: ((across + down) / 2 - 0.48) * 2
         }
     }
@@ -44,15 +34,16 @@ nonisolated enum Dither: Hashable, Sendable {
     func image(scale: CGFloat) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
-        let width = Int(size.width)
-        let height = Int(size.height)
+        let cell = max(1, (scale / 2).rounded()) / scale
+        let columns = Int(size.width / cell)
+        let rows = Int(size.height / cell)
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
             context.cgContext.setShouldAntialias(false)
-            for y in 0 ..< height {
-                for x in 0 ..< width {
-                    let lit = value((Double(x) + 0.5) / Double(width), (Double(y) + 0.5) / Double(height))
+            for y in 0 ..< rows {
+                for x in 0 ..< columns {
+                    let lit = value((Double(x) + 0.5) / Double(columns), (Double(y) + 0.5) / Double(rows))
                     if lit > (Double(Self.ranks[y % 8][x % 8]) + 0.5) / 64 {
-                        context.cgContext.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                        context.cgContext.fill(CGRect(x: CGFloat(x) * cell, y: CGFloat(y) * cell, width: cell, height: cell))
                     }
                 }
             }

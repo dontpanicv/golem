@@ -70,7 +70,6 @@ struct TopicView: View {
                 .inspectorColumnWidth(Tokens.Size.artifacts)
         }
         // After the inspector: in a navigation stack, a title and toolbar set before it do not show.
-        .pushedScreen(topic.map { "#\($0.name)" } ?? "")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
@@ -85,11 +84,14 @@ struct TopicView: View {
                         }
                     }
                 } label: {
-                    HeaderTitle(title: "# \(topic?.name ?? "")", caption: chatCount)
+                    HeaderTitle(title: "# \(topic?.name ?? "")", caption: chatCount).barSurface()
                 }
                 .accessibilityHint("Shows the topic's menu")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
+        // After the toolbar, so that its back button comes first.
+        .pushedScreen(topic.map { "#\($0.name)" } ?? "")
         .onAppear { if artifactID != nil { showArtifacts = true } }
         .sheet(item: $mergeInto) { target in
             MergeDialog(

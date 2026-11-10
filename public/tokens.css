@@ -52,7 +52,7 @@
 	--font-size-xl: 20px;
 	--font-size-xxl: 24px;
 	--font-size-mono: 11.5px;
-	--font-size-pixel: 8px;
+	--font-size-label: 10.5px;
 	--font-weight-regular: 400;
 	--font-weight-book: 450;
 	--font-weight-medium: 500;
@@ -74,7 +74,7 @@
 	--radius-md: 0px;
 	--radius-lg: 0px;
 	--radius-xl: 0px;
-	--radius-full: 9999px;
+	--radius-full: 0px;
 	--size-sidebar: 244px;
 	--size-settled-shelf: 240px;
 	--size-work-log: 288px;

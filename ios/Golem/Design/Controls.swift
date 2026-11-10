@@ -108,7 +108,7 @@ private struct SwitchTrack: View {
 
     var body: some View {
         let widen = pressed && !reduceMotion ? Self.pressWidening : 0
-        Capsule()
+        Rectangle()
             .fill(isOn ? (pressed ? Tokens.Colors.accentHover : Tokens.Colors.accent)
                 : (pressed ? Tokens.Colors.switchTrackHover : Tokens.Colors.switchTrack))
             .animation(.easeOut(duration: Tokens.Duration.fast), value: isOn)
@@ -161,7 +161,7 @@ private nonisolated struct KnobShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         let frame = CGRect(x: leading, y: (rect.height - size) / 2, width: max(size, trailing - leading), height: size)
-        return Capsule().path(in: frame)
+        return Rectangle().path(in: frame)
     }
 }
 

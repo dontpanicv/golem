@@ -154,7 +154,7 @@ fun ListRow(
     ) {
         Box(Modifier.width(21.dp), contentAlignment = Alignment.Center) {
             when {
-                golem -> GolemGlyph(16.dp, Golem.mobile.textSecondary)
+                golem -> Icon(Pixel.Golem.vector, null, tint = Golem.mobile.textSecondary)
                 emoji != null -> Text(emoji, style = golemText(Tokens.FontSize.lg))
                 icon != null -> Icon(icon, null, tint = Golem.mobile.textSecondary)
             }
@@ -198,7 +198,7 @@ fun ListSectionHeader(title: String, action: (@Composable () -> Unit)? = null) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            title.uppercase(), style = golemPixel(),
+            title.uppercase(), style = golemLabel(),
             color = Golem.mobile.textTertiary, modifier = Modifier.weight(1f).semantics { heading() },
         )
         action?.invoke()
@@ -227,7 +227,7 @@ fun FoldingSection(title: String, folded: Boolean, onFold: (Boolean) -> Unit, co
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                title.uppercase(), style = golemPixel(),
+                title.uppercase(), style = golemLabel(),
                 color = Golem.mobile.textSecondary, modifier = Modifier.weight(1f),
             )
             Icon(Pixel.Chevron.vector, if (folded) "Folded" else "Open", Modifier.rotate(turn),
@@ -269,7 +269,7 @@ fun EmptyState(title: String, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Tokens.Space.md, Alignment.CenterVertically),
     ) {
-        DitherView(Dither.EmptyFace, Golem.colors.textTertiary, Modifier.size(96.dp))
+        GolemMark(96.dp)
         Text(title, style = golemText(Tokens.FontSize.md, Tokens.FontWeight.medium), color = Golem.colors.textSecondary)
     }
 }

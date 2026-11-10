@@ -11,7 +11,7 @@ import type { Message, Work } from "../app/types.ts";
 import { TooltipProvider } from "../ui/components.tsx";
 import { ApprovalRequest } from "./approval.tsx";
 import Markdown from "./markdown.tsx";
-import { continues, MessageView, moodOf } from "./message.tsx";
+import { continues, MessageView } from "./message.tsx";
 
 /** The HTML of `node` on a page of the app's router. */
 async function render(node: ReactNode): Promise<string> {
@@ -186,18 +186,6 @@ test("a finished work shows one pixel for each tool call, and the face shows how
   expect(html).toContain(
     '<span aria-hidden="true" class="step-strip"><i class="done"></i><i class="failed"></i></span>'
   );
-  expect(html).toContain('class="avatar agent face done"');
-
-  const work = { startedAt: 0, endedAt: null, stopped: false, steps: [] };
-  expect(moodOf(message(work), false)).toBe("working");
-  expect(moodOf(message(work), true)).toBe("waiting");
-  expect(
-    moodOf(message({ ...work, endedAt: 1, stopped: true }), false)
-  ).toBeUndefined();
-  expect(moodOf({ ...message(work), failed: true }, false)).toBe("failed");
-  expect(
-    moodOf({ ...message(work), streaming: false, work: null }, false)
-  ).toBe(undefined);
 });
 
 test("a card block shows its cards; one that is not valid shows as code", async () => {

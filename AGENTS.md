@@ -122,14 +122,14 @@ addresses, or code and data from employers or clients.
 - Change colors, type, spacing, radii, sizes, shadows, and pixel icons only in `design/tokens.json`, then run
   `bun run tokens`. Never edit `public/tokens.css`, `web/ui/pixels.ts`, `ios/Golem/Design/Tokens.swift`,
   `ios/Golem/Design/PixelArt.swift`, or the `Tokens.kt` and `PixelArt.kt` of `android/app/src/main/java/dev/golem/design/`
-  by hand. `bun scripts/icon.ts` makes the logo at each size; it is never a scaled copy of another size.
+  by hand. The logo has one drawing, `logo` in `scripts/icon.ts`: `bun scripts/icon.ts` makes the app icons from it and `bun run tokens` the paths that the apps draw. Never add another face.
 - A component change on one platform needs the same change in function on the others: `public/styles.css` and
   `web/ui/` for the web, `ios/Golem/Design/` and `ios/Golem/Views/` for iOS, `android/app/src/main/java/dev/golem/design/`
   and `.../views/` for Android. Each platform keeps the look of Linear's app on it; Android uses Material 3's own
-  structure (bottom bar, sheets, menus, switches) in Golem's tokens where iOS uses glass and iOS sheets.
+  structure (bottom bar, sheets, menus, switches) in Golem's tokens where iOS uses flat surfaces and iOS sheets.
 - `design/components.md` is the spec for every component, measured from Linear's web and iOS apps. The web never uses a
   native select, picker, menu, toggle, or alert; menus, selects, and tooltips are Radix primitives in `web/ui/`. iOS keeps the look of Linear's iOS app
-  (native menus, the system glass, and the `mobile` tokens) in the navigation of Slack's iOS app.
+  (native menus, flat Ember surfaces instead of the system's glass, and the `mobile` tokens) in the navigation of Slack's iOS app.
 - iOS controls keep 44 pt touch targets where the web uses 28 px rows.
 
 ## Code Conventions

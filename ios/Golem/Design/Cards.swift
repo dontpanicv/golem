@@ -103,7 +103,7 @@ struct Dialog<Content: View, Actions: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // As Linear's sheets: a round glass close button and the title in the middle.
+            // A square close button and the title in the middle.
             ZStack {
                 Text(title)
                     .font(.golem(Tokens.Mobile.FontSize.sheetTitle, Tokens.FontWeight.semibold))
@@ -112,7 +112,7 @@ struct Dialog<Content: View, Actions: View>: View {
                     .padding(.horizontal, 56)
                     .accessibilityAddTraits(.isHeader)
                 HStack {
-                    GlassCircleButton(label: "Close", pixel: .close, size: 40) { dismiss() }
+                    SquareIconButton(label: "Close", pixel: .close, size: 40) { dismiss() }
                     Spacer()
                 }
             }
@@ -133,7 +133,7 @@ struct Dialog<Content: View, Actions: View>: View {
         .toasts()
         // The medium detent left half the sheet empty, so the sheet fits its content.
         .presentationDetents(height.map { [.height($0)] } ?? [.medium])
-        .presentationBackground(Tokens.Mobile.Colors.background)
+        .emberSheet()
         // The root toast hides while a dialog shows its own above the dimmed screen.
         .onAppear { session.dialogs += 1 }
         .onDisappear { session.dialogs -= 1 }

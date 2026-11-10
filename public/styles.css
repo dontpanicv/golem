@@ -15,18 +15,11 @@
   font-weight: 100 900;
   font-display: block;
 }
-@font-face {
-  font-family: Silkscreen;
-  src: url("./fonts/Silkscreen-Regular.woff2") format("woff2");
-  font-display: block;
-}
-
 :root {
   --font-sans:
     "Inter Variable", "SF Pro Display", -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --font-pixel: Silkscreen, var(--font-mono);
   --ring: 0 0 0 0.5px var(--color-ring);
   --ring-control: 0 0 0 0.5px var(--color-ring-control);
   --ring-hover: 0 0 0 0.5px var(--color-ring-hover);
@@ -300,32 +293,13 @@ img.avatar {
 span.avatar.small::after {
   mask-image: var(--dither-corner-20);
 }
-/* Golem's face (Mark): the pixels of the icon, whose eyes blink while it works. In light, a black tile keeps the
-   white face apart from the white surface. */
-.face-tile {
-  fill: light-dark(#000000, transparent);
-}
-.face-skin {
-  fill: #ffffff;
-}
-.face-marks {
-  fill: #000000;
-}
-.face-eyes {
-  fill: var(--color-accent);
-}
-.face.working .face-eyes {
-  animation: face-blink 3.2s steps(1) infinite;
-}
-@keyframes face-blink {
-  92% {
-    opacity: 0;
-  }
+/* Golem's logo (Mark). In light, a black tile keeps the white face apart from the white surface. */
+.avatar.agent {
+  background: light-dark(#000000, transparent);
 }
 .avatar.large {
   width: 48px;
   height: 48px;
-  image-rendering: pixelated;
 }
 span.avatar.large::after {
   mask-image: var(--dither-corner-48);
@@ -898,23 +872,7 @@ span.avatar.large::after {
   gap: var(--space-xs);
   height: var(--size-header);
   padding: 0 var(--space-md) 0 18px;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      var(--color-text-tertiary) 0 2px,
-      transparent 2px 4px
-    )
-    bottom / 100% 1px no-repeat;
-}
-.panel-header::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 16px;
-  background: var(--color-text-quaternary);
-  mask: var(--dither-header) top left / 8px 16px repeat-x;
-  image-rendering: pixelated;
-  pointer-events: none;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .panel-header .title {
@@ -976,9 +934,9 @@ span.avatar.large::after {
   align-items: center;
   height: var(--size-nav-row);
   padding: 0 var(--space-xxs) 0 9px;
-  font-family: var(--font-pixel);
-  font-size: var(--font-size-pixel);
-  letter-spacing: 0.01em;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  letter-spacing: 0.04em;
   color: var(--color-text-tertiary);
   text-transform: uppercase;
 }
@@ -1036,7 +994,6 @@ span.avatar.large::after {
 .nav-item .count {
   font-family: var(--font-mono);
   font-size: var(--font-size-mono);
-  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
   color: var(--color-accent);
 }
@@ -1187,10 +1144,6 @@ span.avatar.large::after {
   gap: var(--space-xxl);
   padding: var(--space-xxl) var(--space-xxl) var(--space-xl);
   overflow-y: auto;
-  mask:
-    linear-gradient(#000, #000) center / 100% calc(100% - 84px) no-repeat,
-    var(--dither-fade-top) top / 8px 28px repeat-x,
-    var(--dither-fade-bottom) bottom / 8px 56px repeat-x;
 }
 
 /* A topic's chats take what they need, up to half; its details fill the rest. */
@@ -1290,10 +1243,7 @@ span.avatar.large::after {
   font-size: var(--font-size-xl);
 }
 .prose :is(strong, b) {
-  font-family: var(--font-mono);
-  font-size: 0.94em;
-  font-weight: var(--font-weight-medium);
-  letter-spacing: -0.02em;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text);
 }
 .prose :is(ul, ol) {
@@ -1650,7 +1600,7 @@ span.avatar.large::after {
   padding: var(--space-lg);
   border-radius: var(--radius-lg);
   background: var(--color-surface-composer);
-  box-shadow: 0 0 0 1px var(--color-text-tertiary);
+  box-shadow: 0 0 0 1px var(--color-border);
 }
 
 /* An action that waits for the person, in the transcript under the answer that asks, in line with its text: `gold` at its side. */
@@ -1996,9 +1946,7 @@ span.avatar.large::after {
   width: 96px;
   height: 96px;
   margin-bottom: var(--space-md);
-  background: var(--color-text-tertiary);
-  mask: var(--dither-empty) center / 96px 96px no-repeat;
-  image-rendering: pixelated;
+  background: url("./logo-96.svg") light-dark(#000000, transparent);
 }
 /* An empty section of a page says so in words; only an empty pane shows the face. */
 .page-section .empty {

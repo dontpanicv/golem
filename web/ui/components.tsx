@@ -369,63 +369,17 @@ function initial(name: string): string {
   return name.normalize("NFD").slice(0, 1).toUpperCase();
 }
 
-/** What Golem's face shows: it works, it waits for a person, it finished its work, or it failed. */
-export type Mood = "working" | "waiting" | "done" | "failed";
-
-/** The eyes and the mouth of each mood, in the cells of the icon's 8 × 8 grid. iOS: `GolemFace`. */
-const FACES: Record<Mood, { eyes: string; mouth: string }> = {
-  working: { eyes: "M2 2H3V3H2ZM6 2H7V3H6Z", mouth: "M2 5H6V6H2Z" },
-  waiting: { eyes: "M1 2H3V3H1ZM5 2H7V3H5Z", mouth: "M3 4H5V6H3Z" },
-  done: {
-    eyes: "M1 2H3V3H1ZM5 2H7V3H5Z",
-    mouth: "M1 4H2V5H1ZM6 4H7V5H6ZM2 5H6V6H2Z",
-  },
-  failed: {
-    eyes: "M1 2.5H3V3H1ZM5 2.5H7V3H5Z",
-    mouth: "M2 5H6V6H2ZM1 6H2V7H1ZM6 6H7V7H6Z",
-  },
-};
-
-/** The face without a mood. */
-const RESTING_FACE = {
-  eyes: "M1 2H3V3H1ZM5 2H7V3H5Z",
-  mouth: "M2 5H6V6H2Z",
-};
-
-/** Golem's face in the 8 × 8 pixels of the icon, with a `mood` if given. A `large` one is the dissolving logo. */
-export function Mark({
-  size,
-  mood,
-}: {
-  size?: "small" | "large";
-  mood?: Mood;
-}) {
-  const className = ["avatar", "agent", size].filter(Boolean).join(" ");
-  if (size === "large") {
-    return (
-      <img
-        alt=""
-        className={className}
-        height={48}
-        src="/assets/mark-1x.png"
-        srcSet="/assets/mark-2x.png 2x, /assets/mark-3x.png 3x"
-        width={48}
-      />
-    );
-  }
-  const face = mood ? FACES[mood] : RESTING_FACE;
+/** Golem's logo, 1 px a noise cell. iOS and Android: `GolemMark`. */
+export function Mark({ size }: { size?: "large" }) {
+  const side = size === "large" ? 48 : 24;
   return (
-    <svg
-      aria-hidden="true"
-      className={`${className} face ${mood ?? ""}`}
-      shapeRendering="crispEdges"
-      viewBox="-1 -1 10 10"
-    >
-      <rect className="face-tile" height="10" width="10" x="-1" y="-1" />
-      <path className="face-skin" d="M0 0H8V7H7V8H1V7H0Z" />
-      <path className="face-marks" d={`M3 1H5V2H3Z${face.mouth}`} />
-      <path className="face-eyes" d={face.eyes} />
-    </svg>
+    <img
+      alt=""
+      className={["avatar", "agent", size].filter(Boolean).join(" ")}
+      height={side}
+      src={`/assets/logo-${side}.svg`}
+      width={side}
+    />
   );
 }
 

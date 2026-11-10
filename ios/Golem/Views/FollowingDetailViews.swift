@@ -117,7 +117,10 @@ struct IntakeDetailView<Content: View>: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }.buttonStyle(.golem(.secondary, .header))
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
     }
 
@@ -208,7 +211,10 @@ struct FollowingDetailView: View {
         .navigationTitle("Following")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }.buttonStyle(.golem(.secondary, .header))
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
         .task { await session.run { try await load() } }
         .refreshable { await session.run { try await load() } }

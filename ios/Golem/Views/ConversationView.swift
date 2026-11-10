@@ -57,7 +57,7 @@ struct ConversationView: View {
                     let continued = index > 0 && MessageRow.continues(message, after: messages[index - 1])
                     MessageRow(
                         message: message, continued: continued,
-                        waiting: message.id == working?.id && !approvals.isEmpty, openFile: openFile
+                        openFile: openFile
                     )
                         .equatable()
                         .padding(.top, continued ? Tokens.Space.xs : Tokens.Space.lg)
@@ -80,8 +80,6 @@ struct ConversationView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         // Messages dissolve at both ends of the transcript, as on the web.
-        .overlay(alignment: .top) { fade(.fadeTop) }
-        .overlay(alignment: .bottom) { fade(.fadeBottom) }
         .overlay {
             if let state {
                 if state.messages.isEmpty { EmptyState(title: "Ask Golem anything") }
@@ -120,7 +118,6 @@ struct ConversationView: View {
                 .inspectorColumnWidth(Tokens.Size.artifacts)
         }
         // After the inspector: in a navigation stack, a title and toolbar set before it do not show.
-        .pushedScreen(isOrchestrator ? "Golem" : state?.chat.title ?? "")
         .toolbar {
             if let youMenu {
                 ToolbarItem(placement: .topBarLeading) { YouMenu(open: youMenu) }
@@ -160,19 +157,26 @@ struct ConversationView: View {
                             HeaderTitle(title: "Golem", caption: state?.running == true ? "Working" : nil)
                         }
                         .padding(.leading, Tokens.Space.sm)
+                        .barSurface()
                     } else {
                         HeaderTitle(
                             title: state?.chat.title ?? "", caption: topicName.isEmpty ? nil : "# \(topicName)"
                         )
+                        .barSurface()
                     }
                 }
                 .accessibilityHint("Shows the chat's menu")
             }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Talk with Golem", pixel: .sound, action: startTalk)
+                    .buttonStyle(.golem(.secondary, .header))
                     .disabled(talk.isOn && talk.chat == chatID)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
+        // After the toolbar, so that its back button comes first.
+        .pushedScreen(isOrchestrator ? "Golem" : state?.chat.title ?? "")
         .filePreview($opening)
         .onAppear { if artifactID != nil { showArtifacts = true } }
         // In the background the stream closes, so Golem sends this chat's notifications as pushes.
@@ -217,19 +221,7 @@ struct ConversationView: View {
         position.scrollTo(id: oldest, anchor: .top)
     }
 
-    /// The answer that the agent writes now.
-    private var working: Message? {
-        state?.messages.last { $0.streaming || ($0.work != nil && $0.work?.endedAt == nil) }
-    }
-
     /// The suggestions over the composer; a conversation takes the composer's place.
-    private func fade(_ pattern: Dither) -> some View {
-        DitherView(pattern: pattern)
-            .foregroundStyle(Tokens.Mobile.Colors.background)
-            .frame(height: pattern.size.height)
-            .allowsHitTesting(false)
-    }
-
     private var bottomBar: some View {
         ComposerRow {
             VStack(alignment: .leading, spacing: Tokens.Space.sm) {

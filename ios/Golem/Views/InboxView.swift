@@ -41,8 +41,10 @@ struct InboxView: View {
                 Button("Mark all read", pixel: .check) {
                     Task { await session.run { try await session.readNotifications(nil) } }
                 }
+                .buttonStyle(.golem(.secondary, .header))
                 .disabled((session.inbox?.unread ?? 0) == 0)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
     }
 

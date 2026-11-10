@@ -41,8 +41,8 @@ extension Font {
                 relativeTo: .caption)
     }
 
-    /// Silkscreen at its one size, for section labels. Pixel type does not scale with Dynamic Type.
-    static var pixel: Font { .custom("Silkscreen-Regular", fixedSize: Tokens.FontSize.pixel) }
+    /// Geist Mono for section labels.
+    static var sectionLabel: Font { .mono(Tokens.FontSize.label, Tokens.FontWeight.regular) }
 }
 
 struct Shadow {
@@ -114,20 +114,19 @@ struct Avatar: View {
     }
 }
 
-/// Golem's face, the 8 × 8 pixels at the small sizes; from 48 pt it is the dissolving logo.
+/// Golem's logo, one noise cell a point, at a side of `golemLogos`. The web's `Mark`.
 struct GolemMark: View {
     var size = Tokens.Size.avatar
 
     var body: some View {
-        if size >= 48 {
-            Image("Mark")
-                .resizable()
-                .interpolation(.none)
-                .frame(width: size, height: size)
-                .accessibilityHidden(true)
-        } else {
-            GolemFace(mood: .resting, size: size)
+        let logo = golemLogos[Int(size)]!
+        ZStack {
+            Ember.tile
+            Image(uiImage: PixelImages.image(path: logo.face, cells: size, size: size)).foregroundStyle(Ember.face)
+            Image(uiImage: PixelImages.image(path: logo.forehead, cells: size, size: size)).foregroundStyle(Ember.eyes)
         }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 
@@ -227,7 +226,7 @@ struct NavRow: View {
         HStack(spacing: Tokens.Space.md) {
             Group {
                 if golem {
-                    GolemGlyph(size: 12)
+                    Image(pixel: .golem)
                 } else if let emoji {
                     Text(emoji).font(.system(size: Tokens.Size.icon * 0.8))
                 } else {
@@ -237,7 +236,7 @@ struct NavRow: View {
             .frame(width: Tokens.Size.icon)
             Text(title).lineLimit(1)
             if locked {
-                Image(pixel: .lock, size: 8)
+                Image(pixel: .lock)
                     .accessibilityLabel("Private")
             }
             if working { PixelSpinner() }
@@ -269,7 +268,7 @@ struct SectionHeader: View {
 
     var body: some View {
         Text(title)
-            .font(.pixel)
+            .font(.sectionLabel)
             .textCase(.uppercase)
             .foregroundStyle(Tokens.Colors.textTertiary)
             .padding(.horizontal, Tokens.Space.sm)
@@ -278,15 +277,13 @@ struct SectionHeader: View {
     }
 }
 
-/// A dithered Golem face over the title.
+/// Golem's logo over the title.
 struct EmptyState: View {
     let title: String
 
     var body: some View {
         VStack(spacing: Tokens.Space.md) {
-            DitherView(pattern: .emptyFace)
-                .foregroundStyle(Tokens.Colors.textTertiary)
-                .frame(width: 96, height: 96)
+            GolemMark(size: 96)
             Text(title)
                 .font(.golem(Tokens.FontSize.md, Tokens.FontWeight.medium))
                 .foregroundStyle(Tokens.Colors.textSecondary)

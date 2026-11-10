@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The iPhone app, as Slack's iOS app: Home, Search, Golem, Activity, and Agenda in a floating glass tab bar that
+/// The iPhone app, as Slack's iOS app: Home, Search, Golem, Activity, and Agenda in a floating flat tab bar that
 /// stays under every screen and its composer. The person's picture at the top left of each tab's first screen, as
 /// X's, has a menu that opens the settings in sheets.
 /// Each tab keeps its own stack; screens leave room for the bar with ``View/phoneTabBar()`` or ``ComposerRow``.
@@ -35,7 +35,7 @@ struct PhoneShell: View {
                 .opacity(bar.keyboard ? 0 : 1)
         }
         .environment(\.phoneTabBar, bar)
-        // Glass buttons and menus are plain white or black; fields keep the accent for their cursor.
+        // Native menus are plain white or black; fields keep the accent for their cursor.
         .tint(Tokens.Mobile.Colors.title)
         .sensoryFeedback(.selection, trigger: bar.tab)
         .sheet(item: $sheet) { destination in
@@ -50,8 +50,9 @@ struct PhoneShell: View {
             }
             .environment(\.phoneTabBar, nil)
             .environment(\.closeSheet) { sheet = nil }
-            // A sheet does not take the shell's tint: its glass buttons are plain too.
+            // A sheet does not take the shell's tint.
             .tint(Tokens.Mobile.Colors.title)
+            .emberSheet()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             withAnimation(.smooth(duration: Tokens.Duration.normal)) { bar.keyboard = true }
@@ -250,7 +251,7 @@ extension PhoneShell.Tab {
         }
     }
 
-    /// Golem's tab shows its face (``GolemGlyph``) instead of a symbol.
+    /// Golem's tab shows its face (`Pixel.golem`) instead of a symbol.
     var pixel: Pixel? {
         switch self {
         case .home: .home
@@ -262,8 +263,8 @@ extension PhoneShell.Tab {
     }
 }
 
-/// The bar, as Slack's: a glass capsule across the screen of four tabs with their names, the open one on a filled
-/// capsule that slides to the tab tapped, and the count of unread notifications on Activity.
+/// The bar, as Slack's: a flat bar across the screen with the tabs and their names, the open one on a filled
+/// cell that slides to the tab tapped, and the count of unread notifications on Activity.
 private struct TabBar: View {
     let bar: PhoneTabBar
     let unread: Int
@@ -279,7 +280,7 @@ private struct TabBar: View {
         }
         .padding(Tokens.Space.xs)
         .frame(height: Tokens.Mobile.Size.tabBar)
-        .glassEffect(.regular.interactive(), in: .rect)
+        .barSurface()
         .padding(.horizontal, Tokens.Mobile.Size.margin)
         .padding(.bottom, Tokens.Mobile.Size.tabBarBottom - Tokens.Mobile.Size.homeIndicator)
         .animation(.snappy, value: bar.tab)
@@ -293,15 +294,9 @@ private struct TabBar: View {
             select(tab)
         } label: {
             VStack(spacing: Tokens.Space.xxs) {
-                Group {
-                    if let pixel = tab.pixel {
-                        Image(pixel: pixel)
-                            .foregroundStyle(selected ? Tokens.Colors.accent : Tokens.Mobile.Colors.textSecondary)
-                    } else {
-                        GolemGlyph(size: 16)
-                    }
-                }
-                .frame(height: 22)
+                Image(pixel: tab.pixel ?? .golem)
+                    .foregroundStyle(selected ? Tokens.Colors.accent : Tokens.Mobile.Colors.textSecondary)
+                    .frame(height: 22)
                     .overlay(alignment: .topTrailing) {
                         if tab == .activity, unread > 0 {
                             Text("\(unread)")

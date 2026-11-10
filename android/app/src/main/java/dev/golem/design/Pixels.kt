@@ -24,16 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -75,81 +71,30 @@ fun pixelPath(path: String, size: Float, cells: Float = 8f, inset: Float = 0f, e
 object Ember {
     val ink = Color(0xFF000000)
     val face = Color(0xFFFFFFFF)
-    val mark = Color(0xFF000000)
 }
 
-/** An icon of the 8 × 8 pixel set: 2 dp a pixel, for Material's `Icon`. */
+/** An icon of the 16 × 16 pixel set: 1 dp a pixel, for Material's `Icon`. */
 val Pixel.vector: ImageVector
     get() = vectors.getOrPut(this) {
-        ImageVector.Builder(name, 16.dp, 16.dp, 8f, 8f)
+        ImageVector.Builder(name, 16.dp, 16.dp, 16f, 16f)
             .addPath(addPathNodes(path), fill = SolidColor(Color.Black))
             .build()
     }
 
 private val vectors = mutableMapOf<Pixel, ImageVector>()
 
-/** Golem's face with a mood: it works (its eyes blink), waits for a person, finished its work, or failed. */
-enum class Mood { Resting, Working, Waiting, Done, Failed }
-
-private const val FACE = "M0 0H8V7H7V8H1V7H0Z"
-private const val ALEPH = "M3 1H5V2H3Z"
-
-private fun DrawScope.face(tile: Color, eyeColor: Color, eyes: String?, mouth: String) {
-    val side = size.minDimension
-    drawRect(tile)
-    drawPath(pixelPath(FACE, side, 10f, 1f), Ember.face)
-    drawPath(pixelPath(ALEPH + mouth, side, 10f, 1f), Ember.mark)
-    eyes?.let { drawPath(pixelPath(it, side, 10f, 1f), eyeColor) }
-}
-
-/** In light, a black tile keeps the white face apart from the white surface. */
-@Composable
-private fun faceTile(): Color = if (Golem.colors === DarkColors) Color.Transparent else Ember.ink
-
-/** Golem's face: the 8 × 8 pixels at the small sizes; from 48 dp it is the dissolving logo. */
+/** Golem's logo, one noise cell a dp, at a side of `golemLogos`. The web's `Mark`. In light, a black tile keeps the white face apart from the white surface. */
 @Composable
 fun GolemMark(size: Dp = Tokens.Size.avatar, modifier: Modifier = Modifier) {
-    if (size >= 48.dp) {
-        Image(ImageBitmap.imageResource(R.drawable.golem_logo), null, modifier.size(size), filterQuality = FilterQuality.None)
-    } else {
-        GolemFace(Mood.Resting, size, modifier)
-    }
-}
-
-/** Golem's face drawn from the icon's pixels, with a mood; the web's `Mark` has the same faces. */
-@Composable
-fun GolemFace(mood: Mood, size: Dp = Tokens.Size.avatar, modifier: Modifier = Modifier) {
-    val (eyes, mouth) = when (mood) {
-        Mood.Resting -> "M1 2H3V3H1ZM5 2H7V3H5Z" to "M2 5H6V6H2Z"
-        Mood.Working -> "M2 2H3V3H2ZM6 2H7V3H6Z" to "M2 5H6V6H2Z"
-        Mood.Waiting -> "M1 2H3V3H1ZM5 2H7V3H5Z" to "M3 4H5V6H3Z"
-        Mood.Done -> "M1 2H3V3H1ZM5 2H7V3H5Z" to "M1 4H2V5H1ZM6 4H7V5H6ZM2 5H6V6H2Z"
-        Mood.Failed -> "M1 2.5H3V3H1ZM5 2.5H7V3H5Z" to "M2 5H6V6H2ZM1 6H2V7H1ZM6 6H7V7H6Z"
-    }
-    val blinking = if (mood == Mood.Working && animate()) {
-        val transition = rememberInfiniteTransition(label = "blink")
-        transition.animateFloat(
-            0f, 3.2f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "blink"
-        ).value > 2.94f
-    } else {
-        false
-    }
-    val tile = faceTile()
-    val eyeColor = Golem.colors.accent
+    val (face, forehead) = golemLogos.getValue(size.value.toInt())
+    val cells = size.value
+    val tile = if (Golem.colors === DarkColors) Color.Transparent else Ember.ink
+    val accent = Golem.colors.accent
     Canvas(modifier.size(size)) {
-        face(tile, eyeColor, if (blinking) null else eyes, mouth)
-    }
-}
-
-/** Golem's face as a glyph in one color: the icon's face with its marks and eyes cut out, from the same pixels. */
-@Composable
-fun GolemGlyph(size: Dp = 16.dp, color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(size)) {
-        drawPath(
-            pixelPath("M0 0H8V7H7V8H1V7H0ZM3 1H5V2H3ZM2 5H6V6H2ZM1 2H3V3H1ZM5 2H7V3H5Z", this.size.minDimension,
-                evenOdd = true),
-            color,
-        )
+        val side = this.size.minDimension
+        drawRect(tile)
+        drawPath(pixelPath(face, side, cells), Ember.face)
+        drawPath(pixelPath(forehead, side, cells), accent)
     }
 }
 

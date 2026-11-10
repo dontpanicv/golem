@@ -54,12 +54,10 @@ import dev.golem.design.Pixel
 import dev.golem.design.vector
 import dev.golem.design.ButtonSize
 import dev.golem.design.ButtonVariant
-import dev.golem.design.Dither
-import dev.golem.design.DitherView
+
 import dev.golem.design.EmptyState
 import dev.golem.design.Golem
 import dev.golem.design.GolemButton
-import dev.golem.design.GolemGlyph
 import dev.golem.design.GolemMark
 import dev.golem.design.LocalSession
 import dev.golem.design.Loading
@@ -93,7 +91,6 @@ fun ConversationView(chatId: String, artifactId: String? = null) {
     val chat = state?.chat
     val topicName = session.topics.firstOrNull { it.id == chat?.topicId }?.name ?: ""
     val approvals = state?.approvals.orEmpty().filter { it.approverId == null || it.approverId == session.user?.id }
-    val working = state?.messages?.lastOrNull { it.streaming || (it.work != null && it.work.endedAt == null) }
     val opener = rememberFileOpener()
 
     // In the background the stream closes, so Golem keeps this chat's notifications unread.
@@ -164,7 +161,7 @@ fun ConversationView(chatId: String, artifactId: String? = null) {
         topBar = {
             if (orchestrator) {
                 ScreenBar("Golem", caption = if (state?.running == true) "Working" else null, menu = menu,
-                    leading = { GolemMark(28.dp) })
+                    leading = { GolemMark() })
             } else {
                 ScreenBar(chat?.title ?: "", caption = topicName.takeIf { it.isNotEmpty() }?.let { "# $it" }, menu = menu)
             }
@@ -189,7 +186,7 @@ fun ConversationView(chatId: String, artifactId: String? = null) {
                 current == null && failure != null -> EmptyState(failure!!)
                 current == null -> Loading()
                 current.messages.isEmpty() -> EmptyState("Ask Golem anything", Modifier.padding(padding))
-                else -> Messages(current, approvals, working, chatId, padding, opener)
+                else -> Messages(current, approvals, chatId, padding, opener)
             }
         }
     }
@@ -204,7 +201,7 @@ fun ConversationView(chatId: String, artifactId: String? = null) {
 /** The messages, the newest at the bottom over the composer, with the approvals in line with the answer that asks. */
 @Composable
 private fun Messages(
-    state: ChatState, approvals: List<Approval>, working: Message?, chatId: String, padding: PaddingValues,
+    state: ChatState, approvals: List<Approval>, chatId: String, padding: PaddingValues,
     openFile: (FileRef) -> Unit,
 ) {
     val messages = state.messages
@@ -227,13 +224,10 @@ private fun Messages(
             val message = messages[index]
             val continued = index > 0 && continues(message, messages[index - 1])
             Box(Modifier.padding(top = if (continued) Tokens.Space.xs else Tokens.Space.lg).animateItem()) {
-                MessageRow(message, continued, waiting = message.id == working?.id && approvals.isNotEmpty(), openFile = openFile)
+                MessageRow(message, continued, openFile = openFile)
             }
         }
     }
-    // Messages dissolve at both ends of the transcript, as on the web.
-    DitherView(Dither.FadeTop, Golem.mobile.background, Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding()).fillMaxWidth().height(28.dp))
-    DitherView(Dither.FadeBottom, Golem.mobile.background, Modifier.align(Alignment.BottomCenter).padding(bottom = padding.calculateBottomPadding()).fillMaxWidth().height(56.dp))
     }
 }
 

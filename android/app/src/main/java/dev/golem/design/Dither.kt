@@ -41,15 +41,10 @@ private val RANKS = arrayOf(
     intArrayOf(63, 31, 55, 23, 61, 29, 53, 21),
 )
 
-private val FACE = listOf("########", "###..###", "#..##..#", "########", "########", "##....##", "########", ".######.")
-
 /** A dither pattern: a size in cells, and how lit it is at a place from 0 to 1. Android's `Dither` of the web and iOS. */
 data class DitherPattern(val width: Int, val height: Int, val value: (Double, Double) -> Double)
 
 object Dither {
-    val FadeTop = DitherPattern(8, 28) { _, v -> 1 - v }
-    val FadeBottom = DitherPattern(8, 56) { _, v -> v }
-    val EmptyFace = DitherPattern(96, 96) { u, v -> if (FACE[(v * 8).toInt()][(u * 8).toInt()] == '#') 0.1 + 0.75 * (1 - v) else 0.0 }
 
     private val corners = mutableMapOf<Int, DitherPattern>()
 
@@ -59,20 +54,18 @@ object Dither {
     }
 }
 
-/** A bitmap at the device's scale: each cell's edges on whole pixels, so a cell stays 1 dp and crisp at any density. */
+/** A bitmap at the device's scale, each cell a whole number of pixels: about 0.5 dp, as on the web and iOS. */
 private fun DitherPattern.bitmap(density: Float): ImageBitmap {
+    val cell = maxOf(1, (density / 2).roundToInt())
     val widthPixels = ceil(width * density).toInt()
     val heightPixels = ceil(height * density).toInt()
+    val columns = widthPixels / cell
+    val rows = heightPixels / cell
     val pixels = IntArray(widthPixels * heightPixels)
-    for (y in 0 until height) {
-        for (x in 0 until width) {
-            val on = value((x + 0.5) / width, (y + 0.5) / height) > (RANKS[y % 8][x % 8] + 0.5) / 64
-            if (!on) continue
-            val left = (x * density).roundToInt()
-            val right = ((x + 1) * density).roundToInt().coerceAtMost(widthPixels)
-            val top = (y * density).roundToInt()
-            val bottom = ((y + 1) * density).roundToInt().coerceAtMost(heightPixels)
-            for (row in top until bottom) pixels.fill(0xFFFFFFFF.toInt(), row * widthPixels + left, row * widthPixels + right)
+    for (y in 0 until rows) {
+        for (x in 0 until columns) {
+            if (value((x + 0.5) / columns, (y + 0.5) / rows) <= (RANKS[y % 8][x % 8] + 0.5) / 64) continue
+            for (row in y * cell until (y + 1) * cell) pixels.fill(0xFFFFFFFF.toInt(), row * widthPixels + x * cell, row * widthPixels + (x + 1) * cell)
         }
     }
     return Bitmap.createBitmap(pixels, widthPixels, heightPixels, Bitmap.Config.ARGB_8888).asImageBitmap()

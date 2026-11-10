@@ -9,7 +9,7 @@ import {
 } from "react";
 import { fileHref } from "../app/api.ts";
 import type { Message, Step, Work } from "../app/types.ts";
-import { Avatar, Mark, type Mood, PixelSpinner } from "../ui/components.tsx";
+import { Avatar, Mark, PixelSpinner } from "../ui/components.tsx";
 import { fileKind } from "../ui/file-kind.ts";
 import { previewLink } from "../ui/file-preview.tsx";
 import { clockTime, duration } from "../ui/format.ts";
@@ -39,21 +39,18 @@ export function AgentText({
 export const MessageView = memo(MessageCard);
 
 /**
- * `pending`: a message in the outbox, which Golem does not have yet; it says so in place of its time. `waiting`: the
- * agent waits for a person to allow an action of this answer's work. `continued`: the message continues the one before
- * it (`continues`), so it shows no avatar, author, or time.
+ * `pending`: a message in the outbox, which Golem does not have yet; it says so in place of its time. `continued`: the
+ * message continues the one before it (`continues`), so it shows no avatar, author, or time.
  */
 function MessageCard({
   message,
   workspaceId,
   pending = false,
-  waiting = false,
   continued = false,
 }: {
   message: Message;
   workspaceId: string;
   pending?: boolean;
-  waiting?: boolean;
   continued?: boolean;
 }) {
   const classes = [
@@ -68,9 +65,7 @@ function MessageCard({
   return (
     <article className={classes}>
       {continued ? <span className="avatar-space" /> : null}
-      {!continued && message.agent ? (
-        <Mark mood={moodOf(message, waiting)} />
-      ) : null}
+      {!continued && message.agent ? <Mark /> : null}
       {continued || message.agent ? null : (
         <AuthorAvatar message={message} workspaceId={workspaceId} />
       )}
@@ -152,20 +147,6 @@ export function relayedFrom(message: Message): string | null {
 
 /** The step of a turn that another chat's message started. */
 const RELAY = "from_chat";
-
-/**
- * The face of an agent's message: it failed, it works or waits for a person, or it finished its work; an answer with
- * no work, or one that a person stopped, has the icon's own face.
- */
-export function moodOf(message: Message, waiting: boolean): Mood | undefined {
-  if (message.failed) {
-    return "failed";
-  }
-  if (message.streaming || message.work?.endedAt === null) {
-    return waiting ? "waiting" : "working";
-  }
-  return message.work && !message.work.stopped ? "done" : undefined;
-}
 
 /** A file of a message: a picture shows itself, and any other file, or a picture the server cannot convert, a chip. */
 function FileItem({

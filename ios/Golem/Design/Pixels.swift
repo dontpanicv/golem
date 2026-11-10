@@ -40,7 +40,7 @@ nonisolated struct PixelShape: Shape {
 }
 
 extension Image {
-    /// An icon of the 8 × 8 pixel set as a template image, 2 pt a pixel by default, so that native menus and buttons
+    /// An icon of the 16 × 16 pixel set as a template image, 1 pt a pixel by default, so that native menus and buttons
     /// can show it.
     init(pixel: Pixel, size: CGFloat = 16) {
         self.init(uiImage: PixelImages.image(pixel, size: size))
@@ -75,16 +75,19 @@ extension Menu where Label == SwiftUI.Label<Text, Image> {
     }
 }
 
-private enum PixelImages {
+enum PixelImages {
     private static var cache: [String: UIImage] = [:]
 
-    static func image(_ pixel: Pixel, size: CGFloat) -> UIImage {
-        let key = "\(pixel.rawValue)@\(size)"
+    static func image(_ pixel: Pixel, size: CGFloat) -> UIImage { image(path: pixel.rawValue, cells: 16, size: size) }
+
+    /// A path of a pixel grid as a template image, with no smoothing at the edges of its cells.
+    static func image(path: String, cells: CGFloat, size: CGFloat) -> UIImage {
+        let key = "\(path)@\(size)"
         if let image = cache[key] { return image }
         let rect = CGRect(x: 0, y: 0, width: size, height: size)
         let image = UIGraphicsImageRenderer(size: rect.size).image { context in
             context.cgContext.setShouldAntialias(false)
-            context.cgContext.addPath(PixelShape(path: pixel.rawValue).path(in: rect).cgPath)
+            context.cgContext.addPath(PixelShape(path: path, cells: cells).path(in: rect).cgPath)
             context.cgContext.fillPath()
         }.withRenderingMode(.alwaysTemplate)
         cache[key] = image
@@ -92,62 +95,12 @@ private enum PixelImages {
     }
 }
 
-/// The colors of Golem's face: a white face, black marks, and eyes in the accent. In light, a black tile keeps the
-/// white face apart from the white surface.
+/// The colors of Golem's logo. In light, a black tile keeps the white face apart from the white surface.
 enum Ember {
     static let ink = Color(light: "#000000", dark: "#000000")
     static let tile = Color(light: "#000000", dark: "#00000000")
     static let face = Color(light: "#ffffff", dark: "#ffffff")
-    static let mark = Color(light: "#000000", dark: "#000000")
     static let eyes = Tokens.Colors.accent
-}
-
-/// Golem's face drawn from the icon's pixels, with a mood: it works (its eyes blink), waits for a person, finished its
-/// work, or failed. The web's `Mark` has the same faces.
-struct GolemFace: View {
-    enum Mood { case resting, working, waiting, done, failed }
-
-    let mood: Mood
-    var size = Tokens.Size.avatar
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: mood == .working && !reduceMotion ? 0.2 : 3600)) { context in
-            let blinking = mood == .working && !reduceMotion
-                && context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2) > 2.94
-            ZStack {
-                Ember.tile
-                PixelShape(path: "M0 0H8V7H7V8H1V7H0Z", cells: 10, inset: 1).fill(Ember.face)
-                PixelShape(path: "M3 1H5V2H3Z" + face.mouth, cells: 10, inset: 1).fill(Ember.mark)
-                if !blinking { PixelShape(path: face.eyes, cells: 10, inset: 1).fill(Ember.eyes) }
-            }
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
-    }
-
-    private var face: (eyes: String, mouth: String) {
-        switch mood {
-        case .resting: ("M1 2H3V3H1ZM5 2H7V3H5Z", "M2 5H6V6H2Z")
-        case .working: ("M2 2H3V3H2ZM6 2H7V3H6Z", "M2 5H6V6H2Z")
-        case .waiting: ("M1 2H3V3H1ZM5 2H7V3H5Z", "M3 4H5V6H3Z")
-        case .done: ("M1 2H3V3H1ZM5 2H7V3H5Z", "M1 4H2V5H1ZM6 4H7V5H6ZM2 5H6V6H2Z")
-        case .failed: ("M1 2.5H3V3H1ZM5 2.5H7V3H5Z", "M2 5H6V6H2ZM1 6H2V7H1ZM6 6H7V7H6Z")
-        }
-    }
-}
-
-/// Golem's face as a glyph in one color, the foreground's: the icon's face with its marks and eyes cut out, from the
-/// same 8 × 8 pixels. A size of a whole number of points per pixel keeps it sharp. The web's `golem` icon is the same.
-struct GolemGlyph: View {
-    var size: CGFloat = 16
-
-    var body: some View {
-        PixelShape(path: "M0 0H8V7H7V8H1V7H0ZM3 1H5V2H3ZM2 5H6V6H2ZM1 2H3V3H1ZM5 2H7V3H5Z")
-            .fill(style: FillStyle(eoFill: true))
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
-    }
 }
 
 /// Four pixels in a square that light in turn, clockwise: Golem works.

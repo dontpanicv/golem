@@ -58,7 +58,7 @@ struct FileChips: View {
 }
 
 /// A message box with the files picked, or dropped on it, to send with it, and dictation into it (``MicButton``),
-/// as T3's: a glass field with the add button at the start, then the mic and the round send button. While the text
+/// a flat field with the add button at the start, then the mic and the round send button. While the text
 /// fits one line, all sit in one row; else the text spans the field over them. `owner` keys the dictation: the chat,
 /// or the topic of a new chat. While `sending`, the send button spins. With `stop`, while the agent works, an empty
 /// composer shows Stop in the send button's place, and the send button steers. The Golem chat's composer starts
@@ -125,13 +125,7 @@ struct Composer: View {
                     .padding(.trailing, Tokens.Space.xs)
             }
         }
-        .glassEffect(.regular.interactive(), in: shape)
-        .overlay(shape.strokeBorder(Tokens.Colors.textTertiary, lineWidth: 1))
-        // T3's soft shadow, only outside the field, so that the glass stays clear.
-        .background {
-            shape.fill(.black).shadow(Tokens.Shadows.composer)
-                .mask(Rectangle().inset(by: -Tokens.Space.xxl).subtracting(shape))
-        }
+        .barSurface()
         .animation(Tokens.Easing.ease(Tokens.Duration.fast), value: canSend)
         .dropDestination(for: PickedFile.self) { dropped, _ in
             files += dropped.map(\.url)

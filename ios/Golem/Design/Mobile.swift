@@ -1,24 +1,31 @@
 import SwiftUI
 
-// The building blocks of the iPhone screens. They keep the look measured from Linear's iOS app (a title in the
-// navigation bar beside its glass buttons, pills, flat list sections with hairlines between groups, and round glass
-// buttons) in the layout of Slack's iOS app (folding sections, a title capsule in the bar, and rows that light up
-// under a finger).
+// The building blocks of the iPhone screens, in Ember: flat, square, with hairlines, and never the system's glass. A
+// `ToolbarItem` needs `.sharedBackgroundVisibility(.hidden)`, or iOS draws its glass around the item.
 
 extension View {
-    /// The screen's title at the leading edge of the navigation bar, level with its glass buttons, as Linear's
+    /// Ember's surface for what floats over content or stands in a bar: the flat `fill` and a 1 pt hairline.
+    func barSurface(_ shown: Bool = true) -> some View {
+        background(shown ? Tokens.Mobile.Colors.fill : .clear, in: .rect)
+            .overlay(Rectangle().strokeBorder(shown ? Tokens.Mobile.Colors.separator : .clear))
+    }
+
+    /// A sheet in Ember: the flat background and square corners.
+    func emberSheet() -> some View {
+        presentationBackground(Tokens.Mobile.Colors.background).presentationCornerRadius(0)
+    }
+
+    /// The screen's title at the leading edge of the navigation bar, level with its buttons, as Linear's
     /// top-level screens show it. The bar's own title stays for accessibility and the back menu. In a sheet
     /// (``EnvironmentValues/closeSheet``), the title is in the middle with the close button at the leading edge.
     func screenTitle(_ title: String) -> some View {
         modifier(ScreenTitle(title: title))
     }
 
-    /// A pushed screen: the bar holds only the back button and the glass buttons, as on Linear's issue screen; the
-    /// title stays for accessibility and the back menu, and the screen shows it in its content.
+    /// A pushed screen: the bar holds only the back button and the screen's buttons, as on Linear's issue screen; the
+    /// title stays for accessibility, and the screen shows it in its content.
     func pushedScreen(_ title: String) -> some View {
-        navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(removing: .title)
+        modifier(PushedScreen(title: title))
     }
 
     /// A pushed screen, or nothing for a list that another screen shows inside it under its own title.
@@ -28,15 +35,17 @@ extension View {
     }
 
     /// Lets the ``HeaderTitle`` of the screens inside grow to the trailing button of the bar: the width less the
-    /// 20 pt margins, the 44 pt back and trailing buttons, the gaps of 16 pt beside the capsule, and its padding.
+    /// 20 pt margins, the 44 pt back and trailing buttons, and the gaps of 16 pt beside the title.
     func headerTitleRoom() -> some View { modifier(HeaderTitleRoom()) }
 
     /// The page background of a mobile screen.
     func mobileBackground() -> some View {
         background(Tokens.Mobile.Colors.background)
             .scrollContentBackground(.hidden)
-            // Content fades under the glass bars, as Linear's does.
-            .scrollEdgeEffectStyle(.soft, for: .all)
+            // No blur under the bars: the navigation bar is opaque, and the tab bar and composer are flat.
+            .scrollEdgeEffectHidden(true, for: .all)
+            .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+            .toolbarBackground(Tokens.Mobile.Colors.background, for: .navigationBar)
     }
 }
 
@@ -53,8 +62,43 @@ private struct HeaderTitleRoom: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.headerTitleWidth, width.map { max($0 - 2 * (20 + 44 + 16) - 12, 120) } ?? 220)
+            .environment(\.headerTitleWidth, width.map { max($0 - 2 * (20 + 44 + 16) - 24, 120) } ?? 220)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+/// The system's back button is glass, so a pushed screen draws its own.
+private struct PushedScreen: ViewModifier {
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.isPresented) private var isPresented
+
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(removing: .title)
+            .navigationBarBackButtonHidden()
+            .toolbar {
+                if isPresented {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Back", pixel: .back) { dismiss() }.buttonStyle(.golem(.secondary, .header))
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                }
+            }
+    }
+}
+
+/// Keeps the swipe back from the screen's edge, which SwiftUI turns off with the system's back button.
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        viewControllers.count > 1
     }
 }
 
@@ -66,15 +110,16 @@ private struct ScreenTitle: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if let closeSheet {
-            // As Linear's sheets: a round glass close button and the title in the middle. The bar keeps its title
-            // here, as removing it also removes the middle item.
+            // A square close button and the title in the middle. The bar keeps its title here, as removing it also
+            // removes the middle item.
             content
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Close", pixel: .close, action: closeSheet)
+                        Button("Close", pixel: .close, action: closeSheet).buttonStyle(.golem(.secondary, .header))
                     }
+                    .sharedBackgroundVisibility(.hidden)
                     ToolbarItem(placement: .principal) {
                         Text(title)
                             .font(.golem(Tokens.Mobile.FontSize.sheetTitle, Tokens.FontWeight.semibold))
@@ -82,6 +127,7 @@ private struct ScreenTitle: ViewModifier {
                             .lineLimit(1)
                             .accessibilityAddTraits(.isHeader)
                     }
+                    .sharedBackgroundVisibility(.hidden)
                 }
         } else {
             content
@@ -131,8 +177,8 @@ struct DetailTitle: View {
     }
 }
 
-/// Pills that switch the view of a screen, as Linear's Assigned, Created, and Subscribed: the selected one sits
-/// in glass, the others are plain text. An optional count follows each title.
+/// Pills that switch the view of a screen, as Linear's Assigned, Created, and Subscribed: the selected one is on a
+/// flat surface, the others are plain text. An optional count follows each title.
 struct PillBar<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [Value]
@@ -140,54 +186,51 @@ struct PillBar<Value: Hashable>: View {
     var count: ((Value) -> Int?)?
 
     var body: some View {
-        GlassEffectContainer {
-            HStack(spacing: 7) {
-                ForEach(options, id: \.self) { option in
-                    let selected = option == selection
-                    Button { selection = option } label: {
-                        HStack(spacing: Tokens.Space.md) {
-                            Text(title(option))
-                                .foregroundStyle(
-                                    selected ? Tokens.Mobile.Colors.text : Tokens.Mobile.Colors.textSecondary
-                                )
-                            if let value = count?(option) {
-                                Text("\(value)").foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
-                            }
+        HStack(spacing: 7) {
+            ForEach(options, id: \.self) { option in
+                let selected = option == selection
+                Button { selection = option } label: {
+                    HStack(spacing: Tokens.Space.md) {
+                        Text(title(option))
+                            .foregroundStyle(
+                                selected ? Tokens.Mobile.Colors.text : Tokens.Mobile.Colors.textSecondary
+                            )
+                        if let value = count?(option) {
+                            Text("\(value)").foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                         }
-                        .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
-                        .padding(.horizontal, Tokens.Space.lg)
-                        .frame(height: Tokens.Mobile.Size.pill)
-                        .contentShape(.rect)
                     }
-                    .buttonStyle(.plain)
-                    .glassEffect(selected ? .regular.interactive() : .identity, in: .rect)
-                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .font(.golem(Tokens.Mobile.FontSize.small, Tokens.FontWeight.book))
+                    .padding(.horizontal, Tokens.Space.lg)
+                    .frame(height: Tokens.Mobile.Size.pill)
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
+                .barSurface(selected)
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
-        }
+            }
         .padding(.horizontal, Tokens.Space.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(Tokens.Easing.ease(Tokens.Duration.fast), value: selection)
     }
 }
 
-/// A square glass button with a pixel icon: the close buttons of sheets and the buttons of the artifacts panel.
-struct GlassCircleButton: View {
+/// A square button with a pixel icon: the close buttons of sheets and the buttons of the artifacts panel.
+struct SquareIconButton: View {
     let label: String
     let pixel: Pixel
     var size: CGFloat = Tokens.Mobile.Size.header
-    var tint: Color?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(pixel: pixel)
-                .foregroundStyle(tint == nil ? Tokens.Mobile.Colors.title : Tokens.Colors.onAccent)
+                .foregroundStyle(Tokens.Mobile.Colors.title)
                 .frame(width: size, height: size)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .glassEffect(tint.map { .regular.tint($0).interactive() } ?? .regular.interactive(), in: .rect)
+        .barSurface()
         .accessibilityLabel(label)
     }
 }
@@ -224,11 +267,11 @@ struct FoldingSection<Content: View>: View {
             } label: {
                 HStack {
                     Text(title)
-                        .font(.pixel)
+                        .font(.sectionLabel)
                         .textCase(.uppercase)
                         .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                     Spacer()
-                    Image(pixel: .chevron, size: 8)
+                    Image(pixel: .chevron)
                         .foregroundStyle(Tokens.Mobile.Colors.textQuaternary)
                         .rotationEffect(.degrees(folded ? -90 : 0))
                 }
@@ -248,8 +291,7 @@ struct FoldingSection<Content: View>: View {
     }
 }
 
-/// The title of a screen in a glass capsule beside the back button, as Slack's channel header: the title over a
-/// small caption. The caller wraps it in the screen's menu.
+/// The title of a screen on a flat surface beside the back button: the title over a small caption. The caller wraps it in the screen's menu.
 struct HeaderTitle: View {
     let title: String
     var caption: String?
@@ -268,9 +310,10 @@ struct HeaderTitle: View {
             }
         }
         .lineLimit(1)
-        .padding(.horizontal, Tokens.Space.sm)
-        // The capsule hugs the title and grows up to the trailing button; any wider, the bar folds it into a menu.
+        .padding(.horizontal, Tokens.Space.lg)
+        // It hugs the title and grows up to the trailing button; any wider, the bar folds it into a menu.
         .frame(maxWidth: maxWidth, alignment: .leading)
+        .frame(height: Tokens.Mobile.Size.header)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }

@@ -11,7 +11,7 @@ used there; menus, selects, switches, and checkboxes are our own. iOS looks like
 ## Type and color
 
 - Inter Variable for body text, Geist Mono for times, counts, and values (Markdown bold inside an agent's reply is
-  Geist Mono 500, 0.94 em, `text`), Silkscreen `fontSize.pixel` in capitals for section labels. All three are in the
+  Inter `semibold`, `text`), Geist Mono `fontSize.label` in capitals for section labels. All three are in the
   repository (`public/fonts/`, `ios/Golem/Resources/`, `android/.../assets/fonts/`): the app's content policy loads
   fonts only from Golem. Inter line height `normal` for controls, `font-display: block`. Pages link styles and scripts with a hash
   of their content, and the server keeps them and the font in the browser for good, so text never paints in a
@@ -20,14 +20,15 @@ used there; menus, selects, switches, and checkboxes are our own. iOS looks like
   inactive navigation, and meta, `textQuaternary` for placeholders and times.
 - Weights: `book` (450) for body and menus, `medium` (500) for labels, navigation, and buttons, `strong` (550) for
   the workspace name, `regular` (400) for field and select values.
-- Icons: the 8 × 8 pixel set in `icon` of `tokens.json`, 2 pt a pixel (16 pt), on every platform: `bun run tokens`
+- Icons: the 16 × 16 pixel set in `icon` of `tokens.json`, lines 1 pt wide (16 pt), on every platform: `bun run tokens`
   writes `web/ui/pixels.ts`, `ios/Golem/Design/PixelArt.swift`, and Android's `PixelArt.kt`. A new icon is drawn there
   on the same grid. A section's chevron is 8 pt, 1 pt a pixel.
-- Dither: 1 pt cells, an 8 × 8 Bayer threshold, on or off (`web/ui/dither.ts`, `ios/Golem/Design/Dither.swift`,
-  Android's `Dither.kt`). Used only for: the right edge of a selected row (48 pt wide, `accent`; its label stops 36 pt
-  before the end), the top (28 pt) and bottom (56 pt) of a transcript, a faint band at the top of a panel header
-  (16 pt), the 96 pt Golem face of an empty state, and the corner of an avatar tile. Never over text. iOS and Android
-  make each pattern at the screen's scale, so a cell is exactly 1 pt or 1 dp.
+- Dither: 0.5 pt cells, an 8 × 8 Bayer threshold, on or off (`web/ui/dither.ts`, `ios/Golem/Design/Dither.swift`,
+  Android's `Dither.kt`). Used only for the right edge of a selected row (48 pt wide, `accent`; its label stops 36 pt
+  before the end) and the corner of an avatar tile. Never over text or a transcript. Each cell is a whole number of
+  device pixels.
+- Surfaces on iOS: flat `fill`, a 1 pt `separator` line, square. Never the system's glass; a `ToolbarItem` hides its
+  shared background, and only native menus and alerts stay the system's.
 - Dark theme: Linear lifts each layer, so roles that share one light color split in dark. Cards, fields, buttons,
   and dialogs use `surfaceRaised`; a select trigger on a card `surfaceControl`; action menus, tooltips, and toasts
   `surfaceMenu`; select menus `surfaceListbox`; the composer `surfaceComposer`. Controls take `ringControl`, cards
@@ -141,7 +142,7 @@ Used by the workspace switcher and action menus.
 ## Sidebar
 
 - 244 wide on the canvas, 12 px side padding. It starts with Golem, with no workspace name above it. Golem's icon is
-  its face in one color (`golem`): the icon's 8 × 8 pixels with the marks and eyes cut out, 1.5 px a pixel. iOS uses
+  its face in one color (`golem`): the logo with its marks cut out, 16 cells across, 1 px a cell. iOS uses
   the same glyph for the Golem tab, the Golem row of Search, and "Ask Golem anything".
 - Item: 28 high, 1 px apart, padding 0 × 9 × 0 × 8, `radius.md`, a 14 px icon 6 px before the label,
   `fontSize.md` `medium` `textTertiary`. Hover: `fillHover` at once and `text` in 150 ms. Current: `fillActive`, `text`.
@@ -206,10 +207,11 @@ Used by the workspace switcher and action menus.
 - Avatar: a 24 px square with the person's profile picture, cropped to fill it; without one, the first letter of their
   name on an `accent` tile, in the 5 × 7 pixel letters of `letter` in `tokens.json`, 2 pt a pixel, in `onAccent`, whose
   bottom right corner dissolves into `canvas`.
-- Golem's face: the 8 × 8 pixels, a white face, black marks, and eyes in `accent`, on a transparent tile; in light, on
-  a black tile, so the white face stays apart from a white surface. From 48 pt it is the logo, `design/icon.svg`: the
-  face dissolves to the right through interleaved-gradient noise, one device pixel a cell at each output size
-  (`bun scripts/icon.ts`), and the forehead mark stays solid `accent`.
+- Golem's logo: one drawing everywhere, `logo` in `scripts/icon.ts`. An 8 × 8 white face with black marks and a solid
+  `accent` forehead mark that dissolves to the right through interleaved-gradient noise. One noise cell is 1 pt at the
+  size where it shows, also on a home screen, where a finer grain blurs into a gradient. It has one expression. On a
+  transparent tile; in light, on a black tile, so the white face stays apart from a white surface. An avatar is 24 pt on
+  the web and 36 pt on a phone, the sign-in 48 pt, and an empty state 96 pt. `golem` is the same logo in one color.
 
 ## Lists
 
@@ -265,9 +267,7 @@ Used by the workspace switcher and action menus.
   spinner and a shimmer lead the summary, and the step it is at follows in `textQuaternary` after a "·": the tool's
   name, "Thinking", or "Writing". Once done, one step pixel for each tool call (the last 24) follows the arrow, 2 px
   apart.
-- Face: Golem's avatar on an answer is the icon's face with the mood of its work, drawn from the icon's 8 × 8 pixels:
-  working (eyes glance aside and blink every 3.2 s), waiting for a person (mouth open), done (a smile), failed (eyes
-  shut, a frown). An answer without work, or one that a person stopped, shows the icon itself.
+- Golem's avatar on an answer is the logo. The work log, the spinner, and an approval say how the work goes.
 - Working spinner: four 4 px `accent` squares, 1 px apart, that light in turn clockwise each 0.25 s, after a chat in
   the sidebar, in a topic's chat list, after each chat link while that chat's agent works, and in iOS rows.
   iOS writes "· working" after a chat link.
@@ -352,11 +352,11 @@ iPad keeps the sidebar with the same screens.
 - Page: `background` (white, #0a0a0a dark). Text: `title` for screen titles, `text` for rows and messages,
   `textSecondary` for unselected pills and icons, `textTertiary` for captions, `textQuaternary` for section titles and
   chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
-- Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt glass capsule 20 pt
+- Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt flat bar 20 pt
   from the screen edges and 24 pt above the bottom: Home, Search, Golem, Activity, and Agenda, each an 18 pt icon
   (Golem's face glyph, 16 pt) over its `tabLabel` name. The person's avatar at the leading edge of each tab's first
   screen, before its title, opens a native menu with Settings and Workspace settings, as X's does. The open
-  one is `title` on a `tabSelected` capsule that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent capsule. A tap on the open tab goes back to its first
+  one is `title` on a `tabSelected` cell that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent square. A tap on the open tab goes back to its first
   screen. The keyboard covers the bar.
 - Agenda: the title, then pills for Following and Upcoming, Following first and open at the start, then the chosen
   list without its own title. A link to
@@ -366,13 +366,13 @@ iPad keeps the sidebar with the same screens.
   button.
 - Home: as Slack's, with the workspace's name as its title. The three newest open chats with their topic under the title, and
   Show more for the rest, then the topics with their count of open chats, then the private
-  topics, each with a lock, in sections whose title folds them. A 48 pt accent glass square over the bar opens a
+  topics, each with a lock, in sections whose title folds them. A 48 pt accent square over the bar opens a
   native menu: New chat in a topic, or New topic.
 - Screen title: top-level screens put it in the navigation bar at its leading edge, 12 pt from the screen edge, level
-  with the 44 pt glass buttons at the trailing edge; `fontSize.title` `semibold`. Topics and chats show the square
-  glass back button and a title capsule beside it, as Slack's: the title in `fontSize.row` `semibold` over a `caption`
-  (the count of open chats, or the chat's topic). The capsule opens the screen's native menu.
-- Pills: 34 high, padding 12, 7 apart, from 12 pt; the selected one is glass with `text`, the others plain
+  with the 44 pt flat buttons at the trailing edge; `fontSize.title` `semibold`. Topics and chats show the square
+  flat back button and a flat title beside it: the title in `fontSize.row` `semibold` over a `caption`
+  (the count of open chats, or the chat's topic). The title opens the screen's native menu.
+- Pills: 34 high, padding 12, 7 apart, from 12 pt; the selected one is on the flat surface with `text`, the others plain
   `textSecondary`; a count in `textQuaternary` 8 pt after the title.
 - Lists: rows 46 pt apart, 10 pt in from the screen with their content 10 pt further in, a 21 pt wide icon, the title in
   `fontSize.row` `book`. A row lights up on a `fill` rectangle under a finger at once and fades in 150 ms. A
@@ -388,25 +388,25 @@ iPad keeps the sidebar with the same screens.
   rests past its end, as when rows at its end fold or go away, scrolls back to its end. New messages slide up and fade in, and
   the newest stays in view. The square voice button is in the bar at the trailing edge.
 - Composer row: the composer 20 pt from the screen edges, 8 pt over the tab bar, or 8 pt over the keyboard while it
-  shows. The composer is a glass field, radius 24, with the `composer` shadow, as T3's: add (+), the text, the mic,
+  shows. The composer is a flat field: add (+), the text, the mic,
   and a `send` (30 pt) square in a 44 pt touch target: `fill` with a `textQuaternary` arrow while there is nothing to
   send, else the accent; Stop in `danger`. While the text fits one line, all sit in one row; else the text spans the
-  field, up to 4 lines, over the row of buttons. Content fades under the glass bars at the top and bottom. Dragging the content closes the
+  field, up to 4 lines, over the row of buttons. Dragging the content closes the
   keyboard.
 - Activity: as Slack's. All and Unread pills; each notification has Golem's avatar, its title and the day, as the
   web's Inbox, "in #" and the topic, two lines of text, and an accent dot while unread.
 - Search: as Slack's. The field sits at the top under the title. Before a query the screen lists the person's recent
   searches, then one row for Golem, with Golem's face glyph, that opens Golem; no topics. The web's search page is
   the same. Scrolling closes the keyboard.
-- Artifacts: a sheet on iPhone with Files and Artifacts pills and a glass close button; an open artifact has a glass
+- Artifacts: a sheet on iPhone with Files and Artifacts pills and a flat close button; an open artifact has a flat
   back button. Each screen keeps its own panel.
 - Motion: springs (`snappy`) for the tab selection, folding, the panel, and new rows; native menus and pushes keep the
   system's own.
 - Settings: flat groups on the page, no cards: a section title, rows 43 high with the label 20 pt in and the value at
   the right (a 44 pt control reaches over the row's padding and does not make it taller); a group inside a section,
   such as "By model" in Usage, has a sub-heading in `caption` `medium` `textTertiary`; a select is the value and an
-  up-and-down chevron opening a native menu. Sign out is a `danger` row with its icon at the right. Secondary buttons are glass capsules; badges are a dot and text.
-- Menus: native. Sheets: a 40 pt square glass close button at the left and the title in the middle,
+  up-and-down chevron opening a native menu. Sign out is a `danger` row with its icon at the right. Secondary buttons are flat with a hairline; badges are a dot and text.
+- Menus: native. Sheets: a 40 pt square close button at the left and the title in the middle,
   `fontSize.sheetTitle` `semibold`; fields are `fill` with radius 12 and a 1 pt accent outline when focused.
 - Live Activity: on the Lock Screen, a status symbol, the working chat's title in `fontSize.row` `semibold`, the
   status in words (Working, Waiting for you, Done, Failed) in `caption`, and the elapsed time; in the Dynamic Island,

@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Buttons per design/components.md: four variants in five sizes, all square; secondary buttons are glass. The visual
+/// Buttons per design/components.md: four variants in six sizes, all square; secondary buttons are flat with a hairline. The visual
 /// height follows the spec; the touch target always reaches 44 pt. A press shows at once and fades out in 150 ms, as a
 /// hover does on the web.
 struct GolemButtonStyle: ButtonStyle {
     enum Variant { case primary, secondary, ghost, danger }
-    enum Size { case regular, small, icon, tiny, large }
+    enum Size { case regular, small, icon, tiny, large, header }
 
     var variant: Variant = .secondary
     var size: Size = .regular
@@ -13,7 +13,7 @@ struct GolemButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed && isEnabled
-        let iconOnly = size == .icon || size == .tiny
+        let iconOnly = size == .icon || size == .tiny || size == .header
         configuration.label
             .labelStyle(ButtonLabelStyle(iconOnly: iconOnly))
             .font(.golem(size == .small ? Tokens.FontSize.sm : Tokens.FontSize.md, Tokens.FontWeight.medium))
@@ -22,7 +22,7 @@ struct GolemButtonStyle: ButtonStyle {
             .padding(.horizontal, iconOnly ? 0 : size == .small ? 10 : Tokens.Space.lg)
             .frame(minWidth: height, maxWidth: size == .large ? .infinity : nil, minHeight: height, maxHeight: height)
             .background(background(pressed: pressed), in: .rect)
-            .glassEffect(variant == .secondary ? .regular.interactive() : .identity, in: .rect)
+            .overlay(Rectangle().strokeBorder(variant == .secondary ? Tokens.Mobile.Colors.separator : .clear))
             .shadow(variant == .primary ? Tokens.Shadows.low : [])
             .opacity(isEnabled ? 1 : 0.6)
             // The visual size stays; the hit area grows to 44 pt.
@@ -37,6 +37,7 @@ struct GolemButtonStyle: ButtonStyle {
         case .small, .icon: Tokens.Size.controlSmall
         case .tiny: Tokens.Size.controlTiny
         case .large: Tokens.Size.controlLarge
+        case .header: Tokens.Mobile.Size.header
         }
     }
 
@@ -52,7 +53,7 @@ struct GolemButtonStyle: ButtonStyle {
     private func background(pressed: Bool) -> Color {
         switch variant {
         case .primary: pressed ? Tokens.Colors.textSecondary : Tokens.Colors.text
-        case .secondary: .clear
+        case .secondary: pressed ? Tokens.Mobile.Colors.menuSelected : Tokens.Mobile.Colors.fill
         // Translucent, so it fits every surface.
         case .ghost: pressed ? Tokens.Colors.ghostHover : .clear
         case .danger: pressed ? Tokens.Colors.dangerSubtle : .clear

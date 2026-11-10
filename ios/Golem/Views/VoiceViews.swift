@@ -136,8 +136,7 @@ struct LevelWave: View {
                 let rect = CGRect(
                     x: size.width - CGFloat(index + 1) * step + Self.gap, y: (size.height - height) / 2,
                     width: Self.bar, height: height)
-                context.fill(
-                    Path(roundedRect: rect, cornerRadius: Self.bar / 2), with: .color(Tokens.Colors.textTertiary))
+                context.fill(Path(rect), with: .color(Tokens.Colors.textTertiary))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: Tokens.Size.controlSmall)

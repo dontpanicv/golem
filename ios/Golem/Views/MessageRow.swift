@@ -2,12 +2,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// One message, as Slack shows it: the author's avatar at the side, their name and the time over the text. A message
-/// that follows one of the same author within five minutes shows only its text (``continues(_:after:)``). Golem's face
-/// shows the mood of its answer; `waiting` says that it waits for a person to allow an action of this answer's work.
+/// that follows one of the same author within five minutes shows only its text (``continues(_:after:)``).
 struct MessageRow: View {
     let message: Message
     var continued = false
-    var waiting = false
     let openFile: (FileRef) -> Void
     @Environment(Session.self) private var session
 
@@ -16,11 +14,7 @@ struct MessageRow: View {
             if continued {
                 Color.clear.frame(width: Tokens.Mobile.Size.avatar, height: 1)
             } else if message.agent {
-                if let mood = Self.mood(of: message, waiting: waiting) {
-                    GolemFace(mood: mood, size: Tokens.Mobile.Size.avatar)
-                } else {
-                    GolemMark(size: Tokens.Mobile.Size.avatar)
-                }
+                GolemMark(size: Tokens.Mobile.Size.avatar)
             } else {
                 PersonAvatar(
                     name: message.author,
@@ -59,16 +53,6 @@ struct MessageRow: View {
             }
         }
         .accessibilityElement(children: .contain)
-    }
-
-    /// The face of an agent's message: it failed, it works or waits for a person, or it finished its work; an answer
-    /// with no work, or one that a person stopped, has the icon's own face.
-    static func mood(of message: Message, waiting: Bool) -> GolemFace.Mood? {
-        if message.failed { return .failed }
-        if message.streaming || (message.work != nil && message.work?.endedAt == nil) {
-            return waiting ? .waiting : .working
-        }
-        return message.work.map { $0.stopped ? nil : .done } ?? nil
     }
 
     /// The message follows one of the same author within five minutes, and has no work log to head; or it is a turn of
@@ -172,6 +156,6 @@ private struct FilePicture: View {
 /// each word of an answer. `openFile` is the same action each time.
 extension MessageRow: Equatable {
     static func == (left: MessageRow, right: MessageRow) -> Bool {
-        left.message == right.message && left.continued == right.continued && left.waiting == right.waiting
+        left.message == right.message && left.continued == right.continued
     }
 }

@@ -578,7 +578,7 @@ bun run lint:ios   # SwiftLint (`brew install swiftlint`)
   Swift tokens and the pixel icons from it. `design/components.md` is the spec of every component, on the web and on iOS.
 - `design/icon.svg` is Golem's face in an 8 × 8 grid: white on black, dissolving to the right, with the aleph of אמת
   (truth), the letter that gives it life, as the accent cell (#ff4a1c) on its forehead. `bun scripts/icon.ts` makes it
-  and every raster icon at its own size.
+  and every app icon, with one noise cell a point at the size where each shows.
 - `.claude/skills/` has the agent skills of this repository, such as
   [Stageshow](https://github.com/benjitaylor/skills), which made the demo above
   (`.claude/skills/stageshow/examples/golem-demo/`). The diagrams are made with

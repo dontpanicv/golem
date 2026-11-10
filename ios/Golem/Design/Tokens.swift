@@ -57,7 +57,7 @@ enum Tokens {
 		static let xl: CGFloat = 20
 		static let xxl: CGFloat = 24
 		static let mono: CGFloat = 11.5
-		static let pixel: CGFloat = 8
+		static let label: CGFloat = 10.5
 	}
 
 	enum FontWeight {
@@ -91,7 +91,7 @@ enum Tokens {
 		static let md: CGFloat = 0
 		static let lg: CGFloat = 0
 		static let xl: CGFloat = 0
-		static let full: CGFloat = 9999
+		static let full: CGFloat = 0
 	}
 
 	enum Size {
@@ -152,7 +152,7 @@ enum Tokens {
 			static let detailTitle: CGFloat = 22
 			static let title: CGFloat = 25.5
 			static let mono: CGFloat = 12
-			static let pixel: CGFloat = 8
+			static let label: CGFloat = 10.5
 		}
 
 		enum Size {

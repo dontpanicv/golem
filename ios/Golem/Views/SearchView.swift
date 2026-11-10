@@ -59,12 +59,19 @@ struct SearchView: View {
         }
         .animation(.snappy, value: response?.results.map(\.id))
         .scrollDismissesKeyboard(.immediately)
-        .searchable(
-            text: $query, placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search \(session.workspace?.name ?? "")"
-        )
-        .onSubmit(of: .search) { save() }
-        .autocorrectionDisabled()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GolemTextField(nil, placeholder: "Search \(session.workspace?.name ?? "")", text: $query)
+                .submitLabel(.search)
+                .onSubmit { save() }
+                .autocorrectionDisabled()
+                .overlay(alignment: .trailing) {
+                    if !query.isEmpty {
+                        Button("Clear", pixel: .close) { query = "" }.buttonStyle(.golem(.ghost, .icon))
+                    }
+                }
+                .padding(.horizontal, Tokens.Mobile.Size.margin)
+                .padding(.vertical, Tokens.Space.md)
+        }
         .phoneTabBar()
         .mobileBackground()
         .filePreview($opening)

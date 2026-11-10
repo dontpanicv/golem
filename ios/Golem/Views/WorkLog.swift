@@ -27,7 +27,7 @@ struct WorkLog: View {
                         Text("· \(step)").foregroundStyle(Tokens.Colors.textQuaternary).lineLimit(1)
                     }
                     if !work.steps.isEmpty {
-                        Image(pixel: .forward, size: 8).rotationEffect(.degrees(open ? 90 : 0))
+                        Image(pixel: .forward).rotationEffect(.degrees(open ? 90 : 0))
                     }
                     if !working { StepStrip(steps: work.steps).padding(.leading, Tokens.Space.xs) }
                 }

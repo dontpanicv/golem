@@ -211,7 +211,7 @@ object Tokens {
         val xl = 20.sp
         val xxl = 24.sp
         val mono = 11.5f.sp
-        val pixel = 8.sp
+        val label = 10.5f.sp
     }
 
     object FontWeight {
@@ -245,7 +245,7 @@ object Tokens {
         val md = 0.dp
         val lg = 0.dp
         val xl = 0.dp
-        val full = 9999.dp
+        val full = 0.dp
     }
 
     object Size {
@@ -291,7 +291,7 @@ object Tokens {
             val detailTitle = 22.sp
             val title = 25.5f.sp
             val mono = 12.sp
-            val pixel = 8.sp
+            val label = 10.5f.sp
         }
 
         object Size {

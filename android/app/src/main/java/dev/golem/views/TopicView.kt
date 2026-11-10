@@ -42,7 +42,6 @@ import dev.golem.design.vector
 import dev.golem.design.EmptyState
 import dev.golem.design.FoldingSection
 import dev.golem.design.Golem
-import dev.golem.design.GolemGlyph
 import dev.golem.design.GolemMenu
 import dev.golem.design.ListSeparator
 import dev.golem.design.LocalSession

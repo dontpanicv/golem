@@ -20,7 +20,7 @@ private struct FilePreview: ViewModifier {
                     ProgressView()
                         .controlSize(.large)
                         .padding(Tokens.Space.xxl)
-                        .glassEffect(.regular, in: .rect(cornerRadius: Tokens.Radius.xl))
+                        .barSurface()
                         .accessibilityLabel("Opening file")
                 }
             }

@@ -10,7 +10,7 @@ export function Icon({ name }: { name: IconName }) {
       className="icon"
       fill="currentColor"
       shapeRendering="crispEdges"
-      viewBox="0 0 8 8"
+      viewBox="0 0 16 16"
     >
       <path d={pixels[name]} />
     </svg>

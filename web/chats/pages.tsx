@@ -146,9 +146,6 @@ function Chat({
   const mine = approvals.filter(
     ({ approverId }) => approverId === null || approverId === me
   );
-  const working = messages.findLast(
-    (message) => message.work?.endedAt === null || message.streaming
-  );
   useEffect(() => {
     followed.add(chatId);
     return () => {
@@ -222,7 +219,6 @@ function Chat({
               continued={continues(message, messages[index - 1])}
               key={message.id}
               message={message}
-              waiting={message === working && mine.length > 0}
               workspaceId={workspaceId}
             />
           ))}

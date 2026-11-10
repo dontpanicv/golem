@@ -104,7 +104,7 @@ struct FollowingView: View {
             Text("Golem reads new messages from it again.")
         }
         .sheet(item: $selected, onDismiss: reload) { selection in
-            NavigationStack { detail(selection) }
+            NavigationStack { detail(selection) }.emberSheet()
         }
         .phoneTabBar()
         .mobileBackground()
@@ -127,9 +127,7 @@ struct FollowingView: View {
     private func keptSection(_ kept: [IntakeKept]) -> some View {
         ListSeparator()
         ListSectionHeader(title: "Kept")
-        TextField("Search mail, messages, and notes", text: $query)
-            .textFieldStyle(.roundedBorder)
-            .font(.golem(Tokens.Mobile.FontSize.row))
+        GolemTextField(nil, placeholder: "Search mail, messages, and notes", text: $query)
             .padding(.horizontal, Tokens.Mobile.Size.margin)
             .padding(.vertical, Tokens.Space.md)
         ForEach(allKept ? kept : Array(kept.prefix(keptRows))) { item in

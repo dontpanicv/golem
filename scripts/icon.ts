@@ -1,8 +1,9 @@
 /**
- * Generates Golem's icon, "Dissolve, Noise", at each size where it is used: `bun scripts/icon.ts`. A cell is one device
- * pixel at every output size, so no raster is a scaled copy of another and no moiré appears.
+ * Generates Golem's logo, "Dissolve, Noise": `bun scripts/icon.ts` writes the app icons, and `logo` gives `bun run tokens`
+ * the paths that the apps draw. One cell of the noise is 1 point at the size where the logo shows, as in the UI's dither,
+ * so the grain stays visible: a finer one blurs into a gradient on a phone's home screen.
  */
-import { mkdir, unlink } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { zlibSync } from "fflate";
 import tokens from "../design/tokens.json" with { type: "json" };
@@ -13,40 +14,25 @@ const BLACK = [0, 0, 0, 0xff];
 const NOTHING = [0, 0, 0, 0];
 
 const TILE_PADDING = 0.14;
+const MARK_PADDING = 0.1;
 /** The face in the middle 48 dp of the 108 dp adaptive icon, inside its safe zone. */
 const ADAPTIVE_PADDING = 30 / 108;
+
+/** The sides in points at which the apps show the logo. */
+export const LOGO_SIDES = [24, 36, 48, 96] as const;
 
 const FACE_ROWS = tokens.icon.golem.split("|");
 const FOREHEAD = { left: 3, right: 5, row: 1 };
 
-/** Each raster: the path, its size in px, the tile's padding, and the background. */
-const RASTERS: readonly [string, number, number, number[]][] = [
-  ["public/icon.png", 64, TILE_PADDING, BLACK],
-  ["public/apple-touch-icon.png", 180, TILE_PADDING, BLACK],
-  ["public/mark-1x.png", 48, TILE_PADDING, BLACK],
-  ["public/mark-2x.png", 96, TILE_PADDING, BLACK],
-  ["public/mark-3x.png", 144, TILE_PADDING, BLACK],
-  [
-    "ios/Golem/Assets.xcassets/Mark.imageset/mark-1x.png",
-    48,
-    TILE_PADDING,
-    BLACK,
-  ],
-  [
-    "ios/Golem/Assets.xcassets/Mark.imageset/mark-2x.png",
-    96,
-    TILE_PADDING,
-    BLACK,
-  ],
-  [
-    "ios/Golem/Assets.xcassets/Mark.imageset/mark-3x.png",
-    144,
-    TILE_PADDING,
-    BLACK,
-  ],
+/** Each raster: the path, its size in px, the px of one noise cell, the tile's padding, and the background. */
+const RASTERS: readonly [string, number, number, number, number[]][] = [
+  ["public/icon.png", 64, 2, TILE_PADDING, BLACK],
+  ["public/apple-touch-icon.png", 180, 3, TILE_PADDING, BLACK],
+  // iOS shows this at 60 pt, so 60 cells are 1 pt each.
   [
     "ios/Golem/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
     1024,
+    17,
     TILE_PADDING,
     BLACK,
   ],
@@ -58,19 +44,12 @@ const RASTERS: readonly [string, number, number, number[]][] = [
       ["xxhdpi", 3],
       ["xxxhdpi", 4],
     ] as const
-  ).flatMap(([density, scale]): [string, number, number, number[]][] => [
-    [
-      `android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png`,
-      108 * scale,
-      ADAPTIVE_PADDING,
-      NOTHING,
-    ],
-    [
-      `android/app/src/main/res/drawable-${density}/golem_logo.png`,
-      48 * scale,
-      TILE_PADDING,
-      BLACK,
-    ],
+  ).map(([density, scale]): [string, number, number, number, number[]] => [
+    `android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png`,
+    108 * scale,
+    Math.round(scale),
+    ADAPTIVE_PADDING,
+    NOTHING,
   ]),
 ];
 
@@ -78,41 +57,69 @@ if (import.meta.main) {
   for (const path of ["design/icon.svg", "public/icon.svg"]) {
     await Bun.write(path, svg());
   }
-  for (const [path, size, padding, background] of RASTERS) {
-    await mkdir(dirname(path), { recursive: true });
-    await Bun.write(path, png(size, cells(size, padding, background)));
+  for (const side of [24, 48, 96]) {
+    await Bun.write(`public/logo-${side}.svg`, svg(side, MARK_PADDING, null));
   }
-  await Bun.file("ios/Golem/Assets.xcassets/Mark.imageset/icon.svg")
-    .exists()
-    .then((exists) =>
-      exists
-        ? unlink("ios/Golem/Assets.xcassets/Mark.imageset/icon.svg")
-        : undefined
-    );
+  await Bun.write(
+    "android/app/src/main/res/drawable/ic_launcher_monochrome.xml",
+    vector(108, ADAPTIVE_PADDING)
+  );
+  await Bun.write(
+    "android/app/src/main/res/drawable/ic_notification.xml",
+    vector(24, MARK_PADDING)
+  );
+  for (const [path, size, grain, padding, background] of RASTERS) {
+    await mkdir(dirname(path), { recursive: true });
+    await Bun.write(path, png(size, cells(size, grain, padding, background)));
+  }
 }
 
-/** The icon at 256 cells: a black tile, one rect for each run of white, and the forehead mark. */
-export function svg(): string {
-  const size = 256;
-  const { pad, cell } = grid(size, TILE_PADDING);
-  const rects: string[] = [];
-  for (let y = 0; y < size; y += 1) {
+/** The logo with `side` cells across: on a tile if `background` is given, and sharp at 1 unit a cell. */
+export function svg(
+  side = 32,
+  padding = TILE_PADDING,
+  background: string | null = "#000000"
+): string {
+  const { face, forehead } = logo(side, padding);
+  const tile = background
+    ? `<rect width="${side}" height="${side}" fill="${background}"/>`
+    : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${side} ${side}" shape-rendering="crispEdges"><title>Golem</title>${tile}<path fill="#ffffff" d="${face}"/><path fill="#ff4a1c" d="${forehead}"/></svg>\n`;
+}
+
+/** The paths of the white face and the forehead mark, for the same absolute commands as the pixel icons. */
+export function logo(
+  side: number,
+  padding = MARK_PADDING
+): { face: string; forehead: string } {
+  let face = "";
+  for (let y = 0; y < side; y += 1) {
     let start = -1;
-    for (let x = 0; x <= size; x += 1) {
-      const white =
-        x < size && colorAt(x, y, size, TILE_PADDING, BLACK) === WHITE;
+    for (let x = 0; x <= side; x += 1) {
+      const white = x < side && colorAt(x, y, side, padding, BLACK) === WHITE;
       if (white && start < 0) {
         start = x;
       } else if (!white && start >= 0) {
-        rects.push(
-          `<rect x="${start}" y="${y}" width="${x - start}" height="1"/>`
-        );
+        face += `M${start} ${y}H${x}V${y + 1}H${start}Z`;
         start = -1;
       }
     }
   }
-  const forehead = `<rect x="${pad + FOREHEAD.left * cell}" y="${pad + FOREHEAD.row * cell}" width="${(FOREHEAD.right - FOREHEAD.left) * cell}" height="${cell}" fill="#ff4a1c"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges"><title>Golem</title><rect width="${size}" height="${size}" fill="#000000"/><g fill="#ffffff">${rects.join("")}</g>${forehead}</svg>\n`;
+  const { pad, cell } = grid(side, padding);
+  const left = pad + FOREHEAD.left * cell;
+  const top = pad + FOREHEAD.row * cell;
+  const right = pad + FOREHEAD.right * cell;
+  return { face, forehead: `M${left} ${top}H${right}V${top + cell}H${left}Z` };
+}
+
+function vector(side: number, padding: number): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated by scripts/icon.ts. One color, with the marks cut out. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="${side}dp" android:height="${side}dp" android:viewportWidth="${side}" android:viewportHeight="${side}">
+    <path android:fillColor="#ffffff" android:pathData="${logo(side, padding).face}" />
+</vector>
+`;
 }
 
 /** Whether interleaved-gradient noise lights the cell at `x`, `y`; `fu` is its place across the face, from 0 to 1. */
@@ -120,7 +127,7 @@ export function lit(x: number, y: number, fu: number): boolean {
   return 1.08 - smoothstep(0.35, 1, fu) * 1.08 > noise(x, y);
 }
 
-/** The face's area: a whole number of px per cell of the 8 × 8 grid, so that each cell's edges are sharp. */
+/** The face's area: a whole number of noise cells for each pixel of the 8 × 8 face, so that its edges are sharp. */
 function grid(size: number, padding: number): { pad: number; cell: number } {
   const cell = Math.round(((1 - 2 * padding) * size) / 8);
   return { pad: Math.floor((size - cell * 8) / 2), cell };
@@ -129,11 +136,11 @@ function grid(size: number, padding: number): { pad: number; cell: number } {
 function colorAt(
   x: number,
   y: number,
-  size: number,
+  side: number,
   padding: number,
   background: number[]
 ): number[] {
-  const { pad, cell } = grid(size, padding);
+  const { pad, cell } = grid(side, padding);
   const column = Math.floor((x - pad) / cell);
   const row = Math.floor((y - pad) / cell);
   if (
@@ -149,15 +156,23 @@ function colorAt(
   return lit(x, y, (x + 0.5 - pad) / (cell * 8)) ? WHITE : background;
 }
 
-function cells(
+/** The RGBA pixels of a raster; whole cells of `grain` px, centered, with any px left over as background. */
+export function cells(
   size: number,
+  grain: number,
   padding: number,
   background: number[]
 ): Uint8Array {
+  const side = Math.floor(size / grain);
+  const margin = Math.floor((size - side * grain) / 2);
+  const cellAt = (px: number) => Math.floor((px - margin) / grain);
   const pixels = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      pixels.set(colorAt(x, y, size, padding, background), (y * size + x) * 4);
+      pixels.set(
+        colorAt(cellAt(x), cellAt(y), side, padding, background),
+        (y * size + x) * 4
+      );
     }
   }
   return pixels;

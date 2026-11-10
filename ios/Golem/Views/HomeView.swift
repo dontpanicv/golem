@@ -82,7 +82,7 @@ struct HomeView: View {
             Image(pixel: .plus)
                 .foregroundStyle(Tokens.Colors.onAccent)
                 .frame(width: Tokens.Mobile.Size.voice, height: Tokens.Mobile.Size.voice)
-                .glassEffect(.regular.tint(Tokens.Colors.accent).interactive(), in: .rect)
+                .background(Tokens.Colors.accent, in: .rect)
         }
         .accessibilityLabel("New")
         .padding(.trailing, Tokens.Mobile.Size.margin)

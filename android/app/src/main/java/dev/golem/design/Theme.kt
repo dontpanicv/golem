@@ -30,7 +30,6 @@ private val LocalMobileColors = staticCompositionLocalOf { LightMobileColors }
 private val LocalDark = staticCompositionLocalOf { false }
 private val LocalInter = staticCompositionLocalOf<FontFamily> { FontFamily.Default }
 private val LocalMono = staticCompositionLocalOf<FontFamily> { FontFamily.Monospace }
-private val LocalSilkscreen = staticCompositionLocalOf<FontFamily> { FontFamily.Monospace }
 
 /** The colors and fonts of the open theme. */
 object Golem {
@@ -44,8 +43,6 @@ object Golem {
         @Composable @ReadOnlyComposable get() = LocalInter.current
     val mono: FontFamily
         @Composable @ReadOnlyComposable get() = LocalMono.current
-    val silkscreen: FontFamily
-        @Composable @ReadOnlyComposable get() = LocalSilkscreen.current
 }
 
 /** Inter at a token size and weight, as the iOS app's `Font.golem` gives it. */
@@ -60,10 +57,10 @@ fun golemText(size: TextUnit, weight: FontWeight = Tokens.FontWeight.regular): T
 fun golemMono(size: TextUnit, weight: FontWeight = Tokens.FontWeight.regular): TextStyle =
     TextStyle(fontFamily = Golem.mono, fontSize = size, fontWeight = weight)
 
-/** Silkscreen at its one size, for section labels. */
+/** Geist Mono for section labels. */
 @Composable
 @ReadOnlyComposable
-fun golemPixel(): TextStyle = TextStyle(fontFamily = Golem.silkscreen, fontSize = Tokens.FontSize.pixel)
+fun golemLabel(): TextStyle = TextStyle(fontFamily = Golem.mono, fontSize = Tokens.FontSize.label)
 
 /** Inter Variable at each weight the tokens use; the font file is the web's and the iOS app's. */
 private fun inter(assets: AssetManager): FontFamily = FontFamily(
@@ -80,8 +77,6 @@ private fun mono(assets: AssetManager): FontFamily = FontFamily(
     Font("fonts/GeistMono-Medium.ttf", assets, FontWeight.Medium),
 )
 
-private fun silkscreen(assets: AssetManager): FontFamily = FontFamily(Font("fonts/Silkscreen-Regular.ttf", assets))
-
 /** Square corners on every Material container. */
 private val SQUARE = RoundedCornerShape(0.dp)
 
@@ -93,7 +88,6 @@ fun GolemTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () ->
     val assets = LocalContext.current.assets
     val family = remember(assets) { inter(assets) }
     val monoFamily = remember(assets) { mono(assets) }
-    val silkscreenFamily = remember(assets) { silkscreen(assets) }
     val scheme = if (dark) {
         darkColorScheme(
             primary = colors.accent, onPrimary = colors.onAccent, secondary = colors.accent,
@@ -144,7 +138,6 @@ fun GolemTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () ->
         LocalDark provides dark,
         LocalInter provides family,
         LocalMono provides monoFamily,
-        LocalSilkscreen provides silkscreenFamily,
     ) {
         MaterialTheme(
             colorScheme = scheme, typography = typography,

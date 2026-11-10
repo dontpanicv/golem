@@ -59,7 +59,7 @@ targets:
         CFBundleShortVersionString: '0.1.0'
         CFBundleVersion: '1'
         UILaunchScreen: {}
-        UIAppFonts: [InterVariable.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf, Silkscreen-Regular.ttf]
+        UIAppFonts: [InterVariable.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         ITSAppUsesNonExemptEncryption: false

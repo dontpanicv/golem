@@ -14,6 +14,7 @@
       "!ios/Golem/Assets.xcassets",
       "!design/icon.svg",
       "!public/icon.svg",
+      "!public/logo-*.svg",
       "!web/ui/pixels.ts",
       "!docs/assets/*.svg"
     ]

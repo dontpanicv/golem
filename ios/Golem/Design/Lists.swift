@@ -35,7 +35,7 @@ struct ListSectionHeader: View {
 
     private var label: some View {
         Text(title)
-            .font(.pixel)
+            .font(.sectionLabel)
             .textCase(.uppercase)
             .foregroundStyle(Tokens.Mobile.Colors.textTertiary)
             .frame(minHeight: Tokens.Size.listRow)
@@ -75,7 +75,7 @@ struct ListRow<Trailing: View>: View {
     var body: some View {
         HStack(spacing: Tokens.Space.md) {
             if golem {
-                GolemGlyph(size: 16)
+                Image(pixel: .golem)
                     .foregroundStyle(Tokens.Mobile.Colors.textSecondary)
                     .frame(width: 21)
             } else if let emoji {
