@@ -3,7 +3,7 @@ import { Bar, Collapse, Count, Phone, Roll, Stage, States, Stream, Window, useLo
 import './golem.css'
 
 // Golem, the family assistant, in its own desktop look: the sidebar on the
-// canvas, the chat in an inset panel, Inter, Ember's one orange accent. Beats: a
+// canvas, the chat in an inset panel, Inter, Ember's one rust accent. Beats: a
 // person types a request into the composer and sends it; Golem starts
 // to work ("Working for 1s · Set heating", the pixel spinner, a shimmer), its
 // step changes twice; the work folds into "Worked for 3s" with one accent
@@ -420,7 +420,7 @@ function Mark() {
   return (
     <svg aria-hidden="true" className="gd-face" shapeRendering="crispEdges" viewBox={`0 0 ${side} ${side}`}>
       <path d={LOGOS[side].face} fill="#ffffff" />
-      <path d={LOGOS[side].forehead} fill="#ff4a1c" />
+      <path d={LOGOS[side].forehead} fill="#c8603f" />
     </svg>
   )
 }

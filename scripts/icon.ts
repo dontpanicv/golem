@@ -8,7 +8,8 @@ import { dirname } from "node:path";
 import { zlibSync } from "fflate";
 import tokens from "../design/tokens.json" with { type: "json" };
 
-const ACCENT = [0xff, 0x4a, 0x1c, 0xff];
+const ACCENT_COLOR = tokens.color.accent.dark;
+const ACCENT = [...Buffer.from(ACCENT_COLOR.slice(1), "hex"), 0xff];
 const WHITE = [0xff, 0xff, 0xff, 0xff];
 const BLACK = [0, 0, 0, 0xff];
 const NOTHING = [0, 0, 0, 0];
@@ -28,6 +29,8 @@ const FOREHEAD = { left: 3, right: 5, row: 1 };
 const RASTERS: readonly [string, number, number, number, number[]][] = [
   ["public/icon.png", 64, 2, TILE_PADDING, BLACK],
   ["public/apple-touch-icon.png", 180, 3, TILE_PADDING, BLACK],
+  // The sender's picture of a message notification, 60 pt.
+  ["ios/GolemNotification/logo.png", 180, 3, TILE_PADDING, BLACK],
   // iOS shows this at 60 pt, so 60 cells are 1 pt each.
   [
     "ios/Golem/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
@@ -84,7 +87,7 @@ export function svg(
   const tile = background
     ? `<rect width="${side}" height="${side}" fill="${background}"/>`
     : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${side} ${side}" shape-rendering="crispEdges"><title>Golem</title>${tile}<path fill="#ffffff" d="${face}"/><path fill="#ff4a1c" d="${forehead}"/></svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${side} ${side}" shape-rendering="crispEdges"><title>Golem</title>${tile}<path fill="#ffffff" d="${face}"/><path fill="${ACCENT_COLOR}" d="${forehead}"/></svg>\n`;
 }
 
 /** The paths of the white face and the forehead mark, for the same absolute commands as the pixel icons. */

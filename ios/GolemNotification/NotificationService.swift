@@ -1,7 +1,7 @@
 import Intents
 import UserNotifications
 
-/// Shows a push from a chat as a message from Golem in a conversation named after the chat, so Siri reads it aloud
+/// Shows a push from a chat as a message from Golem, with its logo, in a conversation named after the chat, so Siri reads it aloud
 /// on AirPods and in CarPlay, and sends a spoken reply to the chat (`SiriReply`). Other pushes stay as they are.
 nonisolated final class NotificationService: UNNotificationServiceExtension {
     override func didReceive(
@@ -11,9 +11,10 @@ nonisolated final class NotificationService: UNNotificationServiceExtension {
         guard content.categoryIdentifier == "message", let chatID = content.userInfo["chatId"] as? String else {
             return contentHandler(content)
         }
+        let logo = Bundle.main.url(forResource: "logo", withExtension: "png").flatMap { try? Data(contentsOf: $0) }
         let golem = INPerson(
             personHandle: INPersonHandle(value: "golem", type: .unknown), nameComponents: nil, displayName: "Golem",
-            image: nil, contactIdentifier: nil, customIdentifier: "golem"
+            image: logo.map { INImage(imageData: $0) }, contactIdentifier: nil, customIdentifier: "golem"
         )
         let intent = INSendMessageIntent(
             recipients: nil, outgoingMessageType: .outgoingMessageText, content: content.body,

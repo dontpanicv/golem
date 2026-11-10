@@ -35,11 +35,11 @@
 	--color-text-secondary: light-dark(#242424, #d0d0d0);
 	--color-text-tertiary: light-dark(#676767, #8a8a8a);
 	--color-text-quaternary: light-dark(#a1a1a1, #575757);
-	--color-accent: light-dark(#ef3a0b, #ff4a1c);
-	--color-accent-hover: light-dark(#ef3a0b, #ff4a1c);
-	--color-accent-subtle: light-dark(#ef3a0b22, #ff4a1c22);
+	--color-accent: light-dark(#a84e30, #c8603f);
+	--color-accent-hover: light-dark(#a84e30, #c8603f);
+	--color-accent-subtle: light-dark(#a84e3022, #c8603f22);
 	--color-on-accent: light-dark(#ffffff, #000000);
-	--color-gold: light-dark(#ef3a0b, #ff4a1c);
+	--color-gold: light-dark(#a84e30, #c8603f);
 	--color-success: light-dark(#4cb782, #4cb782);
 	--color-warning: light-dark(#f2994a, #f2994a);
 	--color-danger: light-dark(#e2253b, #ff8683);

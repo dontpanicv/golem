@@ -381,7 +381,7 @@ Private replay data must stay outside this public repository.
 ## The apps
 
 The web app, the iOS app, and the Android app do the same things, with one design system, Ember: shades of black and
-white, one orange accent, square corners, 16 × 16 pixel icons, and a fine dither. All talk to the JSON API in
+white, one rust accent, square corners, 16 × 16 pixel icons, and a fine dither. All talk to the JSON API in
 [docs/api.md](docs/api.md).
 
 - **Web.** A React single-page app that keeps its data local, shows each change at once, and stays current over
@@ -584,7 +584,7 @@ bun run lint:ios   # SwiftLint (`brew install swiftlint`)
   Swift and Kotlin tokens, the 16 × 16 pixel icons, and the logo's paths from it. `design/components.md` is the spec of
   every component on the web, iOS, and Android.
 - `design/icon.svg` is Golem's face in an 8 × 8 grid: white on black, dissolving to the right, with the aleph of אמת
-  (truth), the letter that gives it life, as the accent cell (#ff4a1c) on its forehead. `bun scripts/icon.ts` makes it
+  (truth), the letter that gives it life, as the accent cell (#c8603f) on its forehead. `bun scripts/icon.ts` makes it
   and every app icon, with one noise cell a point at the size where each shows.
 - `.claude/skills/` has the agent skills of this repository, such as
   [Stageshow](https://github.com/benjitaylor/skills), which made the demo above

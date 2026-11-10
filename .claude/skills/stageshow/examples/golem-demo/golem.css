@@ -1,7 +1,7 @@
 /* Golem in its own look. Every value is from Golem's public/tokens.css and
    public/styles.css: the canvas sidebar, the inset panel with a hairline and
    square corners, Inter at weight 450, Geist Mono for values, and Ember's one
-   orange accent. The dark theme (film.mjs --dark) is one block below. */
+   rust accent. The dark theme (film.mjs --dark) is one block below. */
 
 @font-face {
   font-family: "Inter Variable";
@@ -29,15 +29,15 @@
   --ss-text: #676767;
   --ss-text-faint: #a1a1a1;
   --ss-icon: #676767;
-  --ss-accent: #ef3a0b;
-  --ss-accent-soft: #ef3a0b22;
+  --ss-accent: #a84e30;
+  --ss-accent-soft: #a84e3022;
   --ss-font: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
 
   --gd-text-secondary: #242424;
   --gd-text-quaternary: #a1a1a1;
   --gd-fill-active: #ebebeb;
   --gd-ring: #0000001c;
-  --gd-gold: #ef3a0b;
+  --gd-gold: #a84e30;
   --gd-composer: #f5f5f5;
   --gd-shadow-low: none;
 
@@ -60,14 +60,14 @@
   --ss-text: #8a8a8a;
   --ss-text-faint: #575757;
   --ss-icon: #8a8a8a;
-  --ss-accent: #ff4a1c;
-  --ss-accent-soft: #ff4a1c22;
+  --ss-accent: #c8603f;
+  --ss-accent-soft: #c8603f22;
 
   --gd-text-secondary: #d0d0d0;
   --gd-text-quaternary: #575757;
   --gd-fill-active: #202020;
   --gd-ring: #ffffff1c;
-  --gd-gold: #ff4a1c;
+  --gd-gold: #c8603f;
   --gd-composer: #151515;
   --gd-shadow-low: none;
 }
