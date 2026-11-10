@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import dev.golem.api.Destination
+import dev.golem.design.GolemMark
 import dev.golem.design.Pixel
 import dev.golem.design.vector
 import dev.golem.design.Golem
@@ -245,9 +246,7 @@ private fun TabBar(tab: Tab, unread: Int, select: (Tab) -> Unit) {
                         }
                     }) {
                         when (item) {
-                            Tab.Golem -> Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
-                                Icon(Pixel.Golem.vector, null, tint = if (selected) Golem.colors.accent else Golem.mobile.textSecondary)
-                            }
+                            Tab.Golem -> GolemMark(36.dp)
                             else -> Icon(item.icon(), null)
                         }
                     }

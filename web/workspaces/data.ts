@@ -190,20 +190,20 @@ export function setSettled(
 }
 
 const OPENED = "golem-opened";
-const FOLDED = "golem-folded-topics";
+const OPEN_TOPICS = "golem-open-topics";
 
-/** The ids of the topics whose chats this browser hides in the sidebar. */
-export function foldedTopics(): string[] {
+/** The ids of the topics whose chats this browser shows in the sidebar; the others start folded. */
+export function openTopics(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(FOLDED) ?? "[]");
+    return JSON.parse(localStorage.getItem(OPEN_TOPICS) ?? "[]");
   } catch {
     return [];
   }
 }
 
-/** Remembers the folded topics, so the sidebar opens with them folded next time. */
-export function rememberFolded(topicIds: string[]): void {
-  localStorage.setItem(FOLDED, JSON.stringify(topicIds));
+/** Remembers the open topics, so the sidebar shows their chats next time. */
+export function rememberOpenTopics(topicIds: string[]): void {
+  localStorage.setItem(OPEN_TOPICS, JSON.stringify(topicIds));
 }
 
 /** Remembers the topic or chat page, so the workspace opens on it next time. */
@@ -216,11 +216,13 @@ export function lastOpened():
   | { workspaceId: string; topicId?: string; chatId?: string }
   | undefined {
   const [, workspaceId, kind, id] =
-    localStorage.getItem(OPENED)?.match(/^\/w\/([^/]+)\/(c|t)\/([^/]+)$/) ?? [];
+    localStorage
+      .getItem(OPENED)
+      ?.match(/^\/w\/([^/]+)\/(topic|chat)\/([^/]+)$/) ?? [];
   if (!workspaceId) {
     return undefined;
   }
-  return kind === "c"
+  return kind === "topic"
     ? { workspaceId, topicId: id }
     : { workspaceId, chatId: id };
 }

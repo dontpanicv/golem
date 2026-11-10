@@ -154,8 +154,8 @@ Used by the workspace switcher and action menus.
   button shows on hover or focus (always on touch screens).
 - Chats sit under their topic, indented 19 px with 6 px inner padding; each shows its settle button on hover or
   focus (always on touch screens). A topic with active chats has a disclosure arrow at its right, which shows on
-  hover or focus (always on touch screens, and while folded) and turns 90° in 150 ms when open; it folds the topic's
-  chats away, and the device remembers it. Settled chats leave the active lists and appear in a collapsed Settled shelf at
+  hover or focus (always on touch screens, and while folded) and turns 90° in 150 ms when open; it unfolds the topic's
+  chats, and the device remembers it. Topics start folded; the topic of the open chat stays open and has no arrow. Settled chats leave the active lists and appear in a collapsed Settled shelf at
   the bottom, newest settlement first; its disclosure arrow turns 90° in 150 ms. A settled chat remains readable
   and can receive messages.
 
@@ -354,7 +354,7 @@ iPad keeps the sidebar with the same screens.
   chevrons, `placeholder` in fields. Hairlines: 1 pt `separator`, full width, only between groups.
 - Tab bar: our own, not the system's, on every screen of every tab, also under a composer. A 56 pt flat bar 20 pt
   from the screen edges and 24 pt above the bottom: Home, Search, Golem, Activity, and Agenda, each an 18 pt icon
-  (Golem's face glyph, 16 pt) over its `tabLabel` name. The person's avatar at the leading edge of each tab's first
+  over its `tabLabel` name; Golem, in the middle, is the hero: its logo fills the bar's height, with no name. The person's avatar at the leading edge of each tab's first
   screen, before its title, opens a native menu with Settings and Workspace settings, as X's does. The open
   one is `title` on a `tabSelected` cell that slides to the tab tapped, the others `textSecondary`. Activity shows the unread count on an accent square. A tap on the open tab goes back to its first
   screen. The keyboard covers the bar.

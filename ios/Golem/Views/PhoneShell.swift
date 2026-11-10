@@ -293,24 +293,31 @@ private struct TabBar: View {
             taps[tab, default: 0] += 1
             select(tab)
         } label: {
-            VStack(spacing: Tokens.Space.xxs) {
-                Image(pixel: tab.pixel ?? .golem)
-                    .foregroundStyle(selected ? Tokens.Colors.accent : Tokens.Mobile.Colors.textSecondary)
-                    .frame(height: 22)
-                    .overlay(alignment: .topTrailing) {
-                        if tab == .activity, unread > 0 {
-                            Text("\(unread)")
-                                .font(.mono(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.semibold))
-                                .foregroundStyle(Tokens.Colors.onAccent)
-                                .contentTransition(.numericText(value: Double(unread)))
-                                .padding(.horizontal, Tokens.Space.xs)
-                                .frame(minWidth: 16, minHeight: 16)
-                                .background(Tokens.Colors.accent, in: .rect)
-                                .offset(x: 10, y: -4)
-                                .transition(.scale.combined(with: .opacity))
-                        }
+            Group {
+                if tab == .golem {
+                    // The hero of the bar, where the person spends most of their time.
+                    GolemMark(size: Tokens.Mobile.Size.tabBar - 2 * Tokens.Space.xs)
+                } else {
+                    VStack(spacing: Tokens.Space.xxs) {
+                        Image(pixel: tab.pixel ?? .golem)
+                            .foregroundStyle(selected ? Tokens.Colors.accent : Tokens.Mobile.Colors.textSecondary)
+                            .frame(height: 22)
+                            .overlay(alignment: .topTrailing) {
+                                if tab == .activity, unread > 0 {
+                                    Text("\(unread)")
+                                        .font(.mono(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.semibold))
+                                        .foregroundStyle(Tokens.Colors.onAccent)
+                                        .contentTransition(.numericText(value: Double(unread)))
+                                        .padding(.horizontal, Tokens.Space.xs)
+                                        .frame(minWidth: 16, minHeight: 16)
+                                        .background(Tokens.Colors.accent, in: .rect)
+                                        .offset(x: 10, y: -4)
+                                        .transition(.scale.combined(with: .opacity))
+                                }
+                            }
+                        Text(tab.title).font(.golem(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.medium))
                     }
-                Text(tab.title).font(.golem(Tokens.Mobile.FontSize.tabLabel, Tokens.FontWeight.medium))
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {

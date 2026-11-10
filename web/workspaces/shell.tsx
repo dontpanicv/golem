@@ -28,13 +28,13 @@ import { Icon, type IconName } from "../ui/icon.tsx";
 import { showError } from "../ui/toast.tsx";
 import {
   chatsOf,
-  foldedTopics,
   inboxQuery,
   meQuery,
+  openTopics,
   orchestratorQuery,
   refreshInbox,
   refreshWorkspace,
-  rememberFolded,
+  rememberOpenTopics,
   setSettled,
   topicsOf,
   useMe,
@@ -263,17 +263,20 @@ function WorkspaceNav({
         .where(({ chat }) => not(isNull(chat.settledAt)))
         .orderBy(({ chat }) => chat.settledAt, "desc"),
   });
-  const [folded, setFolded] = useState(foldedTopics);
-  const toggleFolded = (topicId: string) => {
-    const next = folded.includes(topicId)
-      ? folded.filter((id) => id !== topicId)
-      : [...folded, topicId];
-    setFolded(next);
-    rememberFolded(next);
+  const [opened, setOpened] = useState(openTopics);
+  const toggleOpen = (topicId: string) => {
+    const next = opened.includes(topicId)
+      ? opened.filter((id) => id !== topicId)
+      : [...opened, topicId];
+    setOpened(next);
+    rememberOpenTopics(next);
   };
+  const openChatId = pathname.match(/\/chat\/([^/]+)/)?.[1];
   const topicItem = (topic: Omit<Topic, "chats">) => {
     const chats = active.filter((chat) => chat.topicId === topic.id);
-    const open = !folded.includes(topic.id);
+    // The open chat stays in view, so its topic cannot fold.
+    const holdsOpenChat = chats.some((chat) => chat.id === openChatId);
+    const open = holdsOpenChat || opened.includes(topic.id);
     return (
       <div key={topic.id}>
         <div className="sidebar-topic">
@@ -290,13 +293,13 @@ function WorkspaceNav({
               locked={topic.ownerId !== null}
             />
           </Link>
-          {chats.length > 0 ? (
+          {chats.length > 0 && !holdsOpenChat ? (
             <span className="fold-action">
               <Button
                 aria-expanded={open}
                 icon="disclosure"
                 label={open ? "Fold chats" : "Unfold chats"}
-                onClick={() => toggleFolded(topic.id)}
+                onClick={() => toggleOpen(topic.id)}
                 size="tiny"
                 variant="ghost"
               />
