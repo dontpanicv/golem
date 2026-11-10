@@ -3,7 +3,7 @@
 # Golem
 
 A family AI assistant and second brain that runs on your own machine. One server in your home, one app for the whole
-family on the web and the iPhone, and no cloud service between you and your data.
+family on the web, the iPhone, and Android, and no cloud service between you and your data.
 
 In Prague legend, Rabbi Loew shaped the Golem from clay to serve and protect his community. This one is made from
 SQLite and Markdown.
@@ -211,7 +211,7 @@ namespace.
 
 ### Search and recall
 
-The workspace has one search index, `index.sqlite`, on the server. The Search page of both apps and the agents'
+The workspace has one search index, `index.sqlite`, on the server. The Search page of every app and the agents'
 `recall` tool use it, so a person and their agent find the same things.
 
 - **What goes in.** The messages of every chat, the text of every artifact, and every file in the workspace and its
@@ -253,8 +253,8 @@ The workspace has one search index, `index.sqlite`, on the server. The Search pa
 
 An artifact is a page or a small app that an agent writes in HTML: an invite with RSVPs, a poll, a shared shopping
 list, a game, or a schedule to print or save as a PDF. It belongs to the topic of the chat that made it and
-stays there when the chat is settled. The side panel of a chat shows the artifacts of its topic, and the iPhone
-app shows them in the same way.
+stays there when the chat is settled. The side panel of a chat shows the artifacts of its topic, and the phone
+apps show them in the same way.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/artifacts-dark.svg">
@@ -286,7 +286,7 @@ app shows them in the same way.
 
 "Remind me to buy milk when I leave work." "Remind Anna to take the umbrella when she gets to school." "Turn on the
 heating at the cottage each time I leave work." A reminder can wait for a place instead of a time, and a routine can
-run at a place instead of on a schedule; the iPhone tells Golem when it happens.
+run at a place instead of on a schedule; the phone tells Golem when it happens.
 
 - **Places.** Each person marks their places on a map in their own Settings: a name, a pin, and a circle of 100 to
   5000 meters (iOS does not see a smaller circle reliably). The web app shows OpenStreetMap through Golem, so the
@@ -295,6 +295,10 @@ run at a place instead of on a schedule; the iPhone tells Golem when it happens.
 - **The reminder.** The agent makes it with `reminders_create`: the text, the person to remind, a place by name, and
   `arrive` or `leave`. It uses the places of the person who asked, their own first and then the shared ones. The
   reminder waits in its chat and shows in the person's Upcoming, where they can cancel it.
+- **A point of interest.** A reminder can also wait at one specific public place, such as one shop. The agent finds it
+  in OpenStreetMap with `reminders_search_points_of_interest` and makes the reminder with
+  `reminders_create_at_point_of_interest`; it asks when the place is not clear. Settings does not list such a place,
+  and a person has pending reminders at no more than 12 of them, because iOS watches at most 20 places for an app.
 - **The routine.** The agent makes it with `routines_create`: the instructions, a place by name, `arrive` or
   `leave`, and the person whose arrival or departure runs it. It runs each time that event comes, in its topic's
   chat, as a routine on a schedule does, but at most every 15 minutes, as a person at the edge of the circle goes in
@@ -302,7 +306,7 @@ run at a place instead of on a schedule; the iPhone tells Golem when it happens.
 - **The iPhone watches; Golem decides.** The iPhone is only a sensor. Golem gives it the places of its person's
   pending reminders and routines, one circle for each place however many wait there, and the app watches them with
   Core Location (`CLMonitor`), so iOS wakes it in the background when the person crosses a circle, also when the app
-  does not run. The first such place asks for location access: iOS asks "While Using" first, and "Always" when the
+  does not run. Visits and significant location changes wake it too, for a crossing that `CLMonitor` tells late. The first such place asks for location access: iOS asks "While Using" first, and "Always" when the
   first event comes. The app tells Golem only "arrived at Cottage at 12:03" or "left Cottage", never where the person
   is, and Golem keeps only the last state at each place, with no history. Golem then decides what is due: the
   reminders and routines of that place, person, and event, a pause, and the 15 minutes between two runs.
@@ -350,7 +354,7 @@ Source files stay grouped: one per Gmail or Slack thread, one per Plaud meeting,
 **Following** shows what Golem is monitoring, the supporting sources, and the change history. Mark a matter handled, stop it, reopen it, or correct it in plain text. Stopping a matter does not mark it complete. Corrections remain in the audit and guide later assessments.
 
 See [the process and verification notes](docs/proactive.md), [API](docs/api.md#intake-srcintake), and
-[data storage](docs/data.md). The account setting and conversation flow work on web and iOS. Upcoming keeps explicit
+[data storage](docs/data.md). The account setting and conversation flow work in every app. Upcoming keeps explicit
 reminders and routines; it has no inferred task list.
 
 Private replay data must stay outside this public repository.
@@ -376,12 +380,13 @@ Private replay data must stay outside this public repository.
 
 ## The apps
 
-The web app, the iOS app, and the Android app do the same things, with one design system modeled on Linear. All talk
-to the JSON API in [docs/api.md](docs/api.md).
+The web app, the iOS app, and the Android app do the same things, with one design system, Ember: shades of black and
+white, one orange accent, square corners, 16 × 16 pixel icons, and a fine dither. All talk to the JSON API in
+[docs/api.md](docs/api.md).
 
 - **Web.** A React single-page app that keeps its data local, shows each change at once, and stays current over
   server-sent events. It opens on what it showed last, also before the server answers.
-- **iPhone.** A native SwiftUI app with the navigation of Slack's iOS app and the look of Linear's.
+- **iPhone.** A native SwiftUI app with the navigation of Slack's iOS app and Ember's flat surfaces.
   - **Push notifications** with Reply, Snooze, and Done, and Allow or Deny for an approval, also on the Apple Watch.
     Siri reads a message aloud and sends your spoken reply.
   - A **Live Activity** shows the work for your message on the Lock Screen and in the Dynamic Island.
@@ -390,7 +395,7 @@ to the JSON API in [docs/api.md](docs/api.md).
   - **Voice, on the device:** dictation in every composer, and a hands-free conversation with Golem
     ([below](#voice-on-the-iphone)).
 
-- **Android.** A native Kotlin app with Jetpack Compose and Material 3, with the same screens as the iPhone app:
+- **Android.** A native Kotlin app with Jetpack Compose and Material 3 in Ember's colors, with the same screens as the iPhone app:
   dictation, the share sheet, places with geofences, and the phone tools that Android allows. It shows notifications
   while it runs; Golem has no pushes to Android yet.
 
@@ -443,7 +448,8 @@ so they work without a connection and nothing is downloaded on the phone.
 - **A domain on Cloudflare**, for the tunnel and the HTTPS address. Google sign-in needs `https` on a public name.
 - **A Google Cloud project** for Google sign-in. Nobody can sign in with a password.
 - **A ChatGPT account** for the model, and enough free memory for the local search model.
-- **Optional:** an Apple Developer account and Xcode for the iPhone app and its push notifications, and `gog`,
+- **Optional:** an Apple Developer account and Xcode for the iPhone app and its push notifications, the Android SDK
+  and JDK 17 for the Android app, and `gog`,
   `slackcli`, `wacli`, or `tesla-control` for those integrations.
 
 ### Run it
@@ -574,8 +580,9 @@ bun run lint:ios   # SwiftLint (`brew install swiftlint`)
 
 - `src/` is a modular monolith: one module for each domain, each with its service, routes, and tests
   ([docs/modular-monolith.md](docs/modular-monolith.md)). `web/` has the same modules.
-- `design/tokens.json` holds every color, size, space, radius, and shadow; `bun run tokens` makes the CSS and the
-  Swift tokens and the pixel icons from it. `design/components.md` is the spec of every component, on the web and on iOS.
+- `design/tokens.json` holds every color, size, space, radius, and shadow; `bun run tokens` makes the CSS, the
+  Swift and Kotlin tokens, the 16 × 16 pixel icons, and the logo's paths from it. `design/components.md` is the spec of
+  every component on the web, iOS, and Android.
 - `design/icon.svg` is Golem's face in an 8 × 8 grid: white on black, dissolving to the right, with the aleph of אמת
   (truth), the letter that gives it life, as the accent cell (#ff4a1c) on its forehead. `bun scripts/icon.ts` makes it
   and every app icon, with one noise cell a point at the size where each shows.
@@ -607,6 +614,9 @@ Golem stands on the work of these projects and people:
   [read-excel-file](https://gitlab.com/catamphetamine/read-excel-file).
 - **iOS:** SwiftUI, [XcodeGen](https://github.com/yonaskolb/XcodeGen), and
   [FluidAudio](https://github.com/FluidInference/FluidAudio).
+- **Android:** Kotlin, [Jetpack Compose](https://developer.android.com/compose), Material 3,
+  [Coil](https://coil-kt.github.io/coil/), [OkHttp](https://square.github.io/okhttp/), and
+  [multiplatform-markdown-renderer](https://github.com/mikepenz/multiplatform-markdown-renderer).
 - **Integrations:** [gog](https://github.com/openclaw/gogcli), [wacli](https://github.com/openclaw/wacli),
   [slackcli](https://github.com/shaharia-lab/slackcli), [Rettiwt-API](https://github.com/Rishikant181/Rettiwt-API),
   [vehicle-command](https://github.com/teslamotors/vehicle-command),
@@ -615,9 +625,10 @@ Golem stands on the work of these projects and people:
   [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) by Moondream (CC-BY-4.0), built on NVIDIA's
   Parakeet TDT 0.6B v3 (CC-BY-4.0); [Supertonic-3](https://huggingface.co/Supertone/supertonic-3) by Supertone
   (BigScience Open RAIL-M, with use restrictions); the Core ML conversions of both are by FluidInference.
-- **Design:** the look of [Linear](https://linear.app), the navigation of Slack's iOS app, the layout of
-  [T3 Code](https://github.com/pingdotgg/t3code), and the [Inter](https://rsms.me/inter/) font (SIL Open Font
-  License).
+- **Design:** the Ember look, inspired by the work of [Charles Postiaux](https://x.com/postiauxcharles); the measures of
+  [Linear](https://linear.app), the navigation of Slack's iOS app, the layout of
+  [T3 Code](https://github.com/pingdotgg/t3code); and the [Inter](https://rsms.me/inter/) and
+  [Geist Mono](https://github.com/vercel/geist-font) fonts (SIL Open Font License).
 - **Tools for this repository:** [Stageshow](https://github.com/benjitaylor/skills) by Benji Taylor (MIT) and
   [Archify](https://github.com/tt-a1i/archify).
 

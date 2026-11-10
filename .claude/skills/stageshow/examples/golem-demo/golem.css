@@ -1,7 +1,7 @@
 /* Golem in its own look. Every value is from Golem's public/tokens.css and
    public/styles.css: the canvas sidebar, the inset panel with a hairline and
-   the low shadow, Inter at weight 450, the clay accent, the gold of the
-   icon's eyes. The dark theme (film.mjs --dark) is one block below. */
+   square corners, Inter at weight 450, Geist Mono for values, and Ember's one
+   orange accent. The dark theme (film.mjs --dark) is one block below. */
 
 @font-face {
   font-family: "Inter Variable";
@@ -10,32 +10,39 @@
   font-display: block;
 }
 
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: block;
+}
+
 .gd .ss-stage {
   --gutter: 40px;
-  --ss-well: #e4e4e6;
-  --ss-canvas: #efeff0;
-  --ss-chrome: #efeff0;
-  --ss-surface: #f9f9fa;
-  --ss-raised: #ffffff;
-  --ss-line: #e2e2e2;
-  --ss-text-strong: #1b1b1b;
-  --ss-text: #5c5c5e;
-  --ss-text-faint: #a0a0a2;
-  --ss-icon: #5c5c5e;
-  --ss-accent: #a35d2f;
-  --ss-accent-soft: #a35d2f14;
+  --ss-well: #d9d9d9;
+  --ss-canvas: #d9d9d9;
+  --ss-chrome: #d9d9d9;
+  --ss-surface: #ffffff;
+  --ss-raised: #f5f5f5;
+  --ss-line: #d4d4d4;
+  --ss-text-strong: #000000;
+  --ss-text: #676767;
+  --ss-text-faint: #a1a1a1;
+  --ss-icon: #676767;
+  --ss-accent: #ef3a0b;
+  --ss-accent-soft: #ef3a0b22;
   --ss-font: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
 
-  --gd-text-secondary: #2f2f31;
-  --gd-text-quaternary: #a0a0a2;
-  --gd-fill-active: #e1e1e2;
-  --gd-ring: #00000017;
-  --gd-gold: #b07a10;
-  --gd-composer: #ffffff;
-  --gd-shadow-low: 0 3px 6px -2px #00000005, 0 1px 1px 0 #0000000a;
+  --gd-text-secondary: #242424;
+  --gd-text-quaternary: #a1a1a1;
+  --gd-fill-active: #ebebeb;
+  --gd-ring: #0000001c;
+  --gd-gold: #ef3a0b;
+  --gd-composer: #f5f5f5;
+  --gd-shadow-low: none;
 
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 0;
   background: var(--ss-well);
   font-family: var(--ss-font);
   font-weight: 450;
@@ -43,35 +50,41 @@
 }
 
 .gd .ss-stage[data-theme="dark"] {
-  --ss-well: #050506;
-  --ss-canvas: #09090a;
-  --ss-chrome: #09090a;
-  --ss-surface: #121213;
-  --ss-raised: #1a1a1b;
-  --ss-line: #212224;
+  --ss-well: #000000;
+  --ss-canvas: #000000;
+  --ss-chrome: #000000;
+  --ss-surface: #0a0a0a;
+  --ss-raised: #151515;
+  --ss-line: #2b2b2b;
   --ss-text-strong: #ffffff;
-  --ss-text: #959597;
-  --ss-text-faint: #5c5d5f;
-  --ss-icon: #959597;
-  --ss-accent: #a8622f;
-  --ss-accent-soft: #b8703f29;
+  --ss-text: #8a8a8a;
+  --ss-text-faint: #575757;
+  --ss-icon: #8a8a8a;
+  --ss-accent: #ff4a1c;
+  --ss-accent-soft: #ff4a1c22;
 
-  --gd-text-secondary: #e3e4e6;
-  --gd-text-quaternary: #5c5d5f;
-  --gd-fill-active: #232325;
-  --gd-ring: #ffffff23;
-  --gd-gold: #ffd27a;
-  --gd-composer: #161617;
-  --gd-shadow-low: 0 0.5px 1px 1px #0000004d;
+  --gd-text-secondary: #d0d0d0;
+  --gd-text-quaternary: #575757;
+  --gd-fill-active: #202020;
+  --gd-ring: #ffffff1c;
+  --gd-gold: #ff4a1c;
+  --gd-composer: #151515;
+  --gd-shadow-low: none;
 }
 
 .gd-icon {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 /* ---- The window: pinned a gutter in on three sides, off the bottom ---- */
+
+.gd-window,
+.gd-window .ss-window__main,
+.gd-window .ss-window__side {
+  border-radius: 0;
+}
 
 .gd-window {
   position: absolute;
@@ -90,15 +103,15 @@
 .gd-window[data-kind="sidebar"] .ss-window__main {
   margin: 8px 8px 0 0;
   overflow: hidden;
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 0 0 0.5px var(--ss-line), var(--gd-shadow-low);
+  border-radius: 0;
+  box-shadow: 0 0 0 1px var(--ss-line);
 }
 
 .gd-window .ss-window__main > .ss-window__bar,
 .gd-window:not([data-kind="sidebar"]) > .ss-window__bar {
   padding-left: 18px;
   background: var(--ss-surface);
-  border-bottom: 0.5px solid var(--ss-line);
+  border-bottom: 1px solid var(--ss-line);
 }
 
 .gd-window:not([data-kind="sidebar"]) > .ss-window__bar {
@@ -147,8 +160,10 @@
   align-items: center;
   height: 28px;
   padding: 0 2px 0 9px;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--ss-text);
 }
 
@@ -158,15 +173,27 @@
   gap: 6px;
   height: 28px;
   padding: 0 9px 0 8px;
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 13px;
   font-weight: 500;
   color: var(--ss-text);
 }
 
 .gd-nav-item[data-current] {
+  position: relative;
   background: var(--gd-fill-active);
   color: var(--ss-text-strong);
+}
+
+/* The selected row's right edge, in 0.5 px dither */
+.gd-nav-item[data-current]::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 48px;
+  background: var(--ss-accent);
+  mask: var(--gd-selected) right center / 48px 8px repeat-y;
+  image-rendering: pixelated;
 }
 
 .gd-nav-label {
@@ -194,15 +221,14 @@
 }
 
 /* Anchored at the bottom over the composer, as a thread scrolled to its end;
-   the earlier turns fade as they go up out of the pane, never sliced */
+   the earlier turns go up out of the pane */
 .gd-transcript {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   min-height: 0;
-  padding: 0 24px 20px;
+  padding: 0 24px 25px;
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, transparent, #000 32px);
 }
 
 .gd-transcript > * {
@@ -254,7 +280,8 @@
 }
 
 .gd-time {
-  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11.5px;
   color: var(--gd-text-quaternary);
 }
 
@@ -285,38 +312,27 @@
   place-items: center;
   width: 24px;
   height: 24px;
-  border-radius: 50%;
-  background: #eb5757;
-  font-size: 11px;
-  font-weight: 500;
-  color: #fff;
+  border-radius: 0;
+  background: var(--ss-accent);
+  color: #000;
 }
 
-/* Golem's face (Mark with a mood): the eyes blink while it works */
+.gd-avatar svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Golem's logo (Mark). In light, a black tile keeps the white face apart from
+   the white surface. */
 .gd-face {
   flex: none;
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  background: #000000;
 }
 
-.gd-face-mood {
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.gd-face-mood[data-on] {
-  opacity: 1;
-}
-
-.gd-face-eyes {
-  animation: gd-face-blink 3.2s steps(1) infinite;
-}
-
-@keyframes gd-face-blink {
-  92% {
-    opacity: 0;
-  }
+.gd .ss-stage[data-theme="dark"] .gd-face {
+  background: transparent;
 }
 
 /* ---- The work (.work-summary, .working-spinner, .shimmer, .step-strip) ---- */
@@ -333,6 +349,8 @@
   vertical-align: top;
   font-size: 13px;
   line-height: 24px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11.5px;
   color: var(--ss-text);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -461,9 +479,9 @@
   align-items: flex-start;
   gap: 12px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--ss-raised);
-  box-shadow: 0 0 0 0.5px var(--gd-ring), var(--gd-shadow-low);
+  box-shadow: 0 0 0 1px var(--ss-line);
   opacity: 0;
   translate: 0 -6px;
   transition: opacity 0.3s ease, translate 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -482,9 +500,9 @@
   flex: none;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  background: #09090a;
-  fill: #ffd27a;
+  border-radius: 0;
+  background: #000000;
+  fill: var(--ss-accent);
 }
 
 .gd-card-text {
@@ -528,9 +546,9 @@
      stage's edge */
   margin: 0 24px 68px;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--gd-composer);
-  box-shadow: var(--gd-shadow-low), 0 0 0 0.5px var(--gd-ring);
+  box-shadow: 0 0 0 1px var(--ss-line);
 }
 
 .gd-grow {
@@ -596,15 +614,14 @@
   place-items: center;
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--ss-accent);
-  box-shadow: var(--gd-shadow-low);
-  color: #fff;
+  color: #000;
   transition: background-color 0.15s ease;
 }
 
 .gd-send[data-pressed] {
-  background: #8f5128;
+  background: var(--ss-text-strong);
 }
 
 /* ---- Compact: Golem's iOS app in a phone, pinned a gutter from the bottom,
@@ -620,23 +637,23 @@
 .gd .ss-stage {
   --gd-ios-background: #ffffff;
   --gd-ios-title: #000000;
-  --gd-ios-text: #303030;
-  --gd-ios-secondary: #5c5d5c;
-  --gd-ios-quaternary: #9c9d9c;
-  --gd-ios-placeholder: #b0b0b0;
-  --gd-ios-glass: rgb(255 255 255 / 0.9);
-  --gd-ios-glass-edge: rgb(0 0 0 / 0.1);
+  --gd-ios-text: #242424;
+  --gd-ios-secondary: #676767;
+  --gd-ios-quaternary: #a1a1a1;
+  --gd-ios-placeholder: #a1a1a1;
+  --gd-ios-fill: #f5f5f5;
+  --gd-ios-line: #d4d4d4;
 }
 
 .gd .ss-stage[data-theme="dark"] {
-  --gd-ios-background: #0d0d0d;
+  --gd-ios-background: #0a0a0a;
   --gd-ios-title: #ffffff;
-  --gd-ios-text: #e3e3e3;
-  --gd-ios-secondary: #979897;
-  --gd-ios-quaternary: #5a5b5a;
-  --gd-ios-placeholder: #707170;
-  --gd-ios-glass: rgb(40 40 40 / 0.9);
-  --gd-ios-glass-edge: rgb(255 255 255 / 0.12);
+  --gd-ios-text: #d0d0d0;
+  --gd-ios-secondary: #8a8a8a;
+  --gd-ios-quaternary: #575757;
+  --gd-ios-placeholder: #575757;
+  --gd-ios-fill: #151515;
+  --gd-ios-line: #2b2b2b;
 }
 
 .gd-body[data-ios] {
@@ -653,7 +670,6 @@
 
 .gd-body[data-ios] .gd-transcript {
   padding: 0 20px 16px;
-  mask-image: none;
 }
 
 .gd-body[data-ios] .gd-avatar,
@@ -667,7 +683,7 @@
 }
 
 .gd-body[data-ios] .gd-face {
-  border-radius: 9px;
+  border-radius: 0;
 }
 
 .gd-body[data-ios] .gd-meta {
@@ -716,8 +732,7 @@
   font-size: 13px;
 }
 
-/* A glass field as Linear's comment field: the add button at the start, the
-   send button at the end */
+/* A flat field: the add button at the start, the send button at the end */
 .gd-body[data-ios] .gd-composer {
   flex-direction: row;
   align-items: flex-end;
@@ -725,9 +740,9 @@
   margin: 0 16px 42px;
   /* The send button keeps 10pt from the right, as from the top and bottom */
   padding: 0 10px 0 6px;
-  border-radius: 24px;
-  background: var(--gd-ios-glass);
-  box-shadow: 0 0 0 0.5px var(--gd-ios-glass-edge), 0 4px 16px rgb(0 0 0 / 0.08);
+  border-radius: 0;
+  background: var(--gd-ios-fill);
+  box-shadow: 0 0 0 1px var(--gd-ios-line);
 }
 
 .gd-body[data-ios] .gd-grow {

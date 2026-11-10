@@ -35,3 +35,5 @@ Not checked: real-time playback in a browser at speed (I judged from sheets, clo
 Render: `render.mjs` records the second loop at 2x with the stage clock and CSS animations slowed 8× (the switches `film.mjs --slow` uses). It takes the shot nearest each 30 fps frame and encodes H.264 (yuv420p, CRF 16) with ffmpeg.
 
 Icon (2026-11-01): the Golem nav item now uses Golem's one-color pixel face, as the app does. The still check prints `mixed icons` for it beside the outline glyphs; it stays, because the product's own mark is allowed and the user chose it.
+
+Ember (2026-11-10): the look, the logo, the 16 × 16 icons, Geist Mono values, and the words Topics and chats now follow the app. No fades or moods remain. The GIFs come from `render.mjs`, then ffmpeg with one palette for each loop.
