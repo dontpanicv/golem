@@ -2,9 +2,15 @@ import type { Provider } from "@earendil-works/pi-ai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import type { LlmProvider } from "./llm.ts";
 
+/** The idle timeout of Codex itself: a model that reasons for long is silent, so this is not short. */
+const IDLE_TIMEOUT_MS = 5 * 60_000;
+
 /** ChatGPT through the Codex device login: one subscription for every workspace's agents. */
 export const chatGpt: LlmProvider = {
-  provider: withVerbosity(openaiCodexProvider(), "medium"),
+  provider: withIdleTimeout(
+    withVerbosity(openaiCodexProvider(), "medium"),
+    IDLE_TIMEOUT_MS
+  ),
   name: "ChatGPT",
   defaultModel: "gpt-6.1-sol",
   fastModel: "gpt-6-luna",
@@ -29,5 +35,20 @@ export function withVerbosity(
           return { ...body, text: { ...body.text, verbosity } };
         },
       }),
+  };
+}
+
+/**
+ * Ends every request of `provider` that stays silent for `timeoutMs`, so that the run retries. Without it, pi-ai waits
+ * on a stalled WebSocket for as long as the socket stays open.
+ */
+export function withIdleTimeout(
+  provider: Provider,
+  timeoutMs: number
+): Provider {
+  return {
+    ...provider,
+    streamSimple: (model, context, options) =>
+      provider.streamSimple(model, context, { ...options, timeoutMs }),
   };
 }
