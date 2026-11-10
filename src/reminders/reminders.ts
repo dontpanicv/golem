@@ -66,7 +66,15 @@ type ReminderWorkspaces = Pick<
   | "chatsIn"
 >;
 type ReminderChats = Pick<Chats, "instruct" | "realm" | "requester">;
-type ReminderPlaces = Pick<Places, "find" | "inside" | "usable">;
+type ReminderPlaces = Pick<
+  Places,
+  | "find"
+  | "inside"
+  | "pointsOfInterestOf"
+  | "savePointOfInterest"
+  | "searchPointsOfInterest"
+  | "usable"
+>;
 
 interface ReminderRow extends Omit<Reminder, "place"> {
   readonly placeId: string | null;
@@ -74,6 +82,8 @@ interface ReminderRow extends Omit<Reminder, "place"> {
 }
 
 const TICK = 30_000;
+/** iOS watches at most 20 places for an app and loses the others without an error; the rest are for a person's own places. */
+const MAX_POINTS_OF_INTEREST = 12;
 
 /**
  * One-time reminders of a workspace, at a time or at a place. The agent writes the reminder, and the due runner wakes
@@ -407,20 +417,27 @@ export class Reminders {
       throw new HttpError(400, "A reminder's time must end after it starts.");
     }
     const people = [recipientId, input.createdBy ?? recipientId];
+    const points = this.places.pointsOfInterestOf(workspaceId, recipientId);
+    // Only the person themselves: else one member could learn when another arrives at any address.
+    const ownPoint = input.createdBy === recipientId && points.includes(id);
     if (
       !(
         (event === "arrive" || event === "leave") &&
-        people.every((personId) =>
-          this.places
-            .usable(workspaceId, personId)
-            .some((place) => place.id === id)
-        )
+        (ownPoint ||
+          people.every((personId) =>
+            this.places
+              .usable(workspaceId, personId)
+              .some((place) => place.id === id)
+          ))
       )
     ) {
       throw new HttpError(
         400,
         "Give a place that the recipient and the asker use, and arrive or leave."
       );
+    }
+    if (ownPoint) {
+      this.requirePointOfInterestSlot(workspaceId, recipientId, points, id);
     }
     // A new reminder starts as outside: one for an arrival where the person is now is due at once, or when its time starts.
     const inside =
@@ -435,6 +452,32 @@ export class Reminders {
       notBefore,
       notAfter,
     };
+  }
+
+  /** Refuses a new point of interest when the person's phone already waits at the most that it can. */
+  private requirePointOfInterestSlot(
+    workspaceId: string,
+    recipientId: string,
+    points: readonly string[],
+    placeId: string
+  ): void {
+    const waiting = new Set(
+      (
+        this.database
+          .query(
+            "SELECT DISTINCT place_id AS placeId FROM reminder WHERE workspace_id = ? AND recipient_id = ? AND place_id IS NOT NULL AND triggered_at IS NULL AND delivered_at IS NULL AND cancelled_at IS NULL AND deleted_at IS NULL"
+          )
+          .all(workspaceId, recipientId) as { placeId: string }[]
+      )
+        .map((row) => row.placeId)
+        .filter((id) => points.includes(id))
+    );
+    if (!waiting.has(placeId) && waiting.size >= MAX_POINTS_OF_INTEREST) {
+      throw new HttpError(
+        409,
+        `A person can wait at ${MAX_POINTS_OF_INTEREST} points of interest at most. Ask them which pending reminder at one to cancel.`
+      );
+    }
   }
 
   private reminderOf({ placeId, placeEvent, ...row }: ReminderRow): Reminder {

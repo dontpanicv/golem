@@ -93,7 +93,23 @@ function setup(
     requester: async () => asking.requester,
     realm: async () => null,
   } as unknown as Pick<Chats, "instruct" | "realm" | "requester">;
-  const places = new Places(database, workspaces);
+  // OpenStreetMap's search, which has every place that it is asked for.
+  const places = new Places(database, workspaces, (async (url: string) => {
+    const osmId = new URL(url).searchParams.get("osm_ids");
+    return Response.json([
+      {
+        osm_type: "node",
+        osm_id: Number(osmId?.slice(1)),
+        category: "shop",
+        type: "furniture",
+        name: `Shop ${osmId}`,
+        display_name: `Shop ${osmId}, Brno`,
+        lat: "49.15",
+        lon: "16.62",
+        boundingbox: ["49.15", "49.1501", "16.62", "16.6201"],
+      },
+    ]);
+  }) as unknown as typeof fetch);
   return {
     database,
     workspaces,
@@ -174,6 +190,8 @@ test("reminders stay in their workspace and reject a wrong time-zone offset", ()
   expect(reminders.tools("home").map((tool) => tool.name)).toEqual([
     "reminders_create",
     "reminders_places",
+    "reminders_search_points_of_interest",
+    "reminders_create_at_point_of_interest",
     "reminders_list",
     "reminders_update",
     "reminders_cancel",
@@ -492,5 +510,99 @@ test("a reminder at a place fires within its window: not before its start, at on
       until: "2090-11-08T09:00:00+01:00",
     })
   ).toThrow("end after it starts");
+  database.close();
+});
+
+test("a reminder at a point of interest is only for the person who asks, and fires when they arrive", async () => {
+  const { database, places, reminders, calls, asking } = setup();
+  const tool = reminders
+    .tools("home")
+    .find(
+      (candidate) => candidate.name === "reminders_create_at_point_of_interest"
+    )!;
+  const parameters = {
+    text: "Use the voucher",
+    pointOfInterest: "N1",
+    timeZone: "Europe/Prague",
+  };
+  const context = { conversationId: 1, taskId: 1 } as never;
+  await tool.execute(parameters, context, {} as never);
+  const [reminder] = reminders.list("home", alice, alice.id);
+  expect(reminder).toMatchObject({
+    recipientId: alice.id,
+    place: { name: "Shop N1", event: "arrive", radius: 150 },
+  });
+  expect(places.list("home", alice)).toEqual([]);
+
+  // Text only: the place stays.
+  const update = reminders
+    .tools("home")
+    .find((candidate) => candidate.name === "reminders_update")!;
+  await update.execute(
+    {
+      reminder: reminder!.id,
+      text: "Use both vouchers",
+      timeZone: "Europe/Prague",
+    },
+    context,
+    {} as never
+  );
+  const changed = reminders.get("home", alice, null, reminder!.id);
+  expect(changed).toMatchObject({
+    text: "Use both vouchers",
+    place: { id: reminder!.place!.id },
+  });
+
+  // Another member cannot use it, and neither can an agent alone.
+  expect(() =>
+    reminders.create("home", bob, "chat", alice.id, {
+      id: "bob",
+      createdBy: bob.id,
+      text: "Spy",
+      timeZone: "Europe/Prague",
+      place: { id: reminder!.place!.id, event: "arrive" },
+    })
+  ).toThrow("Give a place that the recipient and the asker use");
+  asking.requester = null;
+  await expect(
+    tool.execute(
+      parameters,
+      { conversationId: 1, taskId: 2 } as never,
+      {} as never
+    )
+  ).rejects.toThrow("Only a person's own request");
+  asking.requester = alice;
+
+  const arrived = Date.now();
+  await Promise.all(
+    reminders.atPlace("home", alice.id, reminder!.place!.id, "arrive", arrived)
+  );
+  expect(calls).toEqual([`reminder:${reminder!.id}:0`]);
+  database.close();
+});
+
+test("a person waits at 12 points of interest at most, and more reminders can wait at one of them", () => {
+  const { database, reminders } = setup();
+  const insert = database.query(
+    "INSERT INTO place (id, workspace_id, owner_id, name, latitude, longitude, radius, shared, created_at, osm_id) VALUES (?, 'home', ?, ?, 49, 16, 150, 0, 0, ?)"
+  );
+  for (let index = 1; index <= 13; index += 1) {
+    insert.run(`point-${index}`, alice.id, `Shop ${index}`, `N${index}`);
+  }
+  const create = (id: string, placeId: string) =>
+    reminders.create("home", alice, "chat", alice.id, {
+      id,
+      createdBy: alice.id,
+      text: "Buy it",
+      timeZone: "Europe/Prague",
+      place: { id: placeId, event: "arrive" },
+    });
+  for (let index = 1; index <= 12; index += 1) {
+    create(`first-${index}`, `point-${index}`);
+  }
+  expect(() => create("over", "point-13")).toThrow("12 points of interest");
+  create("second-at-one", "point-1");
+  reminders.cancel("home", alice, alice.id, "first-2");
+  expect(create("freed", "point-13").place?.name).toBe("Shop 13");
   database.close();
 });

@@ -11,7 +11,10 @@ export function reminderTools(
   reminders: Reminders,
   workspaces: Pick<Workspaces, "agentMember" | "members" | "chatOf">,
   chats: Pick<Chats, "realm" | "requester">,
-  places: Pick<Places, "usable">,
+  places: Pick<
+    Places,
+    "savePointOfInterest" | "searchPointsOfInterest" | "usable"
+  >,
   workspaceId: string
 ) {
   const at = Type.Optional(
@@ -89,6 +92,18 @@ export function reminderTools(
       .usable(workspaceId, recipientId)
       .filter(({ id }) => asker.has(id));
   };
+  /** A reminder at the place `id`, for its event and within its window. */
+  const atPlace = (
+    id: string,
+    args: { event?: "arrive" | "leave"; from?: string; until?: string }
+  ): Pick<ReminderInput, "place"> => ({
+    place: {
+      id,
+      event: args.event ?? "arrive",
+      ...(args.from ? { from: args.from } : {}),
+      ...(args.until ? { until: args.until } : {}),
+    },
+  });
   /** The time or the place of a reminder. */
   const whenOf = (
     args: {
@@ -118,21 +133,14 @@ export function reminderTools(
           : "There is no place for this reminder. A person adds places in Settings and shares one, so other members use it."
       );
     }
-    return {
-      place: {
-        id: found.id,
-        event: args.event ?? "arrive",
-        ...(args.from ? { from: args.from } : {}),
-        ...(args.until ? { until: args.until } : {}),
-      },
-    };
+    return atPlace(found.id, args);
   };
 
   return [
     defineTool({
       name: "reminders_create",
       description:
-        "Schedule one reminder for one exact future date and time, or for when the recipient arrives at or leaves a place; their iPhone tells Golem. A place reminder can have a window: from, such as 'when I get to work on Monday', and until, when it fires anyway, such as 'next time I am at the shop this week'. 'At 18:00 if I am home, else when I get home' is arrive home from 18:00. Make one reminder for one request, with no helper reminders or chats. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. Confirm the saved time or place in your answer.",
+        "Schedule one reminder for one exact future date and time, or for when the recipient arrives at or leaves a place; their iPhone tells Golem. A place reminder can have a window: from, such as 'when I get to work on Monday', and until, when it fires anyway, such as 'next time I am at the shop this week'. 'At 18:00 if I am home, else when I get home' is arrive home from 18:00. Make one reminder for one request, with no helper reminders or chats. Use a routine for repeated work. Give the recipient's name when it is not the person who asked. For one specific public place that reminders_places does not have, such as one shop, use reminders_search_points_of_interest. Confirm the saved time or place in your answer.",
       parameters: Type.Object({
         text,
         at,
@@ -200,6 +208,75 @@ export function reminderTools(
       },
     }),
     defineTool({
+      name: "reminders_search_points_of_interest",
+      description:
+        "Find one specific public place, such as IKEA in Brno, for a reminder of the person who asks, with reminders_create_at_point_of_interest. Put the name and its town or street in query, and try other words when nothing comes. Use a result only when it is clearly the one place that the person means. Ask the person when they name a chain or a kind of place, when several results can be it, or when nothing matches; never choose for them.",
+      parameters: Type.Object({
+        query: Type.String({
+          description: "The name of the place, with its town or street",
+        }),
+      }),
+      replay: "safe",
+      execute: async ({ query }) => {
+        const found = await places.searchPointsOfInterest(query);
+        return {
+          output: [
+            {
+              type: "text",
+              text: found.length
+                ? `${found.map(({ osmId, name, kind, address }) => `${osmId}: ${name} (${kind}), ${address}`).join("\n")}\nData © OpenStreetMap contributors`
+                : "No specific place. Try other words, or ask the person which place they mean.",
+            },
+          ],
+        };
+      },
+    }),
+    defineTool({
+      name: "reminders_create_at_point_of_interest",
+      description:
+        "Remind the person who asks when they arrive at or leave one specific public place from reminders_search_points_of_interest; their phone tells Golem. It is only for their own reminder. Say the place's name and street in your answer.",
+      parameters: Type.Object({
+        text,
+        pointOfInterest: Type.String({
+          description: "The id of a result of the search, such as W258949900",
+        }),
+        from,
+        until,
+        event,
+        timeZone,
+      }),
+      replay: "safe",
+      execute: async (args, api) => {
+        const { asker } = await actorFor(api.conversationId);
+        if (!asker) {
+          throw new Error("Only a person's own request makes this reminder.");
+        }
+        const source = workspaces.chatOf(workspaceId, api.conversationId);
+        if (!source) {
+          throw new Error("This tool works only in a chat.");
+        }
+        const { id } = await places.savePointOfInterest(
+          workspaceId,
+          asker.id,
+          args.pointOfInterest
+        );
+        const created = reminders.create(
+          workspaceId,
+          asker,
+          source.id,
+          asker.id,
+          {
+            text: args.text,
+            timeZone: args.timeZone,
+            ...atPlace(id, args),
+            createdBy: asker.id,
+            id: randomUUIDv5(`golem:${workspaceId}:${api.taskId}`, "url"),
+          }
+        );
+        return { output: [{ type: "text", text: describe(created) }] };
+      },
+    }),
+    defineTool({
       name: "reminders_list",
       description:
         "List the one-time reminders of this workspace, including delivered and cancelled ones.",
@@ -221,7 +298,7 @@ export function reminderTools(
     defineTool({
       name: "reminders_update",
       description:
-        "Change a pending one-time reminder: its text, and its time or place with its window.",
+        "Change a pending one-time reminder: its text, and its time or place with its window. Leave out at and place to keep its place; give its event, from, and until again. To move it to a point of interest, cancel it and make a new one.",
       parameters: Type.Object({
         reminder,
         text,
@@ -235,7 +312,16 @@ export function reminderTools(
       replay: "safe",
       execute: async ({ reminder: id, ...input }, api) => {
         const { actor, asker, realm } = await actorFor(api.conversationId);
-        const { recipientId } = reminders.get(workspaceId, actor, realm, id);
+        const { recipientId, place: current } = reminders.get(
+          workspaceId,
+          actor,
+          realm,
+          id
+        );
+        const keepsPlace =
+          current !== null &&
+          input.at === undefined &&
+          input.place === undefined;
         return {
           output: [
             {
@@ -244,7 +330,12 @@ export function reminderTools(
                 reminders.update(workspaceId, actor, realm, id, {
                   text: input.text,
                   timeZone: input.timeZone,
-                  ...whenOf(input, recipientId, asker?.id ?? null),
+                  ...(keepsPlace
+                    ? atPlace(current.id, {
+                        ...input,
+                        event: input.event ?? current.event,
+                      })
+                    : whenOf(input, recipientId, asker?.id ?? null)),
                   createdBy: asker?.id ?? null,
                 })
               ),

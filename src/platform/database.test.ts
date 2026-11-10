@@ -98,7 +98,7 @@ test("the workspace's one orchestrator from before becomes the own of the person
 	CREATE UNIQUE INDEX thread_orchestrator ON thread (workspace_id) WHERE orchestrator = 1;
 	INSERT INTO channel (id, workspace_id, name, created_by, created_at) VALUES ('general', 'home', 'general', 'alice', 1), ('food', 'home', 'food', 'bob', 2);
 	INSERT INTO thread (id, workspace_id, channel_id, title, created_by, created_at, updated_at, orchestrator) VALUES ('golem', 'home', 'food', 'Golem', 'golem', 1, 1, 1), ('dinner', 'home', 'food', 'Dinner', 'bob', 1, 1, 0);
-	PRAGMA user_version = ${version - 30};`);
+	PRAGMA user_version = ${version - 31};`);
   migrate(database);
   expect(
     database
@@ -166,7 +166,7 @@ test("own credentials and machines become private ones in their owner's workspac
 		('alices-mac', NULL, 'mac', '[]', 1, 'a', 'macos', 'arm64', '1', 4, 'alice'),
 		('bobs-mac', NULL, 'mac', '[]', 1, 'b', 'macos', 'arm64', '1', 5, 'bob');
 	UPDATE machine SET deleted_at = 1 WHERE id = 'old-nas';
-	PRAGMA user_version = ${version - 24};`);
+	PRAGMA user_version = ${version - 25};`);
   migrate(database);
   expect(
     database
@@ -244,7 +244,11 @@ test("notification permission expands the intake schema and leaves queued update
     INSERT INTO intake_delivery(id,workspace_id,owner_id,thread_id,body,attention,check_ids,evidence_ids,created_at)
     VALUES('queued','home','alice','subject','Useful context','now','[]','[]',1);
     ALTER TABLE place_presence DROP COLUMN watched;
-    PRAGMA user_version = ${version - 11};`);
+    DROP INDEX place_point_of_interest;
+    DROP INDEX place_name;
+    ALTER TABLE place DROP COLUMN osm_id;
+    CREATE UNIQUE INDEX place_name ON place (workspace_id, owner_id, name COLLATE NOCASE);
+    PRAGMA user_version = ${version - 12};`);
   migrate(database);
   expect(
     database

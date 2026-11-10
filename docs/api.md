@@ -544,7 +544,8 @@ minutes late. A new routine waits for the next crossing. A removed place keeps i
 ### One-time reminders (`src/reminders/`)
 
 Agents in every chat of a workspace, including its orchestrator, have `reminders_create`, `reminders_places`,
-`reminders_list`, `reminders_update`, and `reminders_cancel`. A reminder belongs to that workspace and its source chat. It runs once when
+`reminders_search_points_of_interest`, `reminders_create_at_point_of_interest`, `reminders_list`, `reminders_update`,
+and `reminders_cancel`. A reminder belongs to that workspace and its source chat. It runs once when
 its saved UTC time is due, or when Golem starts again after that time. Its turn is for the person who asked for it or
 last changed it, not for its recipient; a reminder from before this rule uses only the shared credentials.
 Agents make and change reminders; a person sees their pending ones in Upcoming and cancels one there.
@@ -555,6 +556,15 @@ when Golem hears of it late. A new reminder starts as outside: one for an arriva
 once. A reminder at a place can have a window: `from` (not before, such as "when I get to work on Monday"; for an
 arrival where the recipient already is then, it fires then) and `until` (when its event has not come by then, it fires
 then anyway, so a reminder is never lost). "At 18:00 if I am home, else when I get home" is arrive home from 18:00.
+
+A reminder can also wait at a point of interest: one specific public place, such as one shop. An agent finds it with
+`reminders_search_points_of_interest` in OpenStreetMap and makes the reminder with
+`reminders_create_at_point_of_interest`; it asks the person when the place is not clear. Such a reminder is only for the
+person who asks. A city or another area is not a specific place. A point of interest is a place of that person that
+Settings, `reminders_places`, and routines do not show, and Upcoming shows its reminder like any other. A person has
+pending reminders at no more than 12 points of interest, because iOS watches at most 20 places for an app. Golem sends
+OpenStreetMap only the search words and the id, one request each second, as [its
+policy](https://operations.osmfoundation.org/policies/nominatim/) says.
 
 ### Intake (`src/intake/`)
 

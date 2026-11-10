@@ -608,6 +608,11 @@ const migrations = [
     INSERT INTO intake_check_revision(check_id,workspace_id,owner_id,at,previous,current)
     VALUES(NEW.id,NEW.workspace_id,NEW.owner_id,CAST(unixepoch('subsec')*1000 AS INTEGER),json_object('text',OLD.text,'state',OLD.state,'sourceIds',json(OLD.source_ids),'chatId',OLD.chat_id,'checkAt',OLD.check_at,'reviewAt',OLD.next_review_at,'explicitTime',OLD.explicit_time,'notifiedAt',OLD.notified_at),json_object('text',NEW.text,'state',NEW.state,'sourceIds',json(NEW.source_ids),'chatId',NEW.chat_id,'checkAt',NEW.check_at,'reviewAt',NEW.next_review_at,'explicitTime',NEW.explicit_time,'notifiedAt',NEW.notified_at));
   END;`,
+  // places: a point of interest is a place from OpenStreetMap that only reminders use; many can have the same name.
+  `ALTER TABLE place ADD COLUMN osm_id TEXT;
+  DROP INDEX place_name;
+  CREATE UNIQUE INDEX place_name ON place (workspace_id, owner_id, name COLLATE NOCASE) WHERE osm_id IS NULL;
+  CREATE UNIQUE INDEX place_point_of_interest ON place (workspace_id, owner_id, osm_id) WHERE osm_id IS NOT NULL;`,
 ];
 
 export function openDatabase(path: string): Database {
