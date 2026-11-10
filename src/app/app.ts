@@ -222,7 +222,8 @@ export async function createApp(
     indexer,
     llm,
     audit,
-    notifications
+    notifications,
+    reminders
   );
   const phone = new Phone(chats);
   const feedback = new FeedbackReports(

@@ -598,8 +598,8 @@ topics. If none fits, Golem creates a private topic and its first chat. Invitati
 Topic names cover lasting subjects; chat titles name specific matters. The normal agent can search connected
 accounts for older related sources. No background worker chat is made. Nonurgent developments wait for the person's morning
 review in the 08:00 Europe/Prague hour: one plan groups them by matter, drops what is handled or stale, posts one
-message to each chat with what it asks of the person, nudges each open ask every 2 days in the morning summary, and
-sends one summary to the person's own chat with a notification (see `docs/proactive.md`). One urgent delivery group belongs to one person and one subject chat. Stable request ids
+message to each chat with what it asks of the person, nudges each open ask that is still unsolved every 2 days in the morning summary, and
+sends one summary of the matters with an ask or a deadline to the person's own chat with a notification (see `docs/proactive.md`). One urgent delivery group belongs to one person and one subject chat. Stable request ids
 prevent duplicate review messages, runs, and notices. A resolved check cancels queued reviews. A `QUIET` answer sends
 no notice and does not mark an internal check as already notified. The judge separately proposes a notification with
 an exact source quote and one reason: the owner requested it, a substantive awaited reply needs attention, a stated

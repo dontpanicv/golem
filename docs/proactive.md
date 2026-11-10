@@ -45,12 +45,15 @@ They do not need to maintain a task list or set a routine for each expected repl
    filing stays silent. Nonurgent changes wait for the person's morning review (`src/intake/morning.ts`), once a day in
    the 08:00 Europe/Prague hour. Golem reads their source accounts again, then one model call plans all of the
    person's waiting updates together: it groups them by matter, puts each matter into its existing chat or one new
-   chat, and drops what the newest sources show handled or stale. Each matter gets one Golem message with its
+   chat, and drops what the newest sources show handled or stale. For each source it reads what came after it in that
+   conversation, with the owner's replies, under a limit per conversation. Each matter gets one Golem message with its
    source files in its chat, which says what changed, what it asks of the owner or of whom, and any stated
-   deadline; no agent starts on it. The plan never analyses further or drafts. A matter that asks something of the
-   owner gets a check; the morning summary nudges it every 2 days until new evidence shows it handled, or the owner
-   says it is done, rejected, or someone else's (handled or stop in Following, or `intake_update`). Then the person's own Golem chat gets one
-   summary with a link to each chat, and a notification. A plan that leaves an update out or names a chat or
+   deadline; no agent starts on it. The plan never analyses further or drafts. A matter that needs something of the
+   owner gets a check: a literal request, a reported problem, someone who waits for them, an unsolved failure or
+   decision, or their own unfinished matter; when the plan is not sure, it keeps the ask. The morning summary nudges the check every 2 days. The same plan first reads each due
+   nudge against the newest sources and the person's pending reminders, and closes it only with clear evidence that it is handled, or that a reminder
+   covers it or it is someone else's. The owner can also say it is done, rejected, or someone else's (handled or stop in Following, or `intake_update`). Then the person's own Golem chat gets one
+   summary with a link to each chat with an ask or a deadline, and a notification; a matter with neither stays in its chat. A plan that leaves an update out or names a chat or
    topic that was not given changes nothing, and the review is tried again after 15 minutes, then 30. After two
    failed plans, each update goes alone to its chat without a plan. A failing review has its own back-off, so the
    person's urgent updates never wait for it, and a summary that a try could not send goes at the next try. Other

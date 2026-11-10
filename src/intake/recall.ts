@@ -56,6 +56,11 @@ export interface IntakeSourceStatus {
   error: string | null;
   kept: number;
 }
+/** How many later messages of the owner, and of the others, each conversation gives to a review. */
+const LATER_MESSAGES = 4;
+/** How much of each later message a review reads; a long mail still shows that it answered. */
+const LATER_MESSAGE_CHARS = 2000;
+
 /** Reads the current private evidence and the Golem context that a person can use. */
 export class IntakeRecall {
   constructor(
@@ -206,18 +211,33 @@ export class IntakeRecall {
   ): FutureCheck[] {
     const sourceIds = new Set([
       ...evidence.map((item) => item.id),
-      ...[
-        ...this.conversationRows(workspaceId, owner, evidence),
-        ...this.matches(workspaceId, owner, evidence),
-      ].map((row) => row.id),
+      ...this.matches(workspaceId, owner, evidence).map((row) => row.id),
     ]);
+    const conversations = new Set(evidence.map((item) => item.conversation));
     return this.checks(workspaceId, owner)
       .filter(
         (check) =>
           (check.chatId !== null && chatIds.includes(check.chatId)) ||
-          check.sourceIds.some((id) => sourceIds.has(id))
+          check.sourceIds.some(
+            (id) =>
+              sourceIds.has(id) ||
+              conversations.has(this.conversationOf(workspaceId, owner, id))
+          )
       )
       .slice(0, 12);
+  }
+
+  /** The conversation of a source, also of an older version of it, as a check keeps the version it was made from. */
+  private conversationOf(workspaceId: string, owner: User, id: string): string {
+    const row = this.database
+      .query(
+        "SELECT credential_id,json_extract(payload,'$.chat') AS chat FROM intake_item WHERE id=? AND workspace_id=? AND owner_id=?"
+      )
+      .get(id, workspaceId, owner.id) as {
+      credential_id: string;
+      chat: string;
+    } | null;
+    return row ? `${row.credential_id}:${row.chat}` : "";
   }
 
   /**
@@ -257,6 +277,16 @@ export class IntakeRecall {
         originals.push(item);
       }
     }
+    for (const item of this.evidence(
+      this.laterMessages(workspaceId, owner, [...fresh, ...originals])
+    )) {
+      if (!result.has(item.id)) {
+        result.set(item.id, {
+          ...item,
+          text: item.text.slice(0, LATER_MESSAGE_CHARS),
+        });
+      }
+    }
     const candidates = [
       ...this.conversationRows(workspaceId, owner, [...fresh, ...originals]),
       ...this.matches(workspaceId, owner, [...fresh, ...originals]),
@@ -276,6 +306,38 @@ export class IntakeRecall {
       count += 1;
     }
     return [...result.values()].sort((a, b) => a.at - b.at);
+  }
+
+  /**
+   * What each conversation said after its earliest given source: the newest messages of the owner and of the others,
+   * so a reply shows that a request is handled. Each conversation has its own limit, as a busy chat must not hide the
+   * answer in another.
+   */
+  private laterMessages(
+    workspaceId: string,
+    owner: User,
+    evidence: Evidence[]
+  ): ItemRow[] {
+    const rows = this.database
+      .query(`SELECT * FROM (
+        SELECT i.*,ROW_NUMBER() OVER (
+          PARTITION BY i.credential_id,json_extract(i.payload,'$.chat'),json_extract(i.payload,'$.fromOwner') ORDER BY i.at DESC
+        ) AS position
+        FROM intake_item i JOIN (
+          SELECT credential_id,json_extract(payload,'$.chat') AS chat,min(at) AS since FROM intake_item
+          WHERE id IN (SELECT value FROM json_each(?)) AND workspace_id=? AND owner_id=? GROUP BY credential_id,chat
+        ) source ON i.credential_id=source.credential_id AND json_extract(i.payload,'$.chat')=source.chat AND i.at>source.since
+        WHERE i.workspace_id=? AND i.owner_id=? AND i.superseded_at IS NULL AND i.deleted_at IS NULL
+      ) WHERE position<=? ORDER BY at`)
+      .all(
+        JSON.stringify(evidence.map((item) => item.id)),
+        workspaceId,
+        owner.id,
+        workspaceId,
+        owner.id,
+        LATER_MESSAGES
+      ) as ItemRow[];
+    return this.visible(workspaceId, owner, rows);
   }
 
   private conversationRows(

@@ -59,11 +59,16 @@ export function whatsAppConnector(binary: string): Connector {
         return [];
       }
       const { messages } = result as { messages?: StoredMessage[] };
-      const mention = `@${source.account.replace(/\D/g, "")}`;
-      return (messages ?? []).flatMap((message) => {
-        const item = observedMessage(message, 0, mention);
-        return item ? [item] : [];
-      });
+      return namedMentions(
+        whatsApp,
+        await source.secret(),
+        source.account,
+        (messages ?? []).flatMap((message) => {
+          const item = observedMessage(message, 0);
+          return item ? [item] : [];
+        }),
+        undefined
+      );
     },
     tools: [
       readTool(whatsApp, {
@@ -261,6 +266,12 @@ export function draftLink(phone: string | undefined, text: string): string {
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
 }
 
+/** The person behind a WhatsApp id. */
+interface Resolved {
+  readonly phone: string;
+  readonly name: string | null;
+}
+
 /** Runs wacli for the stores of linked numbers: links them, keeps them current, and reads them. */
 export class WhatsApp implements Device {
   /** The process that keeps each store current. */
@@ -271,6 +282,8 @@ export class WhatsApp implements Device {
   private readonly restarts = new Map<string, Timer>();
   /** The last backfill of each store. */
   private readonly backfills = new Map<string, Promise<unknown>>();
+  /** The people that WhatsApp ids stand for, which do not change. */
+  private readonly resolved = new Map<string, Resolved>();
   private closed = false;
 
   constructor(private readonly binary: string) {}
@@ -360,6 +373,48 @@ export class WhatsApp implements Device {
     signal: AbortSignal | undefined
   ): Promise<unknown> {
     return this.run(store, ["--read-only", ...command], READ_MS, signal);
+  }
+
+  /** The people of WhatsApp ids from local state, by the LID or number given; a failed lookup only leaves ids out. */
+  async people(
+    store: string,
+    ids: readonly string[],
+    signal: AbortSignal | undefined
+  ): Promise<Map<string, Resolved>> {
+    const known = new Map<string, Resolved>();
+    const unknown = ids.filter((id) => {
+      const person = this.resolved.get(`${store}:${id}`);
+      if (person) {
+        known.set(id, person);
+      }
+      return !person;
+    });
+    if (unknown.length === 0) {
+      return known;
+    }
+    try {
+      const answers = (await this.read(
+        store,
+        ["contacts", "resolve", ...unknown.flatMap((id) => [`${id}@lid`, id])],
+        signal
+      )) as {
+        input: string;
+        resolved: boolean;
+        phone?: string;
+        name?: string;
+      }[];
+      for (const { input, resolved, phone, name } of answers) {
+        if (resolved && phone) {
+          const id = input.replace("@lid", "");
+          const person = { phone, name: name ?? null };
+          this.resolved.set(`${store}:${id}`, person);
+          known.set(id, person);
+        }
+      }
+    } catch (error) {
+      console.error("reading WhatsApp mentions failed", error);
+    }
+    return known;
   }
 
   /** Runs a `send` command, such as `text`; the running sync of the store sends it, as it holds the store's lock. */
@@ -584,9 +639,6 @@ async function watchChats(
   { since, account, secret, signal, record, checkpoint }: WatchSource
 ): Promise<WatchedItem[]> {
   const store = await secret();
-  // A mention of the owner is their number, which the model reads as @me.
-  // shortcut: a mention by WhatsApp's internal id (LID) stays a number; map it when wacli gives the account's own LID.
-  const ownMention = `@${account.replace(/\D/g, "")}`;
   const items: WatchedItem[] = [];
   const saved = (checkpoint?.value ?? {}) as {
     cursor?: string;
@@ -613,7 +665,7 @@ async function watchChats(
     };
     record?.("raw", data);
     for (const message of data.messages ?? []) {
-      const item = observedMessage(message, since, ownMention);
+      const item = observedMessage(message, since);
       if (item) {
         items.push(item);
       }
@@ -629,13 +681,46 @@ async function watchChats(
       record?.("coverage", { complete: false, reason: "WhatsApp page budget" });
     }
   }
-  return items;
+  return namedMentions(whatsApp, store, account, items, signal);
+}
+
+/** A mention in WhatsApp's text: the person's internal id (LID) or number. */
+const MENTION = /(?<![\w.])@(\d{8,})/g;
+
+/**
+ * Puts each mentioned person's name in the text, and "@me" for the owner, so a request to someone else never reads as
+ * the owner's. A mention that wacli cannot map stays a number.
+ */
+async function namedMentions(
+  whatsApp: WhatsApp,
+  store: string,
+  account: string,
+  items: WatchedItem[],
+  signal: AbortSignal | undefined
+): Promise<WatchedItem[]> {
+  const own = account.replace(/\D/g, "");
+  const mentioned = new Set(
+    items.flatMap((item) =>
+      [...item.text.matchAll(MENTION)].map((match) => match[1]!)
+    )
+  );
+  mentioned.delete(own);
+  const people = await whatsApp.people(store, [...mentioned], signal);
+  return items.map((item) => ({
+    ...item,
+    text: item.text.replace(MENTION, (mention, id: string) => {
+      const person = people.get(id);
+      if (id === own || person?.phone === own) {
+        return "@me";
+      }
+      return person?.name ? `@${person.name}` : mention;
+    }),
+  }));
 }
 
 function observedMessage(
   message: StoredMessage,
-  since: number,
-  ownMention: string
+  since: number
 ): WatchedItem | null {
   const text = (message.Text || message.MediaCaption).trim();
   const at = Date.parse(message.Timestamp);
@@ -652,7 +737,7 @@ function observedMessage(
     sender: message.FromMe ? "" : message.SenderName,
     fromOwner: message.FromMe,
     at,
-    text: text.replaceAll(ownMention, "@me"),
+    text,
     url: group ? null : `https://wa.me/${message.ChatJID.split("@")[0]}`,
   };
 }

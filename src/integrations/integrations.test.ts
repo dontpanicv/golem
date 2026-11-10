@@ -1325,6 +1325,53 @@ test("only an opted-in account owner's chat receives verified read observations"
   await observed.close();
 });
 
+test("a WhatsApp mention by internal id shows the person's name, @me for the owner, and stays a number when unknown", async () => {
+  const wacli = join(golem.app.config.dataDirectory, "wacli-mentions");
+  await Bun.write(
+    wacli,
+    `#!/bin/sh
+echo '{"success":true,"data":[{"input":"111222333444555@lid","phone":"420777000111","name":"Jane Doe","resolved":true},{"input":"999888777666555@lid","phone":"420111222333","name":"Me","resolved":true},{"input":"123456789012345@lid","resolved":false}],"error":null}'
+`
+  );
+  await chmod(wacli, 0o755);
+  const message = (MsgID: string, Text: string) => ({
+    ChatJID: "120363@g.us",
+    ChatName: "Group",
+    SenderName: "Pavel",
+    Timestamp: "2026-10-01T08:00:00Z",
+    FromMe: false,
+    ReactionEmoji: "",
+    Revoked: false,
+    MediaCaption: "",
+    MsgID,
+    Text,
+  });
+  const result = {
+    messages: [
+      message("a", "@111222333444555 please look"),
+      message("b", "@999888777666555 please look"),
+      message("c", "@123456789012345 please look"),
+    ],
+  };
+  const source = { account: "+420111222333", secret: async () => "store" };
+  const read = (binary: string) =>
+    whatsAppConnector(binary).observations!(
+      "whatsapp_messages",
+      {},
+      result,
+      source
+    );
+  expect((await read(wacli)).map((item) => item.text)).toEqual([
+    "@Jane Doe please look",
+    "@me please look",
+    "@123456789012345 please look",
+  ]);
+  // A failed lookup keeps the messages.
+  expect((await read("/nonexistent/wacli"))[0]!.text).toBe(
+    "@111222333444555 please look"
+  );
+});
+
 test("WhatsApp source reads use original incoming and outgoing text and exclude drafts and reactions", async () => {
   const connector = whatsAppConnector("unused");
   const source = { account: "+420111222333", secret: async () => "unused" };

@@ -23,6 +23,7 @@ import {
 import { IntakeRecall } from "./recall.ts";
 
 const DAY = 86_400_000;
+const HOUR = 3_600_000;
 const START = Date.parse("2026-10-01T10:00:00+02:00");
 let app: TestApp;
 let intake: Intake;
@@ -50,6 +51,8 @@ async function setup(
     silent?: boolean;
     failAfterChatStart?: boolean;
     plan?: (input: MorningInput) => MorningPlan;
+    /** The person's reminders, as the morning review reads them. */
+    reminders?: (ownerId: string) => unknown[];
     learned?: (ownerId: string) => LearnedItem[];
     /** Fails a post to a chat, as when the conversation is not reachable. */
     postFails?: (chatId: string) => boolean;
@@ -328,7 +331,8 @@ async function setup(
         },
       },
       new Audit(join(app.dataDirectory, "test-audit.sqlite")),
-      app.app.notifications
+      app.app.notifications,
+      { list: () => (options.reminders?.(owner.id) ?? []) as never }
     );
   intake = create();
   return {
@@ -429,6 +433,7 @@ function morningPlan(input: MorningInput): MorningPlan {
         id: update.id,
         reason: "Handled",
       })),
+      closed: [],
     };
   }
   const place = newChatPlace(input);
@@ -453,10 +458,12 @@ function morningPlan(input: MorningInput): MorningPlan {
           (updates[0]!.proposedTopicId ? null : place.newTopic)),
       message: updates.map((update) => update.message).join(" "),
       ask: null,
-      due: null,
+      // A deadline keeps the matter in the summary, with no ask to follow.
+      due: "2026-12-01T09:00:00+01:00",
       line: updates[0]!.proposedTitle ?? "An update",
     })),
     dropped: [],
+    closed: [],
   };
 }
 
@@ -1240,19 +1247,23 @@ test("the morning review puts the updates of one matter into one new chat, start
       })),
     plan: (input) => ({
       summary: "One matter today",
-      matters: [
-        {
-          updates: input.updates.map((update) => update.id),
-          chatId: null,
-          title: "OpenSearch incident",
-          ...newChatPlace(input),
-          message: "Francisco sent the logs and the memory peaks [1][2].",
-          ask: "Reply to Francisco about the diagnostics",
-          due: null,
-          line: "Francisco sent the OpenSearch diagnostics",
-        },
-      ],
+      matters:
+        input.updates.length === 0
+          ? []
+          : [
+              {
+                updates: input.updates.map((update) => update.id),
+                chatId: null,
+                title: "OpenSearch incident",
+                ...newChatPlace(input),
+                message: "Francisco sent the logs and the memory peaks [1][2].",
+                ask: "Reply to Francisco about the diagnostics",
+                due: null,
+                line: "Francisco sent the OpenSearch diagnostics",
+              },
+            ],
       dropped: [],
+      closed: [],
     }),
   });
   run.items([
@@ -1360,12 +1371,13 @@ test("a morning plan that leaves an update out changes nothing and is tried agai
                 : newChatPlace(input)),
               message: "The claim waits.",
               ask: null,
-              due: null,
+              due: "2026-12-01T09:00:00+01:00",
               line: "The claim waits",
             },
           ]
         : [],
       dropped: [],
+      closed: [],
     }),
   });
   await intake.tick(START + 1000);
@@ -1382,7 +1394,7 @@ test("a morning plan that leaves an update out changes nothing and is tried agai
 test("after two failed morning plans, each update is posted alone", async () => {
   const run = await setup({
     initialNotice: "brief",
-    plan: () => ({ summary: "Broken", matters: [], dropped: [] }),
+    plan: () => ({ summary: "Broken", matters: [], dropped: [], closed: [] }),
   });
   await intake.tick(START + 1000);
   await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
@@ -2449,6 +2461,7 @@ test("the morning review reuses a differently titled chat created after queuing"
           },
         ],
         dropped: [],
+        closed: [],
       };
     },
   });
@@ -2827,4 +2840,174 @@ test("old messages that a chat's agent looks up are not assessed as new", async 
         )
     )
   ).toBe(false);
+});
+
+const REQUEST =
+  "Please give a substantive response to the balcony claim within 30 days.";
+
+test("the morning plan reads the owner's later reply, also when newer messages fill the conversation", async () => {
+  const run = await setup({ initialNotice: "brief" });
+  await intake.tick(START + 1000);
+  const chat = "conversation-request";
+  run.items([
+    item("request", REQUEST, true, START),
+    { ...item("answer", "Answered on the call.", true, START + HOUR), chat },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      ...item(
+        `note-${index}`,
+        `Note ${index}`,
+        false,
+        START + 2 * HOUR + index
+      ),
+      chat,
+    })),
+  ]);
+  await intake.tick(START + 3 * HOUR);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  expect(run.plans).toHaveLength(1);
+  expect(run.plans[0]!.evidence.map((each) => each.text)).toContain(
+    "Answered on the call."
+  );
+});
+
+test("a morning plan closes a due nudge that a reminder covers, and keeps what is unsolved", async () => {
+  const asks = ["Buy the balcony lights", "Look at the failing import"];
+  const run = await setup({
+    decide: (input) =>
+      input.newEvidenceIds.map((id, index) => ({
+        ...proposedSubject(input, asks[index]!),
+        evidence: [id],
+      })),
+    reminders: (ownerId) => [
+      {
+        text: "Buy the lights on 1 December",
+        recipientId: ownerId,
+        dueAt: Date.parse("2026-12-01T09:00:00+01:00"),
+        place: null,
+        deliveredAt: null,
+        cancelledAt: null,
+      },
+      {
+        text: "Someone else's",
+        recipientId: "another",
+        dueAt: START,
+        place: null,
+        deliveredAt: null,
+        cancelledAt: null,
+      },
+    ],
+    plan: (input) =>
+      input.nudges.length
+        ? {
+            summary: "",
+            matters: [],
+            dropped: [],
+            closed: [
+              {
+                id: input.nudges.find((each) => each.text === asks[0])!.id,
+                state: "stopped",
+                reason: "A reminder covers it",
+              },
+            ],
+          }
+        : {
+            summary: "Two matters",
+            matters: input.updates.map((update, index) => ({
+              updates: [update.id],
+              chatId: null,
+              title: asks[index]!,
+              ...newChatPlace(input),
+              message: asks[index]!,
+              ask: asks[index]!,
+              due: null,
+              line: asks[index]!,
+            })),
+            dropped: [],
+            closed: [],
+          },
+  });
+  run.items([
+    item("lights", "Which lights do we buy?", false, START),
+    item("import", "This does not work, can you take a look?", false, START),
+  ]);
+  await intake.tick(START);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  const posted = run.posts.length;
+  await intake.tick(Date.parse("2026-10-04T08:00:00+02:00"));
+  expect(
+    run.plans
+      .at(-1)!
+      .nudges.map((each) => each.text)
+      .toSorted()
+  ).toEqual(asks.toSorted((a, b) => a.localeCompare(b)));
+  expect(run.plans.at(-1)!.reminders.map((each) => each.text)).toEqual([
+    "Buy the lights on 1 December",
+  ]);
+  expect(run.posts).toHaveLength(posted + 1);
+  expect(run.posts.at(-1)!.text).toContain("Look at the failing import");
+  expect(run.posts.at(-1)!.text).not.toContain("Buy the balcony lights");
+  expect(
+    intake.openChecks(run.workspaceId, run.owner).map((each) => each.text)
+  ).not.toContain("Buy the balcony lights");
+});
+
+test("a morning matter that needs nothing stays in its chat and out of the summary", async () => {
+  const run = await setup({
+    initialNotice: "brief",
+    plan: (input) => ({
+      summary: "Nothing for you",
+      matters: [
+        {
+          updates: input.updates.map((update) => update.id),
+          chatId: null,
+          title: "Plane model",
+          ...newChatPlace(input),
+          message: "Another tip for the gift",
+          ask: null,
+          due: null,
+          line: "Another tip",
+        },
+      ],
+      dropped: [],
+      closed: [],
+    }),
+  });
+  await intake.tick(START + 1000);
+  await intake.tick(Date.parse("2026-10-02T08:00:00+02:00"));
+  expect(run.reviews).toHaveLength(1);
+  expect(run.posts.some((post) => post.notify)).toBe(false);
+});
+
+test("a display name that the source learns later is not a new message", async () => {
+  const run = await setup();
+  await intake.tick(START + 1000);
+  const assessments = run.assessments();
+  run.items([
+    { ...item("request", REQUEST, true, START), sender: "Alice Smith" },
+  ]);
+  await intake.tick(START + 16 * 60_000);
+  expect(run.assessments()).toBe(assessments);
+  expect(
+    app.app.database
+      .query(
+        "SELECT count(*) n,sum(superseded_at IS NULL) current,json_extract(payload,'$.sender') sender FROM intake_item"
+      )
+      .get()
+  ).toMatchObject({ n: 1, current: 1, sender: "Alice Smith" });
+});
+
+test("a check made from an older version of a message still follows its conversation", async () => {
+  const run = await setup();
+  await intake.tick(START + 1000);
+  run.items([
+    item("request", "Please respond to the claim within 30 days.", true, START),
+    {
+      ...item("later", "We are on it.", false, START + HOUR),
+      chat: "conversation-request",
+    },
+  ]);
+  await intake.tick(START + HOUR);
+  expect(run.snapshots.at(-1)!.checks.map((each) => each.text)).toEqual([
+    "Substantive response to balcony claim",
+  ]);
 });

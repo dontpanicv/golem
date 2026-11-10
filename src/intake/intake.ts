@@ -14,6 +14,7 @@ import type { Notifications } from "../notifications/notifications.ts";
 import type { User } from "../platform/auth.ts";
 import { setSetting, setting } from "../platform/database.ts";
 import { notFound } from "../platform/errors.ts";
+import type { Reminders } from "../reminders/reminders.ts";
 import type { Indexer } from "../search/search.ts";
 import type { ChatRef, Workspaces } from "../workspaces/workspaces.ts";
 import { IntakeArchives } from "./archive.ts";
@@ -26,6 +27,7 @@ import {
   type FutureCheck,
   type IntakeNotification,
   type Knowledge,
+  pragueTime,
 } from "./assess.ts";
 import { Audit } from "./audit.ts";
 import { IntakeDestinations } from "./destinations.ts";
@@ -140,7 +142,8 @@ export class Intake {
     search: IntakeSearch,
     private readonly llm: IntakeLlm,
     readonly audit: Audit,
-    private readonly notifications: Pick<Notifications, "notify">
+    private readonly notifications: Pick<Notifications, "notify">,
+    private readonly reminders: Pick<Reminders, "list">
   ) {
     this.recall = new IntakeRecall(
       database,
@@ -379,6 +382,28 @@ export class Intake {
     const deletedAt = this.following.blocks(credential, item)
       ? Date.now()
       : null;
+    const current = this.database
+      .query(
+        "SELECT id,payload FROM intake_item WHERE credential_id=? AND source_id=? AND superseded_at IS NULL"
+      )
+      .get(credential.id, item.id) as { id: string; payload: string } | null;
+    if (
+      deletedAt === null &&
+      current &&
+      current.payload !== payload &&
+      messageContent(current.payload) === messageContent(payload)
+    ) {
+      // A display name that the source learned later, such as a Slack user's, is not a new message to assess.
+      this.database
+        .query("UPDATE intake_item SET payload=? WHERE id=?")
+        .run(payload, current.id);
+      this.database
+        .query(
+          "INSERT OR REPLACE INTO intake_fts(rowid,text) SELECT rowid,? FROM intake_item WHERE id=?"
+        )
+        .run(`${item.sender} ${item.chatName} ${item.text}`, current.id);
+      return current.id;
+    }
     this.database
       .query(
         "UPDATE intake_item SET superseded_at=? WHERE credential_id=? AND source_id=? AND version!=? AND superseded_at IS NULL"
@@ -1106,44 +1131,54 @@ export class Intake {
       return;
     }
     try {
-      if (deliveries.length === 0) {
-        // Nothing waits: the nudges and a summary that an earlier try left unsent; a later update still goes this
-        // morning unless nudges went out.
-        const nudged = this.nudge(trace, workspaceId, owner, now);
-        await this.sendSummary(trace, workspaceId, owner);
-        if (nudged > 0) {
-          setSetting(this.database, doneKey, day);
-        }
-        return;
-      }
-      const coverage = await this.refreshDeliverySources(
-        deliveries,
-        owner,
-        now,
-        false
-      );
-      const waiting = deliveries.filter((delivery) =>
-        this.deliveryAllowed(delivery)
-      );
-      if (waiting.length > 0) {
-        const input = await this.morningInput(
-          waiting,
-          owner,
-          now,
-          coverage ?? this.recall.coverage(workspaceId, owner)
-        );
-        const plan = await this.morningPlan(
-          trace,
+      const nudges = this.dueNudges(workspaceId, owner, now);
+      if (deliveries.length > 0 || nudges.length > 0) {
+        await this.collectSources(
           workspaceId,
           owner,
-          input,
+          [
+            ...deliveries.flatMap(
+              (delivery) => JSON.parse(delivery.evidence_ids) as string[]
+            ),
+            ...nudges.flatMap((check) => check.sourceIds),
+          ],
           now
         );
-        await this.followPlan(trace, waiting, owner, input, plan, now);
+        const waiting = deliveries.filter((delivery) =>
+          this.deliveryAllowed(delivery)
+        );
+        if (waiting.length > 0 || nudges.length > 0) {
+          const input = await this.morningInput(
+            workspaceId,
+            waiting,
+            nudges,
+            owner,
+            now
+          );
+          const plan = await this.morningPlan(
+            trace,
+            workspaceId,
+            owner,
+            input,
+            now
+          );
+          await this.followPlan(
+            trace,
+            workspaceId,
+            waiting,
+            owner,
+            input,
+            plan,
+            now
+          );
+        }
       }
-      this.nudge(trace, workspaceId, owner, now);
+      const nudged = this.nudge(trace, workspaceId, owner, now);
       await this.sendSummary(trace, workspaceId, owner);
-      setSetting(this.database, doneKey, day);
+      // With nothing waiting and no nudge sent, a later update still goes this morning.
+      if (deliveries.length > 0 || nudged > 0) {
+        setSetting(this.database, doneKey, day);
+      }
     } catch (error) {
       this.record(
         trace,
@@ -1162,26 +1197,29 @@ export class Intake {
   }
 
   private async morningInput(
+    workspaceId: string,
     deliveries: Delivery[],
+    nudges: FutureCheck[],
     owner: User,
-    now: number,
-    coverage: MorningInput["coverage"]
+    now: number
   ): Promise<MorningInput> {
-    const workspaceId = deliveries[0]!.workspace_id;
     const originals = this.deliveryEvidence(deliveries, owner);
     const targets = [
-      ...new Set(
-        deliveries.flatMap((delivery) =>
+      ...new Set([
+        ...deliveries.flatMap((delivery) =>
           delivery.chat_id ? [delivery.chat_id] : []
-        )
-      ),
+        ),
+        ...nudges.flatMap((check) => (check.chatId ? [check.chatId] : [])),
+      ]),
     ];
-    const checks = this.recall.relevantChecks(
-      workspaceId,
-      owner,
-      originals,
-      targets
-    );
+    const checks = [
+      ...new Map(
+        [
+          ...this.recall.relevantChecks(workspaceId, owner, originals, targets),
+          ...nudges,
+        ].map((check) => [check.id, check])
+      ).values(),
+    ];
     const chats = await this.recall.context(
       workspaceId,
       owner,
@@ -1224,9 +1262,27 @@ export class Intake {
       chats,
       topics: this.recall.topics(workspaceId, owner),
       checks,
+      nudges: nudges.map(({ id, chatId, text, sourceIds }) => ({
+        id,
+        chatId,
+        text,
+        sourceIds,
+      })),
+      reminders: this.reminders
+        .list(workspaceId, owner, owner.id)
+        .filter(
+          (reminder) =>
+            reminder.recipientId === owner.id &&
+            reminder.deliveredAt === null &&
+            reminder.cancelledAt === null
+        )
+        .map((reminder) => ({
+          text: reminder.text,
+          due: reminder.place ? null : pragueTime(reminder.dueAt),
+        })),
       corrections: this.following.corrections(workspaceId, owner),
       knowledge: this.knowledge(workspaceId, owner),
-      coverage,
+      coverage: this.recall.coverage(workspaceId, owner),
     };
   }
 
@@ -1260,7 +1316,7 @@ export class Intake {
     input: MorningInput,
     now: number
   ): Promise<MorningPlan> {
-    const planTrace = `${trace}:${hash(input.updates.map((update) => update.id).join(":"))}`;
+    const planTrace = `${trace}:${hash([...input.updates, ...input.nudges].map((each) => each.id).join(":"))}`;
     const cached = this.audit.last(
       planTrace,
       "morning.plan",
@@ -1298,16 +1354,31 @@ export class Intake {
     return plan;
   }
 
-  /** Cancels the dropped updates, posts each matter to its chat, and sends the morning summary. */
+  /** Cancels the dropped updates, closes what no longer needs a nudge, and posts each matter to its chat. */
   private async followPlan(
     trace: string,
+    workspaceId: string,
     deliveries: Delivery[],
     owner: User,
     input: MorningInput,
     plan: MorningPlan,
     now: number
   ): Promise<void> {
-    const workspaceId = deliveries[0]!.workspace_id;
+    for (const closed of plan.closed) {
+      this.database
+        .query(
+          "UPDATE intake_check SET state=?,revised_at=? WHERE id=? AND workspace_id=? AND owner_id=? AND state='open'"
+        )
+        .run(closed.state, now, closed.id, workspaceId, owner.id);
+      this.record(
+        closed.id,
+        "morning.closed",
+        workspaceId,
+        owner.id,
+        closed,
+        now
+      );
+    }
     for (const dropped of plan.dropped) {
       this.database
         .query(
@@ -1448,7 +1519,9 @@ export class Intake {
       },
       now
     );
-    return `- [${chat.title}](chat:${chat.id}): ${matter.line}`;
+    return matter.line
+      ? `- [${chat.title}](chat:${chat.id}): ${matter.line}`
+      : null;
   }
 
   /**
@@ -1490,16 +1563,12 @@ export class Intake {
       .run(now + NUDGE_AFTER, id);
   }
 
-  /**
-   * Adds a line to this morning's summary for each open check of what the person must do whose nudge is due, and
-   * nudges it again in 2 days; a check that is handled, stopped, or deleted is never nudged.
-   */
-  private nudge(
-    trace: string,
+  /** The open checks of what the person must do whose nudge is due. */
+  private dueNudges(
     workspaceId: string,
     owner: User,
     now: number
-  ): number {
+  ): FutureCheck[] {
     const due = this.database
       .query(
         "SELECT id FROM intake_check WHERE workspace_id=? AND owner_id=? AND state='open' AND deleted_at IS NULL AND nudge_at IS NOT NULL AND nudge_at<=?"
@@ -1508,25 +1577,32 @@ export class Intake {
     const open = new Map(
       this.openChecks(workspaceId, owner).map((check) => [check.id, check])
     );
+    return due.flatMap(({ id }) => open.get(id) ?? []);
+  }
+
+  /**
+   * Adds a line to this morning's summary for each check that is still due after the morning plan closed what is
+   * handled or has its own reminder, and nudges it again in 2 days.
+   */
+  private nudge(
+    trace: string,
+    workspaceId: string,
+    owner: User,
+    now: number
+  ): number {
     const titles = new Map(
       this.workspaces
         .chatsIn(workspaceId, owner.id)
         .map((chat) => [chat.id, chat.title])
     );
-    const nudged = due.flatMap(({ id }) => {
-      const check = open.get(id);
-      if (!check) {
-        return [];
-      }
+    const nudged = this.dueNudges(workspaceId, owner, now).map((check) => {
       const title = check.chatId ? titles.get(check.chatId) : undefined;
-      return [
-        {
-          id,
-          line: title
-            ? `- [${title}](chat:${check.chatId}): ${check.text}`
-            : `- ${check.text}`,
-        },
-      ];
+      return {
+        id: check.id,
+        line: title
+          ? `- [${title}](chat:${check.chatId}): ${check.text}`
+          : `- ${check.text}`,
+      };
     });
     if (nudged.length === 0) {
       return 0;
@@ -1990,9 +2066,39 @@ export class Intake {
     requireComplete = true
   ): Promise<AssessmentInput["coverage"] | null> {
     const workspaceId = deliveries[0]!.workspace_id;
-    const evidenceIds = deliveries.flatMap(
-      (delivery) => JSON.parse(delivery.evidence_ids) as string[]
+    const credentials = await this.collectSources(
+      workspaceId,
+      owner,
+      deliveries.flatMap(
+        (delivery) => JSON.parse(delivery.evidence_ids) as string[]
+      ),
+      now
     );
+    if (!deliveries.every((delivery) => this.deliveryAllowed(delivery))) {
+      return null;
+    }
+    const coverage = this.recall.coverage(workspaceId, owner);
+    if (
+      requireComplete &&
+      credentials.some((credential) => {
+        const source = coverage.find((each) => each.source === credential.id);
+        return !source || source.error || source.through < now;
+      })
+    ) {
+      throw new Error(
+        "The latest source state could not be verified before notification"
+      );
+    }
+    return coverage;
+  }
+
+  /** Reads the accounts of the given sources again, and returns those accounts. */
+  private async collectSources(
+    workspaceId: string,
+    owner: User,
+    evidenceIds: string[],
+    now: number
+  ): Promise<WatchedCredential[]> {
     const sources = new Set(
       (
         this.database
@@ -2015,22 +2121,7 @@ export class Intake {
     for (const credential of credentials) {
       await this.collect(credential, now, true);
     }
-    if (!deliveries.every((delivery) => this.deliveryAllowed(delivery))) {
-      return null;
-    }
-    const coverage = this.recall.coverage(workspaceId, owner);
-    if (
-      requireComplete &&
-      credentials.some((credential) => {
-        const source = coverage.find((each) => each.source === credential.id);
-        return !source || source.error || source.through < now;
-      })
-    ) {
-      throw new Error(
-        "The latest source state could not be verified before notification"
-      );
-    }
-    return coverage;
+    return credentials;
   }
 
   private finishDelivery(
@@ -2432,6 +2523,16 @@ export class Intake {
 
 /** How long the next try waits after `count` failures in a row: 15 minutes, doubling up to a day. */
 /** Where the next poll of a source starts reading; it goes back one hour for messages that arrive late. */
+/** A kept observation without its display names. */
+function messageContent(payload: string): string {
+  const {
+    sender: _sender,
+    chatName: _chatName,
+    ...content
+  } = JSON.parse(payload) as WatchedItem;
+  return JSON.stringify(content);
+}
+
 function pollStart(source: SourceRow | null, now: number): number {
   return source?.polled_at ? source.polled_at - 60 * 60_000 : now - DAY;
 }
