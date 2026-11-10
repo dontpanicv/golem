@@ -4,8 +4,9 @@ import UserNotifications
 
 /// Watches the places that Golem gives for the person (`watched-places`) with `CLMonitor`, and tells Golem when they
 /// arrive or leave; only that goes to Golem, never where the person is, and Golem decides what is due. iOS starts the
-/// app in the background for such an event, also when it does not run, so `resume` runs at every launch.
-final class PlaceWatcher {
+/// app in the background for such an event, also when it does not run, so `resume` runs at every launch. Visits and
+/// significant location changes also wake the app, for a crossing that `CLMonitor` tells late; the position stays here.
+final class PlaceWatcher: NSObject, CLLocationManagerDelegate {
     static let shared = PlaceWatcher()
 
     /// What the watcher keeps of a place across launches.
@@ -39,6 +40,11 @@ final class PlaceWatcher {
     /// The reports that Golem did not get yet, oldest first.
     private var reports: [Report] = stored(reportsKey) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(reports), forKey: Self.reportsKey) }
+    }
+
+    override private init() {
+        super.init()
+        manager.delegate = self
     }
 
     /// Opens the monitor at launch while it watches a place, so the event that started the app arrives.
@@ -79,10 +85,7 @@ final class PlaceWatcher {
                 assuming: .unknown
             )
         }
-        if watched.isEmpty {
-            session?.invalidate()
-            session = nil
-        }
+        if watched.isEmpty { stopWaking() }
     }
 
     /// Stops watching every place, as after the person signs out.
@@ -91,13 +94,14 @@ final class PlaceWatcher {
         for id in await monitor.identifiers { await monitor.remove(id) }
         watched = [:]
         reports = []
-        session?.invalidate()
-        session = nil
+        stopWaking()
     }
 
     /// The one monitor of the app, with a session that keeps its events coming in the background.
     private func monitor() async -> CLMonitor {
         session = session ?? CLServiceSession(authorization: .always)
+        manager.startMonitoringVisits()
+        manager.startMonitoringSignificantLocationChanges()
         if let opening { return await opening.value }
         let opening = Task {
             let monitor = await CLMonitor("places")
@@ -110,16 +114,62 @@ final class PlaceWatcher {
         return await opening.value
     }
 
+    private func stopWaking() {
+        session?.invalidate()
+        session = nil
+        manager.stopMonitoringVisits()
+        manager.stopMonitoringSignificantLocationChanges()
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        // iOS can give a position that it kept from before.
+        guard let location = locations.last, location.timestamp.timeIntervalSinceNow > -5 * 60 else { return }
+        check(location)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
+        // A departure has the coordinate of the visit, which is no longer where the person is.
+        guard visit.departureDate == .distantFuture else { return }
+        check(
+            CLLocation(
+                coordinate: visit.coordinate, altitude: 0, horizontalAccuracy: visit.horizontalAccuracy,
+                verticalAccuracy: -1, timestamp: visit.arrivalDate
+            )
+        )
+    }
+
+    /// Records what a position says about each watched place.
+    private func check(_ location: CLLocation) {
+        for (id, item) in watched {
+            let center = CLLocation(latitude: item.place.latitude, longitude: item.place.longitude)
+            let distance = location.distance(from: center)
+            let radius = CLLocationDistance(item.place.radius)
+            guard let inside = Self.inside(distance: distance, accuracy: location.horizontalAccuracy, radius: radius)
+            else { continue }
+            Task { await record(id, inside: inside, at: location.timestamp) }
+        }
+    }
+
+    /// Whether a position is in a circle, or nil when it is too rough to say.
+    static func inside(distance: Double, accuracy: Double, radius: Double) -> Bool? {
+        guard accuracy >= 0 else { return nil }
+        if distance > radius + accuracy { return false }
+        return distance <= radius && accuracy <= radius ? true : nil
+    }
+
     private func handle(_ event: CLMonitor.Event) async {
-        guard var item = watched[event.identifier], event.state != .unknown else { return }
-        let inside = event.state == .satisfied
-        guard inside != item.inside else { return }
+        guard event.state != .unknown else { return }
+        await record(event.identifier, inside: event.state == .satisfied, at: event.date)
+    }
+
+    private func record(_ id: String, inside: Bool, at date: Date) async {
+        guard var item = watched[id], inside != item.inside else { return }
         let report = Report(
-            workspaceID: item.workspaceID, placeID: event.identifier, event: inside ? .arrive : .leave,
-            time: event.date.timeIntervalSince1970 * 1000, initial: item.inside == nil
+            workspaceID: item.workspaceID, placeID: id, event: inside ? .arrive : .leave,
+            time: date.timeIntervalSince1970 * 1000, initial: item.inside == nil
         )
         item.inside = inside
-        watched[event.identifier] = item
+        watched[id] = item
         reports.append(report)
         await sendReports()
         guard reports.contains(report) else { return }
@@ -135,7 +185,7 @@ final class PlaceWatcher {
                 UNNotificationRequest(identifier: reminder.id, content: content, trigger: nil)
             )
         }
-        watched[event.identifier]?.place.reminders.removeAll { due.contains($0) }
+        watched[id]?.place.reminders.removeAll { due.contains($0) }
     }
 
     /// Sends the waiting reports in order, in the time iOS gives a background app, until one cannot go.

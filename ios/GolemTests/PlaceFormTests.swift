@@ -32,3 +32,16 @@ struct PlaceFormTests {
         root.dismiss(animated: false)
     }
 }
+
+@Suite("Place watcher")
+@MainActor
+struct PlaceWatcherTests {
+    @Test func aPositionCountsOnlyWhenItIsSure() {
+        #expect(PlaceWatcher.inside(distance: 40, accuracy: 30, radius: 100) == true)
+        #expect(PlaceWatcher.inside(distance: 400, accuracy: 100, radius: 100) == false)
+        // Near the edge, or too rough for a small circle.
+        #expect(PlaceWatcher.inside(distance: 150, accuracy: 100, radius: 100) == nil)
+        #expect(PlaceWatcher.inside(distance: 40, accuracy: 500, radius: 100) == nil)
+        #expect(PlaceWatcher.inside(distance: 40, accuracy: -1, radius: 100) == nil)
+    }
+}
