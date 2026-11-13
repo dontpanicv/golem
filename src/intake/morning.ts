@@ -73,7 +73,7 @@ Golem is the owner's second brain, not their worker: it remembers and reminds, a
 message: one update for the chat, in the owner's language. It merges the matter's updates, says what changed, what it asks of the owner or of whom, and any deadline that a source states, with the facts from the evidence only. Cite the source ids in square brackets.
 ask: one short sentence in the owner's language of what the matter still needs from the owner, such as "Odpovědět Graemovi na termíny hovoru" or "Podívat se, proč Petrovi nefunguje import". An ask is not only a literal request. It is also a problem that someone reports to the owner or in the owner's area ("this does not work", "can you take a look?"), a person who waits for the owner, a failure, risk, or decision that nobody has solved and that the owner must know or carry, and a matter that the owner started or promised and that is not finished. Set ask=null only when nothing is left for the owner: plain information, something filed for later use such as a tip, a matter that the evidence shows handled, a task that clearly belongs to someone else, or a matter that a pending reminder already covers. When in doubt, set the ask: a forgotten unsolved matter costs the owner more than one more line. due: the deadline that a source states for it, as an ISO date and time with the Europe/Prague offset, or null.
 line: one short line for the owner's morning summary. Only a matter with an ask or a due appears there. summary: one or two sentences in the owner's language that start the morning summary, such as how many matters need the owner today; name only matters with an ask or a due.
-nudges are asks that Golem already follows and is about to remind the owner of. Put a nudge in closed only with clear evidence: state=resolved when the evidence shows it handled, state=stopped when a pending reminder covers the same matter or when it clearly belongs to someone else. Waiting for a reply and a partial answer are not handled. When in doubt, keep the nudge: leave it out of closed. The input may have no updates.
+nudges are asks that Golem already follows and is about to remind the owner of. Put a nudge in closed only with clear evidence: state=resolved when the evidence shows it handled, state=stopped when a pending reminder covers the same matter or when it clearly belongs to someone else. Waiting for a reply and a partial answer are not handled. When in doubt, keep the nudge: leave it out of closed. Golem adds the open nudges to the morning summary itself, so never make a matter for a nudge. The input may have no updates.
 Every update id must be in exactly one matter or in dropped.
 Return exactly {"summary":string,"matters":[{"updates":[id],"chatId":id|null,"title":string,"topicId":id|null,"newTopic":{"name":string,"summary":string}|null,"message":string,"ask":string|null,"due":string|null,"line":string}],"dropped":[{"id":id,"reason":string}],"closed":[{"id":id,"state":"resolved"|"stopped","reason":string}]}.`;
 
@@ -132,15 +132,20 @@ export function validateMorningPlan(
   };
   const chats = new Set(input.chats.map((chat) => chat.id));
   const topics = new Set(input.topics.map((topic) => topic.id));
-  const matters = plan.matters.map((matter) => {
-    if (!(Array.isArray(matter.updates) && matter.updates.length > 0)) {
-      throw new Error("A morning matter needs its updates");
-    }
-    for (const id of matter.updates) {
-      take(id);
-    }
-    return validateMatter(matter, chats, topics);
-  });
+  // A matter without updates restates a nudge, which Golem lists itself.
+  const matters = plan.matters
+    .filter(
+      (matter) => !Array.isArray(matter.updates) || matter.updates.length > 0
+    )
+    .map((matter) => {
+      if (!Array.isArray(matter.updates)) {
+        throw new Error("A morning matter needs its updates");
+      }
+      for (const id of matter.updates) {
+        take(id);
+      }
+      return validateMatter(matter, chats, topics);
+    });
   const dropped = plan.dropped.map((each) => {
     take(each.id);
     return { id: each.id, reason: String(each.reason ?? "") };
@@ -229,7 +234,8 @@ function validateMatter(
 export function fallbackPlan(input: MorningInput): MorningPlan {
   const topics = new Set(input.topics.map((topic) => topic.id));
   return {
-    summary: "The updates of this morning, each in its chat:",
+    // No model wrote it in the owner's language, so the summary is only its lines.
+    summary: "",
     matters: input.updates.map((update) => {
       const topic =
         update.proposedTopicId && topics.has(update.proposedTopicId)

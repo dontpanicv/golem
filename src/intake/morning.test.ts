@@ -117,6 +117,19 @@ test("without a model plan every matter keeps its summary line and no nudge clos
   expect(fallback.closed).toEqual([]);
 });
 
+test("a morning plan leaves out a matter without updates, as Golem lists the nudges itself", () => {
+  const due = {
+    ...input,
+    nudges: [{ id: "n", chatId: "chat", text: "Reply", sourceIds: [] }],
+  };
+  const checked = validateMorningPlan(
+    plan([matter(), matter({ updates: [], title: "Reply" })]),
+    due
+  );
+  expect(checked.matters.map((each) => each.title)).toEqual(["Logs"]);
+  expect(fallbackPlan(due).summary).toBe("");
+});
+
 test("a morning plan closes only a nudge that is due, as resolved or stopped", () => {
   const due = {
     ...input,
